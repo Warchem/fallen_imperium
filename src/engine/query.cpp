@@ -1,5 +1,6 @@
 #include "engine/query.h"
 #include "engine/breakthroughs.h"
+#include "engine/map.h"
 
 #include <algorithm>
 #include <cstring>
@@ -29,6 +30,8 @@ bool owns(const Game& g, int p, const char* techKeyName) { return ownsTechKey(g,
 
 bool codexOn(const Game& g) { return (g.modules & kModCodex) || ((g.modules & kModThundersEdge) && g.fixes >= 5); }
 bool teXxchaHero(const Game& g) { return (g.modules & kModThundersEdge) && g.fixes >= 20; }
+// (fixes 27, the Naalu review - owner 2026-11-13) Thunder's Edge's own Z'eu and Iconoclast replace the Codex Omegas
+bool teNaalu(const Game& g) { return (g.modules & kModThundersEdge) && g.fixes >= 27; }
 
 bool x89Omega(const Game& g, int p) {
     return codexOn(g) && g.fixes >= 4 && p >= 0 && p < g.numPlayers && ownsTechKey(g, p, "x89_base");
@@ -94,6 +97,18 @@ static std::vector<int> presence(const Game& g, int p) {
     return s;
 }
 
+// Quantum Entanglement (Creuss): the alpha / beta wormholes a system contains - for the ability, which game effects
+// can't prevent (fixes 24): Nexus Sovereignty doesn't hide the active nexus's
+uint8_t qeWormholes(const Game& g, int sys) {
+    if (sys < 0 || sys >= int(g.systems.size())) return 0;
+    uint8_t w = wormholesOf(g, sys);
+    if (g.fixes >= 24 && sys == g.nexus && g.systems[size_t(sys)].nexusActive) w |= uint8_t(g.systems[size_t(sys)].d().wormholes);
+    return uint8_t(w & (kAlpha | kBeta));
+}
+bool qeLinked(const Game& g, int p, int a, int b) {
+    return a != b && p >= 0 && p < g.numPlayers && isFaction(g, p, "ghost") && qeWormholes(g, a) && qeWormholes(g, b);
+}
+
 bool areNeighbours(const Game& g, int a, int b) {
     // I.I.H.Q. Modernization (Keleres breakthrough): neighbours of everyone in or next to Mecatol Rex
     for (int k : {a, b}) {
@@ -104,9 +119,20 @@ bool areNeighbours(const Game& g, int a, int b) {
             if (x == m || adjacentSystems(g, x, m)) return true;
     }
     std::vector<int> pa = presence(g, a), pb = presence(g, b);
+    // (fixes 26, the Empyrean review - owner 2026-11-12) Void Tether: "other players do not treat those systems as adjacent
+    // to each other" - not neighbours across a tethered border (the Empyrean themselves are)
+    const bool tie = g.fixes >= 26 && !g.tethers.empty();
     for (int x : pa)
         for (int y : pb)
-            if (x == y || adjacentSystems(g, x, y)) return true;
+            if (x == y || (adjacentSystems(g, x, y) && !(tie && tethered(g, a, x, y) && tethered(g, b, x, y)))) return true;
+    // (fixes 24, LRR 60.3) neighbours with the Creuss where Quantum Entanglement makes the systems adjacent for them
+    if (g.fixes >= 24)
+        for (int c : {a, b}) {
+            if (!isFaction(g, c, "ghost")) continue;
+            for (int x : c == a ? pa : pb)
+                for (int y : c == a ? pb : pa)
+                    if (qeLinked(g, c, x, y)) return true;
+        }
     return false;
 }
 
@@ -123,14 +149,21 @@ bool neighboursWithAll(const Game& g, int p) {
             if (in) here[i] = uint16_t(here[i] | (1u << q));
         }
     }
-    uint16_t touched = 0;
+    uint16_t touched = 0, untied = 0;  // (untied: not across a tethered border - fixes 26, Void Tether)
+    const bool tie = g.fixes >= 26 && !g.tethers.empty();
     for (int i = 0; i < n; ++i) {
         if (!((here[i] >> p) & 1)) continue;
         touched = uint16_t(touched | here[i]);
-        for (int16_t a : g.systems[i].adj) touched = uint16_t(touched | here[a]);
+        untied = uint16_t(untied | here[i]);
+        for (int16_t a : g.systems[i].adj) {
+            touched = uint16_t(touched | here[a]);
+            if (!(tie && tethered(g, p, i, a))) untied = uint16_t(untied | here[a]);
+        }
     }
     for (int q = 0; q < g.numPlayers; ++q)
-        if (q != p && !g.players[q].eliminated && !((touched >> q) & 1)) return false;
+        if (q != p && !g.players[q].eliminated && !(((tie && !isFaction(g, q, "empyrean") ? untied : touched) >> q) & 1) &&
+            !(g.fixes >= 24 && (isFaction(g, p, "ghost") || isFaction(g, q, "ghost") || g.fx.taivra) && areNeighbours(g, p, q)))  // (LRR 60.3)
+            return false;
     return true;
 }
 
@@ -233,6 +266,13 @@ bool isDMZ(const Game& g, int planet) {
 }
 bool isStation(const Game& g, int planet) {
     return planet >= 0 && planet < int(g.planets.size()) && (kPlanets[g.planets[size_t(planet)].def].flags & kPlanetStation);
+}
+// (fixes 26, the Empyrean review - owner 2026-11-12) a system that "does not contain any planets": a space station isn't
+// a planet (Thunder's Edge rulebook: "A system that contains a space station and no planets gets a frontier token")
+bool planetless(const Game& g, int sys) {
+    for (int16_t x : g.systems[size_t(sys)].planets)
+        if (!(g.fixes >= 26 && isStation(g, x))) return false;
+    return true;
 }
 // Omni-Forgeworld (Roh'Dhna war sun with The Prodigy's Triumph; 0.44.9, fixes 13 - the owner's answer B9): each one is
 // also a space station - exhausting its "planet card" damages it instead
@@ -339,6 +379,13 @@ bool hasTraitOf(const Game& g, int planet, Trait t) {
     const PlanetDef& d = kPlanets[g.planets[planet].def];
     // Terraform: all three traits; TE: two; Minor Factions (galactic event): a minor faction's planets all three
     return d.trait == t || d.trait2 == t || g.planets[planet].terraform || g.planets[planet].minor >= 0;
+}
+std::vector<Trait> traitsOf(const Game& g, int planet) {
+    std::vector<Trait> v;
+    const PlanetDef& d = kPlanets[g.planets[size_t(planet)].def];
+    for (Trait t : {d.trait, d.trait2, Trait::Cultural, Trait::Hazardous, Trait::Industrial})
+        if (hasTraitOf(g, planet, t) && std::find(v.begin(), v.end(), t) == v.end()) v.push_back(t);
+    return v;
 }
 uint8_t wormholesOf(const Game& g, int sys) {
     const SystemState& s = g.systems[sys];
@@ -918,7 +965,27 @@ bool hasUnits(const Game& g, int p, int sys) {
     return false;
 }
 
-bool blockaded(const Game& g, int p, int sys) { return otherShipsIn(g, p, sys) && !hasShips(g, p, sys); }
+// (fixes 25, owner's faction debug pass) "Coexisting structures are always blockaded" (TE rulebook): p's only production
+// in the system is structures on planets where p coexists
+static bool coexistBlockaded(const Game& g, int p, int sys) {
+    if (g.fixes < 25 || p < 0 || p >= g.numPlayers || sys < 0 || !(g.modules & kModThundersEdge)) return false;
+    const SystemState& s = g.systems[size_t(sys)];
+    auto produces = [&](int t) { const UnitDef& u = unitDef(g, p, UnitType(t)); return u.production > 0 || u.productionPlusResources; };
+    bool coexistDock = false;
+    for (int t = 0; t < kUnitTypes; ++t)
+        if (s.space[size_t(p)].n[t] && produces(t)) return false;
+    for (int16_t x : s.planets) {
+        const PlanetState& ps = g.planets[size_t(x)];
+        const bool co = (ps.coexist >> p) & 1;
+        for (int t = 0; t < kUnitTypes; ++t) {
+            if (!ps.units[size_t(p)].n[t] || !produces(t)) continue;
+            if (co && isStructure(UnitType(t))) coexistDock = true;
+            else return false;
+        }
+    }
+    return coexistDock;
+}
+bool blockaded(const Game& g, int p, int sys) { return (otherShipsIn(g, p, sys) && !hasShips(g, p, sys)) || coexistBlockaded(g, p, sys); }
 
 bool otherShipsIn(const Game& g, int p, int sys) {
     for (int q = 0; q < g.numPlayers; ++q)
@@ -1112,15 +1179,34 @@ bool tethered(const Game& g, int p, int a, int b) {
         if ((t.first == a && t.second == b) || (t.first == b && t.second == a)) {
             for (int q = 0; q < g.numPlayers; ++q)
                 if (isFaction(g, q, "empyrean") && q == p) return false;  // (their own borders)
+            // (fixes 26, the Empyrean review - owner 2026-11-12: the card) "... unless you allow it"
+            if (g.fixes >= 26 && p >= 0 && p < g.numPlayers && ((g.fx.tetherAllow >> p) & 1)) return false;
             return true;
         }
     return false;
 }
 
+// (fixes 24) the wormholes a system contains, each one counted: printed (an open nexus all three - Nexus Sovereignty
+// only matters during movement), wormhole tokens, each Creuss token, each delta-wormhole flagship (Hil Colish)
+int wormholeCount(const Game& g, int sys) {
+    if (sys < 0 || sys >= int(g.systems.size())) return 0;
+    const SystemState& s = g.systems[size_t(sys)];
+    uint8_t printed = s.d().wormholes;
+    if (sys == g.nexus && !s.nexusActive) printed &= kGamma;
+    int n = 0;
+    for (uint8_t w = printed; w; w &= uint8_t(w - 1)) ++n;
+    for (uint8_t w = s.tokenWormholes; w; w &= uint8_t(w - 1)) ++n;
+    for (int16_t t : g.creussTokens) n += t == sys ? 1 : 0;
+    const int c = playerOfFaction(g, "ghost");
+    for (int q = 0; q < g.numPlayers; ++q)
+        if (s.space[size_t(q)].count(UnitType::Flagship) && (q == c || (g.fixes >= 13 && c >= 0 && flagshipAbility(g, q, "ghost")))) ++n;
+    return n;
+}
 int particleSynthesis(const Game& g, int p, int sys) {
     // Particle Synthesis (Creuss breakthrough): each wormhole in a system with your ships has Production 1
     // (0.44.4: the faction key is "ghost" - "creuss" never matched, so it only works from fixes 8)
     if (g.fixes < 8 || !breakthroughIs(g, p, "ghost") || !hasShips(g, p, sys)) return 0;
+    if (g.fixes >= 24) return wormholeCount(g, sys);  // (owner's faction debug pass: "each wormhole", not each kind)
     int n = 0;
     for (uint8_t w = wormholesOf(g, sys); w; w &= uint8_t(w - 1)) ++n;
     return n;
@@ -1139,11 +1225,11 @@ const char* plotName(int plot) {
 }
 const char* plotText(int plot) {
     static const char* const k[kPlotCount] = {
-        "You may use the secondary of each strategy card the puppet plays without a command token - for Leadership, its primary instead.",
-        "When the puppet gains commodities, you gain as many trade goods.",
-        "When revealed: destroy every unit on one of the puppet's non-home planets. At the start of each status phase: destroy 1 of the puppet's infantry.",
-        "+1 to your combat rolls and unit ability rolls against the puppet.",
-        "When revealed: gain 1 of the puppet's technologies (not a faction one). When the puppet gains such a technology later, you may pay 4 resources to gain it too."};
+        "You can perform the secondary abilities of the puppeted player's strategy cards without spending command tokens; for \"Leadership,\" you can perform the primary ability instead.",
+        "When the puppeted player gains commodities, you gain an equal number of trade goods.",
+        "When this card is revealed, destroy all units on a non-home planet controlled by the puppeted player. At the start of the status phase, destroy 1 of the puppeted player's infantry in any system.",
+        "Apply +1 to the results of each of your combat and unit ability rolls against the puppeted player.",
+        "When this card is revealed, gain 1 non-faction technology owned by the puppeted player. When the puppeted player gains a non-faction technology, you may spend 4 resources to gain that technology."};
     return plot >= 0 && plot < kPlotCount ? k[plot] : "";
 }
 int plotCount(const Player& pl) {
@@ -1167,7 +1253,19 @@ bool anyPuppet(const Game& g, int obs, int q) {
 
 bool magmusProduction(const Game& g, int p, int sys) {
     // Magmus Reactor: a supernova with your units has Production 5
-    return (g.systems[sys].d().anomalies & kSupernova) && owns(g, p, "mr") && hasUnits(g, p, sys);
+    return !magmusOriginal(g) && (g.systems[sys].d().anomalies & kSupernova) && owns(g, p, "mr") && hasUnits(g, p, sys);
+}
+
+bool magmusOriginal(const Game& g) { return g.fixes >= 26 && !codexOn(g); }
+
+bool anyPlanetGFFor(const Game& g, int p) { return g.fx.anyPlanetGF && (p == g.activePlayer || (g.fixes >= 26 && p == g.fx.anyPlanetGFFor)); }
+
+int warSunUpgradeFor(const Game& g, int p) {
+    const int ws = techByKey("ws");
+    if (g.fixes >= 26 && p >= 0 && p < g.numPlayers)
+        for (int i = 0; i < kTechCount; ++i)
+            if (kTechs[i].faction >= 0 && kTechs[i].faction == g.players[size_t(p)].faction && kTechs[i].replaces == ws) return i;
+    return ws;
 }
 
 bool hasProductionIn(const Game& g, int p, int sys) { return productionCapacity(g, p, sys) > 0; }
@@ -1181,7 +1279,7 @@ std::vector<int> groundForceDestinations(const Game& g, int p, int sys) {
             !(isStructure(UnitType(t)) && !unitDef(g, p, UnitType(t)).spaceOnly))  // (Miniaturization)
             spaceProducer = true;
     // Letani Miasmiala / Duha Menaimon: any planet you control in the system, or space
-    if (g.fx.anyPlanetGF && p == g.activePlayer) spaceProducer = true;
+    if (anyPlanetGFFor(g, p)) spaceProducer = true;
     if (particleSynthesis(g, p, sys)) spaceProducer = true;  // (the wormholes are in space)
     if ((g.modules & kModDiscordant) && s.planets.empty() && owns(g, p, "dsmorty") && s.space[size_t(p)].ships() > 0) spaceProducer = true;  // Fabrication Grid
     if ((g.modules & kModDiscordant) && isFaction(g, p, "ghoti") && s.space[size_t(p)].count(UnitType::Flagship)) spaceProducer = true;  // All Mother
@@ -1325,6 +1423,10 @@ int combatStrength(const Game& g, int p, int sys, bool space) {
 bool adjacentSystems(const Game& g, int a, int b) {
     for (int16_t x : g.systems[a].adj)
         if (x == b) return true;
+    // Emissary Taivra (fixes 24): this tactical action the active system is adjacent to every other system with a wormhole
+    if (g.fixes >= 24 && g.fx.taivra && g.activeSystem >= 0 && a != b && (a == g.activeSystem || b == g.activeSystem) &&
+        wormholesOf(g, a == g.activeSystem ? b : a))
+        return true;
     return false;
 }
 
@@ -1373,6 +1475,17 @@ bool riftRollsLeaving(const Game& g, int p, int s) {
 }
 
 namespace { int g_noRiftBonus = 0, g_noMyru = 0; }  // shipReachNoRift (also without the Wraith Engine), shipReachNoMyru
+// Hil Colish (Creuss flagship, fixes 24 - owner's faction debug pass: "this ship may move before or after your other
+// ships"): while a reach is worked out for one of p's other ships, the active system it heads for (when the flagship
+// can get there itself) - its delta wormhole is there once it has moved first; -1 = no such link
+namespace { int g_colishTo = -1, g_colishOff = 0; }
+int colishOrigin(const Game& g, int p) {
+    if (g.fixes < 24 || p < 0 || p >= g.numPlayers) return -1;
+    if (!isFaction(g, p, "ghost") && !(g.fixes >= 13 && flagshipAbility(g, p, "ghost"))) return -1;
+    for (size_t s = 0; s < g.systems.size(); ++s)
+        if (g.systems[s].space[size_t(p)].count(UnitType::Flagship)) return int(s);
+    return -1;
+}
 const std::map<int, Force>* g_movingShips = nullptr;
 int moveValue(const Game& g, int p, int sys, UnitType t) {
     int mv = unitDef(g, p, t).move;
@@ -1428,7 +1541,9 @@ int moveValue(const Game& g, int p, int sys, UnitType t) {
     if (mv > 0 && p == g.activePlayer && g.activeSystem >= 0) {
         if (g.fx.aetherstream) ++mv;  // Aetherstream
         // Slipstream (Creuss): ships starting at home or at an alpha / beta wormhole
-        if (isFaction(g, p, "ghost") && (sys == g.players[p].homeSystem || (wormholesOf(g, sys) & (kAlpha | kBeta)))) ++mv;
+        // (fixes 24: what the system really contains - Nexus Sovereignty doesn't hide the active nexus's; qeWormholes
+        // is wormholesOf's alpha / beta before that)
+        if (isFaction(g, p, "ghost") && (sys == g.players[p].homeSystem || qeWormholes(g, sys))) ++mv;
     }
     return mv;
 }
@@ -1533,8 +1648,8 @@ Route bestRoute(const Game& g, int p, int from, int to, bool allowRift, bool ign
         if (uRift && !allowRift) continue;
         bool deepStep = false;  // the Deepwrought flagship passing through a crowded system of ours
         if (deep && u != from && hasUnits(g, p, u)) {
-            deepStep = neutralUnitsIn(g, u);
-            for (int q = 0; q < g.numPlayers; ++q)
+            deepStep = neutralUnitsIn(g, u) || g.fixes >= 27;  // (fixes 27, the Deepwrought review - owner 2026-11-14: as AsyncTI4's note,
+            for (int q = 0; q < g.numPlayers; ++q)            // "Other players' units do not need to be present for the speed boost")
                 if (q != p && hasUnits(g, q, u)) deepStep = true;
         }
         if (u != from && !canPassThrough(g, p, u, from, ignoreShips || (deep && hasUnits(g, p, u)))) continue;
@@ -1579,8 +1694,8 @@ Route pathRoute(const Game& g, int p, int from, const std::vector<int>& via, int
         const bool uRift = (anomaliesFor(g, p, u) & kRift) != 0;
         bool deepStep = false;
         if (deep && u != from && hasUnits(g, p, u)) {
-            deepStep = neutralUnitsIn(g, u);
-            for (int q = 0; q < g.numPlayers; ++q)
+            deepStep = neutralUnitsIn(g, u) || g.fixes >= 27;  // (fixes 27, the Deepwrought review - owner 2026-11-14: as AsyncTI4's note,
+            for (int q = 0; q < g.numPlayers; ++q)            // "Other players' units do not need to be present for the speed boost")
                 if (q != p && hasUnits(g, q, u)) deepStep = true;
         }
         if (u != from && !canPassThrough(g, p, u, from, ignoreShips || (deep && hasUnits(g, p, u))))
@@ -1618,7 +1733,13 @@ std::vector<int> routeNeighbors(const Game& g, int p, int u) {
     };
     const uint8_t wu = wormholesOf(g, u);
     // Quantum Entanglement (Creuss): every alpha and beta wormhole is adjacent to every other one
-    if ((wu & (kAlpha | kBeta)) && isFaction(g, p, "ghost")) addAll(kAlpha | kBeta);
+    if (g.fixes >= 24 && isFaction(g, p, "ghost")) {  // (fixes 24: game effects can't prevent it - Nexus Sovereignty)
+        if (qeWormholes(g, u))
+            for (int v = 0; v < n; ++v)
+                if (qeWormholes(g, v)) add(v);
+    } else if ((wu & (kAlpha | kBeta)) && isFaction(g, p, "ghost")) {
+        addAll(kAlpha | kBeta);
+    }
     // Lazax Gate Folding (Winnu, 0.44.7 fixes 11): also while the Winnu choose what to activate on their turn (the
     // planner and the "can't reach" warning missed it), not under Enforced Travel Ban; Sever cuts it like a wormhole
     int lgfMec = -1;
@@ -1644,10 +1765,16 @@ std::vector<int> routeNeighbors(const Game& g, int p, int u) {
             add(g.activeSystem);
         }
     }
+    // Emissary Taivra (fixes 24, owner's faction debug pass): the active system is adjacent to every other system with a
+    // wormhole (epsilon too) - for every player this tactical action (retreats), not only the one moving
+    if (g.fixes >= 24 && g.fx.taivra && g.activeSystem >= 0 && p != g.activePlayer) {
+        if (u == g.activeSystem) addAll(0xFF);
+        else if (wu) add(g.activeSystem);
+    }
     if (p == g.activePlayer && g.activeSystem >= 0) {
         // Emissary Taivra: the active system is next to every system with a wormhole
         if (g.fx.taivra) {
-            if (u == g.activeSystem) addAll(kAlpha | kBeta | kGamma | kDelta);
+            if (u == g.activeSystem) addAll(g.fixes >= 24 ? uint8_t(0xFF) : uint8_t(kAlpha | kBeta | kGamma | kDelta));
             else if (wu) add(g.activeSystem);
         }
         // Lazax Gate Folding (Winnu): Mecatol Rex counts as an alpha and beta wormhole if they don't control it
@@ -1673,9 +1800,50 @@ std::vector<int> routeNeighbors(const Game& g, int p, int u) {
             for (int v = 0; v < n; ++v)
                 if (!g.systems[size_t(v)].ingress && scarAt(g, v)) add(v);
     }
+    // Hil Colish moving first (fixes 24): its delta wormhole in the active system - next to the other delta wormholes
+    // (the Creuss home and Gate; the one where it stands now goes with it)
+    if (g_colishTo >= 0 && !g_colishOff) {
+        const int A = g_colishTo, O = colishOrigin(g, p);
+        auto deltaOther = [&](int x) {
+            if (x == O) return ((g.systems[size_t(x)].d().wormholes | g.systems[size_t(x)].tokenWormholes) & kDelta) != 0;
+            return (wormholesOf(g, x) & kDelta) != 0;
+        };
+        if (u == A) {
+            for (int v = 0; v < n; ++v)
+                if (v != A && deltaOther(v)) add(v);
+        } else if (deltaOther(u)) {
+            add(A);
+        }
+    }
     // Sundered (Crimson Rebellion): only epsilon wormholes; Sever (their note): wormholes in that system do nothing
     const bool sundered = isFaction(g, p, "crimson");
-    if (sundered || g.severSystem >= 0) {
+    if ((sundered || g.severSystem >= 0) && g.fixes >= 24) {
+        // (fixes 24, owner's faction debug pass) board links first - tiles side by side or joined by hyperlanes stay,
+        // whatever wormholes they also share; then any link that needs the severed system's wormholes goes, whatever
+        // is on the other end (Quantum Entanglement, Wormhole Reconstruction / Lost Star Chart alpha-beta, Emissary
+        // Taivra); the Crimson keep only epsilon-to-epsilon wormhole links
+        const SystemState& su = g.systems[size_t(u)];
+        out.erase(std::remove_if(out.begin(), out.end(),
+                                 [&](int v) {
+                                     const SystemState& sv = g.systems[size_t(v)];
+                                     if (boardAdjacent(g, u, v) || (su.breach == 2 && sv.breach == 2) || (su.ingress && sv.egress) ||
+                                         (su.egress && sv.ingress))
+                                         return false;
+                                     if (qeLinked(g, p, u, v)) return false;  // Quantum Entanglement: nothing can stop it
+                                     if ((g.fx.starA == u && g.fx.starB == v) || (g.fx.starA == v && g.fx.starB == u)) return false;
+                                     if (g.fx.conduit && p == g.activePlayer && g.activeSystem >= 0 &&
+                                         ((u == g.activeSystem && hasUnits(g, p, v)) || (v == g.activeSystem && hasUnits(g, p, u))))
+                                         return false;
+                                     const uint8_t wu2 = uint8_t(wormholesOf(g, u) | (u == lgfMec ? (kAlpha | kBeta) : 0));
+                                     const uint8_t wv2 = uint8_t(wormholesOf(g, v) | (v == lgfMec ? (kAlpha | kBeta) : 0));
+                                     if (!wu2 && !wv2) return false;  // (some other link)
+                                     // (Emissary Taivra from a severed active system: those links need the OTHER wormholes)
+                                     const bool taivraFrom = g.fx.taivra && p == g.activePlayer && g.severSystem == g.activeSystem;
+                                     if ((u == g.severSystem && wu2 && !taivraFrom) || (v == g.severSystem && wv2 && !taivraFrom)) return true;
+                                     return sundered && !(wu2 & wv2 & kEpsilon);
+                                 }),
+                  out.end());
+    } else if (sundered || g.severSystem >= 0) {
         const SystemState& su = g.systems[size_t(u)];
         out.erase(std::remove_if(out.begin(), out.end(),
                                  [&](int v) {
@@ -1712,7 +1880,9 @@ std::vector<int> routeNeighbors(const Game& g, int p, int u) {
         g.players[size_t(p)].heroRound == g.round && hasUnits(g, p, u))
         add(g.dsWound);
     if (!g.tethers.empty())  // Void Tether (Empyrean breakthrough): borders other players can't cross
-        out.erase(std::remove_if(out.begin(), out.end(), [&](int v) { return tethered(g, p, u, v); }), out.end());
+        out.erase(std::remove_if(out.begin(), out.end(),
+                                 [&](int v) { return tethered(g, p, u, v) && !(g.fixes >= 24 && qeLinked(g, p, u, v)); }),
+                  out.end());
     return out;
 }
 
@@ -1762,9 +1932,50 @@ Reach shipReachNoMyru(const Game& g, int p, int from, int to, UnitType t, int bo
     g_noMyru = was;
     return r;
 }
+namespace {
+// Hil Colish first (fixes 24): the active system another of p's ships may reach through the flagship's delta wormhole
+// (planning before the activation counts too) - only when the flagship can get there itself
+struct ColishScope {
+    int was;
+    explicit ColishScope(int v) : was(g_colishTo) { g_colishTo = v; }
+    ~ColishScope() { g_colishTo = was; }
+};
+int colishTarget(const Game& g, int p, int from, int to, UnitType t) {
+    if (g.fixes < 24 || g_colishOff || p != g.activePlayer || g.phase != Phase::Action || to < 0 ||
+        (g.activeSystem >= 0 && g.activeSystem != to))
+        return -1;
+    const int o = colishOrigin(g, p);
+    if (o < 0 || o == to || (isFlagship(t) && from == o) || g.systems[size_t(o)].hasToken(p)) return -1;
+    ColishScope none(-1);
+    return shipReachCore(g, p, o, to, UnitType::Flagship, moveBonusMax(g, p)).ok ? to : -1;
+}
+}  // namespace
+Reach shipReachNoColish(const Game& g, int p, int from, int to, UnitType t, int bonus) {
+    ++g_colishOff;
+    const Reach r = shipReach(g, p, from, to, t, bonus);
+    --g_colishOff;
+    return r;
+}
+Reach shipReachViaNoColish(const Game& g, int p, int from, const std::vector<int>& via, int to, UnitType t, int bonus) {
+    ++g_colishOff;
+    const Reach r = shipReachVia(g, p, from, via, to, t, bonus, nullptr);
+    --g_colishOff;
+    return r;
+}
 // Star Dragon I / II (Kjalengard carriers, Discordant Stars): they may ignore the movement effects of anomalies
 // (Star Dragon I: not supernovas) - the better of the two routes.
 Reach shipReach(const Game& g, int p, int from, int to, UnitType t, int bonus) {
+    // Hil Colish (fixes 24): the usual way first - only a ship that can't get there otherwise needs it to move first
+    if (g_colishTo < 0 && !g_colishOff && colishOrigin(g, p) >= 0) {
+        const Reach r = shipReachNoColish(g, p, from, to, t, bonus);
+        if (r.ok) return r;
+        const int ct = colishTarget(g, p, from, to, t);
+        if (ct < 0) return r;
+        ColishScope colish(ct);
+        Reach w = shipReach(g, p, from, to, t, bonus);
+        w.colish = w.ok;
+        return w.ok ? w : r;
+    }
     if ((g.modules & kModDiscordant) && t == UnitType::Carrier && p >= 0 && p < g.numPlayers &&
         !std::strncmp(unitDef(g, p, t).key, "kjalengard_carrier", 18)) {
         const int prev = g_dsAnomalyIgnore;
@@ -1812,6 +2023,9 @@ Reach shipReachCore(const Game& g, int p, int from, int to, UnitType t, int bonu
     const bool deep = t == UnitType::Flagship && flagshipText(g, p, "deepwrought");  // (Thunder's Edge)
     Route safe = fromRift ? Route() : bestRoute(g, p, from, to, false, through, deep);
     Route rift = bestRoute(g, p, from, to, true, through, deep);
+    // (fixes 26, the Vuil'raith review - owner 2026-11-12) Crucible: "apply an additional +1 to the move value of each of your
+    // ships that would move out of or through a gravity rift" - on top of the rift's own bonus, once per ship
+    const int crucible = g.fixes >= 26 && g.fx.crucible && p == g.activePlayer && (rift.exits > 0 || fromRift) ? 1 : 0;
     for (int b = 0; b <= bonus; ++b) {
         int budget = mv + b;
         // A ship takes a rift-free route whenever one is in range; it only uses
@@ -1824,7 +2038,7 @@ Reach shipReachCore(const Game& g, int p, int from, int to, UnitType t, int bonu
             r.viaWormhole = safe.wormhole;
             return r;
         }
-        if (rift.cost <= budget) {
+        if (rift.cost <= budget + crucible) {
             r.ok = true;
             r.viaRift = rift.rolls > 0 || (fromRift && riftRolls(g, p, from));
             r.viaStorm = rift.storm;
@@ -1907,6 +2121,21 @@ Reach shipReachViaCore(const Game& g, int p, int from, const std::vector<int>& v
 
 Reach shipReachVia(const Game& g, int p, int from, const std::vector<int>& via, int to, UnitType t, int bonus, std::string* why) {
     if (via.empty()) return shipReach(g, p, from, to, t, bonus);
+    if (g_colishTo < 0 && !g_colishOff && colishOrigin(g, p) >= 0) {  // Hil Colish (fixes 24): as in shipReach
+        std::string plainWhy;
+        ++g_colishOff;
+        const Reach r = shipReachVia(g, p, from, via, to, t, bonus, why ? &plainWhy : nullptr);
+        --g_colishOff;
+        const int ct = r.ok ? -1 : colishTarget(g, p, from, to, t);
+        if (ct >= 0) {
+            ColishScope colish(ct);
+            Reach w = shipReachVia(g, p, from, via, to, t, bonus, nullptr);
+            w.colish = w.ok;
+            if (w.ok) return w;
+        }
+        if (why) *why = plainWhy;
+        return r;
+    }
     if ((g.modules & kModDiscordant) && t == UnitType::Carrier && p >= 0 && p < g.numPlayers &&
         !std::strncmp(unitDef(g, p, t).key, "kjalengard_carrier", 18)) {  // Star Dragons: the better of the two
         const int prev = g_dsAnomalyIgnore;
@@ -1972,7 +2201,9 @@ bool canActivate(const Game& g, int p, int sys) {
     const SystemState& s = g.systems[sys];
     if (s.isHyperlane()) return false;
     // Il Na Viroset (Mahact commander): systems with your command tokens too (both tokens return, the turn ends)
-    if (s.hasToken(p) && !(commanderUsable(g, p, "mahact") && isFaction(g, p, "mahact"))) return false;
+    // (fixes 26, the Mahact review) for anyone who has the ability - Yin Ascendant, Mercenaries / Minor Factions, Zealous
+    // Orthodoxy (it was the Mahact only)
+    if (s.hasToken(p) && !(commanderUsable(g, p, "mahact") && (g.fixes >= 26 || isFaction(g, p, "mahact")))) return false;
     if (paranoiaHome(g, p, sys)) return true;  // Paranoia (Zelian): only their own tokens (checked above)
     // Chaos Mapping (Saar): other players can't activate asteroid fields with their ships
     if (s.d().anomalies & kAsteroid)
@@ -2191,7 +2422,10 @@ bool immuneToDirectHit(const Game& g, int p, UnitType t) {
     const char* k = unitDef(g, p, t).key;
     return !std::strcmp(k, "sardakk_dreadnought2") || !std::strcmp(k, "l1z1x_dreadnought2") || !std::strcmp(k, "cheiran_dreadnought2") ||
            !std::strcmp(k, "veldyr_dreadnought2") ||  // (Lancer Dreadnought II, Discordant Stars)
-           !std::strcmp(k, "tribune3");               // (the Tribune - The Queens' Wrath, 0.43.0)
+           !std::strcmp(k, "tribune3") ||             // (the Tribune - The Queens' Wrath, 0.43.0)
+           // (fixes 27, the shared technologies - owner 2026-11-14) the generic Dreadnought II: "This unit cannot be
+           // destroyed by 'Direct Hit' action cards" (only the faction dreadnoughts were listed)
+           (g.fixes >= 27 && !std::strcmp(k, "dreadnought2"));
 }
 
 bool holdsNote(const Game& g, int p, int owner, int type) {
@@ -2215,11 +2449,13 @@ std::string noteTextOf(const Game& g, int note) {
     int owner = noteOwner(note);
     if (owner < 0 || owner >= g.numPlayers) return "";
     if ((g.extras & 32) && type == kNoteFaction && isFaction(g, owner, "hacan"))  // 0.32.0: played as an action
-        return "Action: place it face up - you may trade with players who aren't your neighbours. It goes back to Hacan "
-               "if you activate a system with their units.";
+        return "ACTION: Place this card faceup in your play area. While this card is in your play area, you may negotiate "
+               "transactions with players who are not your neighbor. If you activate a system that contains 1 or more of the "
+               "Hacan player's units, return this card to the Hacan player.";  // (the Hacan review: the card's wording)
     if ((g.extras & 64) && type == kNoteFaction && isFaction(g, owner, "empyrean"))  // 0.32.1
-        return "Action: place it face up - when you give the Empyrean as many commodities as your commodity value, you "
-               "each gain 1 trade good. It goes back to the Empyrean if you activate a system with their units.";
+        return "ACTION: Place this card faceup in your play area. When you give a number of commodities to the Empyrean player equal "
+               "to your maximum commodity value, you each gain 1 trade good. If you activate a system that contains 1 or more of the "
+               "Empyrean player's units, return this card to the Empyrean player.";  // (the Empyrean review: the card's wording)
     return factionNoteText(g.players[owner].faction, type);
 }
 
@@ -2475,7 +2711,9 @@ int planetsWithStructuresOutsideHome(const Game& g, int p) {
 
 int controlledOutsideHomeSum(const Game& g, int p, bool influence) {
     int sum = 0;
-    for (int pl : controlledPlanets(g, p)) sum += influence ? planetInfluence(g, pl) : planetResources(g, pl);
+    for (int pl : controlledPlanets(g, p))
+        if (g.fixes < 25 || !isStation(g, pl))  // (fixes 25: space stations aren't planets for objectives - TE rulebook)
+            sum += influence ? planetInfluence(g, pl) : planetResources(g, pl);
     return sum;
 }
 
@@ -2628,8 +2866,13 @@ bool meetsObjective(const Game& g, int p, int obj) {
         int m = g.mecatol();
         if (m < 0) return false;
         bool ctrl = false;
-        for (int16_t x : g.systems[m].planets)
-            if (g.planets[x].owner == p) ctrl = true;
+        if (g.fixes >= 25) {  // (fixes 25, owner's faction debug pass) as every other control check: Captain Aroz, coexisting (T22)
+            for (int x : controlledPlanets(g, p))
+                if (g.planets[size_t(x)].system == m && !isStation(g, x)) ctrl = true;
+        } else {
+            for (int16_t x : g.systems[m].planets)
+                if (g.planets[x].owner == p) ctrl = true;
+        }
         return ctrl && g.systems[m].space[p].ships() >= 3;
     }
     if (keyIs(obj, "te")) {
@@ -2683,8 +2926,9 @@ bool meetsObjective(const Game& g, int p, int obj) {
     }
     if (keyIs(obj, "syc")) {
         for (int x : controlledPlanets(g, p)) {
+            if (g.fixes >= 25 && isStation(g, x)) continue;  // (fixes 25: space stations aren't planets for objectives)
             for (int16_t y : g.systems[g.planets[x].system].planets)
-                if (g.planets[y].owner >= 0 && g.planets[y].owner != p) return true;
+                if (g.planets[y].owner >= 0 && g.planets[y].owner != p && !(g.fixes >= 25 && isStation(g, y))) return true;
         }
         return false;
     }
@@ -2693,7 +2937,17 @@ bool meetsObjective(const Game& g, int p, int obj) {
     return false;
 }
 
+static bool g_progressAroz = false;  // (the bots' objective planning sees Captain Aroz - AI only; set by the AI)
+void setProgressAroz(bool on) { g_progressAroz = on; }
 ObjProgress objectiveProgress(const Game& g, int p, int obj) {
+    if (g_progressAroz && kObjectives[obj].kind == 3 && (g.modules & kModThundersEdge) && tlAroz != p && commanderUsable(g, p, "firmament")) {
+        struct Guard {
+            int old;
+            ~Guard() { tlAroz = old; }
+        } guard{tlAroz};
+        tlAroz = p;
+        return objectiveProgress(g, p, obj);
+    }
     ObjCoexist coexistCounts;  // (T22: coexisting counts as controlling, for objectives)
     ObjProgress r;
     auto set = [&](int have, int need) {
@@ -2791,8 +3045,13 @@ ObjProgress objectiveProgress(const Game& g, int p, int obj) {
     } else if (keyIs(obj, "ose")) {
         int m = g.mecatol(), have = 0;
         if (m >= 0) {
-            for (int16_t x : g.systems[m].planets)
-                if (g.planets[x].owner == p) have = 1;
+            if (g.fixes >= 25) {
+                for (int x : controlledPlanets(g, p))
+                    if (g.planets[size_t(x)].system == m && !isStation(g, x)) have = 1;
+            } else {
+                for (int16_t x : g.systems[m].planets)
+                    if (g.planets[x].owner == p) have = 1;
+            }
             have += std::min(3, g.systems[m].space[p].ships());
         }
         set(have, 4);
@@ -2868,6 +3127,10 @@ int voteValue(const Game& g, int p, int planet) {
             base = 1;
         }
     }
+    // (fixes 27, the Xxcha review - owner 2026-11-13) Xxekir Grom Omega: "When you exhaust planets, combine the values of their
+    // resources and influence" - planets exhausted to vote too (the Codex: "both in and out of the Agenda phase")
+    if (g.fixes >= 27 && codexOn(g) && !teXxchaHero(g) && p >= 0 && p < g.numPlayers && isFaction(g, p, "xxcha") && heroUnlocked(g, p))
+        base = planetResources(g, planet) + planetInfluence(g, planet);
     return base + (commanderUsable(g, p, "xxcha") ? 1 : 0)  // Elder Qanoj
            + (hasAttachment(g, planet, "councilpreserve") ? 5 : 0);              // Council Preserve (Uncharted Space)
 }
@@ -2881,6 +3144,7 @@ int availableVotes(const Game& g, int p) {
     for (int x : readyPlanets(g, p)) v += voteValue(g, p, x);
     if (g.fixes >= 2) v += custodiaValue(g, p, true);  // (Custodia Vigilia votes, 0.43.0)
     if (g.fixes >= 13 && bannerhalls(g, p)) v += oceansReady(g, p);  // (Bannerhalls, 0.44.9)
+    else if (g.fixes >= 27 && g.players[size_t(p)].oceans > 0) v += oceansReady(g, p);  // (ocean cards - the Deepwrought review)
     return v;
 }
 
@@ -2939,20 +3203,31 @@ bool metaliSustain(const Game& g, int p, UnitType t, int sys, int planet) {
     return extraSustains(g, p, sys, planet) > 0;
 }
 
+// Where p's unit of type t can't use Sustain Damage (whether or not it has it): an entropic scar (the Quietus), another
+// player's Fourth Moon in the system, a Mentak mech (Moll Terminus) on the planet
+bool sustainBlockedAt(const Game& g, int p, UnitType t, int sys, int planet) {
+    if (noAbilities(g, p, sys)) return true;  // Thunder's Edge: no Sustain Damage inside an entropic scar (the Quietus)
+    for (int q = 0; q < g.numPlayers; ++q) {
+        if (q == p) continue;
+        // Fourth Moon (Mentak flagship): other players' ships in its system can't sustain (0.44.4: Valefar Z too)
+        if (planet < 0 && sys >= 0 && flagshipText(g, q, "mentak") && flagshipIn(g, q, sys)) return true;
+        if (!isFaction(g, q, "mentak")) continue;
+        // Moll Terminus (Mentak mech): other players' ground forces on its planet can't sustain
+        if (planet >= 0 && isGroundForce(t) && g.planets[planet].units[q].count(UnitType::Mech) && mechAbilities(g)) return true;
+    }
+    return false;
+}
+
 bool unitSustainsAt(const Game& g, int p, UnitType t, int sys, int planet) {
     // Illusory Duplication (Uncharted Space): non-fighter ships sustain damage this combat round
     if (noAbilities(g, p, sys)) return false;  // Thunder's Edge: no Sustain Damage inside an entropic scar (the Quietus)
     const bool illusory = planet < 0 && ((g.fx.illusory >> p) & 1) && t != UnitType::Fighter && isShip(t);
-    if (!unitSustains(g, p, t) && !illusory) return false;
-    for (int q = 0; q < g.numPlayers; ++q) {
-        if (q == p) continue;
-        // Fourth Moon (Mentak flagship): other players' ships in its system can't sustain (0.44.4: Valefar Z too)
-        if (planet < 0 && sys >= 0 && flagshipText(g, q, "mentak") && flagshipIn(g, q, sys)) return false;
-        if (!isFaction(g, q, "mentak")) continue;
-        // Moll Terminus (Mentak mech): other players' ground forces on its planet can't sustain
-        if (planet >= 0 && isGroundForce(t) && g.planets[planet].units[q].count(UnitType::Mech) && mechAbilities(g)) return false;
-    }
-    return true;
+    // (fixes 27, the Naaz-Rokha review - owner 2026-11-13: "only the front side of the card has sustain damage, the back side
+    // in which it transforms to does not") a Z-Grav Eidolon in the space combat has no Sustain Damage; Eidolon Maximum
+    // (Absolute Synergy) keeps its own
+    const bool zgrav = g.fixes >= 27 && t == UnitType::Mech && planet < 0 && p >= 0 && p < kSides && ((g.zgrav >> p) & 1) && !eidolonShip(g, p);
+    if ((!unitSustains(g, p, t) || zgrav) && !illusory) return false;
+    return !sustainBlockedAt(g, p, t, sys, planet);
 }
 
 // Mirror Computing (0.44.5, fixes 9: a Nekro Valefar copy counts; a Sanctification Field blank doesn't)

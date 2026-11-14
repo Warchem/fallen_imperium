@@ -28,6 +28,8 @@ void addAction(Rect r, std::function<void()> act);
 
 // The app's side. hover: runs the select of what is under (x, y); true if anything is.
 bool hover(float x, float y);
+// any: is there anything to click at (x, y)? (0.58.4: a click on nothing may be ignored - Scene::bareClickIsA)
+bool any(float x, float y);
 // press: what a left click at (x, y) means - the button to press (Btn::A for
 // a row or empty space), or Btn::None when an action took the click.
 Btn press(float x, float y);

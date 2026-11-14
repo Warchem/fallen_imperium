@@ -114,6 +114,8 @@ bool deviates(const Game& g, int p) {
 
 }  // namespace
 
+int aiResolveTech(const Game& g, int p, const char* key) { return resolveTech(g, p, key); }
+
 bool aiCoreOn(const Game& g, int p) {
     // test only: TI4_SIMCORESEATS=024 - only these seats use the core (head-to-head), "-" = nobody
     static const int mask = [] {
@@ -139,6 +141,12 @@ std::vector<int> aiCoreTechPlan(const Game& g, int p) {
             if (t >= 0 && std::find(plan.begin(), plan.end(), t) == plan.end()) plan.push_back(t);
         }
     };
+    // (Sardakk review, owner 2026-11-11 - test C) Magen Defense Grid right after Plasma Scoring: the second red one that
+    // Valkyrie Particle Weave needs
+    if (!std::strcmp(f->key, "sardakk") && aiTune("sardmagen", 0.f) > 0.f) {
+        static const char* const kSardakkCore[8] = {"ps", "md_base", "vpw", "exo2", "gd", "asc", "amd", "fl"};
+        add(kSardakkCore, 8);
+    }
     add(f->core, 8);
     if (g.modules & kModThundersEdge) add(f->te, 4);
     if (pathFor(g, p, *f) == 1) add(f->aggressive, 5);
@@ -172,7 +180,27 @@ float aiCoreTechBonus(const Game& g, int p, int tech) {
     // Floating Factory II (move 2, capacity) is what makes the Saarball - first, ahead of Gravity Drive
     if (!std::strcmp(kTechs[tech].key, "ffac2") && isFaction(g, p, "saar") && aiTune("saarff2", 1.f) > 0.f) v += 3.f;
     // 0.44.7 (owner's strategy guide): Chaos Mapping early for the Saar - a free unit every turn, asteroid fields to hide in
-    if (!std::strcmp(kTechs[tech].key, "cm") && isFaction(g, p, "saar")) v += 2.f;
+    // (the Last Bastion review, checkpoint 2 - switch bastiontech, test: researched in about 1 game in 4 / 5) Proxima Targeting
+    // VI and the Helios V2 docks
+    if ((!std::strcmp(kTechs[tech].key, "proxima") || !std::strcmp(kTechs[tech].key, "helios2")) && isFaction(g, p, "bastion"))
+        v += aiTune("bastiontech", 0.f);
+    // (the Saar review, checkpoint 2: knob saarcm, default 1 = this bonus; 0 = none - test only)
+    if (!std::strcmp(kTechs[tech].key, "cm") && isFaction(g, p, "saar") && aiTune("saarcm", 1.f) > 0.f) v += 2.f;
+    // (0.59.0, owner: the Crimson don't expand) a home beside the board, 2 moves from everything: Gravity Drive first
+    if (!std::strcmp(kTechs[tech].key, "gd") && isFaction(g, p, "crimson") && g.round <= 4 && aiTune("crimsongd", 1.f) > 0.f) v += 6.f;
+    // (L1Z1X review, checkpoint 2 - owner's guide: "Inheritance Systems means you can jump straight to Dreadnought
+    // II") the two yellow technologies Inheritance Systems needs, then Inheritance Systems itself; the bots took it in
+    // 8 of 90 games and Super-Dreadnought II (2 blue + 1 yellow) in 16. Tested (90 games): l1inherit=4 Inheritance
+    // Systems in 37 games, Super-Dreadnought II in 32, 3.48 dreadnoughts a game (3.18), 12 wins / 7.09 VP against 17 /
+    // 7.04; l1inherit=8: 61 / 43 games, 12 / 6.86 - the guide's path costs the bots wins: OFF
+    if (aiTune("l1inherit", 0.f) > 0.f && isFaction(g, p, "l1z1x")) {
+        const int is = findTech("is");
+        if (is >= 0 && !me.hasTech(is)) {
+            if (tech == is) v += aiTune("l1inherit", 0.f);
+            else if (kTechs[tech].color == TechColor::Yellow && !kTechs[tech].unitUpgrade && techCount(g, p, TechColor::Yellow) < 2)
+                v += 0.6f * aiTune("l1inherit", 0.f);
+        }
+    }
     if (deviates(g, p)) v *= 0.5f;
     // threats next door: what the other players have within 2 systems of ours
     int infantry = 0, fighters = 0, bigShips = 0, pds = 0, ships = 0;
@@ -235,7 +263,23 @@ void aiCoreApply(Style& st, const Game& g, int p) {
     st.mecatol *= mix(f.mecatol);
     st.dealRate *= mix(f.deals);
     st.threat += f.threat * follow;
-    const float units[] = {f.dread, f.cruiser, f.destroyer, f.fighter, f.carrier, f.infantry, f.mech, f.warSun};
+    // (the Arborec review, checkpoint 2 - test knob arbmech = the multiplier) the Arborec's Letani Behemoths
+    // (PRODUCTION 2, PLANETARY SHIELD, SUSTAIN DAMAGE): the guide's 1.3 stays under aiProduce's 1.4 bar for favourite
+    // units, so only the Overgrowth trait made them build mechs (150 in 90 games against 8 with Best Friend).
+    // Tested OFF (arbmech=1.6): 15 wins / 7.22 VP against 13 / 6.97, but on fresh seeds 24 / 7.27 against 25 / 7.23
+    // (mechs built 69 -> 144 and 101 -> 154); with Best Friend forced 13 wins against 8
+    float mech = !std::strcmp(f.key, "arborec") && aiTune("arbmech", 0.f) > 0.f ? aiTune("arbmech", 0.f) : f.mech;
+    // (the Argent review, checkpoint 2 - test knob argmech = the multiplier, default off) Aerie Sentinel needs no capacity
+    // beside a ship with capacity, yet the Argent bots built 0.10 mechs a game. Tested (argmech=1.6, ~3 mechs a game):
+    // TE 24 wins / 7.61 VP against 21 / 7.71, fresh seeds 17 / 7.42 against 20 / 7.59; plain 21 / 7.73 against 16 / 7.49,
+    // fresh 20 / 7.69 against 18 / 7.57 - a gain without Thunder's Edge only. OFF
+    if (!std::strcmp(f.key, "argent") && aiTune("argmech", 0.f) > 0.f) mech = aiTune("argmech", 0.f);
+    // (the Naaz-Rokha review, checkpoint 2 - test knob naazmech = the multiplier, default off) Distant Suns, Dart and Tai's
+    // unlock (mechs in 3 systems) and Absolute Synergy (4 mechs in a system) all want mechs; the bots built 2.4 a game.
+    // Tested (naazmech=2.6): mechs built 2.37 -> 2.39, 9 wins / 7.18 VP against 9 / 7.19 - the mech limit (4, 1 at the
+    // start) caps it already. OFF
+    if (!std::strcmp(f.key, "naaz") && aiTune("naazmech", 0.f) > 0.f) mech = aiTune("naazmech", 0.f);
+    const float units[] = {f.dread, f.cruiser, f.destroyer, f.fighter, f.carrier, f.infantry, mech, f.warSun};
     const UnitType types[] = {UnitType::Dreadnought, UnitType::Cruiser, UnitType::Destroyer, UnitType::Fighter,
                               UnitType::Carrier,     UnitType::Infantry, UnitType::Mech,      UnitType::WarSun};
     for (int i = 0; i < 8; ++i) st.unit[int(types[i])] *= mix(units[i]);

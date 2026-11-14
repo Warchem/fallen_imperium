@@ -210,7 +210,7 @@ void Rules::ds3SpaceCombatStart(int att, int def, int sys) {
                 for (int q = 0; q < G.numPlayers; ++q) n += q != ap && areNeighbours(G, ap, q) ? 1 : 0;
                 Player& apl = G.players[size_t(ap)];
                 const int got = std::max(0, std::min(n, commodityCap(G, apl) - apl.commodities));
-                apl.commodities = int8_t(apl.commodities + got);
+                { const int cb_ = apl.commodities; apl.commodities = int8_t(apl.commodities + got); commodityGained(ap, cb_); }
                 if (got) say(ap, pn(ap) + " gains " + std::to_string(got) + " commodities (Merkismathr Asvand).", sys);
             }
         }
@@ -242,7 +242,7 @@ void Rules::ds3GroundCombatStart(int att, int def, int planet) {
             for (int q = 0; q < G.numPlayers; ++q) n += q != ap && areNeighbours(G, ap, q) ? 1 : 0;
             Player& apl = G.players[size_t(ap)];
             const int got = std::max(0, std::min(n, commodityCap(G, apl) - apl.commodities));
-            apl.commodities = int8_t(apl.commodities + got);
+            { const int cb_ = apl.commodities; apl.commodities = int8_t(apl.commodities + got); commodityGained(ap, cb_); }
             if (got) say(ap, pn(ap) + " gains " + std::to_string(got) + " commodities (Merkismathr Asvand).", sys);
         }
     }
@@ -643,7 +643,7 @@ void Rules::ds3Explored(int p, int planet) {
         ds3Explored_.push_back(planet);
         if (!pl.dsOnce && pl.commodities < commodityCap(G, pl)) {  // Fortune Seekers: once per action, 1 commodity
             pl.dsOnce = true;
-            pl.commodities = int8_t(pl.commodities + 1);
+            { const int cb_ = pl.commodities; pl.commodities = int8_t(pl.commodities + 1); commodityGained(p, cb_); }
             ds3Event(E, p, "Fortune Seekers", pn(p) + " gains 1 commodity.", sys);
         }
         ds3Fragments(p);
@@ -679,7 +679,7 @@ void Rules::dsFrontierExplored(int p, int sys) {
     if (fac(p, "bentor")) {
         if (!pl.dsOnce && pl.commodities < commodityCap(G, pl)) {  // Fortune Seekers
             pl.dsOnce = true;
-            pl.commodities = int8_t(pl.commodities + 1);
+            { const int cb_ = pl.commodities; pl.commodities = int8_t(pl.commodities + 1); commodityGained(p, cb_); }
             ds3Event(E, p, "Fortune Seekers", pn(p) + " gains 1 commodity.", sys);
         }
         ds3Fragments(p);
@@ -1051,7 +1051,10 @@ void Rules::ds3AfterMovement(int p, int sys, bool flagshipMoved) {
     if (!fyes(p, Ab::DsMaximus, "Maximus: produce up to 2 units here with a combined cost of 4 or less?", "")) return;
     ds3Event(E, p, "Maximus", pn(p) + "'s Maximus opens its foundry bays.", sys);
     dsCostCap_ = 4;
+    const bool na = notProductionAbility_;  // (0.58.2, fixes 21: "produce", not PRODUCTION - no Sarween Tools)
+    if (G.fixes >= 21) notProductionAbility_ = true;
     productionCore(p, sys, 2, false, false);
+    notProductionAbility_ = na;
     dsCostCap_ = 0;
 }
 
@@ -1177,7 +1180,7 @@ bool Rules::ds3Action(int p, Ab ab) {
             spendAgent(p, "bentor");
             Player& ql = G.players[size_t(q)];
             const int room = std::max(0, commodityCap(G, ql) - ql.commodities), c = std::min(n, room);
-            ql.commodities = int8_t(ql.commodities + c);
+            { const int cb_ = ql.commodities; ql.commodities = int8_t(ql.commodities + c); commodityGained(q, cb_); }
             if (n - c > 0) gainTG(q, n - c);
             ds3Event(E, p, "C.O.O. Mgur", pn(q) + " gains " + std::to_string(c) + " commodities" + (n - c > 0 ? " and " + std::to_string(n - c) + " trade goods" : std::string()) + ".");
             return true;

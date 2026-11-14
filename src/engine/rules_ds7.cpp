@@ -170,7 +170,7 @@ void Rules::ds7AfterMovement(int p, int sys) {
     if (fac(p, "ghoti") && G.systems[size_t(sys)].planets.empty()) {
         Player& pl = G.players[size_t(p)];
         if (pl.commodities < commodityCap(G, pl)) {
-            pl.commodities = int8_t(pl.commodities + 1);
+            { const int cb_ = pl.commodities; pl.commodities = int8_t(pl.commodities + 1); commodityGained(p, cb_); }
             ds7Event(E, p, "Spawning Grounds", pn(p) + " gains 1 commodity in the void.", sys);
         }
     }

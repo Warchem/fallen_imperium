@@ -107,7 +107,10 @@ void Rules::btGained(int p) {
 // ------------------------------------------------------------------ component actions
 void Rules::btOptions(int p, std::vector<Option>& opts) const {
     // Deepgloom Executable (Yssaril breakthrough): another player may borrow Stall Tactics, if the Yssaril allow it
-    if ((G.modules & kModThundersEdge) && !G.players[size_t(p)].actionCards.empty() && !fac(p, "yssaril"))
+    // (fixes 27 - found in the Ral Nel review's sims: a person's seat answered by the AI re-asked a refusing Yssaril in a loop)
+    // not offered again in the turn the Yssaril said no
+    if ((G.modules & kModThundersEdge) && !G.players[size_t(p)].actionCards.empty() && !fac(p, "yssaril") &&
+        !(G.fixes >= 27 && stallNoTurn_[p] == G.turnCount))
         for (int y = 0; y < G.numPlayers; ++y)
             if (breakthroughIs(G, y, "yssaril")) {
                 opts.push_back({6000 + int(Ab::BtYssaril), "Stall Tactics (the Yssaril's)",
@@ -151,7 +154,8 @@ void Rules::btOptions(int p, std::vector<Option>& opts) const {
                 break;
             }
     }
-    if (fac(p, "naaz") && !pl.eidolonMax)  // Absolute Synergy: 4 mechs in one system
+    // (fixes 27, the Naaz-Rokha review) no ACTION on the card - offered in the action list as option 645 (absoluteSynergyReady)
+    if (fac(p, "naaz") && !pl.eidolonMax && G.fixes < 27)  // Absolute Synergy: 4 mechs in one system
         for (size_t s = 0; s < G.systems.size(); ++s) {
             int m = G.systems[s].space[size_t(p)].count(UnitType::Mech);
             for (int16_t x : G.systems[s].planets) m += G.planets[size_t(x)].units[size_t(p)].count(UnitType::Mech);
@@ -188,6 +192,20 @@ std::vector<Option> Rules::saarTargets(int p) const {
     return opts;
 }
 
+// (fixes 27, the Naaz-Rokha review - owner 2026-11-13) Absolute Synergy: "When you have 4 mechs in the same system, you may
+// return 3 of those mechs ... to flip this card" - no ACTION, so a choice in the action list that doesn't use the turn
+bool Rules::absoluteSynergyReady(int p) const {
+    if (G.fixes < 27 || !hasBreakthrough(G, p) || !fac(p, "naaz")) return false;
+    const Player& pl = G.players[size_t(p)];
+    if (pl.btExhausted || pl.eidolonMax) return false;
+    for (size_t s = 0; s < G.systems.size(); ++s) {
+        int m = G.systems[s].space[size_t(p)].count(UnitType::Mech);
+        for (int16_t x : G.systems[s].planets) m += G.planets[size_t(x)].units[size_t(p)].count(UnitType::Mech);
+        if (m >= 4) return true;
+    }
+    return false;
+}
+
 bool Rules::btAction(int p, int ab) {
     Player& pl = G.players[size_t(p)];
     if (ab == int(Ab::BtYssaril)) {  // Deepgloom Executable: borrow Stall Tactics, then perhaps a trade with the Yssaril
@@ -201,6 +219,7 @@ bool Rules::btAction(int p, int ab) {
         curFor_ = -1;
         if (!ok) {
             say(y, pn(y) + " won't share Stall Tactics with " + pn(p) + ".");
+            stallNoTurn_[p] = G.turnCount;
             return false;
         }
         std::vector<Option> opts;
@@ -340,7 +359,9 @@ bool Rules::btAction(int p, int ab) {
         if (x < 0) return false;
         const int most = spendable(G, p, false);
         std::vector<Option> amt;
-        for (int k = 1; k <= std::min(most, 10); ++k) amt.push_back({k, std::to_string(k) + " dice", std::to_string(k) + " resources"});
+        // ((fixes 27, the Saar review - owner 2026-11-13) "spend any amount of resources": no 10-dice cap)
+        const int cap = G.fixes >= 27 ? most : std::min(most, 10);
+        for (int k = 1; k <= cap; ++k) amt.push_back({k, std::to_string(k) + " dice", std::to_string(k) + " resources"});
         curValue_ = x;  // (0.44.4: the planet, for the AI)
         const int k = fpick(p, Ab::BtSaar, "Deorbit Barrage: spend how many resources (1 die each)?", amt);
         curValue_ = 0;
@@ -503,40 +524,48 @@ int Rules::btCombatBonus(int p, int opp, int sys, bool space) {  // Imperator (W
 }
 
 void Rules::btActivated(int p, int sys) {  // Imperator (Winnu): a legendary planet's system - one ship moves 1 further
-    if (breakthroughIs(G, p, "empyrean")) voidTether(p, sys);
-    if (breakthroughIs(G, p, "argent")) {  // Wing Transfer: tokens into adjacent systems holding only our units
-        auto onlyMine = [&](int s) {
-            if (!hasUnits(G, p, s)) return false;
-            for (int q = 0; q < kSides; ++q)
-                if (q != p && hasUnits(G, q, s)) return false;
-            for (int16_t x : G.systems[size_t(s)].planets)
-                if (G.planets[size_t(x)].owner >= 0 && G.planets[size_t(x)].owner != p) return false;
-            return true;
-        };
-        if (onlyMine(sys)) {
-            if (G.fixes >= 8) G.fx.wing.push_back(-1);  // (0.44.4: the card triggered - the move at the end of the action is open)
-            std::vector<Option> opts;
-            for (int16_t a : G.systems[size_t(sys)].adj)
-                if (onlyMine(a) && !G.systems[size_t(a)].hasToken(p)) opts.push_back({a, sysName(a), ""});
-            const int most = std::min(int(opts.size()), reinforcementTokens(p));
-            if (most > 0) {
-                std::vector<int> picks = fpickMany(p, Ab::BtArgent, "Wing Transfer: place command tokens in which adjacent systems?", opts, 0,
-                                                   most, "From your reinforcements. At the end of this action, ships may move among them and the "
-                                                             "active system.");
-                for (int a : picks) {
-                    G.systems[size_t(a)].tokens = uint16_t(G.systems[size_t(a)].tokens | (1u << p));
-                    G.fx.wing.push_back(int16_t(a));
-                }
-                if (!picks.empty()) say(p, pn(p) + " places " + std::to_string(picks.size()) + " command token(s) next to " + sysName(sys) + " (Wing Transfer).", sys);
-            }
-        }
-    }
+    if (breakthroughIs(G, p, "empyrean") && G.fixes < 26) voidTether(p, sys);  // (fixes 26: "When you activate" - earlier)
+    if (G.fixes < 26) wingTransfer(p, sys);  // (fixes 26: "When you activate" - right after the activation, rules_tactical)
     if (!breakthroughIs(G, p, "winnu")) return;
     for (int16_t x : G.systems[size_t(sys)].planets)
         if (isLegendaryPlanet(G, x)) {
             G.fx.imperator = true;
             return;
         }
+}
+
+// Wing Transfer (Argent breakthrough): when you activate a system that contains only your units - command tokens into
+// adjacent systems that contain only your units; the move comes at the end of the action (wingTransferEnd)
+void Rules::wingTransfer(int p, int sys) {
+    if (!breakthroughIs(G, p, "argent")) return;
+    auto onlyMine = [&](int s) {
+        if (!hasUnits(G, p, s)) return false;
+        for (int q = 0; q < kSides; ++q)
+            if (q != p && hasUnits(G, q, s)) return false;
+        // (fixes 26, the Argent review - owner 2026-11-13) a planet another player controls with none of their units on it
+        // holds no units of theirs
+        if (G.fixes < 26)
+            for (int16_t x : G.systems[size_t(s)].planets)
+                if (G.planets[size_t(x)].owner >= 0 && G.planets[size_t(x)].owner != p) return false;
+        return true;
+    };
+    if (onlyMine(sys)) {
+        if (G.fixes >= 8) G.fx.wing.push_back(-1);  // (0.44.4: the card triggered - the move at the end of the action is open)
+        std::vector<Option> opts;
+        for (int16_t a : G.systems[size_t(sys)].adj)
+            if (onlyMine(a) && !G.systems[size_t(a)].hasToken(p)) opts.push_back({a, sysName(a), ""});
+        const int most = std::min(int(opts.size()), reinforcementTokens(p));
+        if (most > 0) {
+            std::vector<int> picks = fpickMany(p, Ab::BtArgent, "Wing Transfer: place command tokens in which adjacent systems?", opts, 0,
+                                               most, "From your reinforcements. At the end of this action, ships may move among them and the "
+                                                         "active system.");
+            for (int a : picks) {
+                G.systems[size_t(a)].tokens = uint16_t(G.systems[size_t(a)].tokens | (1u << p));
+                G.fx.wing.push_back(int16_t(a));
+            }
+            if (!picks.empty()) say(p, pn(p) + " places " + std::to_string(picks.size()) + " command token(s) next to " + sysName(sys) + " (Wing Transfer).", sys);
+        }
+    }
 }
 
 int Rules::btLetnevBonus(int p, int sys) {  // Gravleash Maneuvers: X = the ship types p has in the combat
@@ -560,7 +589,8 @@ int Rules::avernusPlanet() const {
 void Rules::avernusCarry(int p, int sys, int avSys, int wsBefore) {
     const int av = avernusPlanet();
     if (av < 0 || avSys < 0 || avSys == sys || !breakthroughIs(G, p, "muaat") || G.systems[size_t(sys)].home >= 0) return;
-    if (G.systems[size_t(avSys)].space[size_t(p)].count(UnitType::WarSun) >= wsBefore) return;  // no war sun left it
+    if (G.systems[size_t(avSys)].space[size_t(p)].count(UnitType::WarSun) >= wsBefore && !(G.fixes >= 26 && avernusThrough_))
+        return;  // no war sun left it (or, fixes 26, went through it)
     if (!G.systems[size_t(sys)].space[size_t(p)].count(UnitType::WarSun)) return;
     if (!fyes(p, Ab::BtMuaat, "Stellar Genesis: move Avernus with your war sun to " + sysName(sys) + "?", "The planet and its units go along.")) return;
     auto& from = G.systems[size_t(avSys)].planets;
@@ -579,16 +609,26 @@ void Rules::yinAscendant(int p) {
     if (!breakthroughIs(G, p, "yin")) return;
     Player& pl = G.players[size_t(p)];
     std::vector<int> pool;
+    // (fixes 25, owner's faction debug pass - Nocturne) the Firmament / the Obsidian are one faction (TE rulebook, Minor
+    // Factions): one entry, unused only while neither is played; the side is picked at random
+    const int firm = findFaction("firmament"), obs = findFaction("obsidian");
+    const bool one = G.fixes >= 25;
     for (int f = 0; f < kFactionCount; ++f) {
         if (!factionImplemented(f) || !std::strcmp(kFactions[f].key, "keleres") || !std::strcmp(kFactions[f].key, "yin")) continue;
         if (kFactions[f].source == Source::Discordant && !(G.modules & kModDiscordant)) continue;  // (Discordant Stars: with the module)
-        bool used = std::find(pl.yinAlliances.begin(), pl.yinAlliances.end(), int8_t(f)) != pl.yinAlliances.end();
+        if (one && f == obs) continue;
+        const bool pair = one && f == firm;
+        bool used = std::find(pl.yinAlliances.begin(), pl.yinAlliances.end(), int8_t(f)) != pl.yinAlliances.end() ||
+                    (pair && std::find(pl.yinAlliances.begin(), pl.yinAlliances.end(), int8_t(obs)) != pl.yinAlliances.end());
         for (int q = 0; q < G.numPlayers; ++q)
-            if (G.players[size_t(q)].faction == f || (isFaction(G, q, "keleres") && G.players[size_t(q)].tribunii == f)) used = true;
+            if (G.players[size_t(q)].faction == f || (pair && G.players[size_t(q)].faction == obs) ||
+                (isFaction(G, q, "keleres") && G.players[size_t(q)].tribunii == f))
+                used = true;
         if (!used) pool.push_back(f);
     }
     if (pool.empty()) return;
-    const int f = pool[size_t(E.rng().below(int(pool.size())))];
+    int f = pool[size_t(E.rng().below(int(pool.size())))];
+    if (one && f == firm && obs >= 0 && E.rng().below(2)) f = obs;  // (the Obsidian side)
     E.revealed();
     pl.yinAlliances.push_back(int8_t(f));
     say(p, pn(p) + " gains the Alliance ability of the " + kFactions[f].name + " (Yin Ascendant).");
@@ -746,9 +786,77 @@ void Rules::voidTether(int p, int sys) {
                                                sysName(sys) + "?",
                         opts, "Other players don't treat the two systems as adjacent.", true);
     if (a < 0) return;
-    if (G.tethers.size() >= 2) G.tethers.erase(G.tethers.begin());  // (the older one moves)
+    // (fixes 26, the Empyrean review - owner 2026-11-12: the card) "place or move 1 of your Void Tether tokens" - the
+    // Empyrean choose which (before: the older one moved once both were out)
+    int moved = G.tethers.size() >= 2 ? 0 : -1;
+    if (G.fixes >= 26 && !G.tethers.empty()) {
+        std::vector<Option> w;
+        if (G.tethers.size() < 2) w.push_back({999, "Place a new tether", "You have 2 Void Tether tokens; 1 is on the board."});
+        for (size_t i = 0; i < G.tethers.size(); ++i)
+            w.push_back({1000 + int(i), "Move the tether between " + sysName(G.tethers[i].first) + " and " + sysName(G.tethers[i].second), ""});
+        const int c = fpick(p, Ab::BtEmpyrean, "Void Tether: place a new tether or move one?", w,
+                            "To the border between " + sysName(sys) + " and " + sysName(a) + ".");
+        moved = c >= 1000 ? c - 1000 : -1;
+    }
+    if (moved >= 0 && moved < int(G.tethers.size())) G.tethers.erase(G.tethers.begin() + moved);
     G.tethers.push_back({int16_t(sys), int16_t(a)});
     say(p, pn(p) + " tethers the border between " + sysName(sys) + " and " + sysName(a) + " (Void Tether).", sys);
+}
+
+// (fixes 26, the Empyrean review - owner 2026-11-12: the card) Void Tether: "other players do not treat those systems as
+// adjacent to each other unless you allow it" - after another player activates a system, a person playing the Empyrean is
+// asked when a tether stops one of that player's ships from getting there; bots never allow it (as before).
+void Rules::voidTetherAllow(int p, int sys) {
+    if (G.tethers.empty() || p < 0 || p >= G.numPlayers || ((G.fx.tetherAllow >> p) & 1)) return;
+    for (int e = 0; e < G.numPlayers; ++e) {
+        if (e == p || !breakthroughIs(G, e, "empyrean") || !G.players[size_t(e)].human || G.players[size_t(e)].eliminated ||
+            tetherQuiet_[e] == G.round)
+            continue;
+        bool matters = false;
+        const int bonus = moveBonusMax(G, p);
+        for (size_t f = 0; f < G.systems.size() && !matters; ++f) {
+            if (int(f) == sys || G.systems[f].hasToken(p)) continue;
+            for (int t : kShipIdx) {
+                if (matters || !G.systems[f].space[p].n[t] || shipReach(G, p, int(f), sys, UnitType(t), bonus).ok) continue;
+                G.fx.tetherAllow = uint8_t(G.fx.tetherAllow | (1u << p));
+                if (shipReach(G, p, int(f), sys, UnitType(t), bonus).ok) matters = true;
+                G.fx.tetherAllow = uint8_t(G.fx.tetherAllow & ~(1u << p));
+            }
+        }
+        if (!matters) return;
+        const int c = fpick(e, Ab::BtEmpyrean, "Void Tether: let " + pn(p) + " treat your tethered borders as adjacent this tactical action?",
+                            {{1, "Yes", ""}, {0, "No", ""}, {3, "No, and don't ask again this round", "You'll be asked again next round."}},
+                            pn(p) + " activated " + sysName(sys) + "; a tether stops some of their ships from getting there.");
+        if (c == 3) tetherQuiet_[e] = int16_t(G.round);
+        if (c != 1) return;
+        G.fx.tetherAllow = uint8_t(G.fx.tetherAllow | (1u << p));
+        say(e, pn(e) + " lets " + pn(p) + " cross the Void Tethers.", sys);
+        return;
+    }
+}
+
+// (the same) space cannon offense: q's deep space cannon would fire into sys across a tether - a person playing the
+// Empyrean may allow it; bots never do.
+void Rules::tetherCannonAllow(int q, int p, int sys) {
+    if (G.tethers.empty() || q < 0 || q >= G.numPlayers || ((G.fx.tetherAllow >> q) & 1)) return;
+    for (int e = 0; e < G.numPlayers; ++e) {
+        if (e == q || !breakthroughIs(G, e, "empyrean") || !G.players[size_t(e)].human || G.players[size_t(e)].eliminated ||
+            tetherQuiet_[e] == G.round)
+            continue;
+        const int before = cannonGuns(q, p, sys).guns.total();
+        G.fx.tetherAllow = uint8_t(G.fx.tetherAllow | (1u << q));
+        const int after = cannonGuns(q, p, sys).guns.total();
+        G.fx.tetherAllow = uint8_t(G.fx.tetherAllow & ~(1u << q));
+        if (after <= before) return;
+        const int c = fpick(e, Ab::BtEmpyrean, "Void Tether: let " + pn(q) + "'s space cannon fire across your tether into " + sysName(sys) + "?",
+                            {{1, "Yes", ""}, {0, "No", ""}, {3, "No, and don't ask again this round", "You'll be asked again next round."}},
+                            std::to_string(after - before) + " of " + pn(q) + "'s units would fire from the other side of a tethered border.");
+        if (c == 3) tetherQuiet_[e] = int16_t(G.round);
+        if (c != 1) return;
+        G.fx.tetherAllow = uint8_t(G.fx.tetherAllow | (1u << q));
+        say(e, pn(e) + " lets " + pn(q) + "'s space cannon fire across the Void Tether.", sys);
+        return;
+    }
 }
 
 // Custodian's Favour: when another player scores Imperial's Mecatol point, the Keleres gain 2 command tokens.

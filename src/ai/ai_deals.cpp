@@ -114,6 +114,8 @@ float noteValueToReceiver(const Game& g, int p, int note) {
     if (owner == p) return price + (type == kNoteSupportThrone ? 2.f : 0.f);  // our own back
     if (type == kNoteFaction && isFaction(g, owner, "firmament")) return 3.f * pay;  // Black Ops: 2 tokens, 2 trade goods (and a plot on us)
     if (type == kNoteFaction && isFaction(g, owner, "obsidian")) return -3.f;       // Malevolency: a curse
+    // (Sardakk review, owner 2026-11-11) Tekklar Legion: +1 to every combat roll of one invasion - a strong card
+    if (type == kNoteFaction && isFaction(g, owner, "sardakk") && aiTune("tekklarsell", 1.f) > 0.f) return std::max(price, 2.5f) * pay;
     switch (type) {
         case kNoteSupportThrone: {
             float v = price + float(std::max(0, g.players[p].vp - (g.vpGoal - 5))) * 0.8f;
@@ -140,6 +142,14 @@ float noteCostToGiver(const Game& g, int p, int q, int note) {
     const float scale = S.on ? priceOf(g, p, note) / std::max(0.5f, noteDefaultValue(g, note)) : 1.f;
     if (type == kNoteFaction && isFaction(g, p, "firmament")) return -2.f;  // Black Ops: giving it plants a plot
     if (type == kNoteFaction && isFaction(g, p, "obsidian")) return 0.f;    // Malevolency
+    // (Sardakk review, owner 2026-11-11) Tekklar Legion comes back after one use - lending it costs little (the deal
+    // candidate only offers it to players on good terms or bound not to attack)
+    if (type == kNoteFaction && isFaction(g, p, "sardakk") && aiTune("tekklarsell", 1.f) > 0.f) return 0.6f;
+    // (the Empyrean review, checkpoint 2 - knob bloodpact) Blood Pact comes back when its holder activates a system with
+    // our units, and their votes go with ours: handing it out costs nothing (1 trade good clears the offer bar)
+    if (type == kNoteFaction2 && isFaction(g, p, "empyrean") && aiTune("bloodpact", 1.f) > 0.f) return 0.f;
+    // (the Nomad review, checkpoint 2 - knob cavalrysell) The Cavalry is used against others and comes back after one combat
+    if (type == kNoteFaction && isFaction(g, p, "nomad") && aiTune("cavalrysell", 0.f) > 0.f) return 0.f;
     switch (type) {
         case kNoteSupportThrone: {
             if (g.players[q].vp + 1 >= g.vpGoal) return 1000.f;  // never hand anyone the win
@@ -394,12 +404,32 @@ std::vector<Deal> candidates(const Game& g, int p, int q) {
             d.get.note = theirSftT;
             out.push_back(d);
         }
+        // (Sardakk review, owner 2026-11-11) Tekklar Legion for 1-2 trade goods: it comes back after one use. Only to a
+        // player bound by a no-attack promise or on good terms - its -1 against the Sardakk makes it dangerous otherwise
+        if (isFaction(g, p, "sardakk") && g.phase == Phase::Action && aiLevelOf(g) > 0 && aiTune("tekklarsell", 1.f) > 0.f &&
+            them.tradeGoods >= 1 && !(aiStyle(g, p).on && aiStyle(g, p).betrayTarget == q)) {
+            const int16_t tk = makeNote(p, kNoteFaction);
+            bool pact = false;
+            for (const Promise* pr : activePromises(g, p, q))
+                if (pr->kind == PromiseKind::NoAttack && pr->by == q) pact = true;
+            if (std::find(me.notes.begin(), me.notes.end(), tk) != me.notes.end() && (pact || (attitudeOf(g, p, q) == Attitude::Friendly && attitudeOf(g, q, p) != Attitude::Hostile))) {
+                Deal d = base();
+                d.give.note = tk;
+                d.get.tg = them.tradeGoods >= 3 ? 2 : 1;
+                out.push_back(d);
+            }
+        }
         // the Firmament: Black Ops to a neighbour (they gain 2 tokens and 2 trade goods; we plant a plot)
-        if (isFaction(g, p, "firmament") && g.phase == Phase::Action && plotCount(me) < kPlotCount) {
+        if (isFaction(g, p, "firmament") && g.phase == Phase::Action && plotCount(me) < kPlotCount && aiTune("firmbo", 1.f) > 0.f) {
             const int16_t bo = makeNote(p, kNoteFaction);
             if (std::find(me.notes.begin(), me.notes.end(), bo) != me.notes.end()) {
                 Deal d = base();
                 d.give.note = bo;
+                // (test knob, the Firmament bot review) ask a little for it: it's worth 2 tokens and 2 trade goods to them
+                if (const int price = int(aiTune("boprice", 0.f)); price > 0) {
+                    if (them.tradeGoods >= price) d.get.tg = price;
+                    else if (them.commodities >= price) d.get.comm = price;
+                }
                 out.push_back(d);
             }
         }
@@ -516,6 +546,35 @@ std::vector<Deal> candidates(const Game& g, int p, int q) {
                     d.get.tg = 1;
                     out.push_back(d);
                 }
+            }
+        }
+        // (the Empyrean review, checkpoint 2 - knob bloodpact, ON - owner 2026-11-12 23:50) the guide: "Offer Blood Pact and Dark Pact to
+        // neighbors early" - Blood Pact for 1 trade good to a player on good terms who isn't near the win (it comes back
+        // when they activate a system with our units; their votes join ours). Tested (90 games each, wins / VP): TE 18 / 7.07
+        // -> 19 / 7.51, fresh seeds 11 / 7.11 -> 12 / 7.21, plain 14 / 7.10 -> 17 / 6.91, plain fresh 19 / 7.64 -> 22 / 7.79;
+        // Blood Pact handed out ~1.1 a game (it was never used)
+        if (aiTune("bloodpact", 1.f) > 0.f && isFaction(g, p, "empyrean") && g.phase == Phase::Action) {
+            const int16_t bp = makeNote(p, kNoteFaction2);
+            if (std::find(me.notes.begin(), me.notes.end(), bp) != me.notes.end() && them.tradeGoods >= 1 && !hostileFlag(g, p, q) &&
+                g.players[size_t(q)].vp < g.vpGoal - 3) {
+                Deal d = base();
+                d.give.note = bp;
+                d.get.tg = 1;
+                out.push_back(d);
+            }
+        }
+        // (the Nomad review, checkpoint 2 - knob cavalrysell, default off) The Cavalry was never handed out: sell it for 1 trade
+        // good to a player on good terms who isn't near the win (it only works against others and comes back after one combat).
+        // Tested (90 games each, wins / VP): TE 10 / 7.12 -> 17 / 7.30, fresh seeds 11 / 6.91 -> 9 / 7.01, plain 14 / 7.47 -> 14 /
+        // 7.33, plain fresh 14 / 7.21 -> 16 / 7.23 - mixed; The Cavalry handed out ~2.5 a game (it was never used)
+        if (aiTune("cavalrysell", 0.f) > 0.f && isFaction(g, p, "nomad") && g.phase == Phase::Action) {
+            const int16_t cav = makeNote(p, kNoteFaction);
+            if (std::find(me.notes.begin(), me.notes.end(), cav) != me.notes.end() && them.tradeGoods >= 1 && !hostileFlag(g, p, q) &&
+                g.players[size_t(q)].vp < g.vpGoal - 3) {
+                Deal d = base();
+                d.give.note = cav;
+                d.get.tg = 1;
+                out.push_back(d);
             }
         }
         // Trade Convoys (0.32.0, new games): buy it from the Hacan when the players we can't reach are worth
@@ -794,10 +853,18 @@ bool betrayalDeal(const Game& g, int p, const Deal& d) {
 
 bool bestProposal(const Game& g, int p, int only, Deal& out) {
     const Style& S = aiStyle(g, p);
-    float best = 0.8f / std::max(0.3f, S.dealRate);  // a proposal must be worth something to us (sociable bots: less)
+    const float bar = 0.8f / std::max(0.3f, S.dealRate);  // a proposal must be worth something to us (sociable bots: less)
+    float best = bar;
     bool found = false;
+    // (the Firmament bot review, owner 2026-11-11) Puppet Master courts its neighbours - its puppets-to-be - in rounds 1-3
+    const bool courts = g.round <= 3 && aiLevelOf(g) > 0 && aiTune("puppetold", 0.f) <= 0.f &&
+                        (fquirkIs(g, p, "firmament", 0) || fquirkIs(g, p, "obsidian", 0));
+    const float courtBar = 0.8f / std::max(0.3f, S.dealRate * aiTune("puppetcourt", 1.6f));
     for (int q = 0; q < g.numPlayers; ++q) {
         if (q == p || (only >= 0 && q != only)) continue;
+        // (the bar for this partner: the plain bar, or Puppet Master's lower one for a neighbour; a deal found before
+        // must still be beaten)
+        const float barQ = courts && areNeighbours(g, p, q) ? std::min(bar, courtBar) : bar;
         if (!canOffer(g, p, q) || g.offers[p][q] > 0) continue;  // bots offer once per player per turn
         if (q < 8 && S.refuseFrom[q]) continue;                   // not talking to them (Kingslayer, Cold shoulder)
         bool declined = false;  // they said no this round: wait for the next one (agenda phase: try again)
@@ -812,7 +879,8 @@ bool bestProposal(const Game& g, int p, int only, Deal& out) {
             float theirs = aiDealNet(g, q, d);
             if (theirs < 0.f && !forced && d.threat < 0) continue;
             float score = mine + 0.2f * theirs + (forced ? 5.f : 0.f);
-            if ((mine >= best || forced) && score > best) {
+            const float ref = found ? std::max(best, barQ) : barQ;
+            if ((mine >= ref || forced) && score > ref) {
                 best = score;
                 out = d;
                 found = true;
@@ -1017,7 +1085,16 @@ std::vector<int> aiTradeX1Picks(const Game& g, int p, const Decision& d) {
             budget -= x - 1;
             continue;
         }
-        if (trustedFor(g, p, q) || tradeRelation(g, p, q) >= 4.f || aiLevelOf(g) <= 0) picks.push_back(q);
+        if (trustedFor(g, p, q) || tradeRelation(g, p, q) >= 4.f || aiLevelOf(g) <= 0) {
+            // (the Hacan review, owner's go 2026-11-12) only X-1 trades we can pay back: X-1 trade goods for the X
+            // commodities - an X-1 the holder can't pay still refreshed them for nothing (95 times in 90 games with the
+            // Hacan's 6); test knob x1pay=0 = the old offers
+            if (aiTune("x1pay", 1.f) > 0.f && aiLevelOf(g) > 0) {
+                if (budget < x - 1) continue;
+                budget -= x - 1;
+            }
+            picks.push_back(q);
+        }
     }
     return picks;
 }
@@ -1237,7 +1314,9 @@ bool aiDealAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
                 out.picks = {ok ? 1 : 0};
                 return true;
             }
-            // an agent we promised to use for another player: keep our word
+            // an agent we promised to use for another player: keep our word ((fixes 26) The Thundarian: judged in ai_faction -
+            // cancelling a good roll of theirs would be no favour)
+            if (d.ability == int(Ab::NomadThundarian)) return false;
             bool promised = false;
             for (const Promise& pr : g.promises)
                 if (pr.state == kPromiseActive && pr.by == p && pr.to == b && pr.kind == PromiseKind::UseAgent) promised = true;

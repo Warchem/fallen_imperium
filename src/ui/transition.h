@@ -16,4 +16,9 @@ void drawCover(Canvas& c, uint32_t t);
 void drawReveal(Canvas& c, uint32_t t);
 // Set by New Game just before it opens the game screen; the game screen takes it.
 extern bool pending;
+// 0.58.4 (owner: "add the red lazaxian screen-flood, but keep the old one ... chosen at random"): the flood's look -
+// 0 the Lazaxian letters in the same blues as the digits, 1 the letters in muted red. pickStyle() (New Game's Start)
+// chooses one at random; the game screen's reveal keeps it.
+extern int style;
+void pickStyle();
 }  // namespace transition

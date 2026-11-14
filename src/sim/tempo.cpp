@@ -264,6 +264,20 @@ void TempoScore::roundStart(const Game& g) {
                     a.none += 1;
                     openBy_[r][band] += 1;
                     if (g.systems[x].d().anomalies) openAnom_[r] += 1;
+                    if (r == 3 && std::getenv("TI4_TEMPODETAIL")) {  // test only (0.58.2): why a slice planet is still free
+                        int inSys = 0, mine = 0;
+                        for (int16_t q : g.systems[x].planets) {
+                            ++inSys;
+                            if (g.planets[size_t(q)].owner == p) ++mine;
+                        }
+                        int gfHome = 0, ships = 0;
+                        for (const PlanetState& ps : g.planets) gfHome += ps.units[size_t(p)].groundForces();
+                        for (const SystemState& sy : g.systems) ships += sy.space[size_t(p)].count(UnitType::Carrier);
+                        std::fprintf(stderr, "FREE r3 p%d %-14s %-10s res+inf %d anomaly %d planets %d mine-there %d near %d | gf %d carriers %d tactic %d\n",
+                                     p, kFactions[g.players[size_t(p)].faction].key, kPlanets[g.planets[size_t(pl)].def].name,
+                                     planetResources(g, pl) + planetInfluence(g, pl), int(g.systems[x].d().anomalies != 0), inSys, mine,
+                                     near_[x], gfHome, ships, int(g.players[size_t(p)].tactic));
+                    }
                 }
             }
         atR_[r].n += a.n;
@@ -301,6 +315,13 @@ void TempoScore::actionPhaseOver(const Game& g) {
         }
         if (total <= 0) continue;
         const double f = double(ready) / total;
+        if (std::getenv("TI4_TEMPODEBUG")) {  // (test only: per player and round)
+            std::fprintf(stderr, "RESLEFT r%d %s %d %d", r, kFactions[g.players[size_t(p)].faction].key, ready, total);
+            if (!std::strcmp(kFactions[g.players[size_t(p)].faction].key, "obsidian"))
+                for (int x : controlledPlanets(g, p))
+                    if (!g.planets[size_t(x)].exhausted && planetResources(g, x) > 0) std::fprintf(stderr, " [%s %d]", kPlanets[size_t(g.planets[size_t(x)].def)].key, planetResources(g, x));
+            std::fprintf(stderr, "\n");
+        }
         if (r < 10) {
             unspentR_[r] += f;
             unspentRN_[r] += 1;
@@ -455,9 +476,11 @@ void TempoScore::report(std::FILE* f) const {
     }
     for (int r = 2; r <= 4; ++r)
         if (atR_[r].none > 0)
-            std::fprintf(f, "    unclaimed at round %d by moves from home: 1: %.0f%% of those planets, 2: %.0f%%, 3+: %.0f%%; in anomalies %.0f%% of the unclaimed\n", r,
+            std::fprintf(f, "    unclaimed at round %d by moves from home: 1: %.0f%% of those planets, 2: %.0f%%, 3+: %.0f%%; in anomalies %.0f%% of the unclaimed"
+                            " (slice planets 1 / 2 / 3+ moves away: %.0f / %.0f / %.0f)\n", r,
                          sliceBy_[r][1] ? 100 * openBy_[r][1] / sliceBy_[r][1] : 0.0, sliceBy_[r][2] ? 100 * openBy_[r][2] / sliceBy_[r][2] : 0.0,
-                         sliceBy_[r][3] ? 100 * openBy_[r][3] / sliceBy_[r][3] : 0.0, 100 * openAnom_[r] / atR_[r].none);
+                         sliceBy_[r][3] ? 100 * openBy_[r][3] / sliceBy_[r][3] : 0.0, 100 * openAnom_[r] / atR_[r].none,
+                         double(sliceBy_[r][1]), double(sliceBy_[r][2]), double(sliceBy_[r][3]));
     std::fprintf(f, "  no planet outside home at the start of round 3: %.1f%% of players\n", seats_ ? 100 * zeroAt3_ / seats_ : 0.0);
     std::fprintf(f, "  Mecatol Rex first taken in round %.2f (%.0f%% of games; by round 3 %.0f%%, by round 4 %.0f%%)\n",
                  mecGames_ ? mecRound_ / mecGames_ : 0.0, 100 * mecGames_ / games_, 100 * mecBy3_ / games_, 100 * mecBy4_ / games_);

@@ -152,3 +152,251 @@ offer: Nomad. We have seen the future you are running from. Accept this, and it 
 
 [pair nomad > augers]
 offer: Seers. You watch the future; I fight it. Help me, and there will be a future left to watch.
+
+# ============ 0.58.4 (owner, RULES-CHECK L2: "Let's do rivals, allies, and old grudges") ============
+# Built from what each faction is (its voice), not from invented history.
+
+# --- rivals: after the same prize, or opposite by nature
+[pair jolnar > nekro]
+decline: Absolutely not. Every agreement with the Virus ends with our research inside your hull. The Universities decline, emphatically.
+threat: We have catalogued every flaw in your code, Nekro. Withdraw from our space, or we test them all at once - with our weapons.
+betrayed: {them}, you have stolen our work again. Let the record show: the Universities never forget a plagiarist.
+
+[pair nekro > jolnar]
+offer: Knowledge | Required
+threat: Data | Surrender
+decline: Library | Inadequate
+betray: Research | Assimilated
+
+[pair winnu > keleres]
+offer: The Council's hounds come to bargain? The throne will be ours, Keleres. Until then, these terms will do.
+decline: You enforce the Council's will - and the Council will be ours. Why bargain with our future servants?
+betrayed: So the Council's police show their true master, {them}. When the Winnu take the throne, your badges go first.
+
+[pair keleres > winnu]
+offer: Keleres to Winnu. Nobody sits the throne without the Council's say-so. Meanwhile, here's a lawful deal, over.
+threat: Winnu fleet, you are nearing Council space without clearance. Accept these terms or be escorted out.
+betray: Dispatch to {them}: your claim to the throne has been reviewed and denied. Agreement void. Keleres out.
+
+[pair sardakk > yssaril]
+offer: Yssaril hide. Always hide. Sardakk not hide. Take deal. Then come out and fight.
+decline: No deal with shadows. Shadows bite in back. Sardakk bite in FRONT.
+betrayed: {them}! Coward knife! Swarm finds you in dark. Swarm always finds.
+
+[pair yssaril > sardakk]
+offer: We hear your swarm long before we see it, Sardakk. Loud things make poor secrets. A quiet deal, then?
+decline: The N'orr want a deal? We've heard how your last partner ended up. We'll stay in the shadows, thank you.
+betray: All that noise, {them}, and you never heard us coming. Nothing personal - you were just very easy.
+
+[pair argent > vaylerian]
+offer: Scourge. Two hunters, one sky. The Flight proposes a boundary - your prey on your side, ours on ours.
+threat: You stalk the Flight's skies, Scourge. Withdraw, or learn what it is to be the hunted.
+betrayed: {them}. A hunter who turns on a hunter - the Flight will make a trophy of your banner.
+
+[pair vaylerian > argent]
+offer: Birds that hunt. How quaint. The Scourge will share the hunting grounds - for a price.
+betray: Every hunter becomes prey in the end, {them}. Today it is the Flight's turn.
+
+[pair naalu > mortheus]
+offer: Ssso, the Glimmer drifts into our minds uninvited. We see through your riddles, little nebula. Here are plain terms - for once.
+decline: We have read your thoughts, Glimmer, and they are mossstly fog. No.
+
+[pair mortheus > naalu]
+offer: Two mirrors facing, Naalu - each sees the other seeing. Shall we stop staring and trade?
+betrayed: You read every mind but your own, {them}. The light remembers what you did.
+
+[pair kjalengard > sardakk]
+offer: SARDAKK! The only warriors worth a saga besides ourselves! A deal today, and a glorious battle tomorrow!
+betrayed: {them}, oath-breaker! Even a bug knows what an oath is! The skalds will sing of your shame!
+
+[pair sardakk > kjalengard]
+offer: Berserkers loud. Sardakk louder. Make deal. Then see who strongest.
+threat: Berserkers want war? Good. Swarm want war more. Take deal, or war now.
+
+[pair kjalengard > ghemina]
+offer: Raiders! You sing the old songs badly, but you do sing them. Drink to this deal with us!
+decline: The Berserkers do not bargain with raiders who share their spoils with no one!
+
+[pair ghemina > kjalengard]
+offer: Berserkers! Your sagas are long and your fleets are small... || Accept, before we shorten both.
+betray: The Lord has decided your saga ends here, {them}... || Badly.
+
+[pair naaz > bentor]
+offer: Bentor! You lot keep beating us to the good dig sites. Fine - the Alliance proposes splitting the claims, fair and square.
+decline: Not this time, Bentor. Last claim we split, the Alliance got the rocks and you got everything worth having.
+
+[pair bentor > naaz]
+offer: Naaz-Rokha! Our favourite competitors. A joint venture, shares split evenly - well, mostly evenly.
+betray: Strictly business, {them}. The board voted to dissolve the partnership. The claim is ours now.
+
+[pair kollecc > bentor]
+offer: Bentor. You dig such lovely things out of the dirt... and then sell them to the wrong people. Sell to us instead.
+
+[pair bentor > kollecc]
+offer: Kollecc! The only buyers who appreciate a good find. Name your price - and remember who dug it up first.
+
+[pair zealots > jolnar]
+offer: The Universities play with sacred knowledge like children with fire. Still, the Rhodun will trade - and pray for you.
+threat: Your laboratories reek of heresy, Jol-Nar. Accept these terms, or the inquisition visits your worlds.
+betray: The trial is over, {them}. Your knowledge was weighed and found blasphemous.
+
+[pair jolnar > zealots]
+offer: The Rhodun, still burning books? Here is a proposal written in small words, for your convenience.
+betrayed: Predictably irrational, {them}. Faith is a poor substitute for peer review.
+
+[pair lizho > yssaril]
+offer: Ah, Yssaril. One shadow to another - shall we pretend to trust each other? It's so much more fun.
+betrayed: Oh, well played, {them}! We truly didn't see that one coming. We will be sure to return the favour.
+
+[pair yssaril > lizho]
+offer: Li-Zho. Smiles in front, knives behind. We know the game - we wrote half of it. A deal, then.
+decline: We've heard what happens to the Li-Zho's partners. Mostly from the partners. No.
+
+[pair hacan > veldyr]
+offer: Veldyr! Executives, the Emirates hear. We were trading before you had a boardroom. Let us show you how it is done.
+decline: Your "partnership" means we do the work and you buy us out. The Emirates decline.
+
+[pair veldyr > hacan]
+offer: Hacan! Legacy brand, solid caravans, huge synergy potential. Let's talk partnership - and, later, acquisition.
+betray: Nothing personal, {them}. The board approved a hostile takeover of your trade lanes.
+
+[pair l1z1x > sol]
+offer: Federation of Sol. Your committees, your votes, your elections - all inefficient. The Lazax offer terms. Comply.
+threat: Human worlds will be catalogued. Accept these terms and the cataloguing will be gentle.
+
+[pair sol > l1z1x]
+offer: Mindnet. The Federation doesn't recognise your claim to the Lazax name - but we'll still talk. Carefully.
+betrayed: The Federation was ready for this, {them}. Every fleet, every world. You picked the wrong humans.
+
+# --- allies: natural partners
+[pair hacan > xxcha]
+friendly: Xxcha, old friends! Peace is the best market there is, and nobody keeps it better. A generous deal, for you.
+accept: Of course! When the Kingdom proposes, the Emirates know it is fair. Done!
+
+[pair xxcha > hacan]
+friendly: Hacan... peace and trade grow from... the same root. The Kingdom offers... the gentlest of terms.
+betrayed: We trusted you... as we trust the tide, {them}. The tide... does not do this.
+
+[pair arborec > khrask]
+friendly: Stone that thinks. We have grown around your roots for a long time, Khrask. We offer. ...shhhrrr...
+accept: The Green agrees with the stone. It is done.
+
+[pair khrask > arborec]
+friendly: Green ones... you guard... the living worlds. As do we. Take... what you need.
+betrayed: Even... the forest... can rot, {them}. We... will remember this... for an age.
+
+[pair sol > freesystems]
+friendly: Free Systems - the Federation's door is always open to free peoples. A fair deal, from one democracy to another.
+accept: Gladly. Free worlds standing together - the Federation couldn't ask for more.
+
+[pair freesystems > sol]
+friendly: Comrades of Sol! Free peoples must stick together. The Free Systems offer this in solidarity.
+betrayed: {them}, we thought Sol stood for freedom. It seems Sol stands for Sol.
+
+[pair saar > dihmohn]
+friendly: Fellow wanderers. The void is wide enough for all of us. Take what helps your flotilla - we ask little in return.
+accept: Of course, friends. Travellers should look after each other.
+
+[pair dihmohn > saar]
+friendly: Saar... we have watched your factories drift past our flotilla... always kindly. A gift, then... for the road.
+
+[pair firmament > kolume]
+friendly: Monks of Kolume, the Firmament honours your stillness. We offer this in fellowship - may it bring you peace.
+
+[pair kolume > firmament]
+friendly: The Firmament watches over the many. We watch over ourselves. Perhaps it is the same work. Take this.
+betrayed: Even guardians fall, {them}. We will meditate on why you chose to.
+
+[pair keleres > kortali]
+friendly: Keleres to the Tribunal. Always good working with the courts. Clean deal, by the book, over.
+accept: Copy that, Tribunal. Terms received, terms accepted. Keleres out.
+
+[pair kortali > keleres]
+friendly: The Tribunal recognises the Keleres as officers of order. This offer is entered into the record in good faith.
+betrayed: The Tribunal finds {them} guilty of betraying the law itself. Sentence will be carried out.
+
+[pair naaz > ralnel]
+friendly: Ral Nel! You move things, we build things - perfect match. The Alliance's best terms for our favourite haulers.
+accept: Deal! Load it up - the Alliance has a machine just waiting for it.
+
+[pair ralnel > naaz]
+friendly: Naaz-Rokha. Reliable. Rare. Good deal, quick terms, no tricks - exit plan not even needed. Almost.
+
+[pair celdauri > hacan]
+friendly: Hacan, our docks are always open to your caravans. A generous deal between honest merchants.
+accept: A pleasure, Hacan. Your ships are welcome in our ports any time.
+
+[pair hacan > celdauri]
+friendly: Celdauri! Fine ports, finer merchants. The Emirates offer terms worthy of friends.
+
+[pair edyn > xxcha]
+friendly: Kingdom of Xxcha, the Edyn decree you a friend of the law. Accept this gift as a token of lasting peace.
+
+[pair xxcha > edyn]
+friendly: Edyn... your laws are gentle... and so are ours. Let us... keep the peace together.
+
+[pair olradin > freesystems]
+friendly: Free Systems! The committee voted - unanimously, for once! - to offer you the best deal we have.
+accept: All in favour? The People say yes, the Economy says yes, the Environment didn't object. Done!
+
+[pair freesystems > olradin]
+friendly: Olradin - free peoples deciding things together, just as it should be. Take this deal, comrades.
+
+[pair nomad > titans]
+friendly: Titans. In every future I have seen, the worst one comes while you sleep. Stay awake - I bring help.
+
+[pair titans > nomad]
+friendly: Wanderer... you... have seen... what comes. We... will stand... with you.
+betrayed: We woke... to protect... every people, {them}. Even... you. No longer.
+
+[pair kyro > mykomentori]
+friendly: Blessed Myko! Your spores and our sacred plague - cousins in the great blooming! A gift for you!
+
+[pair mykomentori > kyro]
+friendly: The threads say... you and we... feed the same soil, Kyro. Take this... and let it rot well.
+
+# --- old grudges
+[pair tnelis > vaden]
+offer: The Vaden. The family remembers every interest payment. Here's a deal - and this time, no fine print.
+betray: The family has decided your account is closed, {them}. Permanently. Nothing personal.
+
+[pair vaden > tnelis]
+offer: Syndicate. Your family still owes the clans. We accept this deal as a partial payment - with interest.
+betrayed: The clans will collect, {them}. They always collect. With penalties.
+
+[pair celdauri > florzen]
+decline: Florzen. We remember what your raiders did to our docks. Our guns remember too. No deal.
+threat: Florzen ships, our harbours are armed and our patience is not. Accept these terms or keep your distance.
+
+[pair florzen > celdauri]
+offer: Celdauri! Lovely ports. Lovely, FULL ports. Pay up and we'll keep them that way!
+betray: Your docks were too full, {them}. We helped ourselves.
+
+[pair zealots > rohdhna]
+offer: Roh'Dhna. Your machines are an abomination and your manuals blasphemy. And yet the Rhodun will trade. Repent later.
+
+[pair rohdhna > zealots]
+offer: Doctrine 12-7Z: heresy labels issued by the Rhodun are not legally binding. The Roh'Dhna offers standard terms.
+decline: Article 4-88: no transactions with parties who burn our products. Offer declined.
+
+[pair sardakk > xxcha]
+offer: Old turtles. Swarm remembers you. You remember swarm. Make deal. Stay remembered.
+
+[pair xxcha > sardakk]
+decline: Sardakk... the last time... your swarm came to talk... it brought claws. The Kingdom... declines.
+
+[pair l1z1x > nekro]
+offer: A machine plague that calls itself superior. The Lazax will purge your code. Comply first, and the purge is quick.
+
+[pair nekro > l1z1x]
+decline: Lazax | Obsolete
+betray: Mindnet | Absorbed
+
+[pair winnu > mahact]
+offer: Mahact. You ruled before the Lazax and you fell. We will rule after them, and we will stay. Take these terms while you can.
+
+[pair cabal > lanefir]
+offer: Mournful Lanefir... we can make you forget everything you have lost. Everything. Come closer, and take our terms.
+
+[pair lanefir > cabal]
+decline: We have written the last chapters of too many worlds that trusted hungry voices, Cabal. We will not be the next.

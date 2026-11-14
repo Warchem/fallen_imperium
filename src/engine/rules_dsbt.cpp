@@ -210,7 +210,7 @@ void Rules::dsbtTechExhausted(int p) {
     if (!dsbtOn(p, "kolume")) return;
     Player& pl = G.players[size_t(p)];
     if (pl.commodities >= commodityCap(G, pl)) return;
-    pl.commodities = int8_t(pl.commodities + 1);
+    { const int cb_ = pl.commodities; pl.commodities = int8_t(pl.commodities + 1); commodityGained(p, cb_); }
     say(p, pn(p) + " gains 1 commodity (Synchronicity VI).");
 }
 
@@ -269,7 +269,7 @@ void Rules::dsbtWonCombat(int winner, int loser, int sys, bool space) {
             int gained = 0, converted = 0;
             for (int i = 0; i < n; ++i) {
                 if (pl.commodities < commodityCap(G, pl)) {
-                    pl.commodities = int8_t(pl.commodities + 1);
+                    { const int cb_ = pl.commodities; pl.commodities = int8_t(pl.commodities + 1); commodityGained(winner, cb_); }
                     ++gained;
                 } else if (pl.commodities > 0) {
                     pl.commodities = int8_t(pl.commodities - 1);
@@ -305,7 +305,7 @@ void Rules::dsbtWonCombat(int winner, int loser, int sys, bool space) {
             if (opts.empty()) continue;
             const int c = opts.size() == 1 ? opts[0].id : fpick(nk, Ab::DsbtNokar, "Mercenary Captains: " + pn(winner) + " won a space combat beside your ships", opts);
             if (c == 0) {
-                pl.commodities = int8_t(std::min<int>(commodityCap(G, pl), pl.commodities + 2));
+                { const int cb_ = pl.commodities; pl.commodities = int8_t(std::min<int>(commodityCap(G, pl), pl.commodities + 2)); commodityGained(nk, cb_); }
                 say(nk, pn(nk) + " gains 2 commodities (Mercenary Captains).", sys);
             } else {
                 gainTokens(nk, 1, false, "Mercenary Captains: 1 command token.");

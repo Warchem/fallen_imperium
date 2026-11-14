@@ -171,7 +171,8 @@ uint32_t GameSession::durationOf(const ti::Event& e) const {
         case EventKind::ObjectiveRevealed: ms = 1500; break;
         case EventKind::Note: ms = e.system >= 0 ? 600 : 450; break;
         case EventKind::Deal: {
-            static const uint32_t kMs[6] = {1800, 2400, 1300, 2600, 1500, 1800};  // DealEventType
+            // DealEventType (0.58.4: a broken promise is the betrayal codec - time to read both lines when timed)
+            static const uint32_t kMs[6] = {1800, 2400, 1300, 7000, 1500, 1800};
             ms = e.card >= 0 && e.card < 6 ? kMs[e.card] : 1500;
             break;
         }
@@ -231,8 +232,8 @@ std::vector<ti::Event> GameSession::step(uint32_t now, bool hurry) {
                 continue;
             }
             // 0.57.0: a promise broken to or by a person shows the betrayal codec - it waits like a betrayal
-            const bool brokenMine = e.kind == ti::EventKind::Deal && e.card == 3 /* kDealBroken */ &&
-                                    (isHumanSeat(e.player) || isHumanSeat(e.other));
+            // 0.58.4 (owner, L4: "do betrayal codecs for bot-to-bot betrayals as well"): every broken promise
+            const bool brokenMine = e.kind == ti::EventKind::Deal && e.card == 3 /* kDealBroken */;
             const bool table = e.kind == ti::EventKind::Reveal || e.kind == ti::EventKind::Betrayal || e.kind == ti::EventKind::Agenda ||
                                e.kind == ti::EventKind::AgendaResult || e.kind == ti::EventKind::Planetfall || brokenMine;
             if (speed_ != 3 && ((card && (cardPause_ == 0 || (cardPause_ == 1 && isHumanSeat(e.player)))) ||

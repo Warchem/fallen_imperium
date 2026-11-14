@@ -106,8 +106,9 @@ class GameScene : public Scene {
 public:
     explicit GameScene(std::unique_ptr<GameSession> s) : session_(std::move(s)) {
         ti::setCodexTexts(ti::codexOn(session_->game()), session_->game().fixes >= 4);  // 0.31.0: the Omega wording
-        ti::setThundersEdgeTexts(ti::teXxchaHero(session_->game()));                    // 0.57.1: TE's Xxekir Grom
+        ti::setThundersEdgeTexts(ti::teXxchaHero(session_->game()), ti::teNaalu(session_->game()));  // 0.57.1: TE's Xxekir Grom; Z'eu
         ti::setWormholeGeneratorOriginal(!ti::codexOn(session_->game()) && session_->game().fixes >= 13);
+        ti::setMagmusReactorOriginal(ti::magmusOriginal(session_->game()));
         ti::setStrategyTexts((session_->game().modules & ti::kModThundersEdge) != 0);  // 0.43.3: TE's Construction / Warfare
         intro_ = transition::pending;  // 0.28.0: the game-start transition continues here
         transition::pending = false;
@@ -132,6 +133,9 @@ public:
     }
     // Keyboard & mouse (0.27.0): WASD moves the camera while the map is on screen.
     // 0.28.2 (owner): the wheel over the decision panel (strategy cards, lists) moves through it
+    // 0.58.4: while your question's list / row editor has the input (uiFocus_, set by the last update), a click on
+    // nothing clickable - a map tile, a gap in the panel - does nothing instead of answering it.
+    bool bareClickIsA(float, float) const override { return !(uiFocus_ && ui_ && !ui_->bareClickConfirms()); }
     bool wheelScrolls(float x, float y) const override {
         if (pop_.on) {  // 0.47.0: the wheel scrolls the screen in the window, beside it zooms the map
             const Rect r = popRect();
@@ -141,8 +145,8 @@ public:
         if (!ui_ || peek_) return false;
         if (ui_->fullScreen()) return true;  // the research cards
         if (ui_->mapMode()) return false;
-        // 0.29.0: the decision panel itself (move / land / pay lists ...) and the right side
-        const Rect d = decisionPanelRect();
+        // 0.29.0: the decision panel itself (move / land / pay lists ...) and the right side (0.58.4: the wheel menus')
+        const Rect d = ui_->area();
         const bool inPanel = x >= float(d.x) && x < float(d.x + d.w) && y >= float(d.y) && y < float(d.y + d.h);
         return inPanel || (x >= float(mapW()) && y >= float(kTopH) && y < float(kHintY));
     }
@@ -158,6 +162,7 @@ public:
     }
 
     void update(App& app, const Input& in, uint32_t now) override {
+        uiFocus_ = false;
         if (intro_) {  // the flood draws back, GAME START!, then the music returns (0.28.0)
             if (!introStart_) introStart_ = now;
             const uint32_t t = now - introStart_;
@@ -354,6 +359,7 @@ public:
                 overlay_ = Overlay::Players;
                 return;
             }
+            uiFocus_ = true;
             if (ui_->update(in, now)) {
                 std::string err;
                 Answer a = ui_->answer();
@@ -501,8 +507,14 @@ public:
             drawPop(app, c, g, now);
             return;
         }
+        // 0.58.4 (owner: "the screens pop-up doesn't hide when the codecs or mecatol rex custodian animation plays"):
+        // no button panel over the planetfall, the reveal, the betrayal codecs or a full-screen question (the
+        // negotiation codecs, research, the expedition)
+        const bool cutscene = (card_.kind == 20 || card_.kind == 10 || card_.kind == 11 || card_.kind == 21) &&
+                              (holding || int32_t(now - card_.until) < 0);
+        const bool fullUi = ui_ && !peek_ && ui_->centred() && session_->humanToAnswer();
         if (overlay_ == Overlay::None && !info_) {
-            drawBar(app, c);
+            if (!cutscene && !fullUi) drawBar(app, c);
             drawWaypointButton(c);  // (0.56.0)
             drawEvents(c, g);  // (0.46.2: on top of everything on the map)
         }
@@ -1004,9 +1016,10 @@ private:
                 if (e.system >= 0) map_.flash(e.system, pc, now, fx);
                 break;
             case EventKind::Deal: {
-                // 0.57.0: a promise broken to or by a person - the betrayal codec (waits for A like a betrayal)
+                // 0.57.0: a promise broken to or by a person - the betrayal codec (waits for A like a betrayal);
+                // 0.58.4 (owner, L4): between computer players too
                 const bool mineBroken = e.card == kDealBroken && (session_->isHumanSeat(e.player) || session_->isHumanSeat(e.other));
-                const bool brokenMine = mineBroken && session_->speed() != 3;  // (Instant: the old banner)
+                const bool brokenMine = e.card == kDealBroken && session_->speed() != 3;  // (Instant: the old banner)
                 cardBanner(brokenMine ? 21 : 9, e.card, e.player, "", "", now, std::max<uint32_t>(fx, brokenMine ? 4500 : 1500));
                 card_.other = e.other;
                 std::string t = e.text;
@@ -1035,6 +1048,15 @@ private:
                         card_.reply = speech::pick(g.players[lis].faction, g.players[spk].faction, speech::Cat::Betrayed, card_.seed >> 3);
                         stretchForExchange();
                     }
+                }
+                // 0.58.4 (owner: "I can't read the bot text fast enough when it's talking to another player during
+                // its action"): a bot's line on the deal card gets time to type out and be read, and the game waits
+                if (!brokenMine && !card_.line.empty() && card_.kind == 9) {
+                    const uint32_t chars = uint32_t(card_.line.size());
+                    const float k = std::max(0.6f, session_->speedFactor());
+                    const uint32_t need = 250U + chars * 1000U / 80U + uint32_t(float(1400U + chars * 22U) * k);
+                    if (int32_t(card_.start + need - card_.until) > 0) card_.until = card_.start + need;
+                    session_->extendShow(card_.until);
                 }
                 if (mineBroken && !brokenMine)
                     banner(e.player == me ? std::string("You break a promise") : playerName(g, e.player) + " breaks a promise to you",
@@ -1280,7 +1302,8 @@ private:
                     card_.laid = true;
                     card_.sp = speech::layoutFit(g.players[spk].faction, card_.line, r.w - 80, 84, pcolor(g, spk), rgb(226, 230, 244), card_.seed);
                 }
-                const int shownChars = age > 250 ? speech::typed(card_.sp, uint32_t(age - 250) * 3U) : 0;  // (3x: a banner is brief)
+                // (0.58.4: typed at 80 a second - the banner now lasts until it can be read)
+                const int shownChars = age > 250 ? speech::typed(card_.sp, uint32_t(age - 250) * 80U / 55U) : 0;
                 speech::draw(c, card_.sp, r.x + 72, r.y + 34, shownChars, now, a);
                 int y = r.y + 34 + std::max(62, card_.sp.height + 4);
                 for (const std::string& l : wrapText(FONT_XS, card_.text, r.w - 14)) {
@@ -2436,7 +2459,7 @@ private:
             if (an & kNebula) rule += "Nebula: ships move in only when it is the active system; ships leaving it move 1; the defender gets +1 on combat rolls. ";
             if (an & kSupernova) rule += "Supernova: ships can't move into or through it. ";
             if ((an & kRift) || dimensionalTear(g, s))
-                rule += "Gravity rift: ships leaving or passing through move 1 further, then roll - 1 to 3 is destroyed. ";
+                rule += "Gravity rift: ships moving out of or through it get +1 move; each rolls as it leaves - on 1 to 3 it is removed from the board, with what it carries. ";
             if (scarAt(g, s)) rule += "Entropic scar: no unit abilities in it or against units in it (space cannon, barrage, bombardment, sustain damage, production...). ";
             if (sy.fracture) rule += "The Fracture (active - in play): reached through the ingress and egress points. ";
             for (const std::string& l : wrapText(FONT_XS, rule, w)) {
@@ -2460,7 +2483,8 @@ private:
             y += 3;
             // name, then trait / specialty / legendary icons, then resources and influence
             std::vector<std::string> marks;
-            for (Trait tr : {pd.trait, pd.trait2}) {  // (Thunder's Edge: some have two)
+            const std::vector<Trait> traits = traitsOf(g, pl);  // (owner 2026-11-13: as they are now - Terraform gives all three)
+            for (Trait tr : traits) {  // (Thunder's Edge: some have two)
                 if (tr == Trait::Cultural) marks.push_back("cultural");
                 if (tr == Trait::Hazardous) marks.push_back("hazardous");
                 if (tr == Trait::Industrial) marks.push_back("industrial");
@@ -2480,13 +2504,13 @@ private:
             std::string sub;
             if (ps.owner >= 0) sub = playerName(g, ps.owner) + (ps.exhausted ? " (exhausted)" : "");
             else sub = "Unclaimed";
-            if (pd.trait != Trait::None) sub += std::string(" \xC2\xB7 ") + traitName(pd.trait);
-            if (pd.trait2 != Trait::None) sub += std::string("/") + traitName(pd.trait2);
+            for (size_t k = 0; k < traits.size(); ++k) sub += std::string(k ? "/" : " \xC2\xB7 ") + traitName(traits[k]);
             if (pd.flags & kPlanetStation) sub += " \xC2\xB7 space station";
             for (int sc = 0; sc < 4; ++sc)
                 if ((planetSkips(g, pl) >> sc) & 1)
                     sub += std::string(" \xC2\xB7 ") + (pd.skip == TechColor(sc) && pd.skip2 == TechColor(sc) ? "2 " : "") + colorName(TechColor(sc)) + " skip";
             if (isLegendaryPlanet(g, pl)) sub += " \xC2\xB7 legendary";
+            if (ps.sleeper) sub += " \xC2\xB7 sleeper token";  // (Titans: Terragenesis / Awaken)
             int sx = x;
             if (ps.owner >= 0) {  // the owner's control token
                 cards::controlToken(c, g.players[ps.owner].faction, pcolor(g, ps.owner), x + 6, y + 6, 12);
@@ -2497,10 +2521,12 @@ private:
             bool branch = false, trap = false;  // Branch Offices (Veldyr), Traps (Li-Zho) - Discordant Stars 0.42.0
             for (int16_t b : g.dsBranch) branch = branch || b == pl;
             for (int16_t t : g.dsTrap) trap = trap || t == pl;
-            if (!ps.attachments.empty() || pl == g.dsBasePlanet || pl == g.dsKeyPlanet || branch || trap ||
+            if (!ps.attachments.empty() || pl == g.dsBasePlanet || pl == g.dsKeyPlanet || branch || trap || ps.terraform || ps.ulHero ||
                 std::find(g.dsCores.begin(), g.dsCores.end(), pl) != g.dsCores.end()) {
                 std::string at;
                 for (int16_t a : ps.attachments) at += (at.empty() ? "" : ", ") + std::string(kExploreCards[a].name);
+                if (ps.terraform) at += std::string(at.empty() ? "" : ", ") + "Terraform (+1/+1, all three traits)";  // (Titans note)
+                if (ps.ulHero) at += std::string(at.empty() ? "" : ", ") + "Ul the Progenitor (+3/+3, Space Cannon 5 x3)";
                 for (int k = 0; k < 4; ++k)
                     if (g.dsBranch[k] == pl) {
                         const int vd = playerOfFaction(g, "veldyr");
@@ -3514,6 +3540,7 @@ private:
     int uiId_ = -1;
     Overlay overlay_ = Overlay::None;
     bool peek_ = false;
+    bool uiFocus_ = false;  // 0.58.4: the decision editor took the input last frame (see bareClickIsA)
     uint32_t lastMouseTick_ = 0;
     int expanded_ = -1;  // the expanded tile on screen (0.20.0), -1 = none
     int menuSel_ = 0, tab_ = 0, speed_ = 1, logScroll_ = 0, cardPause_ = 0;

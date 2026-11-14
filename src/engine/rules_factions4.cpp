@@ -84,11 +84,13 @@ void Rules::readyAgent(int p, int index) {
     Player& pl = G.players[p];
     LeaderState& ls = pl.leaders[index];
     ls.status = kReady;
-    // Artuno the Betrayer: the trade goods on the card are gained when it readies
-    if (!std::strcmp(kLeaders[ls.leader].key, "nomadagentartuno") && pl.agentTG > 0) {
+    // Artuno the Betrayer: the trade goods on the card are gained when it readies (fixes 26, the Nomad review: Ssruu as
+    // Artuno too - the Yssaril's agent)
+    const bool ssruu = G.fixes >= 26 && fac(p, "yssaril") && kLeaders[ls.leader].type == kAgent;
+    if ((!std::strcmp(kLeaders[ls.leader].key, "nomadagentartuno") || ssruu) && pl.agentTG > 0) {
         const int n = pl.agentTG;
         pl.agentTG = 0;
-        say(p, pn(p) + " collects " + std::to_string(n) + " trade good" + (n > 1 ? "s" : "") + " from Artuno the Betrayer.");
+        say(p, pn(p) + " collects " + std::to_string(n) + " trade good" + (n > 1 ? "s" : "") + " from " + (ssruu ? "Ssruu (Artuno the Betrayer)." : "Artuno the Betrayer."));
         artunoPay_ = true;
         gainTG(p, n);
         artunoPay_ = false;
@@ -205,9 +207,20 @@ void Rules::strikeWingAlpha(int p, int o, int sys, const RollResult& r) {
     int n = 0;
     for (size_t i = 0; i < r.dice.size() && i < r.unit.size(); ++i)
         if (r.unit[i] == int(UnitType::Destroyer) && r.dice[i] >= 9) ++n;
-    n = std::min(n, int(G.systems[sys].space[o].count(UnitType::Infantry)));
+    // (fixes 27, the Nekro review) The Alastor: the infantry fighting from the planets aren't in the space area, those waiting
+    // aside are (they go first)
+    const bool al = G.fixes >= 27 && o >= 0 && o < kSides && alastorSys_ == sys && alastor_[o];
+    const int aside = al ? alastorAside_[o].count(UnitType::Infantry) : 0;
+    const int inSpace = al ? std::max(0, int(alastorOwn_[o][0])) : int(G.systems[sys].space[o].count(UnitType::Infantry));
+    n = std::min(n, std::min<int>(inSpace, G.systems[sys].space[o].count(UnitType::Infantry)) + aside);
     if (n <= 0) return;
     say(p, pn(p) + "'s Strike Wing Alpha II destroys " + count(n, UnitType::Infantry) + " in space.", sys);
+    if (al) {  // (the ones aside: back into the space area to be destroyed there; then the space area's own fighting)
+        const int k = std::min(n, aside);
+        alastorAside_[o].remove(UnitType::Infantry, k);
+        G.systems[sys].space[o].add(UnitType::Infantry, k);
+        alastorOwn_[o][0] = uint8_t(std::max(0, int(alastorOwn_[o][0]) - (n - k)));
+    }
     destroyUnits(o, UnitType::Infantry, n, sys, -1, p, "Strike Wing Alpha II");
 }
 
@@ -264,6 +277,9 @@ int Rules::geneticRecombination(int voter, int agenda) {
 void Rules::futureSight(int outcome, const std::vector<int>& votedFor, const std::vector<int>* preds) {
     const int n = playerOfFaction(G, "nomad");
     if (n < 0) return;
+    // (fixes 26, the Nomad review - owner 2026-11-13) "During the Agenda phase" - not an agenda voted on in the action phase
+    // (Executive Order)
+    if (G.fixes >= 26 && G.phase != Phase::Agenda) return;
     bool ok = n < int(votedFor.size()) && votedFor[n] == outcome;
     for (size_t i = 0; i + 1 < preds[n].size(); i += 2)
         if (preds[n][i + 1] == outcome) ok = true;
@@ -322,6 +338,9 @@ bool Rules::afterActivation4(int p, int sys) {
     if (c >= 0 && c != p && holdsNote(G, p, c, kNoteFaction)) {
         bool rift = false;
         const bool gd = owns(p, "gd");
+        // (fixes 26, the Vuil'raith review) with the note's +1: a ship that only gets there with it is a reason to play it
+        const bool was = G.fx.crucible;
+        if (G.fixes >= 26) G.fx.crucible = true;
         for (size_t f = 0; f < G.systems.size() && !rift; ++f) {
             if (int(f) == sys || G.systems[f].hasToken(p)) continue;
             for (int t : kShipIdx)
@@ -330,11 +349,17 @@ bool Rules::afterActivation4(int p, int sys) {
                     if (r.ok && r.viaRift) rift = true;
                 }
         }
-        if (rift && fyes(p, Ab::Crucible, "Play Crucible: your ships don't roll for gravity rifts during this movement?",
+        G.fx.crucible = was;
+        if (rift && fyes(p, Ab::Crucible,
+                         G.fixes >= 26 ? "Play Crucible: no gravity rift rolls this movement, and +1 move for your ships leaving or passing through a rift?"
+                                       : "Play Crucible: your ships don't roll for gravity rifts during this movement?",
                          factionNoteText(G.players[c].faction, kNoteFaction))) {
             G.fx.crucible = true;
             returnNote(p, makeNote(c, kNoteFaction));
-            abilityEvent4(E, p, "Crucible", pn(p) + " plays Crucible: no gravity rift rolls this movement.", sys);
+            abilityEvent4(E, p, "Crucible",
+                          pn(p) + (G.fixes >= 26 ? " plays Crucible: no gravity rift rolls this movement, +1 move through gravity rifts."
+                                                 : " plays Crucible: no gravity rift rolls this movement."),
+                          sys);
         }
     }
     if (!fac(p, "titans")) return false;
@@ -419,9 +444,51 @@ void Rules::coalescence(int p, int sys) {
     }
 }
 
+void Rules::garvGunn27(int p) {
+    // (fixes 27, the Naaz-Rokha review - owner 2026-11-13: "At the end of a player's turn: You may exhaust this card to allow
+    // that player to explore 1 of their planets" - any player's turn; the Naaz-Rokha decide: a person is asked (garvQuiet_),
+    // a bot only when it promised the agent)
+    if (p < 0 || p >= G.numPlayers || G.players[size_t(p)].eliminated) return;
+    std::vector<Option> opts;
+    for (int x : controlledPlanets(G, p))
+        if (explorable(G, x)) opts.push_back({x, planetName(x), G.planets[x].units[p].count(UnitType::Mech) ? "Has your mech" : ""});
+    if (opts.empty()) return;
+    const std::string text = leaderText(findLeader("naazagent"));
+    if (canUseAgent(p, "naaz")) {
+        opts.push_back({-1, "Don't explore", ""});
+        const int x = fpick(p, Ab::NaazAgent, "Exhaust Garv and Gunn to explore one of your planets?", opts, text, false, true);
+        if (x < 0) return;
+        spendAgent(p, "naaz");
+        explorePlanet(p, x);
+        return;
+    }
+    int user = -1;
+    for (int o : initiativeOrder(G)) {
+        if (o == p || !canUseAgent(o, "naaz")) continue;
+        const bool promised = G.agentFor[o] == p;
+        const bool human = G.players[size_t(o)].human;
+        if (!promised && !(human && garvQuiet_[o] != G.round)) continue;
+        agentFor(o, p);
+        std::vector<Option> yn = {{1, "Yes", ""}, {0, "No", ""}};
+        if (human && !promised) yn.push_back({3, "No, and don't ask again this round", "You'll be asked again next round."});
+        const int c = fpick(o, Ab::NaazAgent, "Exhaust Garv and Gunn: " + pn(p) + " may explore 1 of their planets?", yn, text);
+        curFor_ = -1;
+        if (c == 3) garvQuiet_[o] = int16_t(G.round);
+        if (c != 1) continue;
+        user = o;
+        break;
+    }
+    if (user < 0) return;
+    spendAgent(user, "naaz");
+    agentDone(user, p);
+    const int x = fpick(p, Ab::NaazAgent, "Garv and Gunn (" + pn(user) + "): explore which of your planets?", opts, text, false, true);
+    if (x >= 0) explorePlanet(p, x);
+}
+
 void Rules::endOfTurn4(int p) {
     // Garv and Gunn (Naaz-Rokha agent): explore one of your planets
-    if (canUseAgent(p, "naaz")) {
+    if (G.fixes >= 27) garvGunn27(p);
+    else if (canUseAgent(p, "naaz")) {
         std::vector<Option> opts;
         for (int x : controlledPlanets(G, p))
             if (explorable(G, x))
@@ -437,6 +504,11 @@ void Rules::endOfTurn4(int p) {
         }
     }
     // Field Marshal Mercer (Nomad agent): move up to 2 ground forces onto your planets in the active system
+    // (fixes 26, the Nomad review - owner 2026-11-13: "At the end of a player's turn ... allow that player" - mercer26)
+    if (G.fixes >= 26) {
+        mercer26(p, lastActiveSystem_);
+        return;
+    }
     const int sys = lastActiveSystem_;
     if (sys < 0 || G.players[p].eliminated || !canUseNomadAgent(p, 0)) return;
     std::vector<Option> dest;
@@ -478,6 +550,91 @@ void Rules::endOfTurn4(int p) {
     for (int s : touched) removeExcessCapacity(p, s);
 }
 
+// Field Marshal Mercer (fixes 26, the Nomad review - owner 2026-11-13): "At the end of a player's turn: You may exhaust this
+// card to allow that player to remove up to 2 of their ground forces from the game board and place them on planets they
+// control in the active system." Any player's turn - the Nomad decide (a person is asked, or "don't ask again this round";
+// a bot only when it promised that player its agent in a deal); ground forces from anywhere, the active system's planets
+// too; each one onto any of that player's planets there.
+void Rules::mercer26(int p, int sys) {
+    if (sys < 0 || p < 0 || p >= G.numPlayers || G.players[p].eliminated) return;
+    std::vector<int> dest;
+    for (int16_t x : G.systems[sys].planets)
+        if (G.planets[x].owner == p && !isDMZ(G, x) && !G.planets[x].destroyed) dest.push_back(x);
+    if (dest.empty()) return;
+    const int np = int(G.planets.size());
+    std::vector<Option> units;
+    auto addFrom = [&](const Force& f, int loc, const std::string& where) {
+        for (UnitType t : {UnitType::Infantry, UnitType::Mech})
+            for (int i = 0; i < f.count(t) && i < 2; ++i) units.push_back({loc * 64 + int(t) * 8 + i, std::string(unitTypeName(t)) + " " + where, ""});
+    };
+    for (size_t x = 0; x < G.planets.size(); ++x) {
+        if (!G.planets[x].units[p].groundForces()) continue;
+        if (dest.size() == 1 && dest[0] == int(x)) continue;  // (nowhere else to go)
+        addFrom(G.planets[x].units[p], int(x), "on " + planetName(int(x)));
+    }
+    for (size_t s = 0; s < G.systems.size(); ++s)
+        if (G.systems[s].space[p].groundForces()) addFrom(G.systems[s].space[p], np + int(s), "in space at " + sysName(int(s)));
+    if (units.empty()) return;
+    int user = -1;
+    if (canUseNomadAgent(p, 0)) {
+        const int cvWas = curValue_;
+        curValue_ = sys;  // (for the AI: the system - the tactical action is over, G.activeSystem is gone)
+        const bool use = fyes(p, Ab::NomadMercer, "Exhaust Field Marshal Mercer to move up to 2 ground forces to your planets in " + sysName(sys) + "?",
+                              leaderText(findLeader("nomadagentmercer")));
+        curValue_ = cvWas;
+        if (use) user = p;
+    } else {
+        for (int o : initiativeOrder(G)) {
+            if (o == p || !canUseNomadAgent(o, 0)) continue;
+            const bool promised = G.agentFor[o] == p;
+            const bool human = G.players[size_t(o)].human;
+            if (!promised && !(human && mercerQuiet_[o] != G.round)) continue;
+            agentFor(o, p);
+            std::vector<Option> opts = {{1, "Yes", ""}, {0, "No", ""}};
+            if (human && !promised) opts.push_back({3, "No, and don't ask again this round", "You'll be asked again next round."});
+            const int c = fpick(o, Ab::NomadMercer, "Exhaust Field Marshal Mercer: " + pn(p) + " may move up to 2 ground forces to their planets in " +
+                                                     sysName(sys) + "?",
+                                opts, leaderText(findLeader("nomadagentmercer")));
+            curFor_ = -1;
+            if (c == 3) mercerQuiet_[o] = int16_t(G.round);
+            if (c != 1) continue;
+            user = o;
+            break;
+        }
+    }
+    if (user < 0) return;
+    spendNomadAgent(user, 0);
+    if (user != p) agentDone(user, p);
+    const int cvWas = curValue_;
+    curValue_ = sys;
+    std::vector<int> picks = fpickMany(p, Ab::NomadMercer, "Field Marshal Mercer: which ground forces?", units, 1, std::min<int>(2, int(units.size())));
+    std::vector<int> touched, landed;
+    int moved = 0;
+    for (int id : picks) {
+        const int loc = id / 64;
+        const UnitType t = UnitType((id % 64) / 8);
+        Force& src = loc < np ? G.planets[loc].units[p] : G.systems[loc - np].space[p];
+        if (!src.count(t)) continue;
+        std::vector<Option> to;
+        for (int x : dest)
+            if (x != loc) to.push_back({x, planetName(x), ""});
+        if (to.empty()) continue;
+        const int x = to.size() == 1 ? to[0].id
+                                     : fpick(p, Ab::NomadMercer, std::string("Field Marshal Mercer: onto which planet (") + unitTypeName(t) + ")?", to, "",
+                                             false, true);
+        src.remove(t, 1, false);
+        G.planets[x].units[p].add(t, 1);
+        ++moved;
+        if (loc >= np) touched.push_back(loc - np);
+        if (std::find(landed.begin(), landed.end(), x) == landed.end()) landed.push_back(x);
+    }
+    curValue_ = cvWas;
+    std::string where;
+    for (size_t i = 0; i < landed.size(); ++i) where += (i ? " and " : "") + planetName(landed[i]);
+    say(p, pn(p) + " moves " + std::to_string(moved) + " ground forces to " + where + " (Field Marshal Mercer).", sys);
+    for (int s : touched) removeExcessCapacity(p, s);
+}
+
 // ------------------------------------------------------------------ strategy phase
 void Rules::strategyStart4() {
     // Scepter of Dominion (Mahact's note): the Mahact player and every player whose token is in the
@@ -492,7 +649,8 @@ void Rules::strategyStart4() {
         if (who.empty()) continue;
         std::vector<Option> opts;
         for (size_t s = 0; s < G.systems.size(); ++s)
-            if (G.systems[s].home < 0 && !G.systems[s].offBoard && hasUnits(G, q, int(s))) opts.push_back({int(s), sysName(int(s)), ""});
+            if (G.systems[s].home < 0 && (!G.systems[s].offBoard || (G.fixes >= 26 && int(s) == G.nexus)) && hasUnits(G, q, int(s)))  // (fixes 26: the nexus - LRR 100.1b)
+                opts.push_back({int(s), sysName(int(s)), ""});
         if (opts.empty()) continue;
         opts.push_back({-1, "Don't play it", ""});
         int s = fpick(q, Ab::Scepter, "Play Scepter of Dominion: lock which of your systems?", opts,
@@ -551,7 +709,8 @@ void Rules::explored4(int p, int planet) {
 void Rules::gainedControl4(int planet, int p, int old) {
     // Dart and Tai (Naaz-Rokha commander): explore a planet taken from another player
     if (old < 0 || old == p || G.phase == Phase::Setup || !commanderUsable(G, p, "naaz") || !explorable(G, planet)) return;
-    if (!fyes(p, Ab::NaazCommander, "Dart and Tai: explore " + planetName(planet) + "?", "You took it from " + pn(old) + ".")) return;
+    if (!fyes(p, Ab::NaazCommander, "Dart and Tai: explore " + planetName(planet) + "?",
+              "You took it from " + pn(old) + ". " + leaderText(findLeader("naazcommander")))) return;
     explorePlanet(p, planet);
 }
 
@@ -582,10 +741,12 @@ void Rules::unitDestroyed4(int p, UnitType t, int k, int sys, int planet) {
                     : gain ? 0
                            : 1;
             if (c == 0) {
-                m.commodities = int8_t(m.commodities + 1);
+                { const int cb_ = m.commodities; m.commodities = int8_t(m.commodities + 1); commodityGained(p, cb_); }
             } else {
                 m.commodities = int8_t(m.commodities - 1);
-                m.tradeGoods = int8_t(m.tradeGoods + 1);
+                // (fixes 27, the Mentak review) a commodity turned into a trade good is a trade good gained (Pillage)
+                if (G.fixes >= 27) gainTG(p, 1);
+                else m.tradeGoods = int8_t(m.tradeGoods + 1);
             }
         }
         say(p, pn(p) + "'s Crimson Legionnaires leave commodities behind.");
@@ -659,12 +820,81 @@ bool Rules::thundarian(int att, int def, int sys, int hitsA, int hitsD) {
         abilityEvent4(E, p, "The Thundarian", pn(p) + " calls on The Thundarian: no hits; both sides roll again.", sys);
         return true;
     }
+    // (fixes 26, the Nomad review - owner 2026-11-13) "After the "Roll Dice" step of combat" - any combat: the Nomad may use it
+    // in a combat they aren't in (a person is asked, or "don't ask again this round"; a bot only when it promised one of the
+    // two players its agent in a deal)
+    if (G.fixes < 26) return false;
+    for (int o : windowOrder()) {
+        if (o == att || o == def || o >= G.numPlayers || !canUseNomadAgent(o, 1)) continue;
+        const int ben = G.agentFor[o] == att ? att : G.agentFor[o] == def ? def : -1;
+        const bool human = G.players[size_t(o)].human;
+        if (ben < 0 && !(human && thundarianQuiet_[o] != G.round)) continue;
+        const int b = ben >= 0 ? ben : att;
+        agentFor(o, b);
+        const int mine = b == att ? hitsA : hitsD, theirs = b == att ? hitsD : hitsA;
+        curValue_ = mine * 100 + theirs;
+        std::vector<Option> opts = {{1, "Yes", ""}, {0, "No", ""}};
+        if (human && ben < 0) opts.push_back({3, "No, and don't ask again this round", "You'll be asked again next round."});
+        const int c = fpick(o, Ab::NomadThundarian, "Exhaust The Thundarian: cancel these hits and roll this round again?", opts,
+                            pn(att) + " rolled " + std::to_string(hitsA) + " hit" + (hitsA == 1 ? "" : "s") + ", " + pn(def) + " " +
+                                std::to_string(hitsD) + ".");
+        curValue_ = 0;
+        curFor_ = -1;
+        if (c == 3) thundarianQuiet_[o] = int16_t(G.round);
+        if (c != 1) continue;
+        spendNomadAgent(o, 1);
+        if (ben >= 0) agentDone(o, ben);
+        abilityEvent4(E, o, "The Thundarian", pn(o) + " calls on The Thundarian: no hits; both sides roll again.", sys);
+        return true;
+    }
     return false;
 }
 
-int Rules::spaceHitsCancel(int victim, int side, int sys, int hits) {
+int Rules::spaceHitsCancel(int victim, int side, int sys, int hits, int attacker) {
     if (hits <= 0) return hits;
     Force& f = G.systems[sys].space[victim];
+    // (fixes 26, the Nomad review - owner 2026-11-13: real Sustain Damage) The Cavalry: "treat 1 of your non-fighter ships as if
+    // it has the SUSTAIN DAMAGE ability ... of the Nomad's flagship" - a ship that can't sustain does so once: it becomes
+    // damaged (again only once repaired); a ship that already sustains gains nothing. Then Farran / Dynamo / Direct Hit as
+    // for any sustain.
+    if (G.fixes >= 26) {
+        const int t = side >= 0 && side < 2 ? cavalry_[side] : -1;
+        // (fixes 27, the Mentak review) not where Sustain Damage can't be used: the Fourth Moon's system, an entropic scar
+        if (t >= 0 && f.count(UnitType(t)) > 0 && f.dmg[t] == 0 && !unitSustains(G, victim, UnitType(t)) &&
+            !(G.fixes >= 27 && sustainBlockedAt(G, victim, UnitType(t), sys, -1))) {
+            curValue_ = hits;
+            const bool use = fyes(victim, Ab::Cavalry, std::string("The Cavalry: your ") + unitTypeName(UnitType(t)) + " uses Sustain Damage to cancel 1 hit?",
+                                  "It becomes damaged (the Nomad flagship's Sustain Damage).");
+            curValue_ = 0;
+            if (use) {
+                f.dmg[t] = uint8_t(f.dmg[t] + 1);
+                --hits;
+                Event e;
+                e.kind = EventKind::Damaged;
+                e.player = int8_t(victim);
+                e.other = int8_t(attacker);
+                e.system = int16_t(sys);
+                e.planet = -1;
+                e.unit = int8_t(t);
+                e.count = 1;
+                e.text = pn(victim) + "'s " + unitLabel(G, victim, UnitType(t)) + " sustains damage (The Cavalry).";
+                E.emit(e);
+                sustained(victim, attacker, sys, -1, t);
+                if (f.dmg[t] > 0) {  // Direct Hit / Reflective Shielding: after a ship uses Sustain Damage
+                    WinCtx w;
+                    w.w = Win::AfterSustain;
+                    w.a = victim;
+                    w.b = attacker;
+                    w.sys = sys;
+                    w.planet = -1;
+                    w.value = t;
+                    w.space = true;
+                    window(w);
+                }
+            }
+        }
+        return quantumManipulator(victim, sys, hits, false);
+    }
     // The Cavalry: the chosen ship can absorb 1 hit, like Sustain Damage
     if (side >= 0 && side < 2 && cavalry_[side] >= 0 && cavalrySustain_[side] && f.count(UnitType(cavalry_[side])) > 0) {
         curValue_ = hits;
@@ -677,7 +907,13 @@ int Rules::spaceHitsCancel(int victim, int side, int sys, int hits) {
             say(victim, pn(victim) + "'s Cavalry ship shrugs off a hit.", sys);
         }
     }
-    // Quantum Manipulator (Nomad mech): mechs in space use Sustain Damage to cancel hits on your ships
+    return quantumManipulator(victim, sys, hits, false);
+}
+
+// Quantum Manipulator (Nomad mech): mechs in space use Sustain Damage to cancel hits on your ships. (fixes 26, the Nomad review
+// - owner 2026-11-13: "during combat" - also against anti-fighter barrage, a step of space combat: afb)
+int Rules::quantumManipulator(int victim, int sys, int hits, bool afb) {
+    Force& f = G.systems[sys].space[victim];
     if (hits > 0 && fac(victim, "nomad") && unitSustainsAt(G, victim, UnitType::Mech, sys, -1) && mechAbilities(G)) {
         const int ready = f.count(UnitType::Mech) - f.damaged(UnitType::Mech);
         if (ready > 0) {
@@ -685,7 +921,8 @@ int Rules::spaceHitsCancel(int victim, int side, int sys, int hits) {
             for (int k = 0; k <= std::min(ready, hits); ++k)
                 opts.push_back({k, k ? "Cancel " + std::to_string(k) + " hit" + (k > 1 ? "s" : "") : std::string("None"), ""});
             curValue_ = hits;
-            int k = fpick(victim, Ab::QuantumManipulator, "Quantum Manipulator: your mechs cancel how many of these " + std::to_string(hits) + " hits?",
+            int k = fpick(victim, Ab::QuantumManipulator,
+                          "Quantum Manipulator: your mechs cancel how many of these " + std::to_string(hits) + (afb ? " anti-fighter barrage" : "") + " hits?",
                           opts, "Each one that does becomes damaged.");
             curValue_ = 0;
             if (k > 0) {
@@ -735,6 +972,9 @@ void Rules::zgravFlip(int p, int sys) {
     // Eidolon Maximum (Naaz-Rokha breakthrough): a ship as well as a ground force, wherever it is
     if (p < G.numPlayers && G.players[size_t(p)].eidolonMax && breakthroughIs(G, p, "naaz") && G.systems[sys].space[p].count(UnitType::Mech) > 0)
         zgrav_[p] = true;
+    // (fixes 27) for the query layer (unitSustainsAt: the Z-Grav side has no Sustain Damage)
+    if (zgrav_[p]) G.zgrav = uint16_t(G.zgrav | (1u << p));
+    else G.zgrav = uint16_t(G.zgrav & ~(1u << p));
 }
 
 void Rules::spaceCombatStart4(int att, int def, int sys) {
@@ -765,6 +1005,7 @@ void Rules::spaceCombatStart4(int att, int def, int sys) {
 void Rules::spaceCombatEnd4(int att, int def, int sys) {
     (void)sys;
     zgrav_[att] = zgrav_[def] = false;
+    G.zgrav = 0;
     const int n = playerOfFaction(G, "nomad");
     const int side[2] = {att, def};
     for (int i = 0; i < 2; ++i)
@@ -775,6 +1016,7 @@ void Rules::spaceCombatEnd4(int att, int def, int sys) {
 
 int Rules::tellurian(int victim, int sys, int planet, int hits, int mask) {
     // Tellurian (Titans agent): cancel a hit before it is assigned
+    if (G.fixes >= 27) return tellurian27(victim, sys, planet, hits, mask);
     const int u = agentUser(victim, "titans");  // or a player who promised its agent in a deal
     if (hits <= 0 || u < 0 || maxAbsorbableHits(G, victim, sys, planet, mask) <= 0) return hits;
     curValue_ = hits;
@@ -792,6 +1034,43 @@ int Rules::tellurian(int victim, int sys, int planet, int hits, int mask) {
     return hits - 1;
 }
 
+int Rules::tellurian27(int victim, int sys, int planet, int hits, int mask) {
+    // (fixes 27, the Titans review - owner 2026-11-13: "Before a hit would be assigned: You may exhaust this card to cancel
+    // that hit" - the errata, any player's unit; the Titans decide: a person is asked (tellurianQuiet_), a bot only when it
+    // promised the agent)
+    if (hits <= 0 || victim < 0 || victim >= G.numPlayers || maxAbsorbableHits(G, victim, sys, planet, mask) <= 0) return hits;
+    const std::string where = planet >= 0 ? pn(victim) + "'s units on " + planetName(planet) + "." : pn(victim) + "'s units in " + sysName(sys) + ".";
+    const std::string many = std::to_string(hits) + " hit" + (hits > 1 ? "s" : "");
+    int u = -1;
+    curValue_ = hits;
+    if (canUseAgent(victim, "titans")) {
+        if (fyes(victim, Ab::TitansAgent, "Exhaust Tellurian to cancel 1 of these " + many + "?", where)) u = victim;
+    } else {
+        for (int o : initiativeOrder(G)) {
+            if (o == victim || !canUseAgent(o, "titans")) continue;
+            const bool promised = G.agentFor[o] == victim;
+            const bool human = G.players[size_t(o)].human;
+            if (!promised && !(human && tellurianQuiet_[o] != G.round)) continue;
+            agentFor(o, victim);
+            std::vector<Option> yn = {{1, "Yes", ""}, {0, "No", ""}};
+            if (human && !promised) yn.push_back({3, "No, and don't ask again this round", "You'll be asked again next round."});
+            const int c = fpick(o, Ab::TitansAgent, "Exhaust Tellurian for " + pn(victim) + " to cancel 1 of these " + many + "?", yn,
+                                where + " " + leaderText(findLeader("titansagent")));
+            curFor_ = -1;
+            if (c == 3) tellurianQuiet_[o] = int16_t(G.round);
+            if (c != 1) continue;
+            u = o;
+            break;
+        }
+    }
+    curValue_ = 0;
+    if (u < 0) return hits;
+    spendAgent(u, "titans");
+    agentDone(u, victim);
+    say(victim, pn(victim) + " cancels a hit (Tellurian).", sys);
+    return hits - 1;
+}
+
 // ------------------------------------------------------------------ production
 void Rules::afterProduction4(int p, int sys, const Force& made, int gfPlanet) {
     // Tungstantus (Titans commander)
@@ -800,17 +1079,46 @@ void Rules::afterProduction4(int p, int sys, const Force& made, int gfPlanet) {
         gainTG(p, 1);
     }
     // Trilossa Aun Mirik (Argent agent): new ground forces to your planets here or next door
-    if (made.groundForces() == 0 || !canUseAgent(p, "argent")) return;
+    // (fixes 26, the Argent review - owner 2026-11-13: "When a player produces ground forces in a system" - any player's
+    // production; the Argent decide: a person is asked (trilossaQuiet_), a bot only when it promised the agent)
+    if (made.groundForces() == 0 || (G.fixes < 26 && !canUseAgent(p, "argent"))) return;
     std::vector<Option> dest;
     std::vector<int> near = {sys};
     for (int16_t a : G.systems[sys].adj) near.push_back(a);
     for (int s : near)
         for (int16_t x : G.systems[s].planets)
             if (x != gfPlanet && G.planets[x].owner == p && !isDMZ(G, x) && !G.planets[x].destroyed) dest.push_back({x, planetName(x), ""});
-    if (dest.empty() || !fyes(p, Ab::ArgentAgent, "Exhaust Trilossa Aun Mirik to place the new ground forces on your planets nearby?",
-                              leaderText(findLeader("argentagent"))))
-        return;
-    spendAgent(p, "argent");
+    if (dest.empty()) return;
+    int user = -1;
+    if (canUseAgent(p, "argent")) {
+        if (fyes(p, Ab::ArgentAgent, "Exhaust Trilossa Aun Mirik to place the new ground forces on your planets nearby?",
+                 leaderText(findLeader("argentagent"))))
+            user = p;
+    } else {
+        for (int o : initiativeOrder(G)) {
+            if (o == p || !canUseAgent(o, "argent")) continue;
+            const bool promised = G.agentFor[o] == p;
+            const bool human = G.players[size_t(o)].human;
+            if (!promised && !(human && trilossaQuiet_[o] != G.round)) continue;
+            agentFor(o, p);
+            std::vector<Option> opts = {{1, "Yes", ""}, {0, "No", ""}};
+            if (human && !promised) opts.push_back({3, "No, and don't ask again this round", "You'll be asked again next round."});
+            const int c = fpick(o, Ab::ArgentAgent, "Exhaust Trilossa Aun Mirik: " + pn(p) + " may place the new ground forces on their planets in " +
+                                                     sysName(sys) + " and the systems next to it?",
+                                opts, leaderText(findLeader("argentagent")));
+            curFor_ = -1;
+            if (c == 3) trilossaQuiet_[o] = int16_t(G.round);
+            if (c != 1) continue;
+            user = o;
+            break;
+        }
+    }
+    if (user < 0) return;
+    spendAgent(user, "argent");
+    if (user != p) {
+        agentDone(user, p);
+        say(p, pn(p) + " may place the new ground forces nearby (" + pn(user) + "'s Trilossa Aun Mirik).", sys);
+    }
     Force& src = gfPlanet >= 0 ? G.planets[gfPlanet].units[p] : G.systems[sys].space[p];
     int left[2] = {std::min<int>(made.count(UnitType::Infantry), src.count(UnitType::Infantry)),
                    std::min<int>(made.count(UnitType::Mech), src.count(UnitType::Mech))};
@@ -894,8 +1202,13 @@ void Rules::replenished4(int p) {
     spendAgent(c, "cabal");
     const int k = v.commodities;
     v.commodities = 0;
-    v.tradeGoods = int8_t(v.tradeGoods + k);
-    say(p, pn(p) + "'s " + std::to_string(k) + " commodities become trade goods (The Stillness of Stars).");
+    if (G.fixes >= 27) {  // (fixes 27, the Mentak review) trade goods gained (Pillage), as every other conversion
+        say(p, pn(p) + "'s " + std::to_string(k) + " commodities become trade goods (The Stillness of Stars).");
+        gainTG(p, k);
+    } else {
+        v.tradeGoods = int8_t(v.tradeGoods + k);
+        say(p, pn(p) + "'s " + std::to_string(k) + " commodities become trade goods (The Stillness of Stars).");
+    }
     capture(c, p, UnitType(t), 1, "The Stillness of Stars");
 }
 
@@ -921,17 +1234,17 @@ std::vector<Option> Rules::factionActionOptions4(int p) {
         return false;
     };
     if (fac(p, "naaz") && (twoSame() || (fragmentCount(G, p) > 0 && reinforcementTokens(p) > 0)))
-        add(Ab::Fabrication, "Fabrication", "Purge 2 fragments of a type for a relic, or 1 fragment for a command token.");
+        add(Ab::Fabrication, "Fabrication", abilityText(pl.faction, 1));  // (the Naaz-Rokha review: the card's words)
     for (int16_t n : pl.notes) {
         const int owner = noteOwner(n);
         if (owner == p || noteType(n) != kNoteFaction) continue;
         if (isFaction(G, owner, "naaz") && twoSame())
-            add(Ab::BlackMarketForgery, "Play Black Market Forgery", "Purge 2 relic fragments of the same type to gain a relic.");
+            add(Ab::BlackMarketForgery, "Play Black Market Forgery", factionNoteText(G.players[owner].faction, kNoteFaction));
         if (isFaction(G, owner, "titans")) {
             bool any = false;
             for (int x : controlledPlanets(G, p))
                 if (!isHomePlanet(G, x) && std::strcmp(kPlanets[G.planets[x].def].key, "mr") != 0 && !G.planets[x].terraform) any = true;
-            if (any) add(Ab::Terraform, "Play Terraform", "+1 resource, +1 influence and all three traits for one of your planets.");
+            if (any) add(Ab::Terraform, "Play Terraform", factionNoteText(G.players[owner].faction, kNoteFaction));
         }
     }
     if (techReady(p, "vtx")) {
@@ -950,14 +1263,19 @@ std::vector<Option> Rules::factionActionOptions4(int p) {
             bool any = false;
             for (size_t s = 0; s < G.systems.size(); ++s)
                 if (G.systems[s].hasToken(p) && !otherShipsIn(G, p, int(s))) any = true;
-            if (any) add(Ab::ArgentHero, "Hero: Mirik Aun Sissiri", "Move ships from anywhere to systems with your command tokens. Purged afterwards.");
+            if (any) add(Ab::ArgentHero, "Hero: Mirik Aun Sissiri", "Move any number of your ships from any systems to any number of other systems "
+                                                                       "that contain 1 of your command tokens and no other players' ships. Then, purge "
+                                                                       "this card.");
         }
         if (fac(p, "mahact")) add(Ab::MahactHero, "Hero: Airo Shir Aur", "Throw a fleet into an adjacent system's ships: space combat, no retreats. Purged afterwards.");
-        if (fac(p, "naaz")) add(Ab::NaazHero, "Hero: Hesh and Prit", "Gain a relic and use up to 2 strategy cards' secondaries. Purged afterwards.");
-        if (fac(p, "nomad") && unitsOnBoard(G, p, UnitType::Flagship) > 0)
-            add(Ab::NomadHero, "Hero: Ahk-Syl Siven", "This round your flagship may leave systems with your command tokens. Purged at the end of the round.");
+        if (fac(p, "naaz")) add(Ab::NaazHero, "Hero: Hesh and Prit", leaderText(findLeader("naazhero")));
+        // (fixes 26, the Nomad review - owner 2026-11-13: the card asks for no flagship on the board - one may be built later)
+        if (fac(p, "nomad") && (G.fixes >= 26 || unitsOnBoard(G, p, UnitType::Flagship) > 0))
+            add(Ab::NomadHero, "Hero: Ahk-Syl Siven",
+                "Your flagship and units it transports can move out of systems that contain your command tokens during this game round. "
+                "At the end of that game round, purge this card.");
         if (fac(p, "titans") && planetByKey(G, "elysium") >= 0 && !G.planets[planetByKey(G, "elysium")].destroyed)
-            add(Ab::TitansHero, "Hero: Ul the Progenitor", "Elysium gets +3/+3 and Space Cannon 5 (x3). Purged afterwards.");
+            add(Ab::TitansHero, "Hero: Ul the Progenitor", leaderText(findLeader("titanshero")));  // (the Titans review: the card's words)
         if (fac(p, "cabal")) {
             bool tear = false;
             for (size_t s = 0; s < G.systems.size(); ++s)
@@ -1079,22 +1397,39 @@ bool Rules::factionAction4(int p, Ab ab) {
                                                    int(groups.size()));
                 if (picks.empty()) continue;
                 if (!moves) {
-                    purgeHero(p);
+                    // (fixes 26, the Argent review - owner 2026-11-13: "Then, purge this card" - purged after the moves)
+                    if (G.fixes < 26) purgeHero(p);
                     heroEvent4(E, G, p, pn(p) + " uses Mirik Aun Sissiri: the flight regroups.");
                 }
                 std::vector<int> from;
+                std::vector<int> room(G.systems.size(), 0);  // (fixes 26) capacity moved out of each system
                 for (int id : picks) {
                     const int s = id / 16, t = id % 16;
                     Force& src = G.systems[s].space[p];
                     Force& dst = G.systems[to].space[p];
+                    room[size_t(s)] += src.n[t] * unitDef(G, p, UnitType(t)).capacity;
                     dst.n[t] = uint8_t(dst.n[t] + src.n[t]);
                     dst.dmg[t] = uint8_t(dst.dmg[t] + src.dmg[t]);
                     src.n[t] = src.dmg[t] = 0;
                     if (std::find(from.begin(), from.end(), s) == from.end()) from.push_back(s);
                     ++moves;
                 }
+                // (fixes 26, the Argent review - the card's note: the ships transport ground forces and fighters up to their
+                // capacity) what the ships left behind have no room for goes along, up to the capacity that moved
+                if (G.fixes >= 26)
+                    for (int s : from)
+                        for (UnitType u : {UnitType::Infantry, UnitType::Mech, UnitType::Fighter})
+                            while (room[size_t(s)] > 0 && capacityOverflow(G, p, s) > 0 && G.systems[s].space[p].count(u) > 0) {
+                                Force& src = G.systems[s].space[p];
+                                const bool dmg = src.dmg[int(u)] > 0 && src.dmg[int(u)] >= src.n[int(u)];
+                                src.remove(u, 1, dmg);
+                                G.systems[to].space[p].add(u, 1);
+                                if (dmg) G.systems[to].space[p].dmg[int(u)] = uint8_t(G.systems[to].space[p].dmg[int(u)] + 1);
+                                --room[size_t(s)];
+                            }
                 // what the ships carried comes along when no carrier stays behind
                 for (int s : from) {
+                    if (G.fixes >= 26) break;
                     Force& src = G.systems[s].space[p];
                     if (shipCapacity(G, p, s) > 0) continue;
                     for (UnitType t : {UnitType::Fighter, UnitType::Infantry, UnitType::Mech}) {
@@ -1109,6 +1444,7 @@ bool Rules::factionAction4(int p, Ab ab) {
                 checkNexus(to);
                 say(p, pn(p) + "'s ships gather in " + sysName(to) + " (Mirik Aun Sissiri).", to);
             }
+            if (moves > 0 && G.fixes >= 26) purgeHero(p);
             return moves > 0;
         }
         case Ab::MahactHero: {
@@ -1166,7 +1502,7 @@ bool Rules::factionAction4(int p, Ab ab) {
                 opts.push_back({c, strategyName(c), std::string(owner < 0 ? "Unchosen. " : "Ready. ") + strategySecondary(c)});
             }
             if (opts.empty()) return false;
-            purgeHero(p);
+            if (G.fixes < 27) purgeHero(p);
             heroEvent4(E, G, p, pn(p) + " uses Hesh and Prit.");
             gainRelic(p, "Hesh and Prit");
             std::vector<int> picks = fpickMany(p, Ab::NaazHero, "Hesh and Prit: use the secondary of which strategy cards? (up to 2)", opts, 0,
@@ -1177,6 +1513,8 @@ bool Rules::factionAction4(int p, Ab ab) {
             for (int c : picks) secondaryAbility(p, c);
             heshPrit_ = false;
             strategicPlayer_ = prev;
+            // (fixes 27, the Naaz-Rokha review - owner 2026-11-13) "Then, purge this card" (LRR 1.17): after the secondaries
+            if (G.fixes >= 27) purgeHero(p);
             return true;
         }
         case Ab::NomadHero: {
@@ -1189,7 +1527,14 @@ bool Rules::factionAction4(int p, Ab ab) {
         case Ab::TitansHero: {
             const int x = planetByKey(G, "elysium");
             if (x < 0) return false;
-            purgeHero(p);
+            // (fixes 27, the Titans review - owner 2026-11-13) "attach this card to it": off the faction sheet, but not
+            // purged - no "when a player purges" effects (Aggressive Broker, Soul Cage, Erasure Corps)
+            if (G.fixes >= 27) {
+                const int i = leaderIndex(G, p, kHero);
+                if (i >= 0) pl.leaders[size_t(i)].status = kPurged;
+            } else {
+                purgeHero(p);
+            }
             G.planets[x].exhausted = false;
             G.planets[x].ulHero = true;
             heroEvent4(E, G, p, pn(p) + " uses Ul the Progenitor: Elysium awakens (+3/+3, Space Cannon 5 x3).");

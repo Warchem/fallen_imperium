@@ -39,13 +39,25 @@ Answer pickOne(int id) {
 
 float expectedHits(const Game& g, int p, const Force& f, bool space) {
     float e = 0, miss = 1.f;
+    // (Sardakk review, owner 2026-11-11) Unrelenting: +1 to each of their units' combat rolls
+    const bool seat = p >= 0 && p < g.numPlayers;
+    const int mod = seat && aiTune("unrelodds", 1.f) > 0.f && isFaction(g, p, "sardakk") ? 1 : 0;
+    // C'morran N'orr (the same review): +1 to the other ships' combat rolls while it is in the fleet
+    const bool cmorran = space && seat && f.n[int(UnitType::Flagship)] > 0 && aiTune("cmorranodds", 1.f) > 0.f && flagshipAbility(g, p, "sardakk");
+    // (the Jol-Nar review, checkpoint 2 - switch fragodds, test) Fragile: -1 to their combat rolls (infantry beside a Shield
+    // Paling mech excepted); J.N.S. Hylarim: each natural 9 or 10 makes 2 more hits (0.4 hits a die)
+    const bool frag = seat && aiTune("fragodds", 0.f) > 0.f && isFaction(g, p, "jolnar");
+    const bool paling = frag && !space && f.n[int(UnitType::Mech)] > 0 && mechAbilities(g);
+    if (frag && space && f.n[int(UnitType::Flagship)] > 0 && flagshipAbility(g, p, "jolnar"))
+        e += 0.4f * float(f.n[int(UnitType::Flagship)] * std::max<int>(1, unitDef(g, p, UnitType::Flagship).combatDice));
     for (int t = 0; t < kUnitTypes; ++t) {
         if (!f.n[t]) continue;
         UnitType ut = UnitType(t);
         if (space ? !isShip(ut) : !isGroundForce(ut)) continue;
         const UnitDef& u = unitDef(g, p, ut);
         if (u.combat <= 0) continue;
-        float chance = std::max(0.f, std::min(1.f, (11.f - u.combat) / 10.f));
+        const int m = mod + (cmorran && ut != UnitType::Flagship ? 1 : 0) - (frag && !(paling && ut == UnitType::Infantry) ? 1 : 0);
+        float chance = std::max(0.f, std::min(1.f, (11.f - u.combat + m) / 10.f));
         e += f.n[t] * chance * std::max<int>(1, u.combatDice);
         for (int k = 0; k < f.n[t] * std::max<int>(1, u.combatDice); ++k) miss *= 1.f - chance;
     }
@@ -101,6 +113,15 @@ float cannonThreat(const Game& g, int p, int sys) {
 // resources and influence again, most of all next to our home and next to
 // what we already hold - a growing economy and a compact border around home.
 // Fades out by round 5, when objectives take over.
+// (0.59.0) the Crimson have no space dock out on the board yet (their home is beside it); (0.59.1, owner: the Creuss
+// expand slowly) the Creuss too - their home is beside the board as well
+bool crimsonNeedsDock(const Game& g, int p) {
+    if (!isFaction(g, p, "crimson") && !(isFaction(g, p, "ghost") && aiTune("creussdock", 1.f) > 0.f)) return false;
+    for (const PlanetState& ps : g.planets)
+        if (ps.owner == p && ps.units[size_t(p)].count(UnitType::SpaceDock) && g.systems[size_t(ps.system)].home != p) return false;
+    return true;
+}
+
 float economyValue(const Game& g, int p, int pl) {
     static const float kRound[6] = {1.f, 1.f, 0.85f, 0.6f, 0.3f, 0.1f};
     const float k = kRound[std::min(5, std::max(0, g.round))] * aiTune("econ", 1.f);
@@ -126,7 +147,9 @@ float economyValue(const Game& g, int p, int pl) {
                 break;
             }
         }
-    const float worth = float(planetResources(g, pl)) + 0.8f * float(planetInfluence(g, pl)) + 0.6f;
+    // (0.59.1) the Creuss home has 2 influence: the custodians (6) and influence objectives need it from the planets
+    const float infW = isFaction(g, p, "ghost") ? aiTune("creussinf", 1.25f) : 0.8f;
+    const float worth = float(planetResources(g, pl)) + infW * float(planetInfluence(g, pl)) + 0.6f;
     // taking a planet from someone is a fight, valued elsewhere: only a little here
     return worth * near * k * (ps.owner >= 0 ? 0.3f : 1.2f);
 }
@@ -288,6 +311,28 @@ float presenceValue(const Game& g, int p, int sys) {
 float fightOdds(const Game& g, int att, const Force& a, int def, const Force& d, bool space) {
     float ea = expectedHits(g, att, a, space), ed = expectedHits(g, def, d, space);
     float ha = hitPoints(g, att, a, space), hd = hitPoints(g, def, d, space);
+    // (Sardakk review, owner 2026-11-11) Valkyrie Exoskeleton: each Sardakk mech that can still sustain strikes back
+    // once when it does (about 0.7 of a hit - it has to be hit first; never a sure win on its own)
+    if (!space && hd > 0 && ha > 0 && mechAbilities(g) && aiTune("valkodds", 1.f) > 0.f) {
+        auto strike = [&](int p, const Force& f) {
+            const int m = int(UnitType::Mech);
+            return p >= 0 && p < g.numPlayers && isFaction(g, p, "sardakk") ? 0.7f * float(f.n[m] - f.dmg[m]) : 0.f;
+        };
+        if (const float s = strike(att, a)) hd = std::max(0.5f, hd - s);
+        if (const float s = strike(def, d)) ha = std::max(0.5f, ha - s);
+    }
+    // (the Mahact review, checkpoint 2 - test knob rexodds) Arvicon Rex: +2 to the flagship's rolls against an opponent
+    // whose command token isn't in the Mahact's fleet pool (0.2 more hits per die). OFF: it changes almost nothing (90
+    // games 14 wins / 6.87 VP against 14 / 6.84; fresh seeds 7 / 6.43 both)
+    if (space && aiTune("rexodds", 0.f) > 0.f) {
+        auto rex = [&](int p, const Force& f, int opp) {
+            if (p < 0 || p >= g.numPlayers || !f.n[int(UnitType::Flagship)] || !flagshipAbility(g, p, "mahact")) return 0.f;
+            if (opp >= 0 && opp < g.numPlayers && ((g.players[size_t(p)].edict >> opp) & 1)) return 0.f;
+            return 0.2f * float(f.n[int(UnitType::Flagship)] * std::max<int>(1, unitDef(g, p, UnitType::Flagship).combatDice));
+        };
+        ea += rex(att, a, def);
+        ed += rex(def, d, att);
+    }
     if (hd <= 0) return 1.f;
     if (ha <= 0) return 0.f;
     if (ed <= 0.01f) return ea > 0 ? 0.98f : 0.5f;
@@ -303,19 +348,51 @@ bool controlsMecatol(const Game& g, int p);
 Answer aiProduce(const Game& g, const Decision& d);
 
 // Would we buy anything if we produced in sys now? (asks the production code itself)
-bool wouldProduce(const Game& g, int p, int sys) {
+bool wouldProduce(const Game& g, int p, int sys, int extra = 0) {
     Decision d;
     d.player = p;
     d.kind = DecisionKind::Produce;
     d.tag = Tag::Production;
     d.system = sys;
-    d.amount = productionCapacity(g, p, sys);
+    d.amount = productionCapacity(g, p, sys) + extra;
     if (d.amount <= 0) return false;
     Answer a = aiProduce(g, d);
     for (int t = 0; t < kUnitTypes && t < int(a.data.size()); ++t)
         if (a.data[t] > 0) return true;
     return false;
 }
+
+}  // namespace
+
+// (the Muaat review, checkpoint 2 - test knob umbatplan) Would Umbat's production buy anything now? Asks the production
+// code with Umbat's limits (2 units, each costing 4 or less) in each system with our war sun or flagship. (The real one
+// may also put ground forces on any of our planets there: this is the cautious side.)
+int aiUmbatSystem(const Game& g, int p) {
+    int best = -1, bestCost = 0;
+    for (size_t s = 0; s < g.systems.size(); ++s) {
+        const Force& f = g.systems[s].space[size_t(p)];
+        if (!f.count(UnitType::WarSun) && !f.count(UnitType::Flagship)) continue;
+        Decision d;
+        d.player = p;
+        d.kind = DecisionKind::Produce;
+        d.tag = Tag::Production;
+        d.system = int(s);
+        d.amount = 2;
+        d.context = "Up to 2 units. Only units that cost 4 or less.";
+        int mask = 0;
+        for (int t = 0; t < kUnitTypes; ++t)
+            if (unitCost2(g, p, UnitType(t)) <= 8) mask |= 1 << t;
+        d.hitMask = mask;
+        Answer a = aiProduce(g, d);
+        int cost = 0;  // (what it buys there, in production cost)
+        for (int t = 0; t < kUnitTypes && t < int(a.data.size()); ++t) cost += a.data[size_t(t)] * unitCost2(g, p, UnitType(t));
+        if (cost > bestCost) bestCost = cost, best = int(s);
+    }
+    return best;
+}
+bool aiUmbatWorth(const Game& g, int p) { return aiUmbatSystem(g, p) >= 0; }
+
+namespace {
 
 // Competitive: how much nearer to our objectives the board would be after a move.
 // Plays the move out on a copy (ships in, unopposed planets taken) and scores every
@@ -377,6 +454,134 @@ struct Plan {
     std::vector<int> move;
 };
 
+// (Sardakk review, owner 2026-11-11 - test A) the ground forces a Sardakk landing needs: the fewest infantry with ground
+// odds of sardodds (0.7) - Unrelenting, Valkyrie Particle Weave and the mech counted - instead of 2 per defender + 1
+int sardakkNeed(const Game& g, int p, int pl, int fixedNeed) {
+    if (fixedNeed <= 1 || aiTune("sardgodds", 0.f) <= 0.f || !isFaction(g, p, "sardakk")) return fixedNeed;
+    Force def;
+    int dq = g.planets[size_t(pl)].owner >= 0 && g.planets[size_t(pl)].owner != p ? g.planets[size_t(pl)].owner : -1, most = 0;
+    for (int q = 0; q < kSides; ++q) {
+        if (q == p) continue;
+        const Force& f = g.planets[size_t(pl)].units[size_t(q)];
+        for (UnitType t : {UnitType::Infantry, UnitType::Mech}) {
+            def.add(t, f.count(t));
+            def.dmg[int(t)] = uint8_t(def.dmg[int(t)] + f.dmg[int(t)]);
+        }
+        if (dq < 0 && f.groundForces() > most) most = f.groundForces(), dq = q;
+    }
+    if (def.groundForces() == 0) return fixedNeed;
+    if (dq < 0) dq = kNeutral;
+    const float bar = aiTune("sardodds", 0.7f);
+    for (int n = 1; n < fixedNeed; ++n) {
+        Force a;
+        a.add(UnitType::Infantry, n);
+        if (fightOdds(g, p, a, dq, def, false) >= bar) return n + (fixedNeed - (def.groundForces() * 2 + 1) > 0 ? fixedNeed - (def.groundForces() * 2 + 1) : 0);
+    }
+    return fixedNeed;
+}
+
+// does p have a mech anywhere on the board (the Firmament's Viper plans)?
+static bool aiHasMechOut(const Game& g, int p) {
+    for (const SystemState& s : g.systems)
+        if (s.space[size_t(p)].count(UnitType::Mech)) return true;
+    for (const PlanetState& ps : g.planets)
+        if (ps.units[size_t(p)].count(UnitType::Mech)) return true;
+    return false;
+}
+
+// (2026-11-12, found in the Sardakk review) A plan that takes away the ships whose capacity holds fighters or ground
+// forces in another system's space strands them there: the move was refused and the plan dropped - most often the
+// strike of an operation ("everything in reach goes in") whose carrier also held the fighters next to it. Take the
+// stranded units along when the move stays legal, else leave enough capacity behind (the weakest ships with capacity).
+static std::vector<int> aiUnstrand(const Game& g, int p, int sys, std::vector<int> mv) {
+    auto leftAt = [&](const std::vector<int>& m, int s) {
+        Force left = g.systems[size_t(s)].space[size_t(p)];
+        for (size_t i = 0; i + 3 < m.size(); i += 4)
+            if (m[i] == s && m[i + 1] < 0) left.n[size_t(m[i + 2])] = uint8_t(std::max(0, int(left.n[size_t(m[i + 2])]) - m[i + 3]));
+        return left;
+    };
+    auto stranded = [&](const std::vector<int>& m, int s) { return overflowOf(g, p, s, leftAt(m, s)); };
+    auto addOne = [](std::vector<int>& m, int s, int t) {
+        for (size_t i = 0; i + 3 < m.size(); i += 4)
+            if (m[i] == s && m[i + 1] < 0 && m[i + 2] == t) {
+                ++m[i + 3];
+                return;
+            }
+        m.insert(m.end(), {s, -1, t, 1});
+    };
+    std::vector<int> srcs;
+    for (size_t i = 0; i + 3 < mv.size(); i += 4)
+        if (mv[i + 1] < 0 && mv[i] != sys && mv[i] >= 0 && mv[i] < int(g.systems.size()) &&
+            std::find(srcs.begin(), srcs.end(), mv[i]) == srcs.end())
+            srcs.push_back(mv[i]);
+    for (int s : srcs) {
+        if (capacityOverflow(g, p, s) > 0 || stranded(mv, s) <= 0) continue;
+        // 1. along: fighters first, then ground forces
+        std::vector<int> along = mv;
+        Force left = leftAt(mv, s);
+        for (UnitType t : {UnitType::Fighter, UnitType::Infantry, UnitType::Mech})
+            while (left.n[int(t)] > 0 && stranded(along, s) > 0) {
+                addOne(along, s, int(t));
+                --left.n[int(t)];
+            }
+        if (stranded(along, s) <= 0 && checkMovePlan(g, p, sys, along, true, true).empty()) {
+            mv = along;
+            continue;
+        }
+        // 2. leave capacity behind (the weakest ships with capacity), with the load it held there
+        std::vector<int> stay = mv;
+        while (stranded(stay, s) > 0) {
+            int bi = -1, bc = -1, bcap = 0;
+            for (size_t i = 0; i + 3 < stay.size(); i += 4) {
+                if (stay[i] != s || stay[i + 1] >= 0 || !isShip(UnitType(stay[i + 2]))) continue;
+                const UnitDef& u = unitDef(g, p, UnitType(stay[i + 2]));
+                if (u.capacity <= 0) continue;
+                if (u.combat > bc || (u.combat == bc && u.capacity > bcap)) {
+                    bi = int(i);
+                    bc = u.combat;
+                    bcap = u.capacity;
+                }
+            }
+            if (bi < 0) break;
+            if (--stay[size_t(bi) + 3] == 0) stay.erase(stay.begin() + bi, stay.begin() + bi + 4);
+        }
+        if (stranded(stay, s) > 0) continue;
+        // ... its load from there stays too (as much as fits with what stays)
+        auto dropOne = [&](std::vector<int>& m, size_t i) {
+            if (--m[i + 3] == 0) m.erase(m.begin() + long(i), m.begin() + long(i) + 4);
+        };
+        for (UnitType t : {UnitType::Mech, UnitType::Infantry, UnitType::Fighter}) {
+            for (bool more = true; more;) {
+                more = false;
+                for (size_t i = 0; i + 3 < stay.size(); i += 4)
+                    if (stay[i] == s && stay[i + 1] < 0 && stay[i + 2] == int(t)) {
+                        std::vector<int> back = stay;
+                        dropOne(back, i);
+                        if (stranded(back, s) <= 0 && checkMovePlan(g, p, sys, stay, true, true).rfind("Not enough capacity", 0) == 0) {
+                            stay = back;
+                            more = true;
+                        }
+                        break;
+                    }
+            }
+        }
+        // ... and pick-ups from planets come off while the ships that still go can't carry them (last ones first)
+        auto cargoShort = [&](const std::vector<int>& m) {
+            const std::string e = checkMovePlan(g, p, sys, m, true, true);
+            return e.rfind("Not enough capacity", 0) == 0 || e.rfind("No moving ship with capacity", 0) == 0;
+        };
+        for (int guard = 0; guard < 40 && cargoShort(stay); ++guard) {
+            size_t last = stay.size();
+            for (size_t i = 0; i + 3 < stay.size(); i += 4)
+                if (stay[i + 1] >= 0) last = i;
+            if (last >= stay.size()) break;
+            dropOne(stay, last);
+        }
+        if (stranded(stay, s) <= 0) mv = stay;
+    }
+    return mv;
+}
+
 // Builds a movement plan into 'sys' and estimates its value.
 Plan buildPlan(const Game& g, int p, int sys, bool forActivation) {
     Plan plan;
@@ -384,6 +589,8 @@ Plan buildPlan(const Game& g, int p, int sys, bool forActivation) {
     const SystemState& target = g.systems[sys];
     if (target.isHyperlane()) return plan;
     if (forActivation && !canActivate(g, p, sys)) return plan;
+    // (fixes 26, the Mahact review) Il Na Viroset now ends the turn at the activation: nothing to plan in such a system
+    if (forActivation && g.fixes >= 26 && g.systems[size_t(sys)].hasToken(p)) return plan;
     if (aiPromiseForbids(g, p, sys)) return plan;  // we promised to stay out
     if (target.home >= 0 && target.home != p && isFaction(g, target.home, "crimson")) return plan;  // Sundered: units die there
     const bool gd = moveBoost(g, p);  // Gravity Drive / Ionian Fuel Refinery
@@ -402,14 +609,21 @@ Plan buildPlan(const Game& g, int p, int sys, bool forActivation) {
     }
     const bool neutralFoe = enemy == kNeutral;
     std::vector<int> targets;
-    int gfNeeded = 0;
+    int gfNeeded = 0, freeTargets = 0;
     float prize = 0;
     const Style& S = aiStyle(g, p);
     // betrayal timing (0.25.0): at once below Competitive (by personality), Competitive when the economy allows
     const float urge = S.betrayTarget >= 0 ? aiBetrayUrge(g, p) : 1.f;
+    // (the Firmament bot review, owner 2026-11-11 "let's make those changes"): Viper EX-23 coexists instead of fighting,
+    // so one mech is all it takes to sit on another player's (non-home) planet - Viper Hollow takes it at the coup, and
+    // coexisting counts as control for objectives meanwhile. viperDelta = what the plan loses if no mech comes along
+    const bool viperOn = (g.modules & kModThundersEdge) && mechAbilities(g) && isFaction(g, p, "firmament") &&
+                         aiTune("viperplan", 1.f) > 0.f && aiLevelScale(g) > 0.f && aiHasMechOut(g, p);
+    int viperCount = 0, viperExtra = 0;
+    float viperDelta = 0.f;
     for (int16_t pl : target.planets) {
         if (g.planets[pl].owner == p) continue;
-        if (target.custodians && !g.custodiansRemoved && spendable(g, p, true) < 6) continue;
+        if (target.custodians && !g.custodiansRemoved && spendable(g, p, true) < aiCustodiansInf(g, p)) continue;
         int defenders = neutralGroundOn(g, pl);  // (neutral ground forces defend too)
         int magenHit = 0;
         for (int q = 0; q < g.numPlayers; ++q)
@@ -423,7 +637,11 @@ Plan buildPlan(const Game& g, int p, int sys, bool forActivation) {
                 }
             }
         targets.push_back(pl);
-        gfNeeded += (defenders > 0 ? defenders * 2 + 1 : 1) + magenHit;
+        if (defenders == 0 && g.planets[pl].owner < 0) ++freeTargets;
+        const int fightNeed = sardakkNeed(g, p, pl, (defenders > 0 ? defenders * 2 + 1 : 1) + magenHit);
+        const int po = g.planets[pl].owner;
+        const bool viper = viperOn && defenders > 0 && po >= 0 && po != p && !isHomePlanet(g, pl) && !((g.planets[pl].coexist >> p) & 1);
+        gfNeeded += viper ? 1 : fightNeed;
         float pv = planetValue(g, p, pl) * (defenders > 0 ? 0.7f : 1.f);
         if (S.on) {  // personality: grabbing free planets vs taking them from someone
             const int o = g.planets[pl].owner;
@@ -439,18 +657,26 @@ Plan buildPlan(const Game& g, int p, int sys, bool forActivation) {
                 if (fquirkIs(g, p, "l1z1x", 1) && g.planets[pl].units[o].structures()) pv += 2.f;  // Assimilation Protocol
             }
         }
+        if (viper) {
+            const float vv = planetValue(g, p, pl) * aiTune("viperv", 0.6f);
+            ++viperCount;
+            viperExtra += fightNeed - 1;
+            viperDelta += pv - vv;
+            pv = vv;
+        }
         prize += pv;
     }
     const float level = aiLevelScale(g);
     const Goals& G = aiGoals(g, p);
-    if (target.custodians && !g.custodiansRemoved && spendable(g, p, true) >= 6)
+    if (target.custodians && !g.custodiansRemoved && spendable(g, p, true) >= aiCustodiansInf(g, p))
         prize += level > 0.f ? kVP * 1.3f : 5.f;  // a victory point (and Mecatol Rex for Imperial)
     // 0.44.2 (tester: nobody touched Mecatol Rex before mid round 3 - in the sims only 9% of round-2 turns had ground
     // forces that could reach it): influence for the custodians but none ready this turn - park a loaded ship in
     // Mecatol Rex's space (taken next round, and nobody else lands without a fight)
     int infAll = g.players[size_t(p)].tradeGoods;  // (exhausted planets too: ready again next round)
     for (int x : controlledPlanets(g, p)) infAll += planetInfluence(g, x);
-    const bool custodiansLater = level > 0.f && target.custodians && !g.custodiansRemoved && spendable(g, p, true) < 6 && infAll >= 6 &&
+    const bool custodiansLater = level > 0.f && target.custodians && !g.custodiansRemoved && spendable(g, p, true) < aiCustodiansInf(g, p) &&
+                                 infAll >= aiCustodiansInf(g, p) &&
                                  g.round >= (level >= 0.99f ? 1 : 2) && aiTune("seatpark", 1.f) > 0.f;
 
     // Plan Ahead (0.53.0): the operation this bot works toward over several turns (ai_ops.cpp)
@@ -475,6 +701,7 @@ Plan buildPlan(const Game& g, int p, int sys, bool forActivation) {
         int from, loc, type, count, dist;
     };
     std::vector<Group> ships, gfs;
+    std::vector<Group> guards;  // (0.58.2) the calm home's one guard, when it can complete a two-planet claim
     // Ahk-Syl Siven (Nomad hero, 0.43.0 debug passes): this round the flagship may leave systems with our tokens - the
     // planner used to skip those systems altogether, so the hero did nothing for a bot
     const bool siven = heroActive(g, p, "nomad");
@@ -529,9 +756,10 @@ Plan buildPlan(const Game& g, int p, int sys, bool forActivation) {
         if (g.systems[s].home != p && f.count(UnitType::SpaceDock) && unitDef(g, p, UnitType::SpaceDock).spaceOnly &&
             enemyNear(g, p, int(s), 2))
             keep = std::max(keep, 1);
-        // 0.44.2 (tester: the Saar don't fortify their factories): 2 when an enemy is right next door (Hard and up)
+        // 0.44.2 (tester: the Saar don't fortify their factories): 2 when an enemy is right next door (Hard and up) - OFF since
+        // the Saar review (owner 2026-11-13, checkpoint 2: 53 wins vs 39 in 360 games without it; saarfort=1 brings it back)
         if (g.systems[s].home != p && f.count(UnitType::SpaceDock) && unitDef(g, p, UnitType::SpaceDock).spaceOnly && level >= 0.99f &&
-            enemyNear(g, p, int(s), 1) && aiTune("saarfort", 1.f) > 0.f)
+            enemyNear(g, p, int(s), 1) && aiTune("saarfort", 0.f) > 0.f)
             keep = std::max(keep, 2);
         // Mobile Command (Ghoti, Discordant Stars): their home goes wherever the flagship goes - nothing stands guard
         if ((g.modules & kModDiscordant) && g.systems[s].home == p && isFaction(g, p, "ghoti")) keep = 0;
@@ -601,6 +829,8 @@ Plan buildPlan(const Game& g, int p, int sys, bool forActivation) {
             }
             bool keepOne = guardPlanet >= -1 ? pl == guardPlanet : (g.systems[s].home == p || enemyNear(g, p, int(s), 1));
             int inf = pf.count(UnitType::Infantry) - (keepOne ? 1 : 0);
+            if (keepOne && guardPlanet >= 0 && pl == guardPlanet && pf.count(UnitType::Infantry) > 0 && sys != int(s))
+                guards.push_back({int(s), pl, int(UnitType::Infantry), 1, 0});
             if (pf.count(UnitType::Mech) && keepOne && inf < 0) inf = pf.count(UnitType::Infantry);
             if (inf > 0) gfs.push_back({int(s), pl, int(UnitType::Infantry), inf, 0});
             int mech = pf.count(UnitType::Mech) - ((keepOne && pf.count(UnitType::Infantry) == 0) ? 1 : 0);
@@ -701,6 +931,19 @@ Plan buildPlan(const Game& g, int p, int sys, bool forActivation) {
         }
         plan.value += enemyShips.nonFighterShips() * 1.5f * odds * aggr;
         plan.value += (G.combat + (vsLeader ? G.leaderThreat : 0.f) + secret) * odds * aggr;
+        // (the Mahact review, checkpoint 2 - test knob edictval) Edict: a won fight puts one of the loser's tokens in our
+        // fleet pool if none is there yet - a fleet token, their commander through Imperia once it is unlocked, and the
+        // step toward Il Na Viroset (2 other factions' tokens). OFF (90 games: edictval=4 Edict tokens 219 -> 245, 14 wins
+        // / 6.87 VP against 14 / 6.84; edictval=8 259 tokens but 8 wins - more fights, no more wins; with rexodds on fresh
+        // seeds 6300/6400 10 / 6.66 against 7 / 6.43, seeds 6500/6600 9 / 6.67 against 14 / 6.83: 33 wins in 270 games
+        // against 35)
+        if (aiTune("edictval", 0.f) > 0.f && !neutralFoe && enemy < g.numPlayers && isFaction(g, p, "mahact") &&
+            !((g.players[size_t(p)].edict >> enemy) & 1)) {
+            float e = 1.f;
+            if (leaderStatus(g, enemy, kCommander) != kLocked) e += 0.5f;
+            if (leaderStatus(g, p, kCommander) == kLocked && __builtin_popcount(g.players[size_t(p)].edict) == 1) e += 0.5f;
+            plan.value += aiTune("edictval", 0.f) * e * odds;
+        }
         if (aggr > 1.f) plan.value += (aggr - 1.f) * 4.f * odds;  // a grudge, or a warlike nature
         // (the gathering's end: worth the prize and what was put into getting there)
         {
@@ -742,6 +985,8 @@ Plan buildPlan(const Game& g, int p, int sys, bool forActivation) {
         }
     }
     // Ground forces for planets.
+    if (viperCount > 0 && mine.count(UnitType::Mech) == 0)  // (a Viper target: the mechs are picked up first)
+        std::stable_partition(gfs.begin(), gfs.end(), [](const Group& gr) { return gr.type == int(UnitType::Mech); });
     int gfWanted = std::max(0, gfNeeded - gfInSpace);
     std::vector<int> gfLeft(gfs.size());  // per group: not taken yet
     for (size_t i = 0; i < gfs.size(); ++i) gfLeft[i] = gfs[i].count;
@@ -824,6 +1069,25 @@ Plan buildPlan(const Game& g, int p, int sys, bool forActivation) {
             }
         }
     }
+    // (0.59.1: carrying every ground force out of the Creuss home was tried and made them slower - 2.1 planets in round 1
+    // instead of 2.5, slice 57% instead of 73%: waiting at home they reach any slice system with the next carrier)
+    // 0.58.2 (tester: "not bringing 2 infantry to double systems upon initial expansion"): in rounds 1-2 a carrier one
+    // ground force short of taking every free planet of a system takes the calm home's guard along (it used to land 1
+    // of 2 - 16% of the first expansions into two-planet systems - and the other planet waited rounds for a new token)
+    if (level > 0.f && g.round <= 2 && enemy < 0 && freeTargets >= 2 && gfWanted == 1 && !guards.empty() &&
+        aiTune("guardgo", 1.f) > 0.f) {
+        for (const Group& gu : guards) {
+            if (gfWanted <= 0 || gu.from >= 256) break;
+            bool carrying = false;  // a carrier from the guard's system is in the plan
+            for (size_t i = 0; i < move.size(); i += 4)
+                if (move[i] == gu.from && move[i + 1] < 0 && unitDef(g, p, UnitType(move[i + 2])).capacity > 0) carrying = true;
+            if (!carrying || capacityFrom[gu.from] <= 0) continue;
+            move.insert(move.end(), {gu.from, gu.loc, gu.type, 1});
+            arriving.add(UnitType(gu.type), 1);
+            --gfWanted;
+            --capacityFrom[gu.from];
+        }
+    }
     // Mechanize the Military (0.43.0 debug passes): carry spare mechs to our planets here that have none - the bots
     // built their mechs and left them together on the dock planet (aiLand puts them down one each)
     if (level > 0.f && G.mech > 0.f && enemy < 0 && aiTune("mtm", 1.f) > 0.f) {
@@ -875,6 +1139,17 @@ Plan buildPlan(const Game& g, int p, int sys, bool forActivation) {
                 break;
             }
     if (S.on && S.pres > 1.f && target.planets.empty() && !target.isHyperlane() && !hasShips(g, p, sys)) presence += 1.f;
+    // (the Vuil'raith review, checkpoint 2 - test knob riftseek) That Which Molds Flesh unlocks with units in 3 gravity
+    // rifts: a ship into a rift without our units, the more when it is the 2nd or the 3rd. riftseek=3, 90 games each: 15 wins
+    // / 6.61 VP against 11 / 6.41 (commander in 25 games vs 17), fresh seeds 14 / 7.02 against 9 / 6.87, plain 19 / 7.07
+    // against 17 / 6.93 (41 vs 29, round 3.2 vs 4.1). Owner 2026-11-12: ON (default 3).
+    if (aiTune("riftseek", 3.f) > 0.f && isFaction(g, p, "cabal") && leaderStatus(g, p, kCommander) == kLocked &&
+        (anomaliesFor(g, p, sys) & kRift) && !hasUnits(g, p, sys)) {
+        int n = 0;
+        for (size_t s = 0; s < g.systems.size(); ++s)
+            if (int(s) != sys && (anomaliesFor(g, p, int(s)) & kRift) && hasUnits(g, p, int(s))) ++n;
+        presence += aiTune("riftseek", 3.f) * (n >= 2 ? 1.f : n == 1 ? 0.5f : 0.25f);
+    }
     if (presence > 0 && arriving.ships() == 0 && mine.ships() == 0 && enemy < 0) {
         const Group* pickShip = nullptr;
         for (const Group& gr : ships) {
@@ -1083,8 +1358,8 @@ Plan buildPlan(const Game& g, int p, int sys, bool forActivation) {
             for (int16_t pl : g.systems[a].planets) {
                 if (g.planets[pl].owner == p) continue;
                 if (gwOnly && g.planets[pl].owner >= 0) continue;
-                if (g.systems[a].custodians && !g.custodiansRemoved && spendable(g, p, true) < 6 &&
-                    !(infAll >= 6 && aiTune("seatstage", 1.f) > 0.f))  // (0.44.2: enough once the planets are ready again)
+                if (g.systems[a].custodians && !g.custodiansRemoved && spendable(g, p, true) < aiCustodiansInf(g, p) &&
+                    !(infAll >= aiCustodiansInf(g, p) && aiTune("seatstage", 1.f) > 0.f))  // (0.44.2: enough once the planets are ready again)
                     continue;
                 int def = 0;
                 for (int q = 0; q < g.numPlayers; ++q)
@@ -1095,7 +1370,7 @@ Plan buildPlan(const Game& g, int p, int sys, bool forActivation) {
             }
             if (!gwOnly) v += aiPresenceValue(g, p, a, true) * 0.5f;
             // 0.44.2: the custodians are a victory point - worth staging for (as in the plan that takes them)
-            if (g.systems[a].custodians && !g.custodiansRemoved && infAll >= 6 && aiTune("seatstage", 1.f) > 0.f)
+            if (g.systems[a].custodians && !g.custodiansRemoved && infAll >= aiCustodiansInf(g, p) && aiTune("seatstage", 1.f) > 0.f)
                 v += kVP * 1.3f * aiTune("seatstage", 1.f);
             if (a == g.mecatol()) v *= S.mecatol;  // Rusher, Heirs of Lazax: work toward Mecatol Rex
             frontier = std::max(frontier, v);
@@ -1137,6 +1412,7 @@ Plan buildPlan(const Game& g, int p, int sys, bool forActivation) {
     // (production follows movement in the active system).
     bool ffArrives = false;
     float ffValue = 0;
+    int ffCapAt = -1;  // the system whose factory's capacity is in capacityFrom
     if (level > 0.f && unitDef(g, p, UnitType::SpaceDock).spaceOnly && target.home != p && !hasProductionIn(g, p, sys) &&
         aiTune("saarball", 1.f) > 0.f) {
         bool safe = enemy < 0;
@@ -1214,14 +1490,88 @@ Plan buildPlan(const Game& g, int p, int sys, bool forActivation) {
         }
         if (ffFrom >= 0) {
             move.insert(move.end(), {ffFrom, -1, int(UnitType::SpaceDock), 1});
+            // (the Saar review, checkpoint 2 - owner 2026-11-13 19:40: ON; ffcargo=0 the old way) the factory's capacity
+            // counts for what rides along - without it the fighters it held were left stranded and the move refused, the
+            // factory dropped (59 wins vs 53 in 360 games, factory moves 2.7-3.2 a game vs 1.5-1.7)
+            if (ffFrom < 256 && (aiTune("ffcargo", 1.f) > 0.f || aiTune("saarball3", 0.f) > 0.f || aiTune("sbpull", 0.f) > 0.f)) {
+                capacityFrom[ffFrom] += unitDef(g, p, UnitType::SpaceDock).capacity;
+                ffCapAt = ffFrom;
+            }
             ffArrives = true;
             ffValue = std::min(front, 4.f) * aiTune("saarball", 1.f);
             if (ffFrom == home) ffValue -= 1.f;  // home loses its yard
             // 0.44.2: the Saarball - the factory moves on with its fleet (2+ warships) and builds at the front
             if (aiTune("saarball2", 1.f) > 0.f && ffEscort >= 2) ffValue += std::min(front, 6.f) * 0.5f + 1.5f;
+            // (the Saar review, checkpoint 2 - switch sbpull, test) the ball's factory going toward its front is worth more,
+            // away from it less (the planner's own moves - no steps of their own)
+            if (aiTune("sbpull", 0.f) > 0.f) {
+                const SaarBall& sb = aiSaarBall(g, p);
+                if (sb.ball == ffFrom && sb.toFront.size() == g.systems.size() && sb.toFront[size_t(ffFrom)] >= 0) {
+                    const int now = sb.toFront[size_t(ffFrom)], then = sb.toFront[size_t(sys)] >= 0 ? sb.toFront[size_t(sys)] : now + 1;
+                    const float k = aiTune("sbpull", 0.f);
+                    ffValue += then < now ? k * float(now - then) : -0.5f * k * float(then - now);
+                }
+            }
         }
     }
     plan.value += ffValue;
+    // The Saarball (the Saar review, owner 2026-11-13 - switch saarball3, test): this turn's step toward the front - the
+    // ball's factory and its whole escort go together and build where they arrive
+    float sbValue = 0.f;
+    if (forActivation && level > 0.f && aiTune("saarball3", 0.f) > 0.f) {
+        const SaarBall& sb = aiSaarBall(g, p);
+        if (sb.ball >= 0 && sb.next == sys) {
+            const std::vector<int> before = move;
+            const Force arrivedBefore = arriving;
+            int capBefore = sb.ball < 256 ? capacityFrom[sb.ball] : 0;
+            bool hasFF = false;
+            for (size_t i = 0; i + 3 < move.size(); i += 4)
+                if (move[i] == sb.ball && move[i + 1] < 0 && move[i + 2] == int(UnitType::SpaceDock)) hasFF = true;
+            if (!hasFF) move.insert(move.end(), {sb.ball, -1, int(UnitType::SpaceDock), 1});
+            if (sb.ball < 256 && ffCapAt != sb.ball) {
+                capacityFrom[sb.ball] += unitDef(g, p, UnitType::SpaceDock).capacity;
+                ffCapAt = sb.ball;
+            }
+            // its whole escort (the guard the planner keeps at a factory goes with the factory; at home 1 warship stays
+            // while enemies are within 2 - Nomadic: the Saar score without their home)
+            const Force& bf = g.systems[size_t(sb.ball)].space[size_t(p)];
+            int stay = sb.ball == myHome && enemyNear(g, p, sb.ball, 2) ? 1 : 0;
+            for (int pass = 0; pass < 2; ++pass)  // (warships without capacity stay first)
+                for (int t : kShipIdx) {
+                    if (t == int(UnitType::Fighter) || !bf.n[t] || (unitDef(g, p, UnitType(t)).capacity <= 0) != (pass == 0)) continue;
+                    if (!shipReach(g, p, sb.ball, sys, UnitType(t), 0).ok) continue;
+                    int already = 0;
+                    for (size_t i = 0; i + 3 < move.size(); i += 4)
+                        if (move[i] == sb.ball && move[i + 1] < 0 && move[i + 2] == t) already += move[i + 3];
+                    int k = bf.n[t] - already;
+                    const int st = std::min(stay, k);
+                    k -= st;
+                    stay -= st;
+                    k = std::min(k, fleetRoom());
+                    if (k > 0) addShips(Group{sb.ball, -1, t, k, 1}, k);
+                }
+            int escort = mine.nonFighterShips();  // (a factory never rolls alone: blockaded, it is destroyed - ours already there count)
+            for (size_t i = 0; i + 3 < move.size(); i += 4)
+                if (move[i] == sb.ball && move[i + 1] < 0 && isShip(UnitType(move[i + 2])) && move[i + 2] != int(UnitType::Fighter)) escort += move[i + 3];
+            if (escort == 0) {
+                static const bool sbDebug = std::getenv("TI4_SAARDEBUG") != nullptr;  // (test only)
+                if (sbDebug) {
+                    std::fprintf(stderr, "sbnoescort into %s from %s:", kSystems[target.def].name, kSystems[g.systems[size_t(sb.ball)].def].name);
+                    for (int t : kShipIdx)
+                        if (bf.n[t]) std::fprintf(stderr, " %dx%s reach %d", int(bf.n[t]), unitTypeName(UnitType(t)), int(shipReach(g, p, sb.ball, sys, UnitType(t), 0).ok));
+                    std::fprintf(stderr, " token %d fleetroom %d\n", int(g.systems[size_t(sb.ball)].hasToken(p)), fleetRoom());
+                }
+                move = before;
+                arriving = arrivedBefore;
+                if (sb.ball < 256) capacityFrom[sb.ball] = capBefore;
+                if (!hasFF && ffCapAt == sb.ball) ffCapAt = -1;
+            } else {
+            ffArrives = true;
+            sbValue = aiTune("saarball3", 0.f) * (1.5f + 0.5f * std::min(6.f, std::max(0.f, sb.score)));
+            plan.value += sbValue;
+            }
+        }
+    }
     // Gauss Cannons (Mirveda PDS in the space area, 0.43.0 - owner D128: "move them with fleets to help take over
     // planets"): guns in the ships' own systems come along when the fleet is enough to win; they fire their space
     // cannon at the defenders and bombard the planets before the invasion
@@ -1311,11 +1661,25 @@ Plan buildPlan(const Game& g, int p, int sys, bool forActivation) {
             }
         }
     }
-    int gfArriving = arriving.groundForces() + gfInSpace + (drones ? arriving.count(UnitType::Fighter) : 0);
+    // (0.59.0, owner: "the Crimson don't expand into their slice") the Revenant: 1 mech from the reinforcements lands in
+    // a system with a breach (Incursion opens an inactive one when it is activated) - no carrier needed, as long as
+    // nobody else's ships are left there (the invasion needs the space clear)
+    const bool revenantDrop = forActivation && (g.modules & kModThundersEdge) && isFaction(g, p, "crimson") && mechAbilities(g) &&
+                              target.breach != 0 && unitsAvailable(g, p, UnitType::Mech) > 0 && !targets.empty() &&
+                              (enemy < 0 || !move.empty()) && aiTune("revenantplan", 1.f) > 0.f;
+    int gfArriving = arriving.groundForces() + gfInSpace + (drones ? arriving.count(UnitType::Fighter) : 0) + (revenantDrop ? 1 : 0);
     if (std::getenv("TI4_AIDEBUG3"))
         std::fprintf(stderr, "      %s: ships %zu gfs %zu targets %zu need %d arriving %d move %zu prize %.1f\n",
                      kSystems[target.def].name, ships.size(), gfs.size(), targets.size(), gfNeeded, gfArriving,
                      move.size() / 4, prize);
+    if (viperCount > 0 && std::getenv("TI4_VIPERDEBUG"))
+        std::fprintf(stderr, "VIPER r%d %s targets %d mech %d+%d need %d arriving %d enemy %d prize %.1f delta %.1f\n", g.round,
+                     kSystems[target.def].name, viperCount, arriving.count(UnitType::Mech), mine.count(UnitType::Mech), gfNeeded,
+                     gfArriving, enemy, prize, viperDelta);
+    if (viperCount > 0 && arriving.count(UnitType::Mech) + mine.count(UnitType::Mech) == 0) {  // no Viper: a fight after all
+        prize += viperDelta;
+        gfNeeded += viperExtra;
+    }
     if (!targets.empty()) {
         if (gfArriving == 0) prize = 0;
         else if (gfArriving < gfNeeded) prize *= float(gfArriving) / float(gfNeeded);
@@ -1329,7 +1693,7 @@ Plan buildPlan(const Game& g, int p, int sys, bool forActivation) {
         plan.value += kVP * 1.3f * level * aiTune("seatpark", 0.45f);
     // ... and a plan next to Mecatol Rex that brings ground forces beyond what its planets need, in a ship with
     // capacity: they stay aboard for the custodians (aiLand keeps them)
-    if (level > 0.f && enemy < 0 && !g.custodiansRemoved && g.mecatol() >= 0 && sys != g.mecatol() && infAll >= 6 &&
+    if (level > 0.f && enemy < 0 && !g.custodiansRemoved && g.mecatol() >= 0 && sys != g.mecatol() && infAll >= aiCustodiansInf(g, p) &&
         adjacentSystems(g, sys, g.mecatol()) && aiTune("seatkeep", 1.f) > 0.f && gfArriving > gfNeeded && !move.empty()) {
         bool carrier = false;
         for (size_t i = 0; i + 3 < move.size(); i += 4)
@@ -1360,7 +1724,7 @@ Plan buildPlan(const Game& g, int p, int sys, bool forActivation) {
                     if (g.planets[x].owner == p && g.planets[x].units[p].count(UnitType::PDS) > 0) {
                         std::vector<int> with = move;
                         with.insert(with.end(), {from, int(x), int(UnitType::PDS), 1});
-                        if (checkMovePlan(g, p, sys, with).empty()) {
+                        if (checkMovePlan(g, p, sys, with, false, true).empty()) {
                             move = with;
                             plan.value += 0.8f;
                             landing = false;
@@ -1381,14 +1745,53 @@ Plan buildPlan(const Game& g, int p, int sys, bool forActivation) {
             std::fprintf(stderr, "op move: p%d r%d into %s (%d away): readiness %.2f -> %.2f value %.1f\n", p, int(g.round), kSystems[target.def].name,
                          op.dist[size_t(sys)], op.readiness, after, plan.value);
     }
-    if (!move.empty() && !checkMovePlan(g, p, sys, move).empty()) {
+    // Hil Colish (fixes 24): ships that get here only through its delta wormhole need it to move first - take it along
+    if (!move.empty() && !checkMovePlan(g, p, sys, move, false, true).empty()) {
+        const int co = colishOrigin(g, p);
+        bool has = false;
+        for (size_t i = 0; i + 3 < move.size(); i += 4)
+            if (move[i] == co && move[i + 1] < 0 && move[i + 2] == int(UnitType::Flagship)) has = true;
+        if (co >= 0 && co != sys && !has) {
+            std::vector<int> with = move;
+            with.insert(with.begin(), {co, -1, int(UnitType::Flagship), 1});
+            if (checkMovePlan(g, p, sys, with, false, true).empty()) move = with;
+        }
+    }
+    if (!move.empty() && aiTune("unstrand", 0.f) > 0.f && !checkMovePlan(g, p, sys, move, false, true).empty()) {
+        std::vector<int> fixedMove = aiUnstrand(g, p, sys, move);
+        if (fixedMove != move && checkMovePlan(g, p, sys, fixedMove, false, true).empty()) {
+            if (enemy >= 0) {  // ships left behind: the fight's odds as they now are
+                Force before = mine, after = mine;
+                for (size_t i = 0; i + 3 < move.size(); i += 4)
+                    if (move[i + 1] < 0 && isShip(UnitType(move[i + 2]))) before.add(UnitType(move[i + 2]), move[i + 3]);
+                for (size_t i = 0; i + 3 < fixedMove.size(); i += 4)
+                    if (fixedMove[i + 1] < 0 && isShip(UnitType(fixedMove[i + 2]))) after.add(UnitType(fixedMove[i + 2]), fixedMove[i + 3]);
+                const float o0 = fightOdds(g, p, before, enemy, enemyShips, true), o1 = fightOdds(g, p, after, enemy, enemyShips, true);
+                if (o0 > 0.01f && o1 < o0) plan.value *= o1 / o0;
+            }
+            int gf0 = 0, gf1 = 0;  // ground forces that no longer come: the landing is worth less
+            for (size_t i = 0; i + 3 < move.size(); i += 4)
+                if (isGroundForce(UnitType(move[i + 2]))) gf0 += move[i + 3];
+            for (size_t i = 0; i + 3 < fixedMove.size(); i += 4)
+                if (isGroundForce(UnitType(fixedMove[i + 2]))) gf1 += fixedMove[i + 3];
+            if (gf0 > 0 && gf1 < gf0) plan.value *= 0.5f + 0.5f * float(gf1) / float(gf0);
+            move = fixedMove;
+        }
+    }
+    if (!move.empty() && !checkMovePlan(g, p, sys, move, false, true).empty()) {
+        static const bool sbDebug = std::getenv("TI4_SAARDEBUG") != nullptr;  // (test only)
+        if (sbDebug && sbValue > 0.f) {
+            std::fprintf(stderr, "sbrefused into %s: %s | move", kSystems[target.def].name, checkMovePlan(g, p, sys, move, false, true).c_str());
+            for (size_t i = 0; i + 3 < move.size(); i += 4) std::fprintf(stderr, " %d:%d:%d:%d", move[i], move[i + 1], move[i + 2], move[i + 3]);
+            std::fprintf(stderr, "\n");
+        }
         if (std::getenv("TI4_AIDEBUG2"))
             std::fprintf(stderr, "      plan into %s rejected: %s\n", kSystems[target.def].name,
-                         checkMovePlan(g, p, sys, move).c_str());
+                         checkMovePlan(g, p, sys, move, false, true).c_str());
         std::vector<int> shipsOnly;
         for (size_t i = 0; i < move.size(); i += 4)
             if (move[i + 1] < 0 && isShip(UnitType(move[i + 2]))) shipsOnly.insert(shipsOnly.end(), move.begin() + i, move.begin() + i + 4);
-        if (checkMovePlan(g, p, sys, shipsOnly).empty()) {
+        if (checkMovePlan(g, p, sys, shipsOnly, false, true).empty()) {
             move = shipsOnly;
             plan.value *= 0.3f;
         } else {
@@ -1397,6 +1800,27 @@ Plan buildPlan(const Game& g, int p, int sys, bool forActivation) {
         }
     }
     plan.move = move;
+    // Wormhole Weavers (Creuss faction trait, 0.59.0 - owner: make the trait do what it says): a strike that reaches
+    // another player's ships or planets through a wormhole is worth a quarter more - half more behind their lines (a
+    // planet of theirs with none of their ships in or next to its system)
+    if (!move.empty() && plan.value > 0.f && fquirkIs(g, p, "ghost", 0) && aiTune("weave", 1.25f) > 1.f) {
+        bool viaWh = false;
+        for (size_t i = 0; i + 3 < move.size() && !viaWh; i += 4)
+            if (move[i + 1] < 0 && move[i] != sys && isShip(UnitType(move[i + 2])) && UnitType(move[i + 2]) != UnitType::Fighter)
+                viaWh = shipReach(g, p, move[i], sys, UnitType(move[i + 2]), moveBonusMax(g, p)).viaWormhole;
+        bool enemy = false, behind = false;
+        for (int q = 0; q < g.numPlayers; ++q)
+            if (q != p && hasShips(g, q, sys)) enemy = true;
+        for (int16_t x : g.systems[size_t(sys)].planets) {
+            const int o = g.planets[size_t(x)].owner;
+            if (o < 0 || o == p || o >= g.numPlayers) continue;
+            enemy = true;
+            bool guarded = hasShips(g, o, sys);
+            for (int16_t a : g.systems[size_t(sys)].adj) guarded = guarded || hasShips(g, o, a);
+            if (!guarded) behind = true;
+        }
+        if (viaWh && enemy) plan.value *= behind ? aiTune("weaveback", 1.5f) : aiTune("weave", 1.25f);
+    }
     // 0.42.0 (#187): the space cannon waiting there and gravity rifts on the way can sink what we
     // send - a lone carrier past an enemy PDS used to go (and die) round after round
     if (!move.empty() && plan.value > 0.f && level > 0.f && aiTune("cannonrisk", 1.f) > 0.f) {
@@ -1429,7 +1853,7 @@ Plan buildPlan(const Game& g, int p, int sys, bool forActivation) {
             if (move[i + 2] == int(UnitType::SpaceDock)) still = true;
         if (!still) {
             ffArrives = false;
-            plan.value -= ffValue * 0.3f;
+            plan.value -= ffValue * 0.3f + sbValue;  // (the Saarball's step is the factory's)
         }
     }
     if (aiCompetitive(g) && !move.empty()) {  // what the move does for our objectives, played out
@@ -1462,16 +1886,30 @@ Plan buildPlan(const Game& g, int p, int sys, bool forActivation) {
     }
     // Production at this system - only if we would really build something there
     // (activating a system and then buying nothing wastes a command token)
+    // (the Arborec review, checkpoint 2 - test knob duhaplan) Duha Menaimon: activating the system the flagship already
+    // sits in lets it produce up to 5 units there - the planner counted only the infantry's PRODUCTION. Tested OFF:
+    // no effect (Duha used 37 times in 90 games against 36; 13 wins / 6.94 VP against 13 / 6.97) - the flagship
+    // mostly sits where the bot already activates or builds anyway
+    const int duha = aiTune("duhaplan", 0.f) > 0.f && isFaction(g, p, "arborec") && flagshipAbility(g, p, "arborec") &&
+                             flagshipIn(g, p, sys) && !noAbilities(g, p, sys)
+                         ? 5
+                         : 0;
     if (ffArrives && !move.empty()) {  // the factory builds where it arrives (budget as below)
         Reserve r = objectiveReserve(g, p);
         int budget = std::min(spendable(g, p, false) - r.resources - r.tradeGoods, aiFreeSpend(g, p, false));
         if (budget >= 3) plan.value += std::min<int>(unitDef(g, p, UnitType::SpaceDock).production, budget) * 0.6f + 1.0f;
-    } else if (hasProductionIn(g, p, sys) && !otherShipsIn(g, p, sys) && (level <= 0.f || wouldProduce(g, p, sys))) {
+    } else if ((hasProductionIn(g, p, sys) || duha > 0) && !otherShipsIn(g, p, sys) && (level <= 0.f || wouldProduce(g, p, sys, duha))) {
         Reserve r = objectiveReserve(g, p);
         int budget = spendable(g, p, false) - r.resources - r.tradeGoods;
         if (level > 0.f) budget = std::min(budget, aiFreeSpend(g, p, false));
-        if (budget >= 3) plan.value += std::min(productionCapacity(g, p, sys), budget) * 0.6f + 1.0f;
-        else if (budget >= 1 && level > 0.f) plan.value += budget * 0.6f + 0.6f;  // a couple of infantry still help
+        // (0.59.0, owner: the Crimson don't expand) with a dock out on the board, the home beside it builds 2 moves from
+        // everything: the dock out there is the better place
+        const float far = (isFaction(g, p, "crimson") || (isFaction(g, p, "ghost") && aiTune("creussdock", 1.f) > 0.f)) &&
+                                  g.systems[size_t(sys)].offBoard && sys == myHome && !crimsonNeedsDock(g, p) && aiTune("crimsonhome", 1.f) > 0.f
+                              ? 0.55f
+                              : 1.f;
+        if (budget >= 3) plan.value += (std::min(productionCapacity(g, p, sys) + duha, budget) * 0.6f + 1.0f) * far;
+        else if (budget >= 1 && level > 0.f) plan.value += (budget * 0.6f + 0.6f) * far;  // a couple of infantry still help
         // units an objective wants (flagship / war sun, dreadnoughts, mechs, a big fleet here)
         if (budget >= 3 && level > 0.f) {
             float want = 0;
@@ -1486,11 +1924,93 @@ Plan buildPlan(const Game& g, int p, int sys, bool forActivation) {
             plan.value += want * 0.8f;
         }
     }
-    if (move.empty() && !(hasProductionIn(g, p, sys) && plan.value > 0)) plan.value = 0;
+    // (0.59.0) nothing moves, but something lands: a Revenant, or ground forces already waiting in this space area (a
+    // carrier that came with Ahk Ravin's swap) - an activation is all it takes
+    const bool landsAnyway = plan.value > 0 && enemy < 0 && !targets.empty() && (revenantDrop || gfInSpace > 0) && aiTune("landhere", 1.f) > 0.f;
+    // (the Titans review, checkpoint 2 - knob awakenval = the value of each sleeper, default 3) Awaken: activating the
+    // system turns the Titans' sleeper tokens there into PDS - the bots awakened 2.3 of the 5.3 they placed a game, only
+    // when they happened to go there. Tested (awakenval=3): awakened 4.8 a game; TE 21 wins / 7.39 VP against 11 / 6.94,
+    // fresh seeds 21 / 7.37 against 15 / 6.88, plain (fresh) 24 / 7.88 against 18 / 7.38. With hecakeep=2: 29 / 7.94,
+    // fresh 26 / 7.86, plain fresh 25 / 7.71. ON (3) with hecakeep=2 since the owner's go (2026-11-13 15:31 "Let's turn on
+    // both"); awakenval=0 = the old way
+    float awaken = 0.f;
+    if (aiTune("awakenval", 3.f) > 0.f && forActivation && enemy < 0 && isFaction(g, p, "titans")) {
+        int n = 0;
+        for (int16_t x : target.planets)
+            if (g.planets[size_t(x)].sleeper && !g.planets[size_t(x)].destroyed) ++n;
+        n = std::min(n, unitsAvailable(g, p, UnitType::PDS) + unitsAvailable(g, p, UnitType::Mech));
+        awaken = aiTune("awakenval", 3.f) * float(n);
+        plan.value += awaken;
+    }
+    if (move.empty() && !((hasProductionIn(g, p, sys) || duha > 0) && plan.value > 0) && !landsAnyway && awaken <= 0.f) plan.value = 0;
+    // (0.59.1, owner: the Creuss park ships in their empty Gate - 7 of 30 games in round 1) a system with no planets
+    // right beside the home: going there buys one step and costs a command token, unless there is a fight or a build
+    if (plan.value > 0 && isFaction(g, p, "ghost") && aiTune("creussgate", 1.f) > 0.f && enemy < 0 && g.systems[size_t(sys)].planets.empty() &&
+        !g.systems[size_t(sys)].offBoard && (g.systems[size_t(sys)].d().wormholes & kDelta) && !hasProductionIn(g, p, sys) &&
+        !breakthroughIs(g, p, "ghost"))
+        plan.value *= 0.3f;
     return plan;
 }
 
+static Plan bestPlanCore(const Game& g, int p);
+
+// (the Mahact review, checkpoint 2 - test knob ilna) Il Na Viroset ends the turn at the activation (fixes 26), but both
+// tokens go back: ships locked in by our token can move again on a later turn, a dock can produce again. Worth the
+// turn and a tactic token when the best plan with that token gone uses the system (its ships or its production) -
+// at a discount for the turn it waits. OFF (90 games, ilna=0.7: used 108 times, the freed ships moved on the next turn
+// in 93; 13 wins / 6.66 VP against 14 / 6.84 - no gain).
 Plan bestPlan(const Game& g, int p) {
+    Plan best = bestPlanCore(g, p);
+    static const bool sbDebug = std::getenv("TI4_SAARDEBUG") != nullptr;  // (test only) the Saarball's step against the pick
+    if (sbDebug && aiTune("saarball3", 0.f) > 0.f) {
+        const SaarBall& sb = aiSaarBall(g, p);
+        if (sb.ball >= 0) {
+            const Plan st = sb.next >= 0 ? buildPlan(g, p, sb.next, true) : Plan();
+            bool ffIn = false;
+            for (size_t i = 0; i + 3 < st.move.size(); i += 4)
+                if (st.move[i + 2] == int(UnitType::SpaceDock)) ffIn = true;
+            if (sb.next >= 0 && !ffIn) {
+                // (why the step lost its factory: the move as the hook built it, checked)
+                std::fprintf(stderr, "sbdrop p%d into %s: %s\n", p, kSystems[g.systems[size_t(sb.next)].def].name,
+                             st.move.empty() ? "no move" : checkMovePlan(g, p, sb.next, st.move, false, true).c_str());
+            }
+            std::fprintf(stderr, "sbturn p%d r%d tac %d ball %s front %s next %s step %.1f ff %d | pick %s %.1f\n", p, int(g.round),
+                         int(g.players[size_t(p)].tactic), kSystems[g.systems[size_t(sb.ball)].def].name,
+                         sb.front >= 0 ? kSystems[g.systems[size_t(sb.front)].def].name : "-",
+                         sb.next >= 0 ? kSystems[g.systems[size_t(sb.next)].def].name : "-", st.value, int(ffIn),
+                         best.system >= 0 ? kSystems[g.systems[size_t(best.system)].def].name : "-", best.value);
+        }
+    }
+    static thread_local bool inIlNa = false;
+    const float k = aiTune("ilna", 0.f);
+    if (k <= 0.f || inIlNa || g.fixes < 26 || g.players[size_t(p)].tactic < 2 || !commanderUsable(g, p, "mahact")) return best;
+    inIlNa = true;
+    for (size_t s = 0; s < g.systems.size(); ++s) {
+        const SystemState& ss = g.systems[s];
+        if (!ss.hasToken(p) || !canActivate(g, p, int(s))) continue;
+        bool dock = false;
+        for (int16_t x : ss.planets)
+            if (g.planets[x].units[size_t(p)].count(UnitType::SpaceDock)) dock = true;
+        if (ss.space[size_t(p)].nonFighterShips() == 0 && !dock && !ss.space[size_t(p)].count(UnitType::WarSun)) continue;
+        Game h = g;
+        h.systems[s].tokens = uint16_t(h.systems[s].tokens & ~(1u << p));
+        Plan next = bestPlanCore(h, p);
+        bool uses = next.system == int(s);
+        for (size_t i = 0; i + 3 < next.move.size() && !uses; i += 4)
+            if (next.move[i] == int(s)) uses = true;
+        if (!uses) continue;
+        const float v = k * next.value - 1.f;
+        if (v > best.value) {
+            best = Plan();
+            best.system = int(s);
+            best.value = v;
+        }
+    }
+    inIlNa = false;
+    return best;
+}
+
+static Plan bestPlanCore(const Game& g, int p) {
     Plan best;
     // what a system's activation locks in place: Competitive since 0.12.1, the groundwork's
     // order of the round (ships out first, then the home dock) below it since 0.25.0
@@ -1850,10 +2370,31 @@ float techWant(const Game& g, int p, int t) {
     {
         const Style& S = aiStyle(g, p);  // personality: research appetite, favourite upgrades
         v *= S.research;
+        // (the L1Z1X review, checkpoint 2 - test knob prefresolve) a favourite upgrade named by its generic key matched a
+        // faction's own only when the first two letters agreed (ff2 / ffac2): Maximum Impact's "dn2" never matched
+        // Super-Dreadnought II (sdn2), nor the Argent's "dd2" Strike Wing Alpha II (swa2). Tested on Maximum Impact (90
+        // games): 17 wins / 7.10 VP against 17 / 7.09, Super-Dreadnought II in 19 games either way (its prerequisites
+        // decide, and a researchable faction upgrade is worth 7 already). Owner 2026-11-12 18:11 "keep it on for now for
+        // the L1Z1X": on for them (l1pref, default 1); for everyone else (the Argent) prefresolve stays off until their review
+        // (the Argent review, checkpoint 2 - test knob argpref, default off) Strike Doctrine's "dd2" -> Strike Wing Alpha II:
+        // 22 wins / 7.72 VP against 21 / 7.71 (forced Strike Doctrine 19 / 7.64 against 18 / 7.62), Strike Wing Alpha II
+        // researched in 62 games either way - it heads the Argent's core path already. OFF
+        const bool resolve = (aiTune("prefresolve", 0.f) > 0.f || (aiTune("l1pref", 1.f) > 0.f && isFaction(g, p, "l1z1x")) ||
+                              (aiTune("argpref", 0.f) > 0.f && isFaction(g, p, "argent"))) &&
+                             d.unitUpgrade && d.faction >= 0;
         for (const char* k : S.techPref)
-            if (k && (keyIs(d.key, k) || (d.unitUpgrade && d.faction >= 0 && !std::strncmp(k, d.key, 2)))) v += 4.f;
+            if (k && (keyIs(d.key, k) || (d.unitUpgrade && d.faction >= 0 && !std::strncmp(k, d.key, 2)) ||
+                      (resolve && aiResolveTech(g, p, k) == t))) v += 4.f;
     }
     v += aiCoreTechBonus(g, p, t);  // the Strategy Core: the faction's technology path, answers to the neighbours
+    // (the Naalu review, checkpoint 2 - test knob ngwant, default off) Neuroglaive was researched in 7% of games. Tested
+    // (ngwant=3): researched in 24-32% of games; TE 25 wins / 7.51 VP against 22 / 7.46, fresh 20 / 7.53 against 21 / 7.51,
+    // plain fresh 18 / 7.38 against 20 / 7.44 - no gain. OFF
+    if (aiTune("ngwant", 0.f) > 0.f && keyIs(d.key, "ng")) v += aiTune("ngwant", 0.f);
+    // (the Yin review, checkpoint 2 - test knob yinspin) Yin Spinner Omega (2 infantry after every production) was
+    // researched in 10 games of 90. Tested (yinspin=4): researched in 46 games, 332 uses, 21 wins / 7.24 VP against
+    // 19 / 7.06; fresh seeds 14 / 7.04 against 11 / 6.83 - ON since the owner's go (2026-11-12); yinspin=0 = the old way
+    if (aiTune("yinspin", 4.f) > 0.f && keyIs(d.key, "yso") && codexOn(g)) v += aiTune("yinspin", 4.f);
     // objectives that reward colours / upgrades / faction technology
     if (aiLevelScale(g) > 0.f) {
         const Goals& G = aiGoals(g, p);
@@ -2013,6 +2554,11 @@ Answer aiTokens(const Game& g, const Decision& d) {
     int n = d.newTokens;
     // ships the fleet pool must cover (Armada: 2 fewer)
     int maxShips = std::max(0, largestFleet(g, d.player) - (fleetLimit(g, d.player) - pl.fleet));
+    // (the Letnev review, checkpoint 2 - test knob darktok) Darktalon Treilla lifts the limit only until the round ends: keep
+    // the fleet tokens the ships will need then (the status phase's redistribution used to empty the fleet pool). Alone, 90
+    // games: ships lost over the limit 60 -> 25 but 11 wins / 6.78 VP against 13 / 6.83 (fresh 10 / 6.72 against 12 / 6.74).
+    const bool darkTok = aiTune("darktok", 1.f) > 0.f && heroActive(g, d.player, "letnev");
+    if (darkTok) maxShips = std::max(0, largestFleet(g, d.player) - 2);
     Answer a;
     int wantFleet = aiStyle(g, d.player).fleetTokens;  // Warlord, Turtler: big fleets
     // Hard and up: Raise a Fleet / Command an Armada need that many ships in one
@@ -2024,7 +2570,8 @@ Answer aiTokens(const Game& g, const Decision& d) {
     if (!d.redistribute) {
         const bool keepStrategy = aiLevelScale(g) > 0.f && aiTune("tokstrat", 1.f) > 0.f;  // secondaries: Construction, research, secret objectives
         for (int i = 0; i < n; ++i) {
-            if (wantFleet > 0 && t >= 2 && f < wantFleet && f < std::min(5, d.value > 0 ? d.value : 5)) ++f;
+            if (darkTok && f < maxShips && (d.value <= 0 || f < d.value)) ++f;  // (the ships kept after the round)
+            else if (wantFleet > 0 && t >= 2 && f < wantFleet && f < std::min(5, d.value > 0 ? d.value : 5)) ++f;
             else if (keepStrategy && t >= 2 && s < 1) ++s;
             else if (t < 3) ++t;
             else if (s < 2) ++s;
@@ -2037,6 +2584,7 @@ Answer aiTokens(const Game& g, const Decision& d) {
         int fleetMin = std::min<int>(pl.fleet, maxShips);  // the rules forbid shrinking below this
         int fleetT = std::max(fleetMin, std::min(4, std::max(2, maxShips + 1)));
         if (wantFleet > 0) fleetT = std::max(fleetT, std::min(wantFleet, total - 3));
+        if (darkTok) fleetT = std::max(fleetT, std::min(maxShips, total - 2));  // (the ships kept after the round)
         if (d.value > 0) fleetT = std::min(fleetT, std::max<int>(pl.fleet, d.value));  // Fleet Regulations (0.25.0 fix)
         fleetT = std::min(fleetT, total);
         int rest = total - fleetT;
@@ -2056,10 +2604,10 @@ Answer aiMove(const Game& g, const Decision& d) {
     Plan p = buildPlan(g, d.player, d.system, false);
     Answer a;
     a.data = p.move;
-    if (std::getenv("TI4_AIDEBUG") && !checkMovePlan(g, d.player, d.system, a.data).empty())
+    if (std::getenv("TI4_AIDEBUG") && !checkMovePlan(g, d.player, d.system, a.data, false, true).empty())
         std::fprintf(stderr, "AIMOVE %s into %s: %s (%zu moves)\n", playerName(g, d.player).c_str(), kSystems[g.systems[d.system].def].name,
-                     checkMovePlan(g, d.player, d.system, a.data).c_str(), a.data.size() / 4);
-    if (!checkMovePlan(g, d.player, d.system, a.data).empty()) a.data.clear();
+                     checkMovePlan(g, d.player, d.system, a.data, false, true).c_str(), a.data.size() / 4);
+    if (!checkMovePlan(g, d.player, d.system, a.data, false, true).empty()) a.data.clear();
     return a;
 }
 
@@ -2104,26 +2652,50 @@ Answer aiLand(const Game& g, const Decision& d) {
         float value;
     };
     std::vector<T> targets;
+    // (the Firmament bot review, owner 2026-11-11) Viper EX-23: one mech coexists on another player's non-home planet
+    const bool viperOn = (g.modules & kModThundersEdge) && mechAbilities(g) && isFaction(g, p, "firmament") && mech > 0 &&
+                         aiTune("viperplan", 1.f) > 0.f && aiLevelScale(g) > 0.f;
+    std::vector<char> viperT;
     for (int16_t pl : s.planets) {
         if (g.planets[pl].owner == p || isDMZ(g, pl)) continue;
         if (s.custodians && !g.custodiansRemoved) continue;
         int def = 0;
         for (int q = 0; q < g.numPlayers; ++q)
             if (q != p) def += g.planets[pl].units[q].groundForces();
-        targets.push_back({pl, def > 0 ? def * 2 + 1 : 1, planetValue(g, p, pl)});
+        const int po = g.planets[pl].owner;
+        const bool vip = viperOn && def > 0 && po >= 0 && !isHomePlanet(g, pl) && !((g.planets[pl].coexist >> p) & 1);
+        targets.push_back({pl, vip ? 1 : def > 0 ? sardakkNeed(g, p, pl, def * 2 + 1) : 1, planetValue(g, p, pl) * (vip ? aiTune("viperv", 0.6f) : 1.f)});
+        viperT.push_back(vip ? 1 : 0);
     }
     if (d.planet >= 0)  // custodians removed: Mecatol Rex must get at least one
         for (T& t : targets)
             if (t.pl == d.planet) t.value += 100;
-    std::sort(targets.begin(), targets.end(), [](const T& a, const T& b) { return a.value > b.value; });
+    if (!viperOn) std::sort(targets.begin(), targets.end(), [](const T& a, const T& b) { return a.value > b.value; });
+    else {  // (sorted together with their Viper marks)
+        std::vector<size_t> ord(targets.size());
+        for (size_t i = 0; i < ord.size(); ++i) ord[i] = i;
+        std::stable_sort(ord.begin(), ord.end(), [&](size_t a, size_t b) { return targets[a].value > targets[b].value; });
+        std::vector<T> t2;
+        std::vector<char> v2;
+        for (size_t i : ord) {
+            t2.push_back(targets[i]);
+            v2.push_back(viperT[i]);
+        }
+        targets.swap(t2);
+        viperT.swap(v2);
+    }
     std::vector<int> give(targets.size(), 0);
     // Mechanize the Military (0.43.0 debug passes - 3 scored of 65 held): mechs the invasion doesn't need go one each
     // onto our own planets here that have none (they used to sit together on the dock planet)
     std::vector<int> ownSpots;
     if (aiLevelScale(g) > 0.f && aiGoals(g, p).mech > 0.f && mech > 0) {
-        int sumNeed = 0;
-        for (const T& t : targets) sumNeed += t.need;
-        int spare = std::max(0, mech - std::max(0, sumNeed - inf));
+        int sumNeed = 0, vc = 0;
+        for (size_t i = 0; i < targets.size(); ++i) {
+            sumNeed += targets[i].need;
+            vc += viperT[i];
+        }
+        vc = std::min(vc, mech);  // (Viper targets keep their mechs)
+        int spare = std::max(0, mech - vc - std::max(0, sumNeed - vc - inf));
         for (int16_t pl : s.planets)
             if (spare > 0 && g.planets[pl].owner == p && !isDMZ(g, pl) && !g.planets[pl].units[p].count(UnitType::Mech) &&
                 !g.planets[pl].destroyed) {
@@ -2145,7 +2717,7 @@ Answer aiLand(const Game& g, const Decision& d) {
             if (s.space[p].n[t] && unitDef(g, p, UnitType(t)).capacity > 0) carrier = true;
         int need = 0;
         for (const T& t : targets) need += t.need;
-        if (infAll >= 6 && carrier) keepAboard = std::min(2, std::max(0, total - need));
+        if (infAll >= aiCustodiansInf(g, p) && carrier) keepAboard = std::min(2, std::max(0, total - need));
         // (infantry stay: the spare mechs keep their place in the spreading below)
         const int stayInf = std::min(keepAboard, inf);
         inf -= stayInf;
@@ -2153,15 +2725,23 @@ Answer aiLand(const Game& g, const Decision& d) {
     }
     // ... and one mech to each target planet first, the infantry make up the rest
     std::vector<int> mechTo(targets.size(), 0);
+    for (size_t i = 0; i < targets.size() && mech > 0; ++i)  // (a Viper target gets its mech first)
+        if (viperT[i] && total > 0) {
+            mechTo[i] = 1;
+            give[i] = 1;
+            --mech;
+            --total;
+        }
     if (aiLevelScale(g) > 0.f && aiGoals(g, p).mech > 0.f && mech > 1)
         for (size_t i = 0; i < targets.size() && mech > 0; ++i)
-            if (targets[i].need <= 1 + inf) {  // (not a fight the infantry can't carry alone)
+            if (!mechTo[i] && targets[i].need <= 1 + inf) {  // (not a fight the infantry can't carry alone)
                 mechTo[i] = 1;
                 --mech;
             }
     for (size_t i = 0; i < targets.size() && total > 0; ++i) {
-        int k = std::min(std::max(targets[i].need, mechTo[i]), total);
-        give[i] = k;
+        int k = std::min(std::max(targets[i].need, mechTo[i]) - give[i], total);
+        if (k <= 0) continue;
+        give[i] += k;
         total -= k;
     }
     // spread leftovers onto the contested / most valuable targets
@@ -2295,9 +2875,35 @@ Answer aiProduceCore(const Game& g, const Decision& d) {
     };
     // That Which Molds Flesh: the decision shows 2 more, the limit itself is 2 lower (fighters / infantry only)
     const int limit = d.amount - (d.context.find("Molds Flesh") != std::string::npos ? 2 : 0);
+    // (0.59.0, owner: "the Crimson don't expand") their home is beside the board: ground forces built there wait for a
+    // ship to carry them out - only as many as the ships there (and those built now) can take; and 2 mechs stay in
+    // the reinforcements for the Revenant
+    const bool besideHome = isFaction(g, p, "crimson") && sys >= 0 && sys == g.players[size_t(p)].homeSystem && g.systems[size_t(sys)].offBoard &&
+                            aiTune("crimsonhome", 1.f) > 0.f;
+    int homeRoom = 0;
+    if (besideHome) {
+        const Force& hf = g.systems[size_t(sys)].space[size_t(p)];
+        homeRoom = forceCapacity(g, p, hf) - std::max(0, hf.count(UnitType::Fighter) - dockFighterSlots(g, p, sys)) - hf.groundForces();
+        for (int16_t x : g.systems[size_t(sys)].planets) homeRoom -= g.planets[size_t(x)].units[size_t(p)].groundForces();
+    }
     auto tryAdd = [&](UnitType t, int k) {
         std::vector<int> next = plan;
         next[int(t)] += k;
+        if (besideHome && (isGroundForce(t) || t == UnitType::Fighter)) {
+            if (t == UnitType::Mech && mechAbilities(g) && (g.modules & kModThundersEdge) &&
+                unitsAvailable(g, p, UnitType::Mech) - next[int(UnitType::Mech)] < 2)
+                return false;
+            int room = homeRoom;
+            for (int u : kShipIdx)
+                if (u != int(UnitType::Fighter)) room += next[size_t(u)] * unitDef(g, p, UnitType(u)).capacity;
+            // (fighters beyond the docks' room take carrier space too: a carrier boxed in by fighters can't take
+            // the ground forces out - its moves were refused as "stranding" them)
+            const Force& hf = g.systems[size_t(sys)].space[size_t(p)];
+            const int slots = dockFighterSlots(g, p, sys);
+            const int extraF = std::max(0, hf.count(UnitType::Fighter) + next[int(UnitType::Fighter)] - slots) -
+                               std::max(0, hf.count(UnitType::Fighter) - slots);
+            if (next[int(UnitType::Infantry)] + next[int(UnitType::Mech)] + extraF > room) return false;
+        }
         if (costOf(next) > budget) return false;
         if (g.fixes >= 14 && sys >= 0) {  // (0.45.0: the rules let a production go over the fleet pool - the bots don't)
             Force after = g.systems[size_t(sys)].space[size_t(p)];
@@ -2338,6 +2944,28 @@ Answer aiProduceCore(const Game& g, const Decision& d) {
             for (int k = 0; k < std::max(1, best.missing()) && k < 2; ++k) tryAdd(UnitType::Dreadnought, 1);
         }
         if (G.mech > 0) tryAdd(UnitType::Mech, 2);
+        // (Sardakk review, owner 2026-11-11 - test D) a mech or two for the invasions once Valkyrie Particle Weave or G'hom
+        // Sek'kus is in (they sustain and strike back)
+        if (isFaction(g, p, "sardakk") && mechAbilities(g) && aiTune("sardmech", 0.f) > 0.f &&
+            (ownsTechKey(g, p, "vpw") || commanderUsable(g, p, "sardakk")) && unitsOnBoard(g, p, UnitType::Mech) < int(aiTune("sardmechs", 2.f)))
+            tryAdd(UnitType::Mech, 1);
+        // (the Firmament bot review, owner 2026-11-11) Viper EX-23: a mech or two for the Viper plans (buildPlan) while
+        // other players' non-home planets with ground forces are within 2 systems - OFF (test knob vipermechs=2): in 90
+        // games the extra mechs cost the Firmament ~0.4 VP and the Viper plans came up 0.19 times a game
+        if ((g.modules & kModThundersEdge) && mechAbilities(g) && isFaction(g, p, "firmament") && aiTune("viperplan", 1.f) > 0.f &&
+            unitsOnBoard(g, p, UnitType::Mech) < int(aiTune("vipermechs", 0.f))) {
+            bool near = false;
+            for (int s2 : systemsWithin(g, sys, 2)) {
+                for (int16_t x : g.systems[size_t(s2)].planets) {
+                    const PlanetState& ps = g.planets[size_t(x)];
+                    if (ps.owner >= 0 && ps.owner != p && !isHomePlanet(g, x) && ps.units[size_t(ps.owner)].groundForces() > 0 &&
+                        !((ps.coexist >> p) & 1))
+                        near = true;
+                }
+                if (near) break;
+            }
+            if (near) tryAdd(UnitType::Mech, 1);
+        }
         // Fillipo Rois (Tnelis commander, 0.43.0 debug passes: unlocked in 3 games of 18): 6 destroyers on the board
         if (isFaction(g, p, "tnelis") && leaderStatus(g, p, kCommander) == kLocked && unitsOnBoard(g, p, UnitType::Destroyer) < 6)
             tryAdd(UnitType::Destroyer, 2);
@@ -2478,6 +3106,10 @@ Answer aiPick(const Game& g, const Decision& d, Rng& rng) {
         case Tag::SetupTech: {
             std::vector<std::pair<float, int>> scored;
             for (const Option& o : d.options) scored.push_back({techWant(g, p, o.id) + rng.below(10) * 0.01f, o.id});
+            // (0.59.0) the Crimson: a blue start (Dark Energy Tap) so Gravity Drive can follow at once
+            if (isFaction(g, p, "crimson") && aiTune("crimsongd", 1.f) > 0.f)
+                for (auto& sc : scored)
+                    if (!std::strcmp(kTechs[sc.second].key, "det")) sc.first += 20.f;
             // Berserkers of Kjalengard (Discordant Stars): their free unit upgrade - fighters that die for Heroism
             // and fly with the Star Dragons, or dreadnoughts; not an early war sun they can't pay for
             if (isFaction(g, p, "kjalengard"))
@@ -2528,6 +3160,8 @@ Answer aiPick(const Game& g, const Decision& d, Rng& rng) {
             // Local Contracts (Nokar, 0.43.0): free production when there is money for it
             if (hasOption(d, 642) && spendable(g, p, false) >= 4) return pickOne(642);
             if (hasOption(d, 643)) return pickOne(643);  // Erasure Corps (Lanefir breakthrough): a free exploration
+            // Absolute Synergy (fixes 27: no action - option 645): from round 2, as the component action was valued (ai_te)
+            if (hasOption(d, 645) && g.round >= 2) return pickOne(645);
             // Thunder's Edge space station: cash in commodities nobody will wash for us (a full pool, or after round 2
             // with no deal partner about)
             // (0.44.9: an Omni-Forgeworld takes damage for it - only when no real station is ready, the war sun is safe
@@ -2569,6 +3203,15 @@ Answer aiPick(const Game& g, const Decision& d, Rng& rng) {
                     }
                 if (bestCard >= 0) return pickOne(bestCard);
             }
+            // (the Firmament bot review, owner 2026-11-11) the coup right after the home planets are spent, while a
+            // tactic token is left for the Hollows The Blade's Orchestra readies
+            if (hasOption(d, 6000 + int(Ab::Puppets)) && std::getenv("TI4_COUPDEBUG")) {
+                float pv = 0.f;
+                aiTeComponentValue(g, p, int(Ab::Puppets), pv);
+                std::fprintf(stderr, "COUP r%d tactic %d strategy %d homeSpent %d value %.2f now %d best %.2f\n", g.round,
+                             g.players[p].tactic, g.players[p].strategy, aiHomeSpentValue(g, p), pv, int(aiCoupNow(g, p)), best.value);
+            }
+            if (hasOption(d, 6000 + int(Ab::Puppets)) && aiCoupNow(g, p)) return pickOne(6000 + int(Ab::Puppets));
             // component actions (action cards, Sling Relay, faction abilities)
             int comp = -1;
             float compValue = 0;
@@ -2581,8 +3224,38 @@ Answer aiPick(const Game& g, const Decision& d, Rng& rng) {
                     }
                 }
             if (comp >= 0 && compValue >= 1.0f && (best.value < 2.0f || g.players[p].tactic == 0)) return pickOne(comp);
+            // (the Letnev review, checkpoint 2 - test knob darkuse) Darktalon Treilla when the best plan without the fleet
+            // limit puts more ships in a system than the limit allows and is worth darkuse more than the best plan now.
+            // 90 games with darktok: 15 wins / 6.98 VP against 13 / 6.83, fresh seeds 12 / 6.72 against 12 / 6.74; used 34
+            // times instead of 47, ships lost over the limit 60 -> 29 (fresh 51 -> 31). Owner 2026-11-12: ON (default 2).
+            if (aiTune("darkuse", 2.f) > 0.f && hasOption(d, 6000 + int(Ab::LetnevHero)) && g.players[size_t(p)].tactic >= 1) {
+                Game h = g;
+                h.players[size_t(p)].heroRound = int16_t(g.round);
+                const Plan free = bestPlan(h, p);
+                int arriving = 0;
+                for (size_t i = 0; i + 3 < free.move.size(); i += 4)
+                    if (isShip(UnitType(free.move[i + 2])) && free.move[i + 2] != int(UnitType::Fighter)) arriving += free.move[i + 3];
+                const int lim = g.players[size_t(p)].fleet + 2;  // (Armada)
+                if (free.system >= 0 && g.systems[size_t(free.system)].space[size_t(p)].nonFighterShips() + arriving > lim &&
+                    free.value - best.value >= aiTune("darkuse", 2.f))
+                    return pickOne(6000 + int(Ab::LetnevHero));
+            }
+            // (the Sol review, checkpoint 2 - test knob jaceuse) Jace X when the best plan with every Sol command token off the
+            // board is a system we can't activate now (our token is there) and is worth jaceuse more than the best plan now.
+            // Tested (90 games each, OFF): jaceuse=2 31 wins / 8.00 VP against 27 / 7.84, but fresh seeds 27 / 7.88 against
+            // 28 / 7.98 and without Thunder's Edge 24 / 7.90 against 25 / 8.01 - the first gain was luck
+            if (aiTune("jaceuse", 0.f) > 0.f && hasOption(d, 6000 + int(Ab::SolHero)) && g.players[size_t(p)].tactic >= 1) {
+                Game h = g;
+                for (SystemState& sy : h.systems) sy.tokens &= uint16_t(~(1u << p));
+                const Plan free = bestPlan(h, p);
+                if (free.system >= 0 && g.systems[size_t(free.system)].hasToken(p) && free.value - best.value >= aiTune("jaceuse", 0.f))
+                    return pickOne(6000 + int(Ab::SolHero));
+            }
             // Discordant Stars (0.37.0): a hero worth more than most tactical actions goes first
             if (comp >= 6000 + int(Ab::DsZealous) && compValue >= 5.0f && compValue >= best.value * 0.6f) return pickOne(comp);
+            // (the Vuil'raith review, checkpoint 2 - test knob carrion) It Feeds on Carrion on a big catch goes first too
+            if (comp == 6000 + int(Ab::CabalHero) && aiTune("carrion", 0.f) > 0.f && compValue >= 2.f && compValue >= best.value * 0.6f)
+                return pickOne(comp);
             // strategy card that's worth playing now?
             for (const Option& o : d.options)
                 if (o.id >= 10 && o.id < 20 && cardGoodNow(g, p, o.id - 10, best.value)) return pickOne(o.id);
@@ -2790,6 +3463,17 @@ Answer aiPick(const Game& g, const Decision& d, Rng& rng) {
                 }
             }
             if (aiCompetitive(g) && card == 7 && pl.strategy >= 1 && pl.secrets.size() < 3) yes = true;  // secrets are victory points
+            // (0.59.0, owner: the Crimson don't expand) their home is beside the board: Gravity Drive and a space dock
+            // out in their slice come first in rounds 1-3
+            if (!free && !yes && isFaction(g, p, "crimson") && g.round <= 3 && pl.strategy >= 1 && aiLevelScale(g) > 0.f &&
+                aiTune("crimsonearly", 1.f) > 0.f) {
+                if (card == 6 && !ownsTechKey(g, p, "gd") && canResearchNow(g, p, findTech("gd")) && spendable(g, p, false) >= 4) yes = true;
+                if (card == 3 && constructionSpot && crimsonNeedsDock(g, p)) yes = true;
+            }
+            // (0.59.1) the Creuss: a space dock out on the board in rounds 1-3 (Construction's secondary)
+            if (!free && !yes && isFaction(g, p, "ghost") && g.round <= 3 && pl.strategy >= 1 && aiLevelScale(g) > 0.f && card == 3 &&
+                constructionSpot && crimsonNeedsDock(g, p))
+                yes = true;
             if (free && card != 3 && card != 6) yes = true;
             // 0.44.4: breakthroughs that make a secondary cheap - Mindsieve (Naalu: a spare promissory note instead of the
             // token), Specialist Compounds (Jol-Nar: a technology-specialty planet instead of the 4 resources)
@@ -2964,7 +3648,17 @@ Answer aiPick(const Game& g, const Decision& d, Rng& rng) {
                     bool dock = o.id % 2;
                     bool home = g.systems[g.planets[planet].system].home == p;
                     v = dock ? (home ? 1.f : 3.f + planetResources(g, planet)) : 1.f + planetValue(g, p, planet) * 0.2f;
+                    // (0.59.0) the Crimson's first dock out on the board: their production 2 moves nearer
+                    if (dock && !home && crimsonNeedsDock(g, p) && aiTune("crimsondock", 1.f) > 0.f) v += 5.f;
                     if (!dock) v += aiStyle(g, p).pdsPref * 2.f;  // Turtler, Shell Defense, Iron Shepherd
+                    // (the Arborec review, checkpoint 2 - test knob bestfriend) the Arborec's Best Friend trait says it
+                    // fortifies its legendary planets and Mecatol Rex, but its PDS liking is general (and toned down on
+                    // Competitive): sims put fewer PDS on Mecatol Rex with it (15) than without (21). Tested OFF: PDS on
+                    // legendary planets 17 -> 34 in 90 games with Best Friend, Mecatol Rex 15 -> 16, but 7 wins / 6.58 VP
+                    // against 8 / 6.64
+                    if (!dock && aiTune("bestfriend", 0.f) > 0.f && fquirkIs(g, p, "arborec", 1) &&
+                        (isLegendaryPlanet(g, planet) || g.planets[size_t(planet)].system == g.mecatol()))
+                        v += 3.f;
                     if (enemyNear(g, p, g.planets[planet].system, 1)) v += dock ? -2.f : 1.5f;
                     // 0.43.0 (owner D128): the Mirveda's PDS are Gauss Cannons that travel with the fleets - put them
                     // where a fleet is, out on the front; never alone in space next to the enemy (blockaded = lost)

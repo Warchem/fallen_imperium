@@ -325,6 +325,18 @@ bool agentLendable(const Game& g, int p) {
     // 0.43.0 (owner, D28 / C3 / C4 / D102): every agent the game can use for another player - the ones whose
     // abilities ask the owner when someone else could gain from them (Rules::agentUser), plus Z'eu, Brother Milor
     // and Cordo Haved
+    // (fixes 24: Emissary Taivra too - after the other player activates a system with a non-delta wormhole)
+    if (g.fixes >= 24 && isFaction(g, p, "ghost")) return agentReady(g, p) || leaderIndex(g, p, kAgent) >= 0;
+    // (fixes 26, the Empyrean review - owner 2026-11-12) Acamar too: "After a player moves ships into ..."
+    if (g.fixes >= 26 && isFaction(g, p, "empyrean")) return agentReady(g, p) || leaderIndex(g, p, kAgent) >= 0;
+    // (fixes 26, the Nomad review - owner 2026-11-13) Field Marshal Mercer / The Thundarian for another player
+    if (g.fixes >= 26 && isFaction(g, p, "nomad")) return agentReady(g, p) || leaderIndex(g, p, kAgent) >= 0;
+    // (fixes 26, the Argent review - owner 2026-11-13) Trilossa Aun Mirik: "When a player produces ground forces"
+    if (g.fixes >= 26 && isFaction(g, p, "argent")) return agentReady(g, p) || leaderIndex(g, p, kAgent) >= 0;
+    // (fixes 27, the Naaz-Rokha review - owner 2026-11-13) Garv and Gunn: "At the end of a player's turn ... allow that player"
+    if (g.fixes >= 27 && isFaction(g, p, "naaz")) return agentReady(g, p) || leaderIndex(g, p, kAgent) >= 0;
+    // (fixes 27, the Saar review - owner 2026-11-13) Captain Mendosa: "When a player activates a system"
+    if (g.fixes >= 27 && isFaction(g, p, "saar")) return agentReady(g, p) || leaderIndex(g, p, kAgent) >= 0;
     static const char* const kLend[] = {"letnev",   "sol",     "jolnar",   "sardakk", "winnu",     "titans",      "yssaril", "naalu",
                                         "yin",      "keleres", "bastion",  "firmament", "obsidian", "augers",     "celdauri", "cheiran",
                                         "cymiae",   "dihmohn", "florzen",  "freesystems", "ghemina", "ghoti",     "gledge",  "khrask",

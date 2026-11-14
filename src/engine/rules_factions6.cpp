@@ -52,12 +52,19 @@ int galvanizedOnBoard(const Game& g, int p) {
 
 // Galvanize one of p's units in a system (planet -1: its space area; -2: the space area or any planet there) -
 // asks which type when there is a choice. Returns false if nothing could be galvanized.
-bool Rules::galvanize(int p, int sys, int planet, const std::string& why, int chooser) {
+bool Rules::galvanize(int p, int sys, int planet, const std::string& why, int chooser, int kind) {
     if (p < 0 || p >= G.numPlayers || sys < 0) return false;
     std::vector<Option> opts;  // id = location (planet + 1, 0 = space) * 16 + type
+    auto fits = [&](int t, int loc) {
+        const UnitType u = UnitType(t);
+        if (kind == 1)  // (took part: the ships of a space combat, the ground forces of a ground combat - Hel-Titans too)
+            return loc == 0 ? isShip(u) : isGroundForce(u) || (u == UnitType::PDS && fac(p, "titans"));
+        if (kind == 2) return u != UnitType::SpaceDock;  // (Dame Briar: a PDS is a unit too - LRR 85, 96.1)
+        return !isStructure(u);
+    };
     auto add = [&](const Force& f, int loc) {
         for (int t = 0; t < kUnitTypes; ++t)
-            if (f.n[t] > f.galv[t] && !isStructure(UnitType(t)))
+            if (f.n[t] > f.galv[t] && fits(t, loc))
                 opts.push_back({loc * 16 + t, std::string(unitTypeName(UnitType(t))) + (loc ? " on " + planetName(loc - 1) : std::string(" in space")),
                                 std::to_string(f.galv[t]) + " of " + std::to_string(f.n[t]) + " galvanized"});
     };
@@ -99,13 +106,16 @@ void Rules::combatEnded6(int att, int def, int sys, int planet) {
         if (p < 0 || p >= G.numPlayers || G.players[size_t(p)].eliminated) continue;
         const Force& f = planet >= 0 ? G.planets[size_t(planet)].units[size_t(p)] : G.systems[size_t(sys)].space[size_t(p)];
         if (f.empty()) continue;
+        // ((fixes 27, the Last Bastion review - owner 2026-11-13) "1 of your units that participated": not the ground forces a
+        // carrier holds in a space combat)
+        const int kind = G.fixes >= 27 ? 1 : 0;
         if (fac(p, "bastion") && fyes(p, Ab::PhoenixStandard, "Phoenix Standard: galvanize 1 of your units that fought?", abilityText(G.players[size_t(p)].faction, 2)))
-            galvanize(p, sys, planet >= 0 ? planet : -1, "Phoenix Standard");
+            galvanize(p, sys, planet >= 0 ? planet : -1, "Phoenix Standard", -1, kind);
         const int b = playerOfFaction(G, "bastion");
         if (b >= 0 && b != p && holdsNote(G, p, b, kNoteFaction) &&
             fyes(p, Ab::RaiseStandard, "Play Raise the Standard: galvanize 1 of your units that fought?",
                  factionNoteText(G.players[size_t(b)].faction, kNoteFaction))) {
-            if (galvanize(p, sys, planet >= 0 ? planet : -1, "Raise the Standard")) returnNote(p, makeNote(b, kNoteFaction));
+            if (galvanize(p, sys, planet >= 0 ? planet : -1, "Raise the Standard", -1, kind)) returnNote(p, makeNote(b, kNoteFaction));
         }
     }
 }
@@ -163,8 +173,53 @@ bool Rules::galvanizeInfantry(int p, int sys) {
     return false;
 }
 
+// (fixes 27, the Last Bastion review - owner 2026-11-13) Dame Briar: "When a player's unit is destroyed: You may exhaust this
+// card to galvanize another of that player's units in the destroyed unit's system" - any player's; the Bastion decide (a
+// person is asked - briarQuiet_ -, a bot when it promised); a PDS may be galvanized (a unit: 1 more space cannon die)
+void Rules::dameBriar27(int victim, int sys) {
+    if (victim < 0 || victim >= G.numPlayers || sys < 0) return;
+    bool any = false;
+    const auto check = [&](const Force& f) {
+        for (int t = 0; t < kUnitTypes; ++t)
+            if (f.n[t] > f.galv[t] && UnitType(t) != UnitType::SpaceDock) any = true;
+    };
+    check(G.systems[size_t(sys)].space[size_t(victim)]);
+    for (int16_t x : G.systems[size_t(sys)].planets) check(G.planets[size_t(x)].units[size_t(victim)]);
+    if (!any) return;
+    const std::string text = leaderText(findLeader("bastionagent"));
+    int user = -1;
+    if (canUseAgent(victim, "bastion")) {
+        if (fyes(victim, Ab::BastionAgent, "Exhaust Dame Briar to galvanize another of your units here?", text)) user = victim;
+    } else {
+        for (int o : initiativeOrder(G)) {
+            if (o == victim || !canUseAgent(o, "bastion")) continue;
+            const bool promised = G.agentFor[o] == victim;
+            const bool human = G.players[size_t(o)].human;
+            if (!promised && !(human && briarQuiet_[o] != G.round)) continue;
+            agentFor(o, victim);
+            std::vector<Option> yn = {{1, "Yes", ""}, {0, "No", ""}};
+            if (human && !promised) yn.push_back({3, "No, and don't ask again this round", "You'll be asked again next round."});
+            const int c = fpick(o, Ab::BastionAgent, "Exhaust Dame Briar: galvanize another of " + pn(victim) + "'s units in " + sysName(sys) + "?", yn,
+                                "A unit of " + pn(victim) + "'s was destroyed there. " + text);
+            curFor_ = -1;
+            if (c == 3) briarQuiet_[o] = int16_t(G.round);
+            if (c != 1) continue;
+            user = o;
+            break;
+        }
+    }
+    if (user < 0) return;
+    spendAgent(user, "bastion");
+    agentDone(user, victim);
+    galvanize(victim, sys, -2, "Dame Briar", user, 2);
+}
+
 // Dame Briar (the Last Bastion's agent): when a player's unit is destroyed, galvanize another of theirs there.
 void Rules::dameBriar(int victim, int sys) {
+    if (G.fixes >= 27) {
+        dameBriar27(victim, sys);
+        return;
+    }
     if (victim < 0 || victim >= G.numPlayers || sys < 0) return;
     const int b = playerOfFaction(G, "bastion");
     if (b < 0) return;
@@ -334,6 +389,7 @@ void Rules::survivalInstinct(int active, int sys) {
             curFor_ = -1;
             if (c < 0) break;
             moveShip(G.systems[size_t(c / 16)].space[size_t(q)], G.systems[size_t(sys)].space[size_t(q)], c % 16);
+            if (G.fixes >= 27) carryAlong(q, c / 16, sys);  // (the card's notes: "These ships can transport fighters and ground forces")
             abilityEvent6(E, q, "Survival Instinct", pn(q) + " rushes a " + unitTypeName(UnitType(c % 16)) + " from " + sysName(c / 16) + " into " +
                                                         sysName(sys) + " (Survival Instinct).", sys);
             removeExcessCapacity(q, c / 16);
@@ -412,6 +468,72 @@ void Rules::nanoLink(int p, int sys) {
     }
 }
 
+// (fixes 27, the Ral Nel review) a ship moved by an ability (Survival Instinct, Watchful Ojz) takes along what it transports:
+// the fighters / ground forces its old space area can no longer hold go with it while it has room
+void Rules::carryAlong(int p, int from, int to) {
+    for (int guard = 0; guard < 40 && capacityOverflow(G, p, from) > 0; ++guard) {
+        Force& src = G.systems[size_t(from)].space[size_t(p)];
+        Force& dst = G.systems[size_t(to)].space[size_t(p)];
+        int t = -1;
+        for (UnitType u : {UnitType::Mech, UnitType::Infantry, UnitType::Fighter})
+            if (src.count(u) > 0 && !(u == UnitType::Fighter && fightersFree(G, p))) {
+                t = int(u);
+                break;
+            }
+        if (t < 0) break;
+        moveShip(src, dst, t);
+        if (capacityOverflow(G, p, to) > 0) {  // (no room on the ships that left)
+            moveShip(dst, src, t);
+            break;
+        }
+    }
+}
+
+// Watchful Ojz (commander): up to 2 ships retreat to an adjacent system without other players' ships; a command token
+// from the reinforcements goes there. (fixes 27, the Ral Nel review: "When you declare a retreat: Immediately retreat" -
+// at the declaration, before the round's rolls; their transports' cargo goes with them, and The Last Dispatch fires if
+// the flagship is one of them.) notTo: the fleet's own retreat system (the old timing) or -1.
+void Rules::ojz(int p, int opp, int sys, int notTo) {
+    if (!commanderUsable(G, p, "ralnel") || reinforcementTokens(p) <= 0) return;
+    std::vector<Option> dest;
+    for (int16_t a : G.systems[size_t(sys)].adj)
+        if (a != notTo && !otherShipsIn(G, p, a) && !G.systems[size_t(a)].isHyperlane()) dest.push_back({a, sysName(a), ""});
+    if (dest.empty()) return;
+    dest.push_back({-1, "Keep them together", ""});
+    const int a = fpick(p, Ab::RalNelCommander, "Watchful Ojz: send up to 2 ships to another system?", dest,
+                        G.fixes >= 27 ? "Right away, before this round's rolls. A command token from your reinforcements goes there."
+                                      : "A command token from your reinforcements goes there.",
+                        true);
+    if (a < 0) return;
+    G.systems[size_t(a)].tokens = uint16_t(G.systems[size_t(a)].tokens | (1u << p));
+    bool flagship = false;
+    for (int k = 0; k < 2; ++k) {
+        std::vector<Option> opts;
+        for (int t : kShipIdx)
+            if (G.systems[size_t(sys)].space[size_t(p)].n[t]) opts.push_back({t, unitTypeName(UnitType(t)), ""});
+        if (opts.empty()) break;
+        opts.push_back({-1, "No more", ""});
+        const int t = fpick(p, Ab::RalNelCommander, "Watchful Ojz: which ship goes to " + sysName(a) + "?", opts);
+        if (t < 0) break;
+        moveShip(G.systems[size_t(sys)].space[size_t(p)], G.systems[size_t(a)].space[size_t(p)], t);
+        if (G.fixes >= 27) carryAlong(p, sys, a);
+        flagship = flagship || t == int(UnitType::Flagship);
+    }
+    say(p, pn(p) + " splits the retreat: ships go to " + sysName(a) + " (Watchful Ojz).", a);
+    removeExcessCapacity(p, a);
+    if (G.fixes >= 27 && flagship && flagshipAbility(G, p, "ralnel") && opp >= 0) {  // The Last Dispatch: it retreated
+        std::vector<Option> opts;
+        for (int t : kShipIdx)
+            if (G.systems[size_t(sys)].space[size_t(opp)].n[t] && !unitSustainsAt(G, opp, UnitType(t), sys, -1))
+                opts.push_back({t, unitTypeName(UnitType(t)), ""});
+        if (!opts.empty()) {
+            opts.push_back({-1, "No", ""});
+            const int t = fpick(p, Ab::LastDispatch, "The Last Dispatch: destroy 1 of " + pn(opp) + "'s ships as you retreat?", opts);
+            if (t >= 0) destroyUnits(opp, UnitType(t), 1, sys, -1, p, "The Last Dispatch");
+        }
+    }
+}
+
 // Retreating: Watchful Ojz (commander) takes up to 2 ships to a second system; The Last Dispatch (flagship) destroys
 // a ship without Sustain Damage on its way out.
 void Rules::ralnelRetreat(int p, int opp, int sys, int to) {
@@ -427,28 +549,7 @@ void Rules::ralnelRetreat(int p, int opp, int sys, int to) {
             if (t >= 0) destroyUnits(opp, UnitType(t), 1, sys, -1, p, "The Last Dispatch");
         }
     }
-    if (!commanderUsable(G, p, "ralnel") || reinforcementTokens(p) <= 0) return;
-    std::vector<Option> dest;
-    for (int16_t a : G.systems[size_t(sys)].adj)
-        if (a != to && !otherShipsIn(G, p, a) && !G.systems[size_t(a)].isHyperlane()) dest.push_back({a, sysName(a), ""});
-    if (dest.empty()) return;
-    dest.push_back({-1, "Keep them together", ""});
-    const int a = fpick(p, Ab::RalNelCommander, "Watchful Ojz: send up to 2 ships to another system?", dest,
-                        "A command token from your reinforcements goes there.", true);
-    if (a < 0) return;
-    G.systems[size_t(a)].tokens = uint16_t(G.systems[size_t(a)].tokens | (1u << p));
-    for (int k = 0; k < 2; ++k) {
-        std::vector<Option> opts;
-        for (int t : kShipIdx)
-            if (G.systems[size_t(sys)].space[size_t(p)].n[t]) opts.push_back({t, unitTypeName(UnitType(t)), ""});
-        if (opts.empty()) break;
-        opts.push_back({-1, "No more", ""});
-        const int t = fpick(p, Ab::RalNelCommander, "Watchful Ojz: which ship goes to " + sysName(a) + "?", opts);
-        if (t < 0) break;
-        moveShip(G.systems[size_t(sys)].space[size_t(p)], G.systems[size_t(a)].space[size_t(p)], t);
-    }
-    say(p, pn(p) + " splits the retreat: ships go to " + sysName(a) + " (Watchful Ojz).", a);
-    removeExcessCapacity(p, a);
+    if (G.fixes < 27) ojz(p, opp, sys, to);  // (fixes 27: at the declaration instead - rules_combat)
 }
 
 // Alarum (mech): at the end of a ground combat round on its planet, up to 2 ground forces come from planets in
@@ -460,10 +561,14 @@ void Rules::alarum(int att, int def, int planet) {
         if (p < 0 || p >= G.numPlayers || !fac(p, "ralnel") || !G.planets[size_t(planet)].units[size_t(p)].count(UnitType::Mech)) continue;
         for (int k = 0; k < 2; ++k) {
             std::vector<Option> opts;  // id = planet * 16 + type
-            for (int16_t a : G.systems[size_t(sys)].adj)
+            std::vector<int16_t> from(G.systems[size_t(sys)].adj.begin(), G.systems[size_t(sys)].adj.end());
+            // (fixes 27, the Ral Nel review - owner 2026-11-14: AsyncTI4's ruling, "adjacent systems" includes the system
+            // containing this planet: its other planets too)
+            if (G.fixes >= 27) from.push_back(int16_t(sys));
+            for (int16_t a : from)
                 for (int16_t x : G.systems[size_t(a)].planets)
                     for (UnitType t : {UnitType::Infantry, UnitType::Mech})
-                        if (G.planets[size_t(x)].units[size_t(p)].count(t))
+                        if (x != planet && G.planets[size_t(x)].units[size_t(p)].count(t))
                             opts.push_back({x * 16 + int(t), std::string(unitTypeName(t)) + " from " + planetName(x), ""});
             if (opts.empty()) break;
             opts.push_back({-1, "No more", ""});
@@ -655,10 +760,20 @@ void Rules::oceanLimit(int p) {  // Oceanbound: no more ocean cards than planets
     Player& pl = G.players[size_t(p)];
     const int max = coexistPlanets(G, p);
     if (pl.oceans > max) {
+        // (fixes 27, the Deepwrought review) exhausted ocean cards are discarded first
+        if (G.fixes >= 27) pl.oceansExhausted = int8_t(std::max(0, pl.oceansExhausted - (pl.oceans - max)));
         pl.oceans = int8_t(max);
         pl.oceansExhausted = int8_t(std::min<int>(pl.oceansExhausted, pl.oceans));
         say(p, pn(p) + " discards ocean cards down to " + std::to_string(max) + " (Oceanbound).");
     }
+}
+
+// (fixes 27, the Deepwrought review) Oceanbound: "Any time you have more ocean cards than there are planets that contain
+// your coexisting units, discard ocean cards until you do not" - checked before every question
+void Rules::oceanCheck() {
+    if (G.fixes < 27 || !(G.modules & kModThundersEdge)) return;
+    for (int p = 0; p < G.numPlayers; ++p)
+        if (G.players[size_t(p)].oceans > 0) oceanLimit(p);
 }
 
 // Ground forces committed to a planet where another player has ground forces: the Deepwrought (Research Team) or a
@@ -700,6 +815,12 @@ bool Rules::carrina(int researcher) {
     curFor_ = -1;
     if (!use) return false;
     spendAgent(d, "deepwrought");
+    carrinaInfantry(d, researcher);
+    return true;
+}
+
+// "... if they do, you may place 1 infantry from your reinforcements into coexistence on a non-home planet they control"
+void Rules::carrinaInfantry(int d, int researcher) {
     std::vector<Option> opts;
     for (int x : controlledPlanets(G, researcher))
         if (!isHomePlanet(G, x) && !isStation(G, x)) opts.push_back({x, planetName(x), ""});
@@ -712,19 +833,79 @@ bool Rules::carrina(int researcher) {
             startCoexisting(d, x);
         }
     }
+}
+
+// (fixes 27) Doctor Carrina when the researcher meets the prerequisite with a specialty planet: the Deepwrought may exhaust
+// her; the researcher then decides whether to ignore it (keeping the planet ready) - and only if they do, the infantry.
+bool Rules::carrinaSpare(int researcher, int tech) {
+    const int d = playerOfFaction(G, "deepwrought");
+    if (d < 0 || d == researcher || !canUseAgent(d, "deepwrought") || carrinaQuiet_[d] == G.round) return false;
+    const std::string prompt = "Exhaust Doctor Carrina so " + pn(researcher) + " can ignore 1 prerequisite of " + kTechs[tech].name + "?";
+    const std::string why = "They could use a specialty planet instead; if they ignore it, you may place 1 infantry, coexisting, on one of "
+                            "their non-home planets.";
+    curFor_ = researcher;
+    int c = 0;
+    if (G.players[size_t(d)].human)
+        c = fpick(d, Ab::DeepwroughtAgent, prompt,
+                  {{1, "Exhaust Doctor Carrina", why}, {0, "No", ""}, {3, "No, and don't ask again this round", "You're still asked when they need her."}});
+    else
+        c = fyes(d, Ab::DeepwroughtAgent, prompt, why) ? 1 : 0;
+    curFor_ = -1;
+    if (c == 3) carrinaQuiet_[d] = int16_t(G.round);
+    if (c != 1) return false;
+    spendAgent(d, "deepwrought");
+    curFor_ = d;
+    const bool take = fyes(researcher, Ab::DeepwroughtAgent, "Doctor Carrina: ignore 1 prerequisite of " + std::string(kTechs[tech].name) + " (keep a specialty planet ready)?",
+                           "If you do, " + pn(d) + " may place 1 infantry, coexisting, on one of your non-home planets.");
+    curFor_ = -1;
+    if (!take) {
+        say(researcher, pn(researcher) + " doesn't take Doctor Carrina's help.");
+        return false;
+    }
+    carrinaInfantry(d, researcher);
     return true;
 }
 
 // Aello (Deepwrought commander): another player researching for resources may pay 1 less; the Deepwrought then gain a
 // commodity (or turn one into a trade good).
+// (fixes 27, the Deepwrought review) every player who can use Aello (the Deepwrought, an Alliance / Imperia holder) is a
+// "you" of the card - each one's reduction is offered; a person chooses "gain 1 commodity or convert 1" (bots: gain while
+// there is room, else convert, as before).
 int Rules::aello(int researcher, int cost) {
     if (cost <= 0) return cost;
+    if (G.fixes >= 27) {
+        for (int d : initiativeOrder(G)) {
+            if (cost <= 0) break;
+            if (d == researcher || G.players[size_t(d)].eliminated || !commanderUsable(G, d, "deepwrought")) continue;
+            curFor_ = d;
+            const bool take = fyes(researcher, Ab::DeepwroughtCommander, "Aello: research for 1 resource less?",
+                                   pn(d) + " gains 1 commodity (or turns 1 into a trade good).");
+            curFor_ = -1;
+            if (!take) continue;
+            Player& dp = G.players[size_t(d)];
+            const bool room = dp.commodities < commodityValue(G, dp), conv = dp.commodities > 0;
+            int how = room ? 1 : conv ? 2 : 0;
+            if (room && conv && dp.human)
+                how = fpick(d, Ab::DeepwroughtCommander, "Aello: gain 1 commodity or convert 1 of yours to a trade good?",
+                            {{1, "Gain 1 commodity", ""}, {2, "Convert 1 commodity to a trade good", ""}});
+            if (how == 1) {
+                { const int cb_ = dp.commodities; ++dp.commodities; commodityGained(d, cb_); }
+                say(d, pn(d) + " gains 1 commodity (Aello).");
+            } else if (how == 2) {
+                --dp.commodities;
+                gainTG(d, 1);
+                say(d, pn(d) + " turns 1 commodity into a trade good (Aello).");
+            }
+            --cost;
+        }
+        return cost;
+    }
     const int d = playerOfFaction(G, "deepwrought");
     if (d < 0 || d == researcher || !commanderUsable(G, d, "deepwrought")) return cost;
     if (!fyes(researcher, Ab::DeepwroughtCommander, "Aello: research for 1 resource less?", "The Deepwrought gain 1 commodity (or a trade good).")) return cost;
     Player& dp = G.players[size_t(d)];
     if (dp.commodities < commodityValue(G, dp)) {
-        ++dp.commodities;
+        { const int cb_ = dp.commodities; ++dp.commodities; commodityGained(d, cb_); }
         say(d, pn(d) + " gains 1 commodity (Aello).");
     } else if (dp.commodities > 0) {
         --dp.commodities;
@@ -899,7 +1080,7 @@ bool Rules::factionAction7(int p, Ab ab) {
             if (it == pl.notes.end()) return false;
             pl.notes.erase(it);
             pl.notesInPlay.push_back(int16_t(note));
-            researchTech(p, t, true);
+            researchTech(p, t, G.fixes < 27);  // (fixes 27, the Deepwrought review: "gain" - not researched)
             pl.sharedTech = int16_t(t);
             say(p, pn(p) + " borrows " + kTechs[t].name + " from " + pn(d) + " (Share Knowledge).");
             return true;
@@ -950,9 +1131,46 @@ bool Rules::factionAction7(int p, Ab ab) {
 }
 
 // ================================================================== Crimson Rebellion
+// The breach tokens (fixes 24, owner's faction debug pass): the Crimson have 7 (the Sorrow's starting breach is one of
+// them). When all 7 are out, an inactive breach is moved from elsewhere; active breaches must be removed or flipped
+// before they can be placed again (Thunder's Edge rulebook, "Breaches").
+constexpr int kBreachTokens = 7;
+bool Rules::breachPlaceable(int sys) const {
+    if (G.fixes < 24) return true;
+    int out = 0;
+    bool spare = false;
+    for (size_t s = 0; s < G.systems.size(); ++s)
+        if (G.systems[s].breach) {
+            ++out;
+            if (G.systems[s].breach == 1 && int(s) != sys) spare = true;
+        }
+    return out < kBreachTokens || spare;
+}
+
 void Rules::placeBreach(int p, int sys, bool active) {
     SystemState& sy = G.systems[size_t(sys)];
     if (sy.breach) return;
+    if (G.fixes >= 24) {
+        int out = 0;
+        std::vector<Option> spare;
+        for (size_t s = 0; s < G.systems.size(); ++s)
+            if (G.systems[s].breach) {
+                ++out;
+                if (G.systems[s].breach == 1) spare.push_back({int(s), "The inactive breach in " + sysName(int(s)), ""});
+            }
+        if (out >= kBreachTokens) {
+            if (spare.empty()) {
+                say(p, "All 7 breaches are active - no new breach can open in " + sysName(sys) + ".", sys);
+                return;
+            }
+            const int from = spare.size() == 1 ? spare[0].id
+                                               : fpick(p, Ab::MoveBreach, "All 7 breaches are out: which inactive breach moves to " + sysName(sys) + "?",
+                                                       spare, "Active breaches can't be moved - only inactive ones.");
+            if (from < 0 || from >= int(G.systems.size()) || G.systems[size_t(from)].breach != 1) return;
+            G.systems[size_t(from)].breach = 0;
+            say(p, "The inactive breach in " + sysName(from) + " is moved (all 7 breaches were out).", from);
+        }
+    }
     sy.breach = int8_t(active ? 2 : 1);
     for (int q = 0; q < G.numPlayers; ++q)
         if (q != p && hasUnits(G, q, sys) && p >= 0 && p < G.numPlayers) G.players[size_t(p)].breachedOthers = true;
@@ -991,20 +1209,110 @@ void Rules::sundered(int p, int sys) {  // other players' units in the Crimson h
     }
 }
 
-// End of any combat: the Exile destroyers may open a breach there; Ahk Siever pays out a commodity.
-void Rules::crimsonCombatEnd(int att, int def, int sys) {
+// Sundered, the rest of the card (fixes 24, owner's faction debug pass): "other players' units that move or are placed
+// into your home system are destroyed" - however they got there (placed by an ability or card, moved outside the
+// tactical movement step, landed on Ahk Creuxx). Checked before every question, like the fleet pool.
+void Rules::sunderedCheck() {
+    if (G.fixes < 24 || !(G.modules & kModThundersEdge) || inSunderedCheck_ || G.round < 1 || G.phase == Phase::GameOver) return;
+    struct Guard {
+        bool& f;
+        ~Guard() { f = false; }
+    } guard{inSunderedCheck_};
+    inSunderedCheck_ = true;
     for (int c = 0; c < G.numPlayers; ++c) {
         if (!fac(c, "crimson") || G.players[size_t(c)].eliminated) continue;
-        if (commanderUsable(G, c, "crimson")) {
+        const int home = G.players[size_t(c)].homeSystem;
+        if (home < 0 || home >= int(G.systems.size())) continue;
+        // (units that survive being destroyed - the Li-Zho flagship, a Pustule save - aren't tried again and again:
+        // only something new there is checked)
+        auto signature = [&]() {
+            uint64_t h = 0;
+            for (int q = 0; q < G.numPlayers; ++q) {
+                if (q == c) continue;
+                for (int t = 0; t < kUnitTypes; ++t) h = h * 1000003u + G.systems[size_t(home)].space[size_t(q)].n[t];
+                for (int16_t x : G.systems[size_t(home)].planets)
+                    for (int t = 0; t < kUnitTypes; ++t) h = h * 1000003u + G.planets[size_t(x)].units[size_t(q)].n[t];
+            }
+            return h;
+        };
+        const uint64_t before = signature();
+        if (before == sunderedSig_[c]) continue;
+        for (int q = 0; q < G.numPlayers; ++q) {
+            if (q == c) continue;
+            int had = 0, left = 0;
+            for (int t = 0; t < kUnitTypes; ++t) {
+                had += G.systems[size_t(home)].space[size_t(q)].n[t];
+                for (int16_t x : G.systems[size_t(home)].planets) had += G.planets[size_t(x)].units[size_t(q)].n[t];
+            }
+            if (!had) continue;
+            bool any = false;
+            for (int t = 0; t < kUnitTypes; ++t) {
+                const int k = G.systems[size_t(home)].space[size_t(q)].n[t];
+                if (k) {
+                    destroyUnits(q, UnitType(t), k, home, -1, c, "Sundered");
+                    any = true;
+                }
+            }
+            const std::vector<int16_t> planets = G.systems[size_t(home)].planets;
+            for (int16_t x : planets)
+                for (int t = 0; t < kUnitTypes; ++t) {
+                    const int k = G.planets[size_t(x)].units[size_t(q)].n[t];
+                    if (k) {
+                        destroyUnits(q, UnitType(t), k, home, x, c, "Sundered");
+                        any = true;
+                    }
+                }
+            for (int t = 0; t < kUnitTypes; ++t) {
+                left += G.systems[size_t(home)].space[size_t(q)].n[t];
+                for (int16_t x : G.systems[size_t(home)].planets) left += G.planets[size_t(x)].units[size_t(q)].n[t];
+            }
+            if (any && left < had) say(c, pn(q) + "'s units are torn apart in the Rebellion's home (Sundered).", home);
+        }
+        sunderedSig_[c] = signature();
+    }
+}
+
+// End of any combat: the Exile destroyers may open a breach there; Ahk Siever pays out a commodity.
+void Rules::crimsonCombatEnd(int att, int def, int sys) {
+    // 0.58.2 (fixes 21, tester: "Crimson Rebellion commander is not triggering" - held through the Alliance or the Yin
+    // breakthrough): every player who can use Ahk Siever, not only the Crimson, and they choose
+    // (fixes 24, owner's faction debug pass: "a combat between any players" - not a fight against neutral units)
+    const bool players = att >= 0 && att < G.numPlayers && def >= 0 && def < G.numPlayers;
+    if (G.fixes >= 21 && (G.fixes < 24 || players))
+        for (int c = 0; c < G.numPlayers; ++c) {
             Player& pl = G.players[size_t(c)];
-            if (pl.commodities < commodityValue(G, pl)) ++pl.commodities;
+            if (pl.eliminated || !commanderUsable(G, c, "crimson")) continue;
+            const bool room = pl.commodities < commodityValue(G, pl), some = pl.commodities > 0;
+            if (!room && !some) continue;
+            std::vector<Option> opts;
+            if (room) opts.push_back({1, "Gain 1 commodity", std::to_string(pl.commodities) + " of " + std::to_string(commodityValue(G, pl))});
+            if (some) opts.push_back({2, "Turn 1 commodity into a trade good", ""});
+            opts.push_back({0, "Neither", ""});
+            curValue_ = pl.commodities * 100 + commodityValue(G, pl);
+            const int c2 = fpick(c, Ab::CrimsonCommander, "Ahk Siever (the Crimson Rebellion's commander): a combat has ended.", opts,
+                                 leaderText(findLeader("crimsoncommander")));
+            curValue_ = 0;
+            if (c2 == 1) {
+                { const int cb_ = pl.commodities; ++pl.commodities; commodityGained(c, cb_); }
+                say(c, pn(c) + " gains 1 commodity from the fighting (Ahk Siever).");
+            } else if (c2 == 2) {
+                --pl.commodities;
+                gainTG(c, 1);
+                say(c, pn(c) + " turns 1 commodity into a trade good (Ahk Siever).");
+            }
+        }
+    for (int c = 0; c < G.numPlayers; ++c) {
+        if (!fac(c, "crimson") || G.players[size_t(c)].eliminated) continue;
+        if (G.fixes < 21 && commanderUsable(G, c, "crimson")) {
+            Player& pl = G.players[size_t(c)];
+            if (pl.commodities < commodityValue(G, pl)) { const int cb_ = pl.commodities; ++pl.commodities; commodityGained(c, cb_); }
             else if (pl.commodities > 0) {
                 --pl.commodities;
                 gainTG(c, 1);
             }
             say(c, pn(c) + " profits from the fighting (Ahk Siever).");
         }
-        if (G.systems[size_t(sys)].breach) continue;
+        if (G.systems[size_t(sys)].breach || !breachPlaceable(sys)) continue;
         const bool two = owns(c, "exile2");
         bool near = G.systems[size_t(sys)].space[size_t(c)].count(UnitType::Destroyer) > 0;
         for (int16_t a : G.systems[size_t(sys)].adj) {
@@ -1030,7 +1338,10 @@ void Rules::breachStatus() {
         if (G.systems[s].breach != 2) continue;
         for (int q : initiativeOrder(G)) {
             if (!hasShips(G, q, int(s))) continue;
-            if (!fyes(q, Ab::RemoveBreach, "Remove the active breach in " + sysName(int(s)) + "?", "It is gone for good.")) continue;
+            curValue_ = int(s);  // (for the bots: which system)
+            const bool remove = fyes(q, Ab::RemoveBreach, "Remove the active breach in " + sysName(int(s)) + "?", "It is gone for good.");
+            curValue_ = 0;
+            if (!remove) continue;
             G.systems[s].breach = 0;
             say(q, pn(q) + " seals the breach in " + sysName(int(s)) + ".", int(s));
             computeAdjacency(G);
@@ -1065,16 +1376,33 @@ void Rules::subatomicSplicer(int p, UnitType t, int k) {
     if (!dock) return;
     if (G.fixes >= 9 && blockaded(G, p, home)) return;
     if (t == UnitType::Fighter) {
-        const int n = std::min(k, unitsAvailable(G, p, t));
+        int n = std::min(k, unitsAvailable(G, p, t));
         if (n <= 0) return;
-        const int cost = (n * unitCost2(G, p, t) + 1) / 2;
+        auto costOf = [&](int m) { return (m * unitCost2(G, p, t) + 1) / 2; };
+        if (G.fixes >= 24) {  // (faction debug pass: each fighter lost is its own "may" - choose how many come back)
+            while (n > 0 && spendable(G, p, false) < costOf(n)) --n;
+            if (n <= 0) return;
+        }
+        int cost = costOf(n);
         if (spendable(G, p, false) < cost) return;
-        if (!fyes(p, Ab::Subatomic, "Subatomic Splicer: produce " + std::to_string(n) + " fighter" + (n > 1 ? "s" : "") + " at home for " +
-                                        std::to_string(cost) + " resource" + (cost > 1 ? "s" : "") + "?", ""))
+        if (G.fixes >= 24 && n > 1) {
+            std::vector<Option> opts;
+            for (int m = n; m >= 1; --m)
+                opts.push_back({m, std::to_string(m) + " fighter" + (m > 1 ? "s" : ""),
+                                std::to_string(costOf(m)) + " resource" + (costOf(m) > 1 ? "s" : "")});
+            opts.push_back({0, "None", ""});
+            n = fpick(p, Ab::Subatomic, "Subatomic Splicer: how many of the " + std::to_string(k) + " fighters lost do you produce at home?", opts,
+                      "Two fighters cost the same as one.");
+            if (n <= 0) return;
+            cost = costOf(n);
+        } else if (!fyes(p, Ab::Subatomic, "Subatomic Splicer: produce " + std::to_string(n) + " fighter" + (n > 1 ? "s" : "") + " at home for " +
+                                               std::to_string(cost) + " resource" + (cost > 1 ? "s" : "") + "?", "")) {
             return;
+        }
         if (!pay(p, cost, false, "Subatomic Splicer", false)) return;
         addUnits(p, t, n, home, -1);
         say(p, pn(p) + " rebuilds " + std::to_string(n) + " fighter" + (n > 1 ? "s" : "") + " at home (Subatomic Splicer).", home);
+        phantomProducedOne(p, home, t, n);  // Homesick Phantom
         return;
     }
     for (int i = 0; i < k && unitsAvailable(G, p, t) > 0; ++i) {
@@ -1085,24 +1413,56 @@ void Rules::subatomicSplicer(int p, UnitType t, int k) {
         if (!pay(p, cost, false, "Subatomic Splicer", false)) return;
         addUnits(p, t, 1, home, -1);
         say(p, pn(p) + " rebuilds a " + unitTypeName(t) + " at home (Subatomic Splicer).", home);
+        phantomProducedOne(p, home, t, 1);  // Homesick Phantom
     }
 }
 
 // Homesick Phantom (Crimson hero): new ships may wait on the card; at the start of a space combat they all arrive.
+// (fixes 24, owner's faction debug pass - the card: "any of those ships": all of them, some of them (how many of each
+// type) or none; and after every way of producing ships - Subatomic Splicer, Salvage Operations, Freelancers,
+// Integrated Economy call this too)
 void Rules::phantomProduced(int p, int sys, const int counts[kUnitTypes]) {
-    if (!fac(p, "crimson") || !heroUnlocked(G, p)) return;
+    if (!fac(p, "crimson") || !heroUnlocked(G, p) || sys < 0) return;
+    int take[kUnitTypes] = {};
     int ships = 0;
-    for (int t : kShipIdx) ships += counts[t];
-    if (!ships || !fyes(p, Ab::CrimsonHero, "Homesick Phantom: put the new ships on the card?", "At the start of a space combat you may bring them all into it."))
-        return;
-    Player& pl = G.players[size_t(p)];
     for (int t : kShipIdx) {
-        const int k = std::min<int>(counts[t], G.systems[size_t(sys)].space[size_t(p)].n[t]);
+        take[t] = std::min<int>(counts[t], G.systems[size_t(sys)].space[size_t(p)].n[t]);
+        ships += take[t];
+    }
+    if (!ships) return;
+    const std::string why = "At the start of a space combat you may bring them all into it.";
+    if (G.fixes >= 24 && ships > 1) {
+        const int c = fpick(p, Ab::CrimsonHero, "Homesick Phantom: put the new ships on the card?",
+                            {{1, "All of them", ""}, {2, "Some of them", "Choose how many of each"}, {0, "None", ""}}, why);
+        if (c == 0) return;
+        if (c == 2)
+            for (int t : kShipIdx) {
+                if (!take[t]) continue;
+                std::vector<Option> opts;
+                for (int m = take[t]; m >= 1; --m) opts.push_back({m, std::to_string(m), ""});
+                opts.push_back({0, "None", ""});
+                take[t] = fpick(p, Ab::CrimsonHero, std::string("Homesick Phantom: how many of the new ") + unitTypeName(UnitType(t), true) +
+                                                        " go on the card?", opts);
+            }
+    } else if (!fyes(p, Ab::CrimsonHero, "Homesick Phantom: put the new ships on the card?", why)) {
+        return;
+    }
+    Player& pl = G.players[size_t(p)];
+    int moved = 0;
+    for (int t : kShipIdx) {
+        const int k = std::min<int>(take[t], G.systems[size_t(sys)].space[size_t(p)].n[t]);
         if (k <= 0) continue;
         G.systems[size_t(sys)].space[size_t(p)].remove(UnitType(t), k, false);
         pl.phantom.add(UnitType(t), k);
+        moved += k;
     }
-    say(p, pn(p) + "'s new ships vanish into the Homesick Phantom.", sys);
+    if (moved) say(p, pn(p) + "'s new ships vanish into the Homesick Phantom.", sys);
+}
+void Rules::phantomProducedOne(int p, int sys, UnitType t, int k) {  // (fixes 24: the productions outside productionCore)
+    if (G.fixes < 24 || !isShip(t) || k <= 0) return;
+    int counts[kUnitTypes] = {};
+    counts[int(t)] = k;
+    phantomProduced(p, sys, counts);
 }
 void Rules::phantomCombat(int att, int def, int sys) {
     for (int p : {att, def}) {
@@ -1118,20 +1478,109 @@ void Rules::phantomCombat(int att, int def, int sys) {
 }
 
 // Revenant (Crimson mech): with an active breach in the active system, 1 mech may join the invasion from nowhere.
-void Rules::revenant(int p, int sys) {
-    if (!fac(p, "crimson") || !mechAbilities(G) || G.systems[size_t(sys)].breach != 2 || unitsAvailable(G, p, UnitType::Mech) <= 0) return;
-    bool target = false;
+// Returns the mechs p had in the space area before it came (-1: none came), so the invasion can send it back if it
+// isn't committed. (fixes 24, owner's faction debug pass - the card: DEPLOY during the Commit Ground Forces step, to
+// any planet there: asked after bombardment (invasion), offered for p's own planets too, and a Revenant that isn't
+// landed goes back to the reinforcements instead of staying in space.)
+int Rules::revenant(int p, int sys) {
+    if (!fac(p, "crimson") || !mechAbilities(G) || G.systems[size_t(sys)].breach != 2 || unitsAvailable(G, p, UnitType::Mech) <= 0) return -1;
+    bool target = G.fixes >= 24 && !G.systems[size_t(sys)].planets.empty();
     for (int16_t x : G.systems[size_t(sys)].planets)
         if (G.planets[size_t(x)].owner != p) target = true;
-    if (!target || !fyes(p, Ab::Revenant, "Revenant: commit 1 mech from your reinforcements through the breach?", "")) return;
+    const char* why = G.fixes >= 24 ? "Deploy: it lands on a planet in this system now, or goes back to your reinforcements." : "";
+    if (!target || !fyes(p, Ab::Revenant, "Revenant: commit 1 mech from your reinforcements through the breach?", why)) return -1;
+    const int before = G.systems[size_t(sys)].space[size_t(p)].count(UnitType::Mech);
     addUnits(p, UnitType::Mech, 1, sys, -1);
     say(p, pn(p) + "'s Revenant steps out of the breach in " + sysName(sys) + ".", sys);
+    return before;
+}
+
+// Ahk Ravin (fixes 24, owner's faction debug pass - the card: the chosen player MAY swap 2 of their ships - fighters
+// are ships too - in any systems, and may transport units when they swap): the players with ships in 2 systems or more
+std::vector<int> Rules::ravinPlayers() const {
+    std::vector<int> v;
+    for (int q = 0; q < G.numPlayers; ++q) {
+        if (G.players[size_t(q)].eliminated) continue;
+        int systems = 0;
+        for (size_t s = 0; s < G.systems.size() && systems < 2; ++s)
+            if (G.systems[s].space[size_t(q)].ships()) ++systems;
+        if (systems >= 2) v.push_back(q);
+    }
+    return v;
+}
+
+namespace {
+void moveUnits(Force& src, Force& dst, int t, int k) {  // k units of one type with their damage and galvanize tokens
+    k = std::min<int>(k, src.n[t]);
+    if (k <= 0) return;
+    const int undamaged = src.n[t] - src.dmg[t];
+    const int dmgMoved = std::max(0, k - undamaged);
+    const int galvMoved = std::min<int>(k, src.galv[t]);
+    src.galv[t] = uint8_t(src.galv[t] - galvMoved);
+    src.remove(UnitType(t), k, false);
+    dst.add(UnitType(t), k);
+    dst.dmg[t] = uint8_t(dst.dmg[t] + dmgMoved);
+    dst.galv[t] = uint8_t(dst.galv[t] + galvMoved);
+}
+}  // namespace
+
+// What one swapped ship takes along from the system it leaves (LRR 95.1: from the space area or its planets, up to its
+// capacity; LRR 95.3: nothing from a system with the player's command token). The units chosen leave the system at once.
+Force Rules::ravinCargo(int q, int sys, int type) {
+    Force cargo;
+    SystemState& sy = G.systems[size_t(sys)];
+    int room = unitDef(G, q, UnitType(type)).capacity;
+    if (room <= 0) return cargo;
+    if (sy.hasToken(q)) {
+        say(q, pn(q) + "'s " + unitTypeName(UnitType(type)) + " leaves " + sysName(sys) +
+                   " empty: nothing can be picked up from a system with their command token (LRR 95.3).", sys);
+        return cargo;
+    }
+    static const int kCargo[] = {int(UnitType::Infantry), int(UnitType::Mech), int(UnitType::Fighter)};
+    while (room > 0) {
+        std::vector<Option> opts;  // id = (planet + 1) * 16 + type (planet -1 = the space area)
+        for (int t : kCargo) {
+            if (sy.space[size_t(q)].n[t])
+                opts.push_back({t, std::string(unitTypeName(UnitType(t), true)) + " in space",
+                                std::to_string(sy.space[size_t(q)].n[t]) + " there"});
+            if (t == int(UnitType::Fighter)) continue;
+            for (int16_t x : sy.planets)
+                if (G.planets[size_t(x)].units[size_t(q)].n[t])
+                    opts.push_back({(x + 1) * 16 + t, std::string(unitTypeName(UnitType(t), true)) + " on " + planetName(x),
+                                    std::to_string(G.planets[size_t(x)].units[size_t(q)].n[t]) + " there"});
+        }
+        if (opts.empty()) break;
+        opts.push_back({-1, cargo.empty() ? "Nothing" : "Nothing more", ""});
+        curValue_ = sys * 16 + type;  // (for the bots: which ship leaves which system)
+        const int c = fpick(q, Ab::CrimsonAgent,
+                            "Ahk Ravin: what does the " + std::string(unitTypeName(UnitType(type))) + " take along from " + sysName(sys) +
+                                "? (room for " + std::to_string(room) + ")",
+                            opts, "Units it doesn't take stay here - any that no longer fit are removed.");
+        curValue_ = 0;
+        if (c < 0) break;
+        const int t = c % 16, x = c / 16 - 1;
+        Force& from = x < 0 ? sy.space[size_t(q)] : G.planets[size_t(x)].units[size_t(q)];
+        const int most = std::min<int>(room, from.n[t]);
+        int k = most;
+        if (most > 1) {
+            std::vector<Option> counts;
+            for (int m = most; m >= 1; --m) counts.push_back({m, std::to_string(m), ""});
+            curValue_ = sys * 16 + type;
+            k = fpick(q, Ab::CrimsonAgent, std::string("Ahk Ravin: how many ") + unitTypeName(UnitType(t), true) + " go along?", counts);
+            curValue_ = 0;
+        }
+        if (k <= 0) break;
+        moveUnits(from, cargo, t, k);
+        room -= k;
+    }
+    return cargo;
 }
 
 std::vector<Option> Rules::factionActionOptions8(int p) {
     std::vector<Option> o;
     auto add = [&](Ab ab, const std::string& label, const std::string& detail) { o.push_back({6000 + int(ab), label, detail}); };
-    if (canUseAgent(p, "crimson")) add(Ab::CrimsonAgent, "Agent: Ahk Ravin", leaderText(findLeader("crimsonagent")));
+    if (canUseAgent(p, "crimson") && (G.fixes < 24 || !ravinPlayers().empty()))  // (fixes 24: only when someone can swap)
+        add(Ab::CrimsonAgent, "Agent: Ahk Ravin", leaderText(findLeader("crimsonagent")));
     const int c = playerOfFaction(G, "crimson");
     if (c >= 0 && c != p && holdsNote(G, p, c, kNoteFaction) && G.severSystem < 0)
         add(Ab::Sever, "Play Sever", factionNoteText(G.players[size_t(c)].faction, kNoteFaction));
@@ -1140,9 +1589,69 @@ std::vector<Option> Rules::factionActionOptions8(int p) {
     return o;
 }
 
+bool Rules::ahkRavin(int p) {
+    std::vector<Option> who;
+    for (int q : ravinPlayers()) who.push_back({q, pn(q), ""});
+    if (who.empty()) return false;
+    const int q = fpick(p, Ab::CrimsonAgent, "Ahk Ravin: which player may swap 2 of their ships?", who,
+                        "They may also take fighters and ground forces along with the 2 ships.");
+    spendAgent(p, "crimson");
+    std::vector<Option> ships;  // id = system * 16 + type
+    bool token = false;
+    for (size_t s = 0; s < G.systems.size(); ++s)
+        for (int t : kShipIdx)
+            if (G.systems[s].space[size_t(q)].n[t]) {
+                const bool tok = G.systems[s].hasToken(q) && unitDef(G, q, UnitType(t)).capacity > 0;
+                token = token || tok;
+                ships.push_back({int(s) * 16 + t, std::string(unitTypeName(UnitType(t))) + " in " + sysName(int(s)),
+                                 tok ? "Your command token is here: it can't take anything along (LRR 95.3)." : ""});
+            }
+    const std::string warn = token ? "A ship leaving a system with your command token can't take fighters or ground forces along "
+                                     "(LRR 95.3) - any left there that no longer fit are removed."
+                                   : "";
+    ships.push_back({-1, "Don't swap", ""});
+    const int a = fpick(q, Ab::CrimsonAgent, "Ahk Ravin: first ship to swap?", ships, warn);
+    if (a < 0) {
+        say(q, pn(q) + " doesn't swap any ships (Ahk Ravin).");
+        return true;
+    }
+    std::vector<Option> rest;
+    for (const Option& o : ships)
+        if (o.id >= 0 && o.id / 16 != a / 16) rest.push_back(o);
+    rest.push_back({-1, "Don't swap", ""});
+    const int b = fpick(q, Ab::CrimsonAgent, "Ahk Ravin: swap it with which ship?", rest, warn);
+    if (b < 0) {
+        say(q, pn(q) + " doesn't swap any ships (Ahk Ravin).");
+        return true;
+    }
+    const int sa = a / 16, sb = b / 16;
+    Force cargoA = ravinCargo(q, sa, a % 16), cargoB = ravinCargo(q, sb, b % 16);
+    auto aboard = [](const Force& f) {
+        int n = 0;
+        for (int t = 0; t < kUnitTypes; ++t) n += f.n[t];
+        return n == 0 ? std::string() : " (" + std::to_string(n) + (n > 1 ? " units" : " unit") + " aboard)";
+    };
+    const std::string text = pn(q) + "'s " + unitTypeName(UnitType(a % 16)) + aboard(cargoA) + " in " + sysName(sa) + " and " +
+                             unitTypeName(UnitType(b % 16)) + aboard(cargoB) + " in " + sysName(sb) + " trade places (Ahk Ravin).";
+    Force& fa = G.systems[size_t(sa)].space[size_t(q)];
+    Force& fb = G.systems[size_t(sb)].space[size_t(q)];
+    moveShip(fa, fb, a % 16);
+    moveShip(fb, fa, b % 16);
+    for (int t = 0; t < kUnitTypes; ++t) {
+        moveUnits(cargoA, fb, t, cargoA.n[t]);
+        moveUnits(cargoB, fa, t, cargoB.n[t]);
+    }
+    say(q, text);
+    fleetDirty_ = true;
+    removeExcessCapacity(q, sa);
+    removeExcessCapacity(q, sb);
+    return true;
+}
+
 bool Rules::factionAction8(int p, Ab ab) {
     switch (ab) {
         case Ab::CrimsonAgent: {  // a player swaps 2 of their ships (and what they carry)
+            if (G.fixes >= 24) return ahkRavin(p);
             std::vector<Option> who;
             for (int q = 0; q < G.numPlayers; ++q)
                 if (!G.players[size_t(q)].eliminated) who.push_back({q, pn(q), ""});
@@ -1173,7 +1682,12 @@ bool Rules::factionAction8(int p, Ab ab) {
             const int c = playerOfFaction(G, "crimson");
             std::vector<Option> opts;
             for (size_t s = 0; s < G.systems.size(); ++s)
-                if (hasUnits(G, p, int(s)) && wormholesOf(G, int(s))) opts.push_back({int(s), sysName(int(s)), ""});
+                if (hasUnits(G, p, int(s)) && wormholesOf(G, int(s))) opts.push_back({int(s), sysName(int(s)), G.fixes >= 24 ? "has a wormhole" : ""});
+            // (fixes 24: the card - any system with your units; one may get a wormhole later this round)
+            if (G.fixes >= 24)
+                for (size_t s = 0; s < G.systems.size(); ++s)
+                    if (hasUnits(G, p, int(s)) && !wormholesOf(G, int(s)) && !G.systems[s].isHyperlane())
+                        opts.push_back({int(s), sysName(int(s)), "no wormhole now"});
             if (c < 0 || opts.empty()) return false;
             opts.push_back({-1, "Cancel", ""});
             const int s = fpick(p, Ab::Sever, "Sever: its wormholes do nothing during movement - which system?", opts, "", true);
@@ -1192,7 +1706,8 @@ bool Rules::factionAction8(int p, Ab ab) {
             std::vector<Option> opts;  // breaches to flip (system), or 1000 + system for a new active one
             for (size_t s = 0; s < G.systems.size(); ++s) {
                 if (G.systems[s].breach) opts.push_back({int(s), std::string(G.systems[s].breach == 2 ? "Close" : "Open") + " the breach in " + sysName(int(s)), ""});
-                else if (hasUnits(G, p, int(s)) && !G.systems[s].isHyperlane() && (G.fixes < 8 || G.systems[s].home < 0))  // (0.44.4: non-home)
+                else if (hasUnits(G, p, int(s)) && !G.systems[s].isHyperlane() && (G.fixes < 8 || G.systems[s].home < 0) &&  // (0.44.4: non-home)
+                         breachPlaceable(int(s)))
                     opts.push_back({1000 + int(s), "New active breach in " + sysName(int(s)), ""});
             }
             if (opts.empty()) return false;

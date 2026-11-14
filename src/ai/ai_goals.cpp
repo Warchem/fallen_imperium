@@ -19,6 +19,12 @@
 namespace ti {
 
 extern int g_aiSeat;
+float aiTune(const char* name, float def);
+// (the Winnu review, checkpoint 2 - test knob bloodties) the influence the custodians cost this bot: none for the Winnu
+// (Blood Ties) - every custodians plan, staging and reserve asked for 6. Tested (90 games): custodians 0.14 VP a game vs
+// 0.12, Mecatol Rex taken in 23 games vs 21, 5 wins / 6.16 VP against 4 / 6.10; with mathispick 13 / 6.61 (12 / 6.58),
+// fresh 13 / 7.14 (14 / 7.11), plain 13 / 6.84 (13 / 6.81) - no measurable effect. Owner 2026-11-12 21:46: ON
+int aiCustodiansInf(const Game& g, int p) { return aiTune("bloodties", 1.f) > 0.f && isFaction(g, p, "winnu") ? 0 : 6; }
 float aiTune(const char* name, float def) {
     static std::vector<std::pair<std::string, float>> table, seatTable;
     static int seatMask = 0;
@@ -133,6 +139,7 @@ const Goals& aiGoals(const Game& g, int p) {
     if (owner[p] == &g && key[p] == k) return cache[p];
     owner[p] = &g;
     key[p] = k;
+    setProgressAroz(aiTune("firmaroz", 1.f) > 0.f);  // (the Firmament bot review, owner 2026-11-11: plan secrets with Captain Aroz)
     AiSeat seat(p);  // p's own difficulty
     Goals& G = cache[p];
     G = Goals();
@@ -306,11 +313,13 @@ const Goals& aiGoals(const Game& g, int p) {
     // ------------------------------------------------ Mecatol Rex
     // the custodians token is a victory point: keep 6 influence ready from round 2
     // (the groundwork, 0.25.0: only the bot that can land there this turn - the others spend theirs)
-    if (!g.custodiansRemoved && g.round >= 2 && totalInf >= 6 && g.mecatol() >= 0 && aiTune("reserve", 1.f) > 0.f) {
+    // (the Winnu review, checkpoint 2 - test knob bloodties: the Winnu keep none - Blood Ties)
+    if (!g.custodiansRemoved && g.round >= 2 && aiCustodiansInf(g, p) > 0 && totalInf >= aiCustodiansInf(g, p) && g.mecatol() >= 0 &&
+        aiTune("reserve", 1.f) > 0.f) {
         const Ground& gw = aiGround(g, p);
         // (0.44.2: also a bot with a loaded ship in or next to Mecatol Rex - it takes them next)
         if (gw.scale <= 0.f || aiTune("g_cust", 1.f) <= 0.f || gw.custodian || (aiTune("seatpark", 1.f) > 0.f && aiMecatolStaged(g, p)))
-            G.keepInf = std::max(G.keepInf, 6);
+            G.keepInf = std::max(G.keepInf, aiCustodiansInf(g, p));
     }
     // holding Mecatol Rex turns every Imperial into an extra victory point
     G.mecatol += kVP * aiTune("mecatol", aiCompetitiveSeat(g, p) ? 1.4f : 0.6f) * level;

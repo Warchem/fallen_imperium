@@ -111,7 +111,8 @@ std::string checkInvariants(const Game& g) {
         }
         int vpFromObjectives = 0;
         for (int16_t o : pl.scored) vpFromObjectives += kObjectives[o].points;
-        if (vpFromObjectives > pl.vp && pl.vp < g.vpGoal) {  // the VP track stops at the goal
+        // (the Mentak review: a Mutiny Against made Jol-Nar lose a point it had from an objective - points lost count)
+        if (vpFromObjectives > pl.vp + pl.vpLost && pl.vp < g.vpGoal) {  // the VP track stops at the goal
             std::string list;
             for (int16_t o : pl.scored) list += std::string(" ") + kObjectives[o].key;
             return "VP lower than scored objectives: " + playerName(g, p) + " " + std::to_string(pl.vp) + " < " + std::to_string(vpFromObjectives) + " (" + list + ")";
@@ -125,12 +126,22 @@ std::string checkInvariants(const Game& g) {
                 return "structure on a planet the player doesn't control: " + playerName(g, p) + " on " + kPlanets[pl.def].name +
                        " (owner " + (pl.owner >= 0 ? playerName(g, pl.owner) : std::string("nobody")) + ")";
         }
-        int armies = pl.units[kNeutral].groundForces() > 0 ? 1 : 0;  // (Thunder's Edge: neutral units count; coexisting ones don't)
+        // (Thunder's Edge: neutral units count; coexisting ones don't - fixes 25: the neutral guards a Viper coexisted with
+        // stay, coexisting, when Viper Hollow takes the planet)
+        int armies = pl.units[kNeutral].groundForces() > 0 && !((pl.coexist >> kNeutral) & 1) ? 1 : 0;
         for (int p = 0; p < g.numPlayers; ++p)
             if (pl.units[p].groundForces() > 0 && !((pl.coexist >> p) & 1)) ++armies;
         // (0.43.0: not once the game is won - a win in the middle of a tactical action stops it before the invasion)
         if (armies > 1 && int(x) != g.groundCombatPlanet && g.phase != Phase::GameOver && g.winner < 0)
-            return std::string("two players' ground forces share a planet after combat: ") + kPlanets[pl.def].name;
+        {
+            std::string who;
+            for (int p = 0; p < kSides; ++p)
+                if (pl.units[size_t(p)].groundForces() > 0)
+                    who += " " + (p == kNeutral ? std::string("neutral") : playerName(g, p)) + " " + std::to_string(pl.units[size_t(p)].groundForces()) +
+                           (((pl.coexist >> p) & 1) ? " (coexisting)" : "");
+            return std::string("two players' ground forces share a planet after combat: ") + kPlanets[pl.def].name + " -" + who +
+                   "; owner " + (pl.owner >= 0 ? playerName(g, pl.owner) : std::string("nobody"));
+        }
     }
     return "";
 }
@@ -203,6 +214,7 @@ int runSimulation(int games, int players, uint32_t seed, bool verbose) {
                 h = HabitProfile();
         }
         if (std::getenv("TI4_SIMRANDOMMAP")) s.draft = 0;  // test only: the random galaxy instead of the draft
+        if (std::getenv("TI4_SIMLAYOUT")) s.layout = std::atoi(std::getenv("TI4_SIMLAYOUT"));  // 0.58.0: 1 = no hyperlanes
         if (const char* m = std::getenv("TI4_SIMMODULES")) s.modules = std::atoi(m);  // 0.33.0: e.g. 3 = Codex + Uncharted
         if (const char* x = std::getenv("TI4_SIMEXTRAS")) s.extras = uint8_t(std::atoi(x));  // 0.55.0: e.g. 127 = Mecatol Rex Calm
         // 0.36.0: galactic events - a bit mask, or "rot" for 2 different playable events each game

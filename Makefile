@@ -71,7 +71,8 @@ package: build/miyoo/ti4
 	cp build/miyoo/ti4 package/launch.sh package/config.json package/icon.png $(PKGROOT)/App/$(APPDIR)/
 	cp package/README.txt package/RULES-CHECK.txt assets/icons.dat assets/retro.dat assets/voidfall-miyoo.dat $(PKGROOT)/App/$(APPDIR)/
 	@$(call COPY_MUSIC,miyoo,$(PKGROOT)/App/$(APPDIR))
-	mkdir -p $(PKGROOT)/App/$(APPDIR)/art && cp assets/art/eve_of_the_fall-miyoo.jpg assets/art/fated_expedition-miyoo.jpg assets/art/trade_wars-miyoo.jpg assets/art/twilights_fall-miyoo.jpg assets/art/action_back-miyoo.png $(PKGROOT)/App/$(APPDIR)/art/
+	mkdir -p $(PKGROOT)/App/$(APPDIR)/art && cp assets/art/eve_of_the_fall-miyoo.jpg assets/art/fated_expedition-miyoo.jpg assets/art/trade_wars-miyoo.jpg assets/art/twilights_fall-miyoo.jpg assets/art/action_back-miyoo.png assets/art/codec_space-miyoo.jpg assets/art/codec_alert-miyoo.jpg $(PKGROOT)/App/$(APPDIR)/art/
+	python3 tools/portraits/split_strips.py assets/art/portraits-pc.png src/ui/gen/portrait_keys.inc $(PKGROOT)/App/$(APPDIR)/art/portraits  # (0.58.0: one strip per faction)
 	chmod +x $(PKGROOT)/App/$(APPDIR)/ti4 $(PKGROOT)/App/$(APPDIR)/launch.sh
 	rm -f $(ZIP) && cd $(PKGROOT) && python3 -c "import shutil; shutil.make_archive('../../dist/TI4-Miyoo-$(VERSION)', 'zip', '.')"
 	cp build/miyoo/ti4.map dist/TI4-Miyoo-$(VERSION).map
@@ -89,6 +90,9 @@ build/linux/obj/%.o: src/%.cpp
 	@mkdir -p $(dir $@)
 	g++ $(COMMON) -DTI4_SDL2 -Ithird_party/SDL2 -c $< -o $@
 linux-package: build/linux/ti4
+	@# 0.58.3: refuse a binary that needs a glibc newer than 2.35 (SteamOS 3.5) - add a stand-in to glibc_compat.cpp
+	@bad=$$(objdump -T build/linux/ti4 | grep -oE 'GLIBC_2\.(3[6-9]|[4-9][0-9])' | sort -u); \
+	  if [ -n "$$bad" ]; then echo "build/linux/ti4 needs $$bad:"; objdump -T build/linux/ti4 | grep -E 'GLIBC_2\.(3[6-9]|[4-9][0-9])'; exit 1; fi
 	rm -rf build/linuxpkg && mkdir -p build/linuxpkg/TwilightImperium dist
 	cp build/linux/ti4 assets/icons.dat assets/retro.dat assets/retro-pc.dat assets/voidfall-pc.dat package/linux/TwilightImperium.sh build/linuxpkg/TwilightImperium/
 	@$(call COPY_MUSIC,pc,build/linuxpkg/TwilightImperium)

@@ -1,6 +1,406 @@
 FALLEN IMPERIUM - Miyoo Mini Plus homebrew
 (an unofficial fan project of Twilight Imperium)
-Version 0.57.2 - Pre-Beta
+Version 0.59.30 - Pre-Beta
+
+NEW IN 0.59.30 - the faction debug pass, part 4: twelve more factions, the
+technologies and the action cards
+  The Mentak Coalition, the Xxcha Kingdom, the Naaz-Rokha Alliance, the
+  Titans of Ul, the Naalu Collective, the Clan of Saar, the Universities of
+  Jol-Nar, the Last Bastion, the Council Keleres, the Deepwrought
+  Scholarate, the Ral Nel Consortium and the Nekro Virus: every card
+  checked against its wording, one at a time (the game's texts now follow
+  the cards). Then the 24 shared technologies and unit upgrades, and the
+  93 action cards of the base game and Prophecy of Kings. Games started
+  before 0.59.30 keep the old rules, so their saves replay the same.
+  The Mentak Coalition:
+  - Ssruu can be used as Suffi An. Pillage also after commodities become
+    trade goods (The Stillness of Stars, Crimson Legionnaire). The
+    Cavalry can't use Sustain Damage where Sustain Damage is blocked.
+  The Xxcha Kingdom:
+  - Peace Accords not onto a planet with neutral units; Political Favor
+    needs a token in your strategy pool; Ggrocuto Rinn removes the
+    infantry. Xxekir Grom is purged last, and nobody else's abilities can
+    be used while it resolves; the Omega version counts both values for
+    votes too.
+  The Naaz-Rokha Alliance:
+  - Garv and Gunn at the end of any player's turn; Hesh and Prit purged
+    last; Absolute Synergy doesn't use your action; the Z-Grav Eidolon
+    has no Sustain Damage.
+  The Titans of Ul:
+  - Tellurian works for any player's units; Ul the Progenitor stays on
+    Elysium (not purged). Planet cards show the traits a planet has right
+    now. The bots wake their sleepers and keep PDS until Tungstantus.
+  The Naalu Collective:
+  - Foresight can't move into a nebula and takes ground forces along; the
+    Matriarch's fighters can be committed alone. Thunder's Edge's own
+    Z'eu and Iconoclast.
+  The Clan of Saar:
+  - Captain Mendosa for any player's activation; Gurno Aggero is purged
+    last and destroys neutral units too; Rowl Sarrig places the new units
+    dock by dock; a floating factory left blockaded (after a retreat,
+    Foresight, a production or at the end of a turn) is destroyed;
+    Deorbit Barrage has no 10-dice limit. Thunder's Edge coexistence is
+    one choice per planet.
+  The Universities of Jol-Nar:
+  - Brilliant also below 4 resources (only when a command token was
+    spent); Doctor Sucaban for any player's research; Research Agreement
+    only for a technology the holder could own.
+  The Last Bastion:
+  - Phoenix Standard / Raise the Standard only for units that took part;
+    Dame Briar for any player's units (a PDS too); Nip and Tuck unlocked
+    by anyone's galvanized units.
+  The Council Keleres:
+  - Suffi An's extra action shows in the log; Xander is offered on any
+    payment their commodities can go toward; the Omniopiares fee stacks.
+  The Deepwrought Scholarate:
+  - Carrina: a refused research is picked again, and she can keep a
+    specialty planet ready; Research Team with neutral units; the ocean
+    card limit at any time (exhausted cards go first); ocean cards vote and
+    ready after the agenda phase; Aello for everyone who holds it; Share
+    Knowledge gained; D.W.S. Luminous +1 through every system with your
+    units. The bots build more mechs.
+  The Ral Nel Consortium:
+  - Survival Instinct and Watchful Ojz ships take their cargo along; Ojz
+    retreats right when the retreat is announced; Alarum from the same
+    system's other planets. The bots use Ojz.
+  The Nekro Virus:
+  - The Alastor: choose how many of your infantry and mechs fight, from
+    the space area AND from the system's planets. Those on planets don't
+    need capacity, fight on after your ships are gone, stay on their
+    planet if you retreat, and can be picked like ships (Assault Cannon,
+    Dimensional Splicer, Direct Hit on a Mordred that used Sustain
+    Damage...).
+  - Mordred's +2 in space combat too. Nekro Malleon: choose any player,
+    who then decides. Technological Singularity and Antivirus from the
+    very start of a combat (after an Assault Cannon kill). Reveal
+    Prototype and the Book of Latvinia give the Nekro 3 command tokens
+    instead of a technology. No Nekro Acidos card for a Valefar token.
+  The technologies (everyone):
+  - Dreadnought II can't be destroyed by Direct Hit; Predictive
+    Intelligence's extra votes and exhaust show in the log; Integrated
+    Economy in every phase. Every technology's text is the card's.
+  The action cards (everyone):
+  - Manipulate Investments: any split of the 5 trade goods over 3 or more
+    cards; Scramble Frequency for anyone but the player who rolled; Decoy
+    Operation from space areas and the system's other planets; Ghost
+    Squad moves any number of ground forces to any of your planets in the
+    system. Plagiarize and the Maw of Worlds count as gaining a
+    technology, not researching it. Every card's text is the card's.
+  Thunder's Edge:
+  - The entropic scar can be paid with the Scepter of Emelpar, and the
+    feed tells you when your ships are in a scar but your strategy pool is
+    empty (the faction technology costs 1 strategy token).
+
+NEW IN 0.59.15 - the faction debug pass, part 3: fourteen more factions
+  The Embers of Muaat, the Arborec, the Yin Brotherhood, the Mahact
+  Gene-Sorcerers, the Barony of Letnev, the Vuil'raith Cabal, the L1Z1X
+  Mindnet, the Federation of Sol, the Emirates of Hacan, the Winnu, the
+  Yssaril Tribes, the Empyrean, the Nomad and the Argent Flight: every card
+  checked against its wording, one at a time (the game's texts now follow
+  the cards). Games started before 0.59.15 keep the old rules, so their
+  saves replay the same.
+  The Embers of Muaat:
+  - Umbat: the Muaat choose the player, and that player produces.
+  - Ba'al also destroys neutral units, is never used in the Fracture, and
+    the Muaat's own units there go back to their reinforcements; a
+    frontier token stays.
+  - Stellar Genesis also counts a war sun moving THROUGH Avernus's system.
+  - Fires of the Gashlai / Advent of the War Sun give a faction with its
+    own war sun upgrade that one.
+  - Magmus Reactor: the original card when the Codex and Thunder's Edge
+    are both off.
+  The Arborec:
+  - Letani Ospha works on any player's ship (that player picks the
+    replacement). Smarter bot use of the hero.
+  The Yin Brotherhood:
+  - Devotion: the Yin choose the ship that takes the hit, after the
+    Retreat step. Van Hauge also destroys neutral ships. Brother Milor's
+    fighters are no longer wiped out with the rest; the original card
+    works for any player's ships.
+  - Dannel of the Tenth fights neutral ground forces, and can target your
+    own planets and Mallice. Indoctrination can always take the mech.
+  - The bots research Yin Spinner far more often.
+  The Mahact Gene-Sorcerers:
+  - Il Na Viroset: the token goes and the turn ends at once (nothing
+    "after you activate"), for anyone who holds it. No Skilled Retreat
+    while Airo Shir Aur forbids retreats. Scepter of Dominion reaches the
+    nexus; Jae Mir Kan works with Construction.
+  The Barony of Letnev:
+  - War Funding (Omega): you reroll your own misses, then may reroll ALL
+    of your opponent's dice - two separate choices.
+  - Rear Admiral Farran (and the Sardakk's Valkyrie Exoskeleton) when
+    every unit is destroyed at once. Smarter bots with Darktalon Treilla.
+  The Vuil'raith Cabal:
+  - The Crucible: +1 more move out of or through a gravity rift.
+  - Devour only in the Vuil'raith's own combats. The bots seek gravity
+    rifts with their commander.
+  The L1Z1X Mindnet:
+  - The Helmsman's dreadnoughts bring their fighters and ground forces.
+    Harrow includes your mechs on the system's other planets. Cybernetic
+    Enhancements: the original card without the Codex. I48S can be used
+    for other players. The bots take the dreadnought upgrade first.
+  The Federation of Sol:
+  - Claire Gibson resolves after the attacker's start-of-combat abilities;
+    the bots always use her.
+  The Emirates of Hacan:
+  - Gila the Silvertongue counts every trade good. The units on a traded
+    Pride of Kenara planet go where the Hacan choose. Bots (everyone)
+    offer X-1 trades only when they can pay; better hero timing.
+  The Winnu:
+  - Mathis Mathinus: you choose which players may use the secondary.
+    Acquiescence: the original card without the Codex. Reclaimer also
+    after Reclamation. Production discounts only on the PRODUCTION
+    ability. Smarter bots with Mathis and Blood Ties.
+  The Yssaril Tribes:
+  - So Ata: you choose which of the three to look at.
+  The Empyrean:
+  - Acamar for any player's move; Dynamo repairs any player's unit; Dark
+    Pact pays out with a Trade Agreement; Procyon purged last; space
+    stations don't count as planets.
+  - Void Tether as the card says: when you activate; choose which token
+    moves; a tethered border blocks movement, retreats, space cannon and
+    neighbours. The bots sell Blood Pact and tether near home.
+  The Nomad:
+  - Field Marshal Mercer at the end of any player's turn, with units from
+    anywhere; The Thundarian in other players' combats; Quantum
+    Manipulators after the anti-fighter barrage; Future Sight only in the
+    agenda phase; Ssruu as Artuno; Ahk-Syl Siven without the flagship;
+    Memoria may retreat into a system with your mechs.
+  - The Cavalry: the ship really uses Sustain Damage.
+  The Argent Flight:
+  - Zeal: first to vote only in the agenda phase (not on Executive Order's
+    agenda); the extra votes always.
+  - Trilossa Aun Mirik for any player's production.
+  - Mirik Aun Sissiri: ships take what they carry along; purged at the end.
+  - Wing Transfer: right when you activate; another player's planet with
+    nothing on it doesn't stop it.
+
+NEW IN 0.59.05 - the faction debug pass, part 2: the Firmament / the Obsidian and the Sardakk N'orr
+  Every card of these factions checked against its wording, one at a time
+  (the game's texts now follow the cards). Games started before 0.59.05
+  keep the old rules, so their saves replay the same.
+  The Firmament / the Obsidian:
+  - Plots Within Plots also works for the agenda-phase secrets (Drive the
+    Debate, Dictate Policy), and never for an eliminated player's secret.
+  - Puppets of the Blade: the Obsidian take control of Cronos Hollow and
+    Tallin Hollow; anyone else's units there coexist.
+  - Heaven's Eye is repaired after ground combat rounds too.
+  - Viper EX-23 (and the Deepwrought's Research Team): "coexist?" is asked
+    right after you commit ground forces, before space cannon defense;
+    the Viper may coexist with neutral units.
+  - Neural Parasite (Obsidian side) can destroy neutral infantry;
+    Planesplitter (Obsidian side) keeps the ingress token on the board.
+  - Myru Vos is offered only when it matters (a space cannon could fire,
+    or it opens the way through); Solar Flare also stops Experimental
+    Battlestation.
+  - Captain Aroz counts for Occupy the Seat of the Empire and Drive the
+    Debate. Space stations no longer count as planets for Establish
+    Hegemony, Hoard Raw Materials and Stake Your Claim (for everyone).
+  - Nocturne: the Firmament and the Obsidian are one faction for Yin
+    Ascendant and the Mercenaries for Hire deck.
+  - Sharsiss: offered only with a free plot, purged at the end; secrets
+    scored through Plots Within Plots count for hero unlocks. Sharsiss
+    Hollow readies space stations too.
+  - Viper Hollow keeps the old owner's structures (coexisting); coexisting
+    structures are always blockaded. A PDS or space dock left on a planet
+    with none of its owner's ground forces, and another player's units
+    there, is destroyed (LRR 63.4 / 79.4).
+  - The Reaping only on a real combat win (not a Skilled Retreat draw).
+    Vos Hollow is also offered after start-of-combat losses and the
+    barrage. Malevolency is also asked when a tactical action ends early.
+  - Enervate's free secondary only for the puppet's own strategy cards;
+    Siphon counts every commodity gain; Seethe doesn't offer space
+    stations; Assail also applies to Experimental Battlestation.
+  - Smarter bots: Captain Aroz in their secret planning, Sharsiss Hollow
+    only with a tactic token left, the coup timed so the readied Hollows
+    get used; Puppet Master courts its neighbours early; Coup Clock now
+    flips at 2 plots or round 3 at the latest.
+  The Sardakk N'orr:
+  - Exotrireme II: each one can be sacrificed after the same round, now
+    after the Retreat step; you choose damaged or undamaged targets.
+  - Valkyrie Particle Weave: a Nekro's copy and the Sardakk's no longer
+    trigger each other.
+  - T'ro is also offered when a tactical action ends early.
+  - G'hom Sek'kus: a damaged mech stays damaged, and units it brought that
+    you didn't land go back to their planet.
+  - Sh'val is offered only after ships moved in, and with G'hom Sek'kus
+    able to bring the ground forces.
+  - Smarter bots: they count Unrelenting and C'morran N'orr in their fight
+    odds, play Tekklar Legion in close invasions (the Sardakk sell it to
+    friends), and choose Exotrireme, T'ro, G'hom and Sh'val better.
+  Also:
+  - Picking up ground forces from the active system's planets works (it
+    was always refused).
+  - The Creuss bots build a forward dock, stop parking in their empty
+    Gate, and value influence and Mecatol Rex more.
+
+NEW IN 0.59.0 - the faction debug pass, part 1: Crimson Rebellion and Ghosts of Creuss
+  Every card of both factions checked against its wording, one at a time
+  (the game's texts now follow the cards). Games started before 0.59.0
+  keep the old rules, so their saves replay the same.
+  Crimson Rebellion:
+  - Sundered destroys other players' units however they reach your home
+    (moved or placed). 7 breach tokens; an inactive one moves at the limit.
+  - The Revenant: in the Commit Ground Forces step (after bombardment),
+    onto your own planets too; it goes back to reinforcements if it
+    doesn't land. Subatomic Splicer: you choose how many fighters.
+  - Ahk Ravin: you may decline, fighters go too, cargo is carried along
+    (not out of a system with your command token - the game warns you).
+    Ahk Siever only after combats between players. Homesick Phantom:
+    All / Some / None.
+  - Sever: on any system with your units; every link through its
+    wormholes is cut, board links (hyperlanes) stay.
+  - Ships lost to a gravity rift are removed, not destroyed (everyone):
+    nothing that answers to a destroyed unit fires.
+  - The Crimson bots expand into their slice and build a forward dock.
+  Ghosts of Creuss:
+  - Quantum Entanglement makes you neighbours through it and can't be
+    stopped (Sever, Nexus Sovereignty).
+  - Hil Colish may move first: ships that can only reach the active
+    system through its delta wormhole come along.
+  - Icarus Drive: after ANY activation, any of your mechs on the board can
+    be removed to bring a Creuss token to the MECH's system ("don't ask
+    again this round" is offered).
+  - Wormhole Generator (original card, no Codex / Thunder's Edge): a
+    token must be placed or moved each status phase.
+  - Dimensional Splicer can hit units fighting as ships (The Alastor,
+    Z-Grav Eidolon); bots pick the better order with Assault Cannon.
+  - Emissary Taivra: epsilon wormholes count; usable on other players'
+    activations; its adjacency counts for everyone (retreats, PDS II,
+    neighbours).
+  - Sai Seravus: choose how many fighters; the unlock counts Mallice
+    under Nexus Sovereignty. Riftwalker Meian can't swap the Fracture.
+  - Particle Synthesis counts each wormhole. Smarter bots for Creuss Iff,
+    Icarus Drive, Taivra and the hero; the Wormhole Weavers trait now
+    strikes through wormholes and opens doors behind enemy lines.
+
+NEW IN 0.58.51 - the fleet pool, as the rules say
+  - Moving more ships into a system than your fleet pool allows is
+    still allowed, but you now choose and remove the extra ships right
+    after the move - before any combat there (LRR 37.3). (Games started
+    in 0.58.5 keep that version's timing.)
+
+NEW IN 0.58.5 - your tester's two bugs
+  - You can move more ships into a system than your fleet pool allows.
+    (0.58.51: the extra ships are removed right after the move.)
+  - Faunus (Maxis Central Control) can no longer take a planet that has
+    neutral units on it (the Fracture, minor factions).
+
+NEW IN 0.58.4 - your 0.58.3 feedback
+  - Production is a wheel: every unit you can build has its slice with
+    its picture in your colour, the number and up / down arrows beside
+    it; Confirm in the middle. Left / right turn the wheel, up / down
+    (or the arrows, or the mouse wheel) change the number.
+  - Choosing a strategy card is a wheel too: point at a card, A (or a
+    click) chooses it and Confirm in the middle lights up; A again or
+    Confirm takes it.
+  - Zoomed out, the planets you hold show your control token; zoomed in,
+    your flag.
+  - A promise broken between two computer players opens the betrayal
+    codec too.
+  - When a bot talks on a deal card, the game waits until you can read
+    it (hold A to hurry as before).
+  - New lines for rivals, allies and old grudges between factions.
+  - A click on the map no longer answers the production window or a
+    list by accident (only the window's own buttons and rows do).
+  - The title screen's stars fill the whole width of a widescreen.
+  - The start flood's Lazaxian letters come in blue or red, at random.
+  - Fixed: the Screens buttons stayed over the codecs and the Mecatol
+    Rex custodians scene.
+
+NEW IN 0.58.3 - two looks you asked for
+  - Planet values on the map: at the closest zoom, each planet shows its
+    resources (yellow) and influence (blue) beside it, like the printed
+    tiles - in all three tilesets, including attachments that changed
+    them. (In a three-planet system the right-hand planet has them on
+    its right.)
+  - The game-start flood now mixes Lazaxian letters in with the 0s and
+    1s.
+
+NEW IN 0.58.2 - your tester's reports (Windows, Steam Deck and Miyoo)
+  - Sarween Tools with Sling Relay or an exploration card (Freelancers):
+    checked, not a bug - both already pay the full price (Sarween Tools
+    only lowers what you pay through the PRODUCTION ability, since
+    0.44.5). Checked again on the production screen: with Sarween Tools,
+    one dreadnought through Sling Relay costs 4. The same slip was found
+    in three Discordant Stars abilities that "produce" units: Maximus
+    (Dih-Mohn flagship), Rally to the Cause (Free Systems) and Broadcast
+    Teams (their note) - fixed, no Sarween Tools discount there now.
+  - Fixed: the Crimson Rebellion's commander, Ahk Siever, only worked for
+    the Crimson themselves. Anyone who can use it - through the Crimson's
+    Alliance or the Yin breakthrough - now gets it, and after every combat
+    chooses: gain 1 commodity, turn 1 commodity into a trade good, or
+    neither.
+  - Fixed: Brother Milor (the Yin agent). In your own combat you were
+    also asked about your opponent's losses, and that question came
+    first - saying yes gave the units to your opponent. Now you are only
+    asked about your own losses in your combats (other players' combats
+    still ask, for deals), and the question says plainly who gets them.
+  - Indoctrination (Yin): checked, it works - in test games it was used
+    30 times in 6 games, also with the Yin played by a person, and with
+    every expansion on. It comes up at the start of a ground combat when
+    your opponent has infantry on that planet, you can spend 2 influence
+    (3 for a mech with Moyin's Ashes) and you have an infantry left in
+    your reinforcements. If it doesn't come up when all three are true,
+    please send a bug report from that game (Options > Make a bug
+    report).
+  - Computer players: in the first two rounds a carrier one infantry
+    short of taking every free planet of a system now takes the infantry
+    guarding home along (home is safe that early). 40 test games, before
+    -> after: round-1 expansions into two-planet systems that left one
+    planet free 26 of 224 -> 1 of 242; planets next to home still free
+    after round 1 38% -> 33%, after round 2 17% -> 14%. In head-to-head
+    games the bots that do this won 69 games to 51.
+  - Fixed: a crash in the computer players' Field Marshal Mercer (Nomad
+    agent) choice when only one ground force could move.
+  - The Ahk Siever choice, the Brother Milor question and the three
+    Discordant Stars fixes apply to games started with 0.58.2; older
+    saves play on exactly as before.
+
+NEW IN 0.58.1 - the Miyoo Mini Plus version is back
+  - The Miyoo build catches up with the PC edition: everything from
+    0.46.0 to 0.58.0 below is in it, except the parts made for a PC
+    screen and mouse (widescreen, the mouse's SCREENS panel and pop-up
+    windows, the Galactic Events button, the twice-as-fine Retrowave
+    art). That means all the bug fixes and rule fixes since 0.45.0, the
+    stronger computer players (planning ahead, Mecatol Rex as king of the
+    hill, learning your habits, the final bot pass), the comms codec with
+    every faction's portrait and voice, Waypoint Mode (press X when
+    moving ships), the Ghemina Lady and Lord as separate units, ships
+    drawn on the map, pixel-art battles and faction troops, painted
+    Voidfall troops, Mecatol Rex Contested / Calm, Hyperlanes On / Off,
+    and Retrowave as the starting tileset.
+  - Your 0.45.0 saves carry on: every save we have plays back exactly
+    as before.
+  - Measured on the PC at the Miyoo's 640x480: battles draw a little
+    faster than in 0.45.0, the map a little slower (it now draws flags
+    and mechs on the planets), the computer players think about as long;
+    the game needs ~6 MB more memory (the codec
+    portraits are read one faction at a time). Not yet tried on a real
+    Miyoo - please tell me how it runs.
+  - PC: nothing changes from 0.58.0.
+
+NEW IN 0.58.0 - Hyperlanes: On / Off
+  - New Game has a new row, "Hyperlanes". On (as before): the usual maps,
+    with hyperlanes at 3, 4, 5, 7 and 8 players. Off: the board the
+    rulebook prints for that many players, with no hyperlanes at all:
+      3 players - the 28-system board (8 tiles each: 6 blue, 2 red);
+      4 players - the full 37-system board (8 tiles each: 5 blue, 3 red);
+      5 players - the full 37-system board (6 tiles each, plus a red tile
+                  next to Mecatol Rex); the three seats whose homes sit
+                  worse start with 2, 4 and 2 trade goods, as printed;
+      7 players - the 61-system board with its hyperlane gap filled with
+                  ordinary systems (the rulebook has no 7-player board
+                  without hyperlanes; 7 tiles each, plus 4 next to
+                  Mecatol Rex);
+      8 players - the full 61-system board (6 tiles each, plus 4 next to
+                  Mecatol Rex).
+    Six players never use hyperlanes, so the row changes nothing there.
+  - Works with every Galaxy choice: Draft (everyone places the tiles in
+    turn, ring by ring), Random and Seeded (the slices window shows each
+    seat's share). Your seat stays the one at the bottom of the map.
+  - The choice is remembered for your next game and saved with each game;
+    older saves play on exactly as before.
 
 NEW IN 0.57.2
   - Retrowave (the animated pixel art) is now the tileset a new install

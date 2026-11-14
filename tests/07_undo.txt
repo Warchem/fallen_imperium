@@ -1,5 +1,6 @@
 # Undo (0.19.0: B with nothing left to back out of) during your own decisions, at instant AI
 # speed, on a random galaxy (no draft) so the first decisions are the setup and strategy picks.
+# (0.58.4: the strategy card wheel takes two presses of A - choose, then confirm.)
 wait 5
 press A
 wait 5
@@ -9,9 +10,14 @@ press RIGHT
 wait 3
 press RIGHT
 wait 3
+# (0.58.0: up past Mecatol Rex (0.54.0) and Hyperlanes to Galaxy; left = Random)
+press UP
+wait 2
+press UP
+wait 2
 press UP
 wait 3
-press RIGHT
+press LEFT
 wait 3
 press START
 wait 30
@@ -22,11 +28,15 @@ press B
 wait 8
 shot step00_undo
 press A
+wait 3
+press A
 wait 12
 shot step01
 press B
 wait 8
 shot step01_undo
+press A
+wait 3
 press A
 wait 12
 shot step02
@@ -34,11 +44,15 @@ press B
 wait 8
 shot step02_undo
 press A
+wait 3
+press A
 wait 12
 shot step03
 press B
 wait 8
 shot step03_undo
+press A
+wait 3
 press A
 wait 12
 shot step04
@@ -46,11 +60,15 @@ press B
 wait 8
 shot step04_undo
 press A
+wait 3
+press A
 wait 12
 shot step05
 press B
 wait 8
 shot step05_undo
+press A
+wait 3
 press A
 wait 12
 shot step06
@@ -58,17 +76,23 @@ press B
 wait 8
 shot step06_undo
 press A
+wait 3
+press A
 wait 12
 shot step07
 press B
 wait 8
 shot step07_undo
 press A
+wait 3
+press A
 wait 12
 shot step08
 press B
 wait 8
 shot step08_undo
+press A
+wait 3
 press A
 wait 12
 shot step09

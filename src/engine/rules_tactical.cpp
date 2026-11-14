@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <memory>
 #include <cstring>
+#include <set>
 
 #include "engine/map.h"
 #include "engine/rules.h"
@@ -99,6 +100,7 @@ void Rules::tacticalAction(int p) {
     ilNa_ = !wtac && G.systems[sys].hasToken(p);  // Il Na Viroset (Mahact commander): a system with your token
     if (!zeu && !wtac) G.systems[sys].tokens |= uint16_t(1u << p);
     G.activeSystem = int16_t(sys);
+    if (!zeu && !wtac) zeuTE(p, sys);  // (fixes 27: Thunder's Edge's Z'eu - the token back, the system still activated)
     activated_ = true;
     lastActiveSystem_ = sys;
     awakened_.clear();
@@ -121,12 +123,31 @@ void Rules::tacticalAction(int p) {
     supportForTheThroneCheck(p, sys);
     promiseActivate(p, sys);
     persActivate(p, sys);
+    // (fixes 26, the Mahact review - owner 2026-11-12) Il Na Viroset: "If you do, return both command tokens to your
+    // reinforcements and end your turn" - at once (the newer ruling: no "when / after you activate" or other abilities of
+    // that turn once the second token is placed; end-of-turn abilities still happen). It used to come after the whole
+    // tactical action (movement, combat, production)
+    if (ilNa_ && G.fixes >= 26) {
+        G.systems[size_t(sys)].tokens = uint16_t(G.systems[size_t(sys)].tokens & ~(1u << p));
+        say(p, pn(p) + "'s command tokens in " + sysName(sys) + " return; the turn ends (Il Na Viroset).", sys);
+        ilNa_ = false;
+        turnEnded_ = true;
+        if (G.modules & kModThundersEdge) malevolency(p);  // (the end of the action, as Minister of Peace)
+        troAgent(p, sys);
+        endTactical();
+        return;
+    }
     // (0.45.0, fixes 14 - the tester: Awaken looks at the sleepers there when the system is activated - not one a
     // Scanlink exploration puts there a moment later)
     activationSleepers_.clear();
     for (int16_t x : G.systems[size_t(sys)].planets)
         if (G.planets[size_t(x)].sleeper) activationSleepers_.push_back(x);
     scanlink(p, sys);
+    // (fixes 26, the Empyrean review - owner 2026-11-12) Void Tether: "WHEN you activate a system" - before the "after you
+    // activate" cards and abilities (it came with the other breakthroughs, after them)
+    if (G.fixes >= 26 && breakthroughIs(G, p, "empyrean")) voidTether(p, sys);
+    // (fixes 26, the Argent review - owner 2026-11-13) Wing Transfer: "When you activate a system" - the same
+    if (G.fixes >= 26) wingTransfer(p, sys);
     {
         WinCtx w;
         w.w = Win::AfterActivate;
@@ -175,6 +196,8 @@ void Rules::tacticalAction(int p) {
                 }
             say(p, pn(p) + "'s turn ends (Minister of Peace).", sys);
             turnEnded_ = true;
+            if (G.fixes >= 25 && (G.modules & kModThundersEdge)) malevolency(p);  // (owner's faction debug pass: the action still ends)
+            if (G.fixes >= 25) troAgent(p, sys);                                  // (the same: T'ro)
             endTactical();
             return;
         }
@@ -182,6 +205,8 @@ void Rules::tacticalAction(int p) {
     if (G.fixes < 12) magenActivation(sys);
     // E-Res Siphons, Nullification Field, Spatial Conduit Cylinder
     if (afterActivation(p, sys)) {
+        if (G.fixes >= 25 && (G.modules & kModThundersEdge)) malevolency(p);  // (the same, fixes 25)
+        if (G.fixes >= 25) troAgent(p, sys);
         endTactical();
         return;
     }
@@ -192,6 +217,8 @@ void Rules::tacticalAction(int p) {
     const int avWs = avSys >= 0 ? G.systems[size_t(avSys)].space[size_t(p)].count(UnitType::WarSun) : 0;
     int unitsBefore = 0;  // (Call of the Void: did units move in?)
     for (int t = 0; t < kUnitTypes; ++t) unitsBefore += G.systems[size_t(sys)].space[size_t(p)].n[t];
+    const int shipsBefore = G.systems[size_t(sys)].space[size_t(p)].ships();  // (Sh'val: did ships move in?)
+    avernusThrough_ = false;
     movement(p, sys);
     if (G.events) {
         int unitsAfter = 0;
@@ -200,7 +227,9 @@ void Rules::tacticalAction(int p) {
     }
     if (avSys >= 0) avernusCarry(p, sys, avSys, avWs);
     if (G.modules & kModThundersEdge) sundered(p, sys);  // the Crimson Rebellion's home destroys intruders
-    const bool shval = shvalCheck(p, sys);  // Sh'val, Harbinger: straight to the landing
+    // Sh'val, Harbinger: straight to the landing ("after you move ships into the active system" - fixes 25, Sardakk
+    // review 2026-11-11: only when ships of theirs moved in)
+    const bool shval = (G.fixes < 25 || G.systems[size_t(sys)].space[size_t(p)].ships() > shipsBefore) && shvalCheck(p, sys);
     if (!shval) {
         spaceCannonOffense(p, sys);
         std::vector<int> shipOwners = playersWithShips(G, sys);
@@ -215,6 +244,11 @@ void Rules::tacticalAction(int p) {
     invasion(p, sys);
     coalescence(p, sys);  // Titans: awakened Hel-Titans fight on their planets
     shval_ = false;
+    if (fleetDeferSys_ >= 0) {  // 0.58.5: the combat and the invasion are over - now the fleet pool
+        fleetDeferSys_ = -1;
+        fleetDirty_ = true;
+        fleetStateCheck();
+    }
     checkFloatingFactories(sys);
     if (hasProductionIn(G, p, sys)) production(p, sys, productionCapacity(G, p, sys), false);
     for (int q = 0; q < G.numPlayers; ++q) removeExcessCapacity(q, sys);
@@ -229,12 +263,26 @@ void Rules::tacticalAction(int p) {
 }
 
 void Rules::endTactical() {
+    if (fleetDeferSys_ >= 0) {  // (0.58.5: a turn that ended early - the check before the next question takes over)
+        fleetDeferSys_ = -1;
+        fleetDirty_ = true;
+    }
     if (G.modules & kModDiscordant) dsEndTactical(G.activePlayer, G.activeSystem);  // Memory of Dusk, George Nobin
     if (G.modules & kModThundersEdge) coexistCleanup();  // coexisting units left alone take the planet
     bool adj = G.fx.lostStarChart || G.fx.starA >= 0;
     G.fx = TacticalEffects();
     if (adj) computeAdjacency(G);
     G.activeSystem = -1;
+}
+
+// (fixes 27, the Saar review - owner 2026-11-13) at the end of every turn: any floating factory that other players' ships reached
+// in a way without its own check (Domna, Eye of Vogul, swaps...) - "If this unit is blockaded, it is destroyed"
+void Rules::floatingSweep() {
+    for (size_t s = 0; s < G.systems.size(); ++s) {
+        bool any = false;
+        for (int q = 0; q < G.numPlayers && !any; ++q) any = G.systems[s].space[size_t(q)].count(UnitType::SpaceDock) > 0;
+        if (any) checkFloatingFactories(int(s));
+    }
 }
 
 void Rules::checkFloatingFactories(int sys) {
@@ -314,14 +362,48 @@ void Rules::movement(int p, int sys) {
     int wormholeCarriers = 0;  // ships with capacity that came through a wormhole (Sai Seravus)
     std::vector<std::pair<int, int>> weird;  // Weird Wormholes (galactic event): ships (type, count) that used a wormhole
     const int topMove = G.fx.mendosa ? maxShipMove(G) : 0;
-    for (size_t i = 0; i < a.data.size(); i += 4) {
+    // Hil Colish (fixes 24, the card: "may move before or after your other ships"): when some ships get here only
+    // through its delta wormhole in the active system, it moves first (its gravity rift roll too - lost there, its
+    // wormhole goes with it and the ships that needed it stay where they are)
+    const int colishO = colishOrigin(G, p);
+    size_t colishIdx = a.data.size();
+    bool colishFirst = false;
+    if (colishO >= 0 && colishO != sys) {
+        for (size_t i = 0; i + 3 < a.data.size(); i += 4)
+            if (a.data[i] == colishO && a.data[i + 1] < 0 && a.data[i + 2] == int(UnitType::Flagship) && a.data[i + 3] > 0) colishIdx = i;
+        if (colishIdx < a.data.size())
+            for (size_t i = 0; i + 3 < a.data.size() && !colishFirst; i += 4) {
+                if (i == colishIdx || a.data[i + 1] >= 0 || !movesAsShip(G, p, UnitType(a.data[i + 2]))) continue;
+                const auto rt = routes.find(a.data[i]);
+                const Reach rr = rt == routes.end() ? shipReach(G, p, a.data[i], sys, UnitType(a.data[i + 2]), moveBonusMax(G, p))
+                                                    : shipReachVia(G, p, a.data[i], rt->second, sys, UnitType(a.data[i + 2]), moveBonusMax(G, p));
+                if (rr.ok && rr.colish && UnitType(a.data[i + 2]) != UnitType::Fighter) colishFirst = true;
+            }
+    }
+    std::vector<size_t> order;
+    if (colishFirst) order.push_back(colishIdx);
+    for (size_t i = 0; i + 3 < a.data.size(); i += 4)
+        if (!(colishFirst && i == colishIdx)) order.push_back(i);
+    std::set<int> stayFrom;  // origins whose ships can't go after all (Hil Colish lost on the way)
+    for (size_t oi = 0; oi < order.size(); ++oi) {
+        const size_t i = order[oi];
         int from = a.data[i], loc = a.data[i + 1], t = a.data[i + 2], k = a.data[i + 3];
+        if (stayFrom.count(from)) continue;
         UnitType ut = UnitType(t);
         Reach r;
         if (movesAsShip(G, p, ut) && loc < 0) {
             const auto rt = routes.find(from);
             const std::vector<int> none;
             const std::vector<int>& via = rt == routes.end() ? none : rt->second;  // (empty: the automatic route)
+            // (fixes 26, the Muaat review - owner 2026-11-12) Stellar Genesis: "out of or THROUGH Avernus's system" - the
+            // chosen route goes through it, or (an automatic route) one through it was open to that war sun
+            if (ut == UnitType::WarSun && G.fixes >= 26 && breakthroughIs(G, p, "muaat") && avernusPlanet() >= 0) {
+                const int avs = G.planets[size_t(avernusPlanet())].system;
+                if (avs >= 0 && avs != from && avs != sys &&
+                    (std::find(via.begin(), via.end(), avs) != via.end() ||
+                     (via.empty() && shipReachVia(G, p, from, std::vector<int>{avs}, sys, ut, moveBonusMax(G, p)).ok)))
+                    avernusThrough_ = true;
+            }
             r = shipReachVia(G, p, from, via, sys, ut, moveBonusMax(G, p));
             if (!r.ok && topMove > 0 && ut != UnitType::Fighter)  // Captain Mendosa
                 r = shipReachVia(G, p, from, via, sys, ut, std::max(0, topMove - moveValue(G, p, from, ut)) + moveBonusMax(G, p));
@@ -341,8 +423,42 @@ void Rules::movement(int p, int sys) {
         moved.add(ut, k);
         if (std::find(origins.begin(), origins.end(), from) == origins.end()) origins.push_back(int16_t(from));
         // Transported units don't roll (LRR 41.2a); carried fighters have r.ok == false.
-        if (r.ok && r.viaRift) riftShips.push_back({t, k, r.riftRolls});
+        const bool colishNow = colishFirst && i == colishIdx;
+        if (r.ok && r.viaRift && !colishNow) riftShips.push_back({t, k, r.riftRolls});
         if (r.ok && r.viaStorm) stormUsed = true;
+        if (colishNow) {
+            say(p, pn(p) + "'s Hil Colish moves first: its delta wormhole opens in " + sysName(sys) + ".", sys);
+            if (r.ok && r.viaRift && !G.fx.crucible) {  // its own roll, now
+                RollResult res;
+                bool lost = false;
+                for (int roll = 0; roll < r.riftRolls && !lost; ++roll) {
+                    const int v = E.rng().d10();
+                    res.dice.push_back(int8_t(v));
+                    res.need.push_back(4);
+                    if (v <= 3) lost = true;
+                }
+                reportRoll(p, sys, "Gravity rift (Hil Colish, 1-3 is lost)", res);
+                if (lost) {
+                    const bool was = removing_;
+                    removing_ = true;
+                    destroyUnits(p, UnitType::Flagship, 1, sys, -1, -1, "gravity rift");
+                    removing_ = was;
+                }
+            }
+            computeAdjacency(G);  // (its delta wormhole is in the active system now - or gone with it)
+            // the other ships that can't get here now stay where they are, with what they would have carried
+            for (size_t oj = oi + 1; oj < order.size(); ++oj) {
+                const size_t j = order[oj];
+                if (a.data[j + 1] >= 0 || !movesAsShip(G, p, UnitType(a.data[j + 2])) || UnitType(a.data[j + 2]) == UnitType::Fighter) continue;
+                const auto rt = routes.find(a.data[j]);
+                const Reach now = rt == routes.end() ? shipReach(G, p, a.data[j], sys, UnitType(a.data[j + 2]), moveBonusMax(G, p))
+                                                     : shipReachVia(G, p, a.data[j], rt->second, sys, UnitType(a.data[j + 2]), moveBonusMax(G, p));
+                if (!now.ok && !stayFrom.count(a.data[j])) {
+                    stayFrom.insert(a.data[j]);
+                    say(p, "Without Hil Colish's wormhole, the ships in " + sysName(a.data[j]) + " can't reach " + sysName(sys) + " - they stay.", sys);
+                }
+            }
+        }
     }
     {
         Event e;
@@ -375,9 +491,21 @@ void Rules::movement(int p, int sys) {
             }
         }
         reportRoll(p, sys, std::string("Gravity rift (") + unitTypeName(UnitType(rs.type), true) + ", 1-3 is lost)", res);
-        if (lost) destroyUnits(p, UnitType(rs.type), lost, sys, -1, -1, "gravity rift");
+        // (fixes 24, owner's faction debug pass: LRR 41.2 - a ship lost to a gravity rift is REMOVED from the board, not
+        // destroyed: nothing that answers to a destroyed unit fires - Subatomic Splicer, Van Hauge, Devour / The Terror
+        // Between, Age of Fighters, Crash Landing, the Bastion's galvanized units...)
+        if (lost) {
+            const bool was = removing_;
+            if (G.fixes >= 24) removing_ = true;
+            destroyUnits(p, UnitType(rs.type), lost, sys, -1, -1, "gravity rift");
+            removing_ = was;
+        }
     }
     if (!weird.empty()) weirdWormholes(p, sys, weird);
+    // 0.58.5 (fixes 22 only): ships beyond the fleet pool that moved in stayed for a combat here and the invasion after
+    // it. 0.58.51 (fixes 23, owner: "resume checks on the fleet pool even before combat ... (LRR 37.3)"): the extra
+    // always go right after the move (removeExcessCapacity just below) - the move itself stays allowed.
+    if (G.fixes == 22 && combatAhead(G, p, sys)) fleetDeferSys_ = sys;
     hold.reset();
     removeExcessCapacity(p, sys);
     // 0.43.0: what a person left behind without capacity (they were warned) - 0.45.0 (fixes 14): anyone's, at once
@@ -443,14 +571,16 @@ int Rules::antimass(int q, int target) const {
     return target >= 0 && target < G.numPlayers && target != q && owns(target, "amd") ? 1 : 0;
 }
 
-void Rules::spaceCannonOffense(int p, int sys) {
+// q's space cannon in the space cannon offense step of p's tactical action in sys (empty: q can't fire). Shared by the
+// step itself and Myru Vos's "would it matter" check (fixes 25).
+CannonGuns Rules::cannonGuns(int q, int p, int sys) const {
+    CannonGuns out;
     const SystemState& s = G.systems[sys];
-    if (scarAt(G, sys) && G.fixes < 8) return;  // Thunder's Edge: no space cannon against ships inside an entropic scar
-    for (int q : clockwiseFrom(G, p)) {
-        if (scarAt(G, sys) && !ignoresScars(G, q)) continue;  // (0.44.4: the Nivyn ignore it)
+    if (scarAt(G, sys) && !ignoresScars(G, q)) return out;  // (0.44.4: the Nivyn ignore it)
+    {
         // q's space cannon units: in the system, or deep-space cannon next door
-        Force guns;
-        RollMods galvDice;  // Galvanize (Thunder's Edge): galvanized units roll 1 more die for unit abilities
+        Force& guns = out.guns;
+        RollMods& galvDice = out.galv;  // Galvanize (Thunder's Edge): galvanized units roll 1 more die for unit abilities
         auto collect = [&](const Force& f, bool adjacentOnly) {
             for (int t = 0; t < kUnitTypes; ++t) {
                 if (!f.n[t]) continue;
@@ -480,20 +610,44 @@ void Rules::spaceCannonOffense(int p, int sys) {
             collectSpace(s.space[q], false);
             for (int16_t pl : s.planets) collect(G.planets[pl].units[q], false);
         }
-        for (int16_t a : s.adj) {
+        std::vector<int16_t> near(s.adj.begin(), s.adj.end());
+        if (G.fixes >= 24 && qeWormholes(G, sys) && q < G.numPlayers && isFaction(G, q, "ghost"))  // Quantum Entanglement
+            for (size_t a = 0; a < G.systems.size(); ++a)
+                if (qeLinked(G, q, sys, int(a)) && std::find(near.begin(), near.end(), int16_t(a)) == near.end()) near.push_back(int16_t(a));
+        if (G.fixes >= 24 && G.fx.taivra && sys == G.activeSystem)  // Emissary Taivra: every system with a wormhole is adjacent
+            for (size_t a = 0; a < G.systems.size(); ++a)
+                if (int(a) != sys && wormholesOf(G, int(a)) && std::find(near.begin(), near.end(), int16_t(a)) == near.end()) near.push_back(int16_t(a));
+        for (int16_t a : near) {
             if ((scarAt(G, a) && !ignoresScars(G, q)) || quietusAt(G, q, a)) continue;  // (nor from inside one)
+            // (fixes 26, the Empyrean review - owner 2026-11-12) Void Tether: other players don't treat a tethered border's
+            // systems as adjacent - no deep space cannon across it unless the Empyrean allow it
+            if (G.fixes >= 26 && q < G.numPlayers && tethered(G, q, sys, a)) continue;
             collectSpace(G.systems[a].space[q], true);
             for (int16_t pl : G.systems[a].planets) collect(G.planets[pl].units[q], true);
         }
-        const int ul = ulCannonDice(q, sys);  // Ul the Progenitor on Elysium
+        out.ul = ulCannonDice(q, sys);  // Ul the Progenitor on Elysium
         const bool dsOn = (G.modules & kModDiscordant) != 0;
         if (dsOn) dsCannonLimit(q, p, guns);                       // Starfall Gunnery: one unit when it's not their action
-        const int starfall = dsOn ? dsCannonDice(q, p, sys) : 0;  // Starfall Gunnery: their ships' Space Cannon 8
-        int dhonraz = 0;  // Dhonraz Installations (Gledge breakthrough): their stations here have Space Cannon 5
+        out.starfall = dsOn ? dsCannonDice(q, p, sys) : 0;  // Starfall Gunnery: their ships' Space Cannon 8
+        // Dhonraz Installations (Gledge breakthrough): their stations here have Space Cannon 5
         if (dsOn && q < G.numPlayers && breakthroughIs(G, q, "gledge"))
             for (int16_t pl : s.planets)
-                if (G.planets[size_t(pl)].owner == q && stationFor(G, q, pl)) ++dhonraz;
-        if (guns.empty() && !ul && !starfall && !dhonraz) continue;
+                if (G.planets[size_t(pl)].owner == q && stationFor(G, q, pl)) ++out.dhonraz;
+    }
+    return out;
+}
+
+void Rules::spaceCannonOffense(int p, int sys) {
+    const SystemState& s = G.systems[sys];
+    if (scarAt(G, sys) && G.fixes < 8) return;  // Thunder's Edge: no space cannon against ships inside an entropic scar
+    for (int q : clockwiseFrom(G, p)) {
+        if (G.fixes >= 26 && q < G.numPlayers) tetherCannonAllow(q, p, sys);  // (the Empyrean review) "... unless you allow it"
+        CannonGuns cg = cannonGuns(q, p, sys);
+        if (cg.empty()) continue;
+        Force& guns = cg.guns;
+        RollMods& galvDice = cg.galv;
+        const int ul = cg.ul, starfall = cg.starfall, dhonraz = cg.dhonraz;
+        const bool dsOn = (G.modules & kModDiscordant) != 0;
         // targets (LRR 77.5): others must shoot the active player; the active player picks a target.
         // Quetzecoatl (Argent flagship): no space cannon against the Argent ships in its system
         int target = -1;
@@ -625,9 +779,13 @@ void Rules::bombardment(int p, int sys) {
         if (u.ignoresShield) warSun = true;
     }
     // Annihilator (L1Z1X mech): mechs on planets here bombard as if they were ships
+    bool annihilators = false;
     if (bombardAvailable(G, p, sys, UnitType::Mech) > s.space[p].count(UnitType::Mech)) {
         typeMask |= 1 << int(UnitType::Mech);
-        say(p, pn(p) + "'s mechs on planets here join the bombardment (Annihilator).", sys);
+        annihilators = true;
+        // (fixes 26, the L1Z1X review) said only when there is something to bombard (it was printed 1253 of 1275 times
+        // with no bombardment after it)
+        if (G.fixes < 26) say(p, pn(p) + "'s mechs on planets here join the bombardment (Annihilator).", sys);
     }
     if (!typeMask) return;
     // Planets with other players' ground forces and no planetary shield (LRR 15.1f, 65.3).
@@ -662,6 +820,7 @@ void Rules::bombardment(int p, int sys) {
         }
     }
     if (targets.empty()) return;
+    if (annihilators && G.fixes >= 26) say(p, pn(p) + "'s mechs on planets here join the bombardment (Annihilator).", sys);
     Decision d;
     d.player = p;
     d.kind = DecisionKind::Land;
@@ -768,6 +927,7 @@ void Rules::afterUnitRoll(int roller, int target, int sys, RollResult& r, const 
     w.w = Win::AfterUnitRoll;
     w.a = roller;
     w.b = target;
+    w.value = target;  // (the action cards review: for the AI - a third party's Scramble Frequency, fixes 27)
     w.sys = sys;
     if (!cardHas(window(w), "scramble")) return;
     rerollDice(roller, r, true);
@@ -790,7 +950,9 @@ void Rules::invasion(int p, int sys) {
         explicit Hold(int& x) : n(x) { ++n; }
         ~Hold() { --n; }
     } hold(fleetHold_);
-    if (G.modules & kModThundersEdge) revenant(p, sys);  // Crimson mech: through an active breach
+    // Crimson mech: through an active breach (fixes 24: in the Commit Ground Forces step, after bombardment - below)
+    int revenantBase = -1;
+    if ((G.modules & kModThundersEdge) && G.fixes < 24) revenant(p, sys);
     {
         WinCtx w;
         w.w = Win::InvasionStart;
@@ -807,6 +969,8 @@ void Rules::invasion(int p, int sys) {
     // the custodians token too (landing on Mecatol Rex from nearby planets with no ships there)
     const bool ghomFirst = G.fixes >= 5;
     if (ghomFirst) ghomSekkus(p, sys);
+    // (before the custodians: a Revenant that can be committed to Mecatol Rex lets them be removed - LRR 27.2a)
+    if ((G.modules & kModThundersEdge) && G.fixes >= 24) revenantBase = revenant(p, sys);
     // --- custodians token on Mecatol Rex (LRR 27.2)
     int mustLand = -1;
     const int custodiansCost = fac(p, "winnu") ? 0 : 6;  // Blood Ties (Winnu)
@@ -838,8 +1002,10 @@ void Rules::invasion(int p, int sys) {
         for (int pl : std::vector<int>(dsSlingPlanets_)) dsResolvePlanet(p, pl);
         dsSlingPlanets_.clear();
     }
-    if (s.space[p].groundForces() == 0) {
+    // (fixes 27, the Naalu review) the Matriarch's fighters may be committed without ground forces
+    if (s.space[p].groundForces() == 0 && !(G.fixes >= 27 && fightersLand(p, sys) && s.space[p].count(UnitType::Fighter) > 0)) {
         engageCoexisting(p, sys, {});  // (0.44.2: the ground forces already on a planet can end a coexistence)
+        coexistStructures();           // (fixes 25: LRR 63.4 / 79.4 after those fights)
         blitz_ = disabled_ = false;
         bunkerOwner_ = -1;
         return;
@@ -896,6 +1062,33 @@ void Rules::invasion(int p, int sys) {
               pn(p) + " lands " + std::to_string(k) + " " + unitTypeName(UnitType(t), k > 1) + " on " + planetName(pl) + ".",
               sys, pl);
     }
+    // (fixes 25, Sardakk review 2026-11-11) G'hom Sek'kus "commits (moves)" ground forces: the ones it brought that didn't
+    // land go back to their planets (no ship carries them) - whatever is left above what the ships brought in
+    if (G.fixes >= 25 && !ghomBrought_.empty()) {
+        Force& sp = s.space[p];
+        int excess[2] = {sp.count(UnitType::Infantry) - ghomBefore_[0], sp.count(UnitType::Mech) - ghomBefore_[1]};
+        int back = 0;
+        for (auto it = ghomBrought_.rbegin(); it != ghomBrought_.rend(); ++it) {
+            const UnitType t = UnitType(it->type);
+            const int i = t == UnitType::Mech ? 1 : 0;
+            if (excess[i] <= 0 || sp.count(t) <= 0) continue;
+            --excess[i];
+            const bool dmg = it->damaged && sp.dmg[int(t)] > 0;
+            sp.remove(t, 1, dmg);
+            Force& f = G.planets[size_t(it->planet)].units[p];
+            f.add(t, 1);
+            if (dmg) ++f.dmg[int(t)];
+            ++back;
+        }
+        if (back) say(p, pn(p) + " sends " + std::to_string(back) + (back == 1 ? " ground force back to its planet" : " ground forces back to their planets") +
+                             " (G'hom Sek'kus: not landed).", sys);
+    }
+    ghomBrought_.clear();
+    // The Revenant is committed or not at all (fixes 24): one that wasn't landed goes back to the reinforcements
+    if (revenantBase >= 0 && s.space[p].count(UnitType::Mech) > revenantBase) {
+        s.space[p].remove(UnitType::Mech, 1, false);
+        say(p, pn(p) + "'s Revenant isn't committed and returns to reinforcements.", sys);
+    }
     // Auriga (Kyro flagship, Discordant Stars): 1 more infantry from the reinforcements with each commitment here
     if ((G.modules & kModDiscordant) && flagshipAbility(G, p, "kyro") && flagshipIn(G, p, sys))
         for (int pl : landed)
@@ -911,7 +1104,8 @@ void Rules::invasion(int p, int sys) {
         Force& sp = s.space[p];
         int n = sp.ships();
         for (int t : kShipIdx) sp.n[t] = sp.dmg[t] = 0;
-        if (n) say(p, pn(p) + "'s " + std::to_string(n) + " ships in " + sysName(sys) + " return to reinforcements (Sh'val).", sys);
+        if (n && G.fixes >= 25 && n == 1) say(p, pn(p) + "'s ship in " + sysName(sys) + " returns to reinforcements (Sh'val).", sys);
+        else if (n) say(p, pn(p) + "'s " + std::to_string(n) + " ships in " + sysName(sys) + " return to reinforcements (Sh'val).", sys);
         removeExcessCapacity(p, sys);
     }
 
@@ -945,6 +1139,41 @@ void Rules::invasion(int p, int sys) {
     dsSlingPlanets_.clear();
     // Ragh's Call: the Saar player's ground forces leave the planet
     for (int pl : landed) raghsCall(p, pl);
+
+    // --- (fixes 25, owner's faction debug pass) "When ground forces are committed": Viper EX-23 / Research Team decide to
+    // coexist right after the commit - before space cannon defense (LRR 40: commit, space cannon defense, ground combat);
+    // a fresh meeting only (neither side coexisting there yet - those keep their questions at the ground combat). The
+    // Viper may coexist with neutral units too (Thunder's Edge: they count as another player's for abilities).
+    std::vector<std::pair<int, int>> coexistAsked;  // (planet, other player) decided now
+    if (G.fixes >= 25 && (G.modules & kModThundersEdge))
+        for (int pl : landed) {
+            PlanetState& ps = G.planets[size_t(pl)];
+            for (int q = 0; q < G.numPlayers; ++q) {
+                // (a planet with only the other side's structures: no question - LRR 63.4 / 79.4 destroy a PDS / dock
+                // without its owner's ground forces beside another player's units, coexisting or not; checked in the
+                // Deepwrought review)
+                if (q == p || !(ps.units[size_t(p)].groundForces() > 0 && groundForcesOn(G, q, pl) > 0)) continue;
+                if (((ps.coexist >> p) & 1) || ((ps.coexist >> q) & 1)) continue;
+                coexistAsked.push_back({pl, q});
+                coexistInstead(p, q, pl);
+            }
+            if (ps.units[size_t(p)].groundForces() > 0 && neutralGroundOn(G, pl) > 0 && !((ps.coexist >> p) & 1) && fac(p, "firmament") &&
+                mechAbilities(G) && ps.units[size_t(p)].count(UnitType::Mech) > 0) {
+                curFor_ = kNeutral;
+                const bool co = fyes(p, Ab::FirmamentMech, "Viper EX-23: coexist with the neutral units on " + planetName(pl) + " instead of fighting?",
+                                     "No combat - and no control of the planet while you coexist (Viper Hollow takes it when you become the Obsidian).");
+                curFor_ = -1;
+                if (co) startCoexisting(p, pl);
+            } else if (G.fixes >= 27 && ps.units[size_t(p)].groundForces() > 0 && neutralGroundOn(G, pl) > 0 && !((ps.coexist >> p) & 1) &&
+                       fac(p, "deepwrought")) {
+                // (fixes 27, the Deepwrought review) Research Team with neutral units (they count as another player's units)
+                curFor_ = kNeutral;
+                const bool co = fyes(p, Ab::ResearchTeam, "Research Team: coexist with the neutral units on " + planetName(pl) + " instead of fighting?",
+                                     "No combat - and no control of the planet while you coexist (you take it if they are gone).");
+                curFor_ = -1;
+                if (co) startCoexisting(p, pl);
+            }
+        }
 
     // --- space cannon defense (L4 Disruptors: none against the invader; none inside an entropic scar)
     for (int pl : landed) {
@@ -1023,12 +1252,46 @@ void Rules::invasion(int p, int sys) {
 
     // --- ground combat and control
     const bool te = (G.modules & kModThundersEdge) != 0;
+    // (fixes 27, the Naalu review) the Matriarch's fighters committed alone fight too (no control: they return to space)
+    auto committed = [&](int pl) {
+        return G.planets[pl].units[p].groundForces() > 0 || (G.fixes >= 27 && matriarch && G.planets[pl].units[p].count(UnitType::Fighter) > 0);
+    };
     for (int pl : landed) {
+        // (fixes 27, the Saar review - a game ended with the Saar and Sol sharing Tar'mann: the Saar declined to end their
+        // coexistence against Sol, then ended it against the Deepwrought) our coexistence on the planet ends or not as one
+        // decision, asked once before the fights - then we fight every player there who doesn't coexist
+        bool endedAll = false;
+        if (te && G.fixes >= 27 && ((G.planets[pl].coexist >> p) & 1) && committed(pl) && !groveBlocks(p, pl)) {
+            int foe = -1, most = 0;
+            for (int q = 0; q < G.numPlayers; ++q) {
+                if (q == p) continue;
+                const int k = groundForcesOn(G, q, pl) * (((G.planets[pl].coexist >> q) & 1) ? 1 : 4);  // (those who'd fight first)
+                if (k > most) most = k, foe = q;
+            }
+            if (foe >= 0) {
+                curFor_ = foe;
+                endedAll = yesNo(p, Tag::EngageCoexisting, "End your coexistence on " + planetName(pl) + ": attack the units there?",
+                                 "Your ground forces there fight every other player's units that don't coexist (and those that do, if you "
+                                 "choose); if you win you take the planet. Or keep coexisting.");
+                curFor_ = -1;
+                if (endedAll) {
+                    G.planets[pl].coexist = uint16_t(G.planets[pl].coexist & ~(1u << p));
+                    say(p, pn(p) + " ends their coexistence on " + planetName(pl) + ".", sys);
+                }
+            }
+        }
         for (int q = 0; q < G.numPlayers; ++q) {
             if (q == p) continue;
-            if (!(G.planets[pl].units[p].groundForces() > 0 && groundForcesOn(G, q, pl) > 0)) continue;  // Hel-Titans defend too
-            bool engaged = false, ended = false;
+            if (!(committed(pl) && groundForcesOn(G, q, pl) > 0)) continue;  // Hel-Titans defend too
+            // (fixes 25) decided at the commit: coexisting now = no combat, else the fight (no second question)
+            if (std::find(coexistAsked.begin(), coexistAsked.end(), std::make_pair(pl, q)) != coexistAsked.end()) {
+                if (((G.planets[pl].coexist >> p) & 1) || ((G.planets[pl].coexist >> q) & 1)) continue;
+                groundCombat(p, q, pl);
+                continue;
+            }
+            bool engaged = false, ended = endedAll;
             if (te) {  // Thunder's Edge: coexistence
+                if (((G.planets[pl].coexist >> p) & 1) && G.fixes >= 27) continue;  // (still coexisting: decided above)
                 if ((G.planets[pl].coexist >> p) & 1) {  // our units here coexist: no fight -
                     // 0.44.2 (fixes >= 7, TE rulebook "Coexist"): unless we commit them to end it
                     if (G.fixes < 7 || groveBlocks(p, pl)) continue;
@@ -1059,7 +1322,8 @@ void Rules::invasion(int p, int sys) {
             if (engaged && G.fixes >= 2 && groundForcesOn(G, q, pl) > 0 && G.planets[pl].owner != q)
                 G.planets[pl].coexist = uint16_t(G.planets[pl].coexist | (1u << q));
         }
-        if (G.planets[pl].units[p].groundForces() > 0 && neutralGroundOn(G, pl) > 0) groundCombat(p, kNeutral, pl);  // Thunder's Edge
+        if (committed(pl) && neutralGroundOn(G, pl) > 0 && !(G.fixes >= 25 && ((G.planets[pl].coexist >> p) & 1)))
+            groundCombat(p, kNeutral, pl);  // Thunder's Edge (fixes 25: not while coexisting with them - Viper EX-23)
         if (G.planets[pl].units[p].groundForces() > 0 && !((G.planets[pl].coexist >> p) & 1)) {
             bool contested = neutralGroundOn(G, pl) > 0;
             for (int q = 0; q < G.numPlayers; ++q)
@@ -1068,6 +1332,7 @@ void Rules::invasion(int p, int sys) {
         }
     }
     engageCoexisting(p, sys, landed);  // (0.44.2: planets nobody landed on)
+    coexistStructures();               // (fixes 25: LRR 63.4 / 79.4 after the combats and bombardment)
     if (matriarch) returnLandedFighters(p, sys);
     blitz_ = disabled_ = false;
     bunkerOwner_ = -1;
@@ -1084,6 +1349,50 @@ void Rules::engageCoexisting(int p, int sys, const std::vector<int>& skip) {
     for (int16_t pl : std::vector<int16_t>(G.systems[size_t(sys)].planets)) {
         if (std::find(skip.begin(), skip.end(), int(pl)) != skip.end()) continue;
         if (groveBlocks(p, pl)) continue;  // (Mended Grove: those infantry can't be committed this action)
+        // (fixes 27, the Saar review) our own coexistence ends or not as one decision for the planet; ended, we fight every
+        // player there who doesn't coexist, and those who do if we choose
+        if (G.fixes >= 27 && ((G.planets[size_t(pl)].coexist >> p) & 1)) {
+            if (G.planets[size_t(pl)].units[size_t(p)].groundForces() == 0) continue;
+            int foe = -1, most = 0;
+            for (int q = 0; q < G.numPlayers; ++q) {
+                if (q == p) continue;
+                const int k = groundForcesOn(G, q, pl) * (((G.planets[size_t(pl)].coexist >> q) & 1) ? 1 : 4);
+                if (k > most) most = k, foe = q;
+            }
+            if (foe < 0) continue;
+            curFor_ = foe;
+            const bool end = yesNo(p, Tag::EngageCoexisting, "End your coexistence on " + planetName(pl) + ": attack the units there?",
+                                   "Your ground forces already on the planet fight every other player's units that don't coexist (and those "
+                                   "that do, if you choose); if you win you take the planet. Or leave things as they are.");
+            curFor_ = -1;
+            if (!end) continue;
+            G.planets[size_t(pl)].coexist = uint16_t(G.planets[size_t(pl)].coexist & ~(1u << p));
+            say(p, pn(p) + " ends their coexistence on " + planetName(pl) + ".", sys);
+            for (int q = 0; q < G.numPlayers; ++q) {
+                PlanetState& ps = G.planets[size_t(pl)];
+                if (q == p || ps.units[size_t(p)].groundForces() == 0 || groundForcesOn(G, q, pl) == 0) continue;
+                if ((ps.coexist >> q) & 1) {
+                    curFor_ = q;
+                    const bool go = yesNo(p, Tag::EngageCoexisting, "Attack " + pn(q) + "'s coexisting units on " + planetName(pl) + "?",
+                                          "Your ground forces already on the planet fight them. Or leave them coexisting.");
+                    curFor_ = -1;
+                    if (!go) continue;
+                    ps.coexist = uint16_t(ps.coexist & ~(1u << q));
+                    if ((G.modules & kModDiscordant) && breakthroughsOn(G)) dsbtCoexistEnded(q, p);
+                }
+                groundCombat(p, q, pl);
+                PlanetState& after = G.planets[size_t(pl)];
+                if (groundForcesOn(G, q, pl) > 0 && after.owner != q) after.coexist = uint16_t(after.coexist | (1u << q));  // (still a guest)
+            }
+            PlanetState& after = G.planets[size_t(pl)];
+            if (after.units[size_t(p)].groundForces() > 0 && after.owner != p) {
+                bool contested = neutralGroundOn(G, pl) > 0;
+                for (int r = 0; r < G.numPlayers; ++r)
+                    if (r != p && groundForcesOn(G, r, pl) > 0 && !((after.coexist >> r) & 1)) contested = true;
+                if (!contested) setControl(pl, p);
+            }
+            continue;
+        }
         for (int q = 0; q < G.numPlayers; ++q) {
             PlanetState& ps = G.planets[size_t(pl)];
             if (q == p || ps.units[size_t(p)].groundForces() == 0 || groundForcesOn(G, q, pl) == 0) continue;
@@ -1143,7 +1452,9 @@ void Rules::productionCore(int p, int sys, int capacityLimit, bool viaWarfare, b
             capacityLimit += 4;
             discount += eventOn(G, kEvWild) ? 5 : 1;  // Wild, Wild Galaxy: 5 cheaper
         }
-        if (harruhgFree(p)) discount += 1000;  // Harrugh Gefhara: free this time
+        // Harrugh Gefhara: free this time ("When 1 or more of your units use PRODUCTION" - fixes 26, the Hacan review, owner
+        // 2026-11-12: not for productions by other abilities, as Sarween Tools / AI Development Algorithm since 0.44.5)
+        if (!(G.fixes >= 26 && otherAbility) && harruhgFree(p)) discount += 1000;
         if (dsFreeProd_) discount += 1000;     // Matriphagy (Cheiran breakthrough, 0.43.0): these units cost nothing
         // AI Development Algorithm: cheaper by the number of unit upgrades you own.
         int ups = 0;
@@ -1163,7 +1474,9 @@ void Rules::productionCore(int p, int sys, int capacityLimit, bool viaWarfare, b
         if (G.modules & kModDiscordant) capacityLimit += dsProductionBonus(p, sys, capacityLimit);  // Durran, Merged Replicators
     }
     // Particle Synthesis (0.44.4 fixes 8): 1 cheaper per wormhole in the system - ships there or not, ships-only too
-    if (G.fixes >= 8 && breakthroughIs(G, p, "ghost"))
+    if (G.fixes >= 24 && breakthroughIs(G, p, "ghost"))
+        discount += wormholeCount(G, sys);  // (fixes 24: each wormhole, not each kind)
+    else if (G.fixes >= 8 && breakthroughIs(G, p, "ghost"))
         for (uint8_t w = wormholesOf(G, sys); w; w &= uint8_t(w - 1)) ++discount;
     const int costCap = dsCostCap_;  // Maximus (Dih-Mohn flagship): a combined cost limit
     discount += dsDiscount_;  // Moult, Brood Pod, Obsessive Designs (Discordant Stars)
@@ -1172,7 +1485,7 @@ void Rules::productionCore(int p, int sys, int capacityLimit, bool viaWarfare, b
     // which unit types may be produced (ships only / Umbat: cost 4 or less)
     int typeMask = dsTypeMask_;  // (Obsessive Designs: the new design only)
     // Combat Drones (Mirveda, Discordant Stars): no infantry from their space docks
-    if (!typeMask && (G.modules & kModDiscordant) && fac(p, "mirveda") && !(G.fx.anyPlanetGF && p == G.activePlayer))
+    if (!typeMask && (G.modules & kModDiscordant) && fac(p, "mirveda") && !anyPlanetGFFor(G, p))
         typeMask = ((1 << kUnitTypes) - 1) & ~(1 << int(UnitType::Infantry));
     if (shipsOnly || maxUnitCost_ > 0)
         for (int t = 0; t < kUnitTypes; ++t) {
@@ -1270,6 +1583,7 @@ void Rules::productionCore(int p, int sys, int capacityLimit, bool viaWarfare, b
     event(EventKind::Produce, p,
           pn(p) + " produces " + unitList(made, &G, p) + " in " + sysName(sys) + (viaWarfare ? " (Warfare)" : "") + ".", sys);
     removeExcessCapacity(p, sys);
+    if (G.fixes >= 27) checkFloatingFactories(sys);  // (fixes 27, the Saar review: ships produced beside a lone floating factory)
     afterProduction3(p, sys, made);  // Rowl Sarrig; Hegemonic Trade Policy ends
     afterProduction4(p, sys, made, gfPlanet);  // Tungstantus, Trilossa Aun Mirik
     btProduced(p, sys, counts);                 // Auto-Factories (Thunder's Edge)
@@ -1280,6 +1594,19 @@ void Rules::productionCore(int p, int sys, int capacityLimit, bool viaWarfare, b
     theIcon(p, sys, counts);                    // The Icon (Last Bastion breakthrough)
     phantomProduced(p, sys, counts);            // Homesick Phantom (Crimson hero)
     yinSpinner(p, sys);
+    // (fixes 26, the Muaat review - owner 2026-11-12) the original Magmus Reactor (games without the Codex / Thunder's
+    // Edge): "After 1 or more of your units use PRODUCTION in a system that either contains a war sun or is adjacent to a
+    // supernova, gain 1 trade good." (not after another ability's production - Umbat, Sling Relay...)
+    if (magmusOriginal(G) && !notProductionAbility_ && ownsTechKey(G, p, "mr")) {
+        const SystemState& ms = G.systems[size_t(sys)];
+        bool warSun = false, nova = false;
+        for (int q = 0; q < kSides; ++q) warSun = warSun || ms.space[size_t(q)].count(UnitType::WarSun) > 0;
+        for (int16_t a2 : ms.adj) nova = nova || (G.systems[size_t(a2)].d().anomalies & kSupernova);
+        if (warSun || nova) {
+            say(p, pn(p) + " gains 1 trade good (Magmus Reactor).", sys);
+            gainTG(p, 1);
+        }
+    }
     if (shipsOnly) return;
     // Prophecy of Ixth: lost unless 2 or more fighters were produced.
     if (lawOwner(G, "prophecy") == p && counts[int(UnitType::Fighter)] < 2)
@@ -1397,6 +1724,7 @@ void Rules::integratedEconomy(int p, int planet) {
             addUnits(p, UnitType(t), counts[t], sys, isGroundForce(UnitType(t)) ? planet : -1);
         }
     event(EventKind::Produce, p, pn(p) + " produces " + unitList(made, &G, p) + " on " + planetName(planet) + " (Integrated Economy).", sys);
+    if ((G.modules & kModThundersEdge) && G.fixes >= 24) phantomProduced(p, sys, counts);  // Homesick Phantom
     enforceFleetLimit(p);
     removeExcessCapacity(p, sys);
 }

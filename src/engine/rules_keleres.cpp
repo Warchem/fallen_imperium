@@ -343,12 +343,17 @@ void Rules::suffiAnUnlock(int p, int card) {
 bool Rules::suffiAnExtra(int p) {
     if (!lastComponent_ || !commanderUsable(G, p, "keleres")) return false;
     lastComponent_ = false;
-    return fyes(p, Ab::KeleresCommander, "Suffi An: perform another action?", "You just performed a component action.");
+    const bool more = fyes(p, Ab::KeleresCommander, "Suffi An: perform another action?", "You just performed a component action.");
+    if (more && G.fixes >= 27) say(p, pn(p) + " takes another action (Suffi An).");  // (fixes 27, the Keleres review: a log line)
+    return more;
 }
 
 // ------------------------------------------------------------------ Xander Alexin Victori III (agent)
 // When a payment needs the payer's commodities to be met: exhaust the agent and the
 // payer may spend commodities as if they were trade goods. Returns who used it (-1 = no one).
+// (fixes 27, the Keleres review - owner 2026-11-13: "gives players more usage out of him") a person paying for themselves
+// is also offered it when they could pay without the commodities, so their planets stay ready ("don't ask again this
+// round" for those offers; they are still asked when the commodities are needed). Bots and other players: as before.
 int Rules::xanderOffer(int payer, int amount, bool influence, bool mixed) {
     const Player& pl = G.players[payer];
     if (pl.commodities <= 0 || amount <= 0) return -1;
@@ -356,12 +361,26 @@ int Rules::xanderOffer(int payer, int amount, bool influence, bool mixed) {
     if (user < 0) return -1;
     const int worth = tgWorth(G, payer);
     const int have = (mixed ? spendableMixed(G, payer) : spendable(G, payer, influence)) - xanderCommodities(G, payer) * worth;
-    if (have >= amount || have + pl.commodities * worth < amount) return -1;  // only when the commodities make it possible
+    if (have + pl.commodities * worth < amount) return -1;  // the commodities wouldn't make it possible either
+    const bool spare = have >= amount;
+    if (spare && !(G.fixes >= 27 && user == payer && G.players[user].human && xanderQuiet_[user] != G.round)) return -1;
     agentFor(user, payer);
-    const bool use = fyes(user, Ab::KeleresAgent,
-                          user == payer ? "Exhaust Xander Alexin Victori III to spend your commodities as trade goods?"
-                                        : "Exhaust Xander Alexin Victori III so " + pn(payer) + " can spend commodities as trade goods?",
-                          "For this payment only.");
+    bool use = false;
+    if (spare) {
+        const int c = fpick(user, Ab::KeleresAgent, "Exhaust Xander Alexin Victori III to spend your commodities as trade goods?",
+                            {{1, "Exhaust Xander", "Spend your " + std::to_string(pl.commodities) + " commodit" + (pl.commodities == 1 ? "y" : "ies") +
+                                                       " as trade goods on this payment and keep planets ready."},
+                             {0, "No", "Pay as usual."},
+                             {3, "No, and don't ask again this round", "You're still asked when you need the commodities to pay."}},
+                            "For this payment only. You can pay without them.");
+        if (c == 3) xanderQuiet_[user] = int16_t(G.round);
+        use = c == 1;
+    } else {
+        use = fyes(user, Ab::KeleresAgent,
+                   user == payer ? "Exhaust Xander Alexin Victori III to spend your commodities as trade goods?"
+                                 : "Exhaust Xander Alexin Victori III so " + pn(payer) + " can spend commodities as trade goods?",
+                   "For this payment only.");
+    }
     if (!use) {
         curFor_ = -1;
         return -1;

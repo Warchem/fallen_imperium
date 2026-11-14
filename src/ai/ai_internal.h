@@ -24,6 +24,8 @@ float aiFactionComponentValue(const Game& g, int p, int option);  // options 600
 float aiFreeTacticalValue(const Game& g, int p);              // ai.cpp: what a free tactical action is worth
 bool aiTeAnswer(const Game& g, const Decision& d, Answer& out);   // Thunder's Edge questions (ai_te.cpp)
 bool aiTeComponentValue(const Game& g, int p, int ab, float& v);  // breakthrough component actions
+bool aiCoupNow(const Game& g, int p);                              // the Firmament: take Puppets of the Blade now
+int aiHomeSpentValue(const Game& g, int p);                        // resources + influence of exhausted home planets
 bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out);  // Discordant Stars questions (ai_ds.cpp)
 bool aiDsComponentValue(const Game& g, int p, int ab, float& v);           // their component actions
 // From ai_cards.cpp, for the faction AI.
@@ -240,6 +242,21 @@ float aiOpProgress(const Game& g, int p, const AiOp& op, const Force& f);  // 0.
 float aiOpReadinessOf(const Game& g, int p, const AiOp& op, const Force (&tier)[3]);
 // the readiness after this move into sys (ships leave their tiers for the one they reach from sys)
 float aiOpReadinessAfter(const Game& g, int p, const AiOp& op, int sys, const std::vector<int>& move);
+// ---- The Saarball (ai_ops.cpp; the Saar review, owner 2026-11-13: "we will need to figure out how to implement a
+// Saarball strategy") - switch saarball3 (test, default off). The floating factory with the biggest escort (the ball)
+// rolls toward a front - the system where a factory brings the most within reach (free and other players' planets
+// around it, Mecatol Rex next door, an asteroid field once Chaos Mapping keeps others out), not under a fleet that
+// would beat it - one step a turn with its whole escort, building where it arrives; parked there it builds every turn.
+struct SaarBall {
+    int ball = -1;   // the system of the ball's factory (-1: none)
+    int front = -1;  // where it rolls to (== ball: parked)
+    int next = -1;   // this turn's step toward the front (-1: none - parked, or no safe step)
+    float score = 0; // the front's worth (planner units, 0..~8)
+    int steps = 0;   // factory moves from the ball to the front
+    std::vector<int8_t> toFront;  // per system: moves to the front (-1 far)
+};
+const SaarBall& aiSaarBall(const Game& g, int p);
+float aiSaarFront(const Game& g, int p, int sys);  // what a factory parked in sys brings within reach
 // Betrayal timing: how hard p pushes its betrayal objective now (1 = as before). Below
 // Competitive: at once, by personality; Competitive: only when the economy allows.
 float aiBetrayUrge(const Game& g, int p);
@@ -248,13 +265,17 @@ bool aiBetrayalMomentOk(const Game& g, int p);
 // ---- the Strategy Core (ai_core.cpp, 0.18.0) -----------------------------------
 // How the faction is best played (the owner's strategy guide): card priorities,
 // technology paths, units, trading; it suggests, the personality mostly follows.
+int aiCustodiansInf(const Game& g, int p);  // influence the custodians cost this bot (6; the Winnu with bloodties: 0)
 bool aiCoreOn(const Game& g, int p);
 std::vector<int> aiCoreTechPlan(const Game& g, int p);  // technologies in the order the plan wants them
 float aiCoreTechBonus(const Game& g, int p, int tech);  // the plan's next steps + answers to the neighbours
+int aiResolveTech(const Game& g, int p, const char* key);  // a generic key -> this faction's own (dn2 -> sdn2), or -1
 void aiCoreApply(Style& st, const Game& g, int p);      // folds the core into the personality's style
 bool aiCoreWarSuns(const Game& g, int p);               // build war suns when it can
 float aiCoreSliceBias(const Game& g, int p, int slice);  // 0.43.0: the expedition slices the guide pays with
 bool aiCoreExpeditionLater(const Game& g, int p);         // the guide starts the expedition in a later round
 float aiCorePlanetBonus(const Game& g, int p, int pl);    // stations, the Fracture, factions to hit early
+bool aiUmbatWorth(const Game& g, int p);                  // (Muaat review) Umbat's production would buy something
+int aiUmbatSystem(const Game& g, int p);                  // ... and the system where it buys the most (-1: none)
 
 }  // namespace ti

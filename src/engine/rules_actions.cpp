@@ -24,7 +24,7 @@ const char* winText(Win w) {
         case Win::AfterAction: return "You just finished an action.";
         case Win::AfterMove: return "Ships just moved into the active system.";
         case Win::BeforeCannonHits: return "Space cannon hits are about to be assigned to your ships.";
-        case Win::AfterUnitRoll: return "Another player just rolled dice against you.";
+        case Win::AfterUnitRoll: return "Another player just made a bombardment, space cannon or anti-fighter barrage roll.";
         case Win::CombatStart: return "A combat is starting.";
         case Win::CombatRoundStart: return "A combat round is starting.";
         case Win::CombatRoundEnd: return "A combat round just ended.";
@@ -297,6 +297,7 @@ std::vector<Played> Rules::window(const WinCtx& c) {
                 std::vector<int16_t> hand = pl.actionCards;
                 for (int16_t s : salvageOf(p)) hand.push_back(s);  // (played as if in the hand)
                 if (pl.eliminated || hand.empty() || !canPlayActionCards(G, p) || ((silenced_ >> p) & 1)) break;
+                if (mutedFor_ >= 0 && p != mutedFor_) break;  // (fixes 27, Xxekir Grom) other players can't resolve abilities now
                 std::vector<Option> opts;
                 for (int16_t card : hand) {
                     bool dup = std::find(used.begin(), used.end(), p * 1000 + int(card)) != used.end();
@@ -386,6 +387,16 @@ bool Rules::cardPlayable(int p, int card, const WinCtx& c) const {
                     if (G.planets[x].owner == p) mine = true;
                 }
                 if (!structures || !mine) return false;
+                if (G.fixes >= 27) {  // (fixes 27, the action cards review) "from the game board": space areas and the active
+                    int mineHere = 0;   // system's other planets count too
+                    for (int16_t x : s.planets)
+                        if (G.planets[x].owner == p) ++mineHere;
+                    for (const PlanetState& x : G.planets)
+                        if (x.units[p].groundForces() && (x.system != c.sys || mineHere >= 2)) return true;
+                    for (const SystemState& sy : G.systems)
+                        if (sy.space[size_t(p)].groundForces()) return true;
+                    return false;
+                }
                 for (const PlanetState& x : G.planets)
                     if (x.system != c.sys && x.units[p].groundForces()) return true;
                 return false;
@@ -398,6 +409,10 @@ bool Rules::cardPlayable(int p, int card, const WinCtx& c) const {
             return is("master_plan") && p == c.active;
         case Win::AfterMove: {
             if (!is("experimental") || p == c.active || !hasShips(G, c.active, c.sys)) return false;
+            if (G.fixes >= 25 && G.fx.myruThrough == c.active) return false;  // Myru Vos: no space cannon against those ships
+            // (fixes 25, owner's faction debug pass) Solar Flare: "during this movement" - LRR 58.7 puts Space Cannon
+            // Offense inside the movement step, and Battlestation fires right after the ships move, so it's covered too
+            if (G.fixes >= 25 && G.fx.solarFlare) return false;
             auto dockIn = [&](int s) {
                 if (G.systems[s].space[p].count(UnitType::SpaceDock)) return true;
                 for (int16_t x : G.systems[s].planets)
@@ -412,7 +427,9 @@ bool Rules::cardPlayable(int p, int card, const WinCtx& c) const {
         case Win::BeforeCannonHits:
             return is("mjets") && p == c.a && c.value > 0;
         case Win::AfterUnitRoll:
-            return is("scramble") && p == c.b;
+            // (fixes 27, the action cards review) "After another player makes a ... roll": anyone but the roller, not only
+            // the target
+            return is("scramble") && (G.fixes >= 27 ? p != c.a : p == c.b);
         case Win::CombatStart: {
             if (!is("reveal_prototype") || !participant(c, p) || spendable(G, p, false) < 4) return false;
             const Force& f = c.space ? G.systems[c.sys].space[p] : G.planets[c.planet].units[p];
@@ -440,6 +457,7 @@ bool Rules::cardPlayable(int p, int card, const WinCtx& c) const {
             if (is("f_prototype")) return c.space && c.first && G.systems[c.sys].space[p].count(UnitType::Fighter) > 0;
             if (is("s_retreat")) {
                 if (!c.space) return false;
+                if (G.fixes >= 26 && noRetreat_) return false;  // (fixes 26, the Mahact review: Airo Shir Aur's combat - no ability moves ships)
                 for (int16_t a : G.systems[c.sys].adj) {
                     uint8_t an = G.systems[a].d().anomalies;
                     if (G.fixes >= 12) {  // (0.44.8: Magmus Reactor allows a supernova)
@@ -464,7 +482,7 @@ bool Rules::cardPlayable(int p, int card, const WinCtx& c) const {
             return is("sh") && eventOn(G, kEvWild) && p == c.a && c.value > 0;
         case Win::AfterSustain:
             if (is("dh")) return p == c.b && c.b >= 0 && (c.space || eventOn(G, kEvWild)) && !immuneToDirectHit(G, c.a, UnitType(c.value));
-            if (is("reflective")) return p == c.a && c.space && inSpaceCombat_ && c.b >= 0 && hasShips(G, c.b, c.sys);
+            if (is("reflective")) return p == c.a && c.space && inSpaceCombat_ && c.b >= 0 && shipsOrAlastor(c.b, c.sys);
             return false;
         case Win::ShipDestroyed:
             return is("courageous") && p == c.a && c.space && hasShips(G, c.b, c.sys);
@@ -660,6 +678,31 @@ void Rules::resolveCard(int p, int card, const WinCtx* c) {
                 opts.push_back({s, std::to_string(s + 1) + " " + strategyName(s),
                                 std::to_string(G.cardTradeGoods[s]) + " trade goods on it now"});
         if (opts.size() < 3) return;
+        if (G.fixes >= 27) {  // (fixes 27, the action cards review) any split over at least 3 cards, e.g. 3 / 1 / 1
+            std::vector<int> placed;
+            for (int i = 0; i < 5; ++i) {
+                int distinct = 0;
+                for (size_t k = 0; k < placed.size(); ++k)
+                    if (std::find(placed.begin(), placed.begin() + long(k), placed[k]) == placed.begin() + long(k)) ++distinct;
+                const bool mustNew = 3 - distinct >= 5 - i;  // (the rest must reach 3 different cards)
+                std::vector<Option> o2;
+                for (const Option& o : opts) {
+                    Option x = o;
+                    x.detail = std::to_string(G.cardTradeGoods[o.id]) + " trade goods on it now";
+                    if (mustNew && std::find(placed.begin(), placed.end(), o.id) != placed.end()) x.enabled = false;
+                    o2.push_back(x);
+                }
+                const int prevV = curValue_;
+                curValue_ = i;  // (for the AI: which trade good this is)
+                const int s = pick(p, Tag::CardTarget, "Manipulate Investments: trade good " + std::to_string(i + 1) + " of 5 - on which strategy card?",
+                                   o2, "At least 3 different cards in all.");
+                curValue_ = prevV;
+                G.cardTradeGoods[s]++;
+                placed.push_back(s);
+            }
+            say(p, pn(p) + " places 5 trade goods on strategy cards.");
+            return;
+        }
         std::vector<int> cards = pickMany(p, Tag::CardTarget, "Manipulate Investments: choose 3 to 5 strategy cards", opts, 3,
                                           std::min<int>(5, int(opts.size())),
                                           "5 trade goods are spread over them, the first ones you pick get the extra.");
@@ -742,7 +785,7 @@ void Rules::resolveCard(int p, int card, const WinCtx* c) {
         std::vector<Option> units;
         const int np = int(G.planets.size());
         for (int x = 0; x < np; ++x) {
-            if (G.planets[x].system == sys) continue;
+            if (G.planets[x].system == sys && (G.fixes < 27 || x == to)) continue;  // (fixes 27: the system's other planets too)
             const Force& f = G.planets[x].units[p];
             for (UnitType t : {UnitType::Infantry, UnitType::Mech})
                 for (int i = 0; i < f.count(t) && i < 2; ++i)
@@ -780,7 +823,8 @@ void Rules::resolveCard(int p, int card, const WinCtx* c) {
         if (opts.size() > 1) pick(p, Tag::CardTarget, "Experimental Battlestation: which space dock fires?", opts);
         // 0.44.5 (fixes 9): a space cannon shot - Graviton Laser System and Antimass Deflectors apply
         const bool gls = G.fixes >= 9 && askGraviton(p, c->active, sys);
-        const int need = 5 + (G.fixes >= 9 ? antimass(p, c->active) : 0);
+        // (fixes 25, owner's faction debug pass) Assail: +1 against a puppet (a unit ability roll)
+        const int need = 5 + (G.fixes >= 9 ? antimass(p, c->active) : 0) - (G.fixes >= 25 && (G.modules & kModThundersEdge) ? assail(p, c->active) : 0);
         RollResult r;
         // (0.44.8, fixes 12) the dock uses SPACE CANNON: Plasma Scoring and the other extra dice apply
         const int dice = 3 + (G.fixes >= 12 ? abilityDice(p, sys) : 0);
@@ -797,6 +841,12 @@ void Rules::resolveCard(int p, int card, const WinCtx* c) {
 
     // ---------- combat
     if (is("reveal_prototype")) {
+        // (fixes 27, the Nekro review - owner 2026-11-14) Propagation: "When you would research a technology: Gain 3 command
+        // tokens instead" - the 4 resources, then the tokens
+        if (G.fixes >= 27 && fac(p, "nekro")) {
+            if (spendable(G, p, false) >= 4) propagation(p, 4);
+            return;
+        }
         const Force& f = c->space ? G.systems[sys].space[p] : G.planets[c->planet].units[p];
         std::vector<Option> opts;
         // (0.44.9, fixes 13 - the owner's answer C11: Inheritance Systems here too - +2 resources, every prerequisite ignored)
@@ -859,7 +909,7 @@ void Rules::resolveCard(int p, int card, const WinCtx* c) {
         return;
     }
     if (is("reflective")) {
-        assignHits(c->b, sys, -1, 2, kShipMaskAll, "Reflective Shielding", p);
+        assignHits(c->b, sys, -1, 2, kShipMaskAll | alastorMask(c->b), "Reflective Shielding", p);
         return;
     }
     if (is("courageous")) {
@@ -895,6 +945,43 @@ void Rules::resolveCard(int p, int card, const WinCtx* c) {
     if (is("bunker")) return;  // the invasion code remembers who played it
     if (is("disable")) {
         disabled_ = true;
+        return;
+    }
+    if (is("ghost_squad") && G.fixes >= 27) {
+        // (fixes 27, the action cards review) "Move any number of your ground forces from any planet you control in the active
+        // system to any other planet you control in the active system": a move at a time - from, to, how many
+        const int prevV = curValue_;
+        curValue_ = c->planet;  // (for the AI: the planet being invaded)
+        for (int guard = 0; guard < 8; ++guard) {
+            std::vector<Option> from;
+            for (int16_t x : G.systems[sys].planets)
+                if (G.planets[x].owner == p && G.planets[x].units[p].groundForces())
+                    from.push_back({x, planetName(x), std::to_string(G.planets[x].units[p].groundForces()) + " ground forces"});
+            if (from.empty()) break;
+            from.push_back({-1, "Done", "No more moves."});
+            const int x = pick(p, Tag::CardTarget, "Ghost Squad: move from which planet?", from, "Any number, to another planet of yours in this system.");
+            if (x < 0) break;
+            std::vector<Option> to;
+            for (int16_t y : G.systems[sys].planets)
+                if (y != x && G.planets[y].owner == p) to.push_back({y, planetName(y), ""});
+            if (to.empty()) break;
+            const int y = to.size() == 1 ? to[0].id : pick(p, Tag::CardTarget, "Ghost Squad: move to which planet?", to);
+            int moved = 0;
+            for (UnitType t : {UnitType::Infantry, UnitType::Mech}) {
+                const int n = G.planets[x].units[p].count(t);
+                if (!n) continue;
+                std::vector<Option> k;
+                for (int i = 0; i <= n; ++i) k.push_back({i, std::to_string(i), ""});
+                const int m = pick(p, Tag::CardTarget, std::string("Ghost Squad: how many ") + (t == UnitType::Infantry ? "infantry" : "mechs") + "?", k,
+                                   "From " + planetName(x) + " to " + planetName(y) + ".");
+                if (m <= 0) continue;
+                G.planets[x].units[p].remove(t, m, false);
+                G.planets[y].units[p].add(t, m);
+                moved += m;
+            }
+            if (moved) say(p, pn(p) + " moves " + std::to_string(moved) + " ground forces from " + planetName(x) + " to " + planetName(y) + " (Ghost Squad).", sys);
+        }
+        curValue_ = prevV;
         return;
     }
     if (is("ghost_squad")) {
@@ -1267,7 +1354,9 @@ void Rules::resolveCard(int p, int card, const WinCtx* c) {
         if (opts.empty()) return;
         int t = pick(p, Tag::CardTarget, "Plagiarize: gain which technology?", opts, "Costs 5 influence.");
         if (pay(p, 5, true, "Plagiarize", false)) {
-            researchTech(p, t);
+            // (fixes 27, the Nekro review - owner 2026-11-14) "Gain that technology": a gain, not research (Anti-Intellectual
+            // Revolution, Research Agreement)
+            researchTech(p, t, G.fixes < 27);
             E.log(p, pn(p) + " gains " + kTechs[t].name + ".", EventKind::Research);
         }
         return;
@@ -1873,6 +1962,7 @@ void Rules::bioStims(int p) {
 }
 
 void Rules::endOfTurn(int p) {
+    if (G.fixes >= 27) floatingSweep();  // (fixes 27, the Saar review) blockaded floating factories
     if (G.players[p].eliminated) return;
     promiseEndOfTurn(p);  // "leave this system" promises
     persEndOfTurn(p);

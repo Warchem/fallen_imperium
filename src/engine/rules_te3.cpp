@@ -34,6 +34,19 @@ void Rules::teTakeRelic(int p, int r) {
     }
     if (!rk(r, "bookoflatvinia")) return;
     for (int n = 0; n < 2; ++n) {  // up to 2 technologies without prerequisites
+        // (fixes 27, the Nekro review - owner 2026-11-14) Propagation: "When you would research a technology: Gain 3 command
+        // tokens instead" - each one
+        if (G.fixes >= 27 && fac(p, "nekro")) {
+            const int prev = curRelic_;
+            curRelic_ = r;
+            const int k = pick(p, Tag::RelicChoice, "Book of Latvinia: research a technology without prerequisites?",
+                               {{1, "Gain 3 command tokens", "Propagation: instead of researching."}, {-1, "No more", ""}},
+                               n == 0 ? "Up to 2." : "1 more.");
+            curRelic_ = prev;
+            if (k < 0) return;
+            propagation(p, 0);
+            continue;
+        }
         std::vector<Option> opts;
         for (int t = 0; t < kTechCount; ++t) {
             const TechDef& td = kTechs[t];

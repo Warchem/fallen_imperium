@@ -1,5 +1,6 @@
 // Galaxy construction: places tiles using the standard Prophecy of Kings
-// layouts for 3-8 players (with hyperlanes for 3, 4, 5, 7 and 8 players),
+// layouts for 3-8 players (with hyperlanes for 3, 4, 5, 7 and 8 players; with
+// Game::layout 1 (0.58.0, "Hyperlanes: Off") the printed boards without them),
 // fills each player's "slice" with a balanced random selection of tiles, and
 // works out which systems are adjacent.
 #pragma once
@@ -23,6 +24,8 @@ struct SliceStats {
 };
 std::vector<SliceStats> sliceStats(const Game& g, const std::vector<int>& sliceOwner, int players);
 void computeAdjacency(Game& g);
+// (0.59.0) u and v touch on the board - side by side or joined through hyperlane tiles - without any wormhole
+bool boardAdjacent(const Game& g, int u, int v);
 // Where the Wormhole Nexus is drawn beside the board (far from every home).
 Hex nexusSpot(int maxRing, const std::vector<Hex>& used, const std::vector<Hex>& homes);
 // Board edges joined through a hyperlane tile (taking its rotation into account).
@@ -30,7 +33,10 @@ bool hyperlaneJoins(const SystemState& s, int edgeA, int edgeB);
 // The seat whose home system is lowest on the screen (southernmost) in the
 // layout for this many players - the human plays it so their home isn't
 // hidden under the prompts at the top of the map. -1 if no layout.
-int southernmostSeat(int players);
+int southernmostSeat(int players, int layout = 0);
+// 0.58.0: trade goods a seat starts with because of where its home is on the printed board (five players without
+// hyperlanes: +2 / +4 / +2, LRR setup step 6); 0 otherwise.
+int layoutStartTg(const Game& g, int p);
 // A rough measure of how good a tile is for its owner (used for balancing).
 float tileValue(int systemDef);
 

@@ -134,6 +134,7 @@ void Rules::agendaPhase() {
         }
         // (0.44.9, fixes 13) Bannerhalls are planet cards: they ready with the planets
         if (G.fixes >= 13 && bannerhalls(G, p)) G.players[size_t(p)].oceansExhausted = 0;
+        if (G.fixes >= 27 && G.players[size_t(p)].oceans > 0) G.players[size_t(p)].oceansExhausted = 0;  // (ocean cards too)
     }
     readyOnly3_ = false;
 }
@@ -342,7 +343,11 @@ void Rules::runAgenda(int a, bool miscount) {
 
     // Predictive Intelligence is exhausted if its votes went to a losing outcome.
     for (int q = 0; q < n; ++q)
-        if (pis[q] && voted[q] != outcome) exhaustTech(q, "pi");
+        if (pis[q] && voted[q] != outcome) {
+            exhaustTech(q, "pi");
+            // (fixes 27, the shared technologies) said in the log
+            if (G.fixes >= 27) say(q, pn(q) + "'s Predictive Intelligence is exhausted (the outcome they voted for lost).");
+        }
     // Riders
     for (int q = 0; q < n; ++q)
         for (size_t i = 0; i + 1 < preds[q].size(); i += 2) {
@@ -415,9 +420,10 @@ void Rules::votingStep(int a, std::vector<int>& votedFor, std::vector<int>& vote
         order.erase(std::remove(order.begin(), order.end(), lastVoter_), order.end());
         order.push_back(lastVoter_);
     }
-    // Zeal (Argent): always votes first
+    // Zeal (Argent): always votes first ((fixes 26, the Argent review - owner 2026-11-13) "during the agenda phase" - not on
+    // an agenda voted on in the action phase, Executive Order's; the extra votes still come)
     const int argent = playerOfFaction(G, "argent");
-    if (argent >= 0) {
+    if (argent >= 0 && (G.fixes < 26 || G.phase == Phase::Agenda)) {
         order.erase(std::remove(order.begin(), order.end(), argent), order.end());
         order.insert(order.begin(), argent);
     }
@@ -582,10 +588,15 @@ void Rules::votingStep(int a, std::vector<int>& votedFor, std::vector<int>& vote
                     }
                     // Bannerhalls (Kjalengard breakthrough; 0.44.9, fixes 13 - the owner's answer B3): planet cards, so
                     // they vote too - 1 each (their influence)
-                    if (G.fixes >= 13 && bannerhalls(G, p) && oceansReady(G, p) > 0) {
+                    // (fixes 27, the Deepwrought review) ocean cards are planet cards too (1 influence each)
+                    const bool oceanVotes = G.fixes >= 27 && G.players[size_t(p)].oceans > 0;
+                    if (((G.fixes >= 13 && bannerhalls(G, p)) || oceanVotes) && oceansReady(G, p) > 0) {
                         std::vector<Option> bo;
-                        for (int k = oceansReady(G, p); k >= 0; --k) bo.push_back({k, std::to_string(k) + (k == 1 ? " Bannerhall" : " Bannerhalls"), ""});
-                        const int use = pick(p, Tag::OceanPay, "Exhaust Bannerhalls for votes?", bo, "Each Bannerhall is 1 more vote.");
+                        const char* one = oceanVotes ? " ocean card" : " Bannerhall";
+                        const char* many = oceanVotes ? " ocean cards" : " Bannerhalls";
+                        for (int k = oceansReady(G, p); k >= 0; --k) bo.push_back({k, std::to_string(k) + (k == 1 ? one : many), ""});
+                        const int use = pick(p, Tag::OceanPay, oceanVotes ? "Exhaust ocean cards for votes?" : "Exhaust Bannerhalls for votes?", bo,
+                                             oceanVotes ? "Each ocean card is 1 more vote." : "Each Bannerhall is 1 more vote.");
                         if (use > 0) {
                             G.players[size_t(p)].oceansExhausted = int8_t(G.players[size_t(p)].oceansExhausted + use);
                             count += use;
@@ -595,6 +606,8 @@ void Rules::votingStep(int a, std::vector<int>& votedFor, std::vector<int>& vote
                                     "It is exhausted if the outcome you vote for doesn't win.")) {
                         count += 3;
                         piUsed_[p] = true;
+                        // (fixes 27, the shared technologies - the 3 votes left no line in the log)
+                        if (G.fixes >= 27) say(p, pn(p) + " casts 3 more votes (Predictive Intelligence).");
                     }
                     count += extraVotes(p, o);  // Gila the Silvertongue
                     if (odlynn) {
@@ -671,6 +684,10 @@ void Rules::addLaw(int a, int owner, int target) {
     say(owner, std::string(kAgendas[a].name) + " is now a law" + (owner >= 0 ? " held by " + pn(owner) : std::string()) + ".");
     if (agKey(a, "travel_ban") || agKey(a, "wormhole_recon") || agKey(a, "nexus")) computeAdjacency(G);
     for (int q = 0; q < G.numPlayers; ++q) agendaSecrets(q);
+    // (fixes 25, owner's faction debug pass) 3 or more laws: the Firmament meets another player's Dictate Policy (after
+    // everyone's own scoring, so one scored just now counts too)
+    if (G.fixes >= 25 && G.laws.size() >= 3)
+        for (int q = 0; q < G.numPlayers; ++q) plotsWithinPlots(q, "dp");
 }
 
 void Rules::discardLaw(int i, const std::string& why) {
@@ -713,9 +730,20 @@ void Rules::resolveOutcome(int a, int o, const std::vector<int>& votedFor, const
         if (p < 0) return;
         for (int16_t s : std::vector<int16_t>(G.players[p].secrets))
             if (!std::strcmp(kObjectives[s].key, "dtd")) scoreObjective(p, s);
+        // (fixes 25, owner's faction debug pass) the Firmament meets another player's Drive the Debate: Plots Within Plots
+        if (G.fixes >= 25 && p < G.numPlayers) plotsWithinPlots(p, "dtd");
     };
     if (kAgendas[a].elect == Elect::Player) debated(o);
-    if (kAgendas[a].elect == Elect::Planet || kAgendas[a].elect == Elect::NonHomePlanet) debated(G.planets[o].owner);
+    if (kAgendas[a].elect == Elect::Planet || kAgendas[a].elect == Elect::NonHomePlanet) {
+        debated(G.planets[o].owner);
+        // (fixes 25, owner's faction debug pass) Captain Aroz: a planet in a system with your ships counts as yours for
+        // scoring secret objectives - the elected planet too
+        if (G.fixes >= 25 && (G.modules & kModThundersEdge))
+            for (int q = 0; q < G.numPlayers; ++q)
+                if (q != G.planets[o].owner && !G.players[size_t(q)].eliminated && commanderUsable(G, q, "firmament") &&
+                    hasShips(G, q, G.planets[o].system))
+                    debated(q);
+    }
 
     // ---------------- laws
     if (kAgendas[a].law) {

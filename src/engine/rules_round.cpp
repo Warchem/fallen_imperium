@@ -5,6 +5,7 @@
 #include <cstring>
 #include <stdexcept>
 
+#include "engine/breakthroughs.h"
 #include "engine/map.h"
 #include "engine/rules.h"
 
@@ -19,6 +20,8 @@ void Rules::playGame() {
     E.beforeAsk = [this] {
         checkUnlocks();
         fleetStateCheck();  // (0.46.1, fixes 15: the fleet pool at all times)
+        sunderedCheck();    // (fixes 24: Sundered - other players' units in the Crimson home, however they got there)
+        oceanCheck();       // (fixes 27: Oceanbound's limit, any time)
     };
     try {
         setupGame();
@@ -60,6 +63,7 @@ void Rules::setupGame() {
     G.events = (G.modules & kModThundersEdge) ? uint32_t(s.events) : 0u;  // galactic events (0.36.0)
     G.dsLevel = int8_t((G.modules & kModDiscordant) ? s.dsLevel : 0);    // Discordant Stars batches (0.37.0)
     G.fixes = uint8_t(s.fixes & 255);
+    G.layout = uint8_t(s.layout == 1 ? 1 : 0);  // (0.58.0)
     setStrategyTexts((G.modules & kModThundersEdge) != 0);  // 0.43.3: the strategy card wording of the cards in this game
     G.players.assign(n, Player());
     for (int i = 0; i < kStrategyCards; ++i) G.cardOwner[i] = -1;
@@ -156,6 +160,11 @@ void Rules::setupGame() {
     }
 
     for (int p = 0; p < n; ++p) setupFaction(p);
+    for (int p = 0; p < n; ++p)  // 0.58.0: the printed five-player board without hyperlanes - trade goods for the seats
+        if (const int tg = layoutStartTg(G, p)) {  // placed worse (LRR setup step 6)
+            G.players[p].tradeGoods = int8_t(G.players[p].tradeGoods + tg);
+            E.log(p, pn(p) + " starts with " + std::to_string(tg) + " trade goods (home system's place on the board).");
+        }
     if (G.modules & kModThundersEdge) tePlacement(G);  // where the Fracture and Thunder's Edge go (0.34.0)
 
     // Objectives: 5 stage I and 5 stage II face down; reveal 2 stage I.
@@ -612,6 +621,7 @@ void Rules::actionPhase() {
                 if (G.fixes >= 11 && (G.modules & kModDiscordant)) pilgrimage(p);
             }
             if (!G.players[p].eliminated) endOfTurn(p);
+            if (G.modules & kModThundersEdge) coexistStructures();  // (fixes 25: LRR 63.4 / 79.4 - whatever the turn did)
             G.lawsBlank = false;  // Law's Order lasts until the end of the turn
             if (!G.players[p].eliminated)
                 E.log(p, G.players[p].passed ? pn(p) + " passes" : pn(p) + " ends turn", EventKind::TurnEnd);
@@ -658,6 +668,10 @@ bool Rules::takeTurn(int p, bool second, bool mayPass) {
             for (int x : ti::readyPlanets(G, p))
                 if (planetHasSkip(G, x)) any = true;
             if (any) opts.push_back({600, "Psychoarchaeology", "Exhaust planets with technology specialties for 1 trade good each. Doesn't use your action."});
+        }
+        if (absoluteSynergyReady(p)) {  // (fixes 27, the Naaz-Rokha review) "When you have 4 mechs in the same system"
+            const BreakthroughDef* bt = breakthroughFor(G, p);
+            opts.push_back({645, "Breakthrough: Absolute Synergy", std::string(bt ? bt->text : "") + " Doesn't use your action."});
         }
         opts.erase(std::remove_if(opts.begin(), opts.end(),
                                   [&](const Option& o) {
@@ -739,6 +753,10 @@ bool Rules::takeTurn(int p, bool second, bool mayPass) {
         }
         if (choice == 643) {
             if (!dsbtLanefirExplore(p) && !pl.human) cancelled.push_back(choice);
+            continue;
+        }
+        if (choice == 645) {  // Absolute Synergy (fixes 27)
+            if (!btAction(p, int(Ab::BtNaaz)) && !pl.human) cancelled.push_back(choice);
             continue;
         }
         if (choice == 644) {

@@ -29,6 +29,7 @@ bool isDMZ(const Game& g, int planet);
 // Thunder's Edge (0.34.0) space stations: controlled by having the only ships in their system; spent and
 // readied like planets, but no ground forces or structures, no votes, not counted for objectives or a home
 bool isStation(const Game& g, int planet);
+bool planetless(const Game& g, int sys);  // (fixes 26) "does not contain any planets": a space station isn't a planet
 int stationsOf(const Game& g, int p);
 // Dhonraz Installations (Gledge breakthrough, 0.43.0): their planets with a Core token count as stations too (not for
 // control; units still land there) - the commodity value, station exhausting and Space Cannon 5.
@@ -39,6 +40,10 @@ int commodityValue(const Game& g, int p);  // the faction's commodities + 1 per 
 int commodityValue(const Game& g, const Player& pl);  // (pl: one of g.players)
 // Entropic scar (Thunder's Edge): no unit abilities in it or against units in it
 bool quietusAt(const Game& g, int p, int sys);   // the Crimson flagship: p's units in sys lose their unit abilities
+int wormholeCount(const Game& g, int sys);  // (fixes 24) each wormhole a system contains (Particle Synthesis)
+uint8_t qeWormholes(const Game& g, int sys);              // Quantum Entanglement: alpha / beta a system contains (fixes 24)
+bool qeLinked(const Game& g, int p, int a, int b);        // p is the Creuss and a, b both have alpha / beta wormholes
+int colishOrigin(const Game& g, int p);                    // Hil Colish (fixes 24): where p's delta-wormhole flagship is, -1
 bool noAbilities(const Game& g, int p, int sys);
 // Anomaly Stabilization (Nivyn breakthrough, 0.44.4 fixes 8): p's units ignore entropic scars wherever they fire
 bool ignoresScars(const Game& g, int p);
@@ -64,6 +69,9 @@ int moveBonusMax(const Game& g, int p);
 bool curatorHalf(const Game& g, int p);                 // (0.44.9) Eye of the Curator fighters: half a capacity slot each
 int fighterSlots(const Game& g, int p, int fighters);   // the capacity those fighters take
 bool hasTraitOf(const Game& g, int planet, Trait t);  // printed trait, or Terraform (all three)
+// (owner 2026-11-13: the screens showed only the printed traits) the planet's traits as they are now - the printed
+// ones first, then the ones it gained (Terraform, a minor faction's planet); for display
+std::vector<Trait> traitsOf(const Game& g, int planet);
 uint8_t anomaliesFor(const Game& g, int p, int s);  // anomalies as they affect p (Nav Suite, Voidborn, tears, Circlet)
 uint8_t wormholesOf(const Game& g, int sys);      // printed + tokens (nexus: gamma only while inactive)
 int attachedPlanets(const Game& g, int p);        // planets with attachments the player controls
@@ -194,6 +202,7 @@ struct Reach {
     bool viaStorm = false;    // the route uses the ion storm's wormhole (the token flips)
     bool viaWormhole = false; // the route goes through a wormhole (Sai Seravus)
     bool vogul = false;       // only through the Eye of Vogul (Uncharted Space relic): one ship per pick
+    bool colish = false;      // (fixes 24) only through Hil Colish's delta wormhole in the active system: it moves first
 };
 // Eye of Vogul: how many ships of this type in 'from' are treated as adjacent to the active system
 int vogulShips(const Game& g, int p, int from, UnitType t);
@@ -203,6 +212,11 @@ bool shipsMayEnter(const Game& g, int p, int s);  // supernovas / asteroid field
 std::vector<int> routeNeighbors(const Game& g, int p, int u);
 int maxShipMove(const Game& g);                      // highest move value of any ship on the board (Captain Mendosa)
 bool magmusProduction(const Game& g, int p, int sys);  // Magmus Reactor: Production 5 in a supernova
+// (fixes 26, the Muaat review - owner 2026-11-12) games without the Codex and Thunder's Edge play the original Magmus
+// Reactor (a trade good after PRODUCTION by a war sun / next to a supernova); with either of them the Omega card
+bool magmusOriginal(const Game& g);
+bool anyPlanetGFFor(const Game& g, int p);  // fx.anyPlanetGF applies to p (the active player, or Umbat's chosen one)
+int warSunUpgradeFor(const Game& g, int p);  // p's war sun unit upgrade: their faction's own (Roh'Dhna) or War Sun
 bool ownsTechKey(const Game& g, int p, const char* key);  // incl. Valefar Assimilator copies
 // X-89 Bacterial Weapon as Thunder's Edge's Codex prints it (0.43.3, Codex games started with fixes >= 4): the owner's
 // bombardment and ground combat rolls make twice the hits; each planet it bombards is exhausted
@@ -213,11 +227,14 @@ bool codexOn(const Game& g);
 // (0.57.1, fixes 20 - tester) Thunder's Edge replaces the Xxcha hero: Xxekir Grom places PDS / mechs and readies planets
 // (the Codex's resources-and-influence passive is off then)
 bool teXxchaHero(const Game& g);
+bool teNaalu(const Game& g);  // (fixes 27) Thunder's Edge's Z'eu and Iconoclast
 // Does a step between these two systems go through the ion storm's wormhole?
 bool ionStormStep(const Game& g, int a, int b);
 int moveValue(const Game& g, int p, int sys, UnitType t);
 // Can a ship of this type move from 'from' into 'to' (the active system)?
 Reach shipReach(const Game& g, int p, int from, int to, UnitType t, int bonus = 0);
+Reach shipReachNoColish(const Game& g, int p, int from, int to, UnitType t, int bonus);  // without Hil Colish moving first
+Reach shipReachViaNoColish(const Game& g, int p, int from, const std::vector<int>& via, int to, UnitType t, int bonus);
 Reach shipReachNoRift(const Game& g, int p, int from, int to, UnitType t, int bonus = 0);  // without Rift Engines' +2
 // Waypoints (0.56.0): the same along a route the player chose (from -> via... -> to); *why: what is wrong with it
 Reach shipReachVia(const Game& g, int p, int from, const std::vector<int>& via, int to, UnitType t, int bonus = 0,
@@ -245,6 +262,7 @@ bool canPlayActionCards(const Game& g, int p);       // Political Censure stops 
 bool ownsWarSunTech(const Game& g, int p);
 bool unitSustains(const Game& g, int p, UnitType t); // Sustain Damage (Publicize Weapon Schematics)
 bool unitSustainsAt(const Game& g, int p, UnitType t, int sys, int planet);  // + Fourth Moon / Moll Terminus
+bool sustainBlockedAt(const Game& g, int p, UnitType t, int sys, int planet);  // no Sustain Damage there (scar, Fourth Moon, Moll)
 int tgWorth(const Game& g, int p);                   // what one trade good pays (Mirror Computing: 2)
 
 // ---- factions, leaders, notes (Stage 5) -----------------------------------------
@@ -297,5 +315,6 @@ struct ObjProgress {
     int missing() const { return need > have ? need - have : 0; }
 };
 ObjProgress objectiveProgress(const Game& g, int p, int obj);
+void setProgressAroz(bool on);  // objectiveProgress sees Captain Aroz for secrets (the bots' planning only)
 
 }  // namespace ti

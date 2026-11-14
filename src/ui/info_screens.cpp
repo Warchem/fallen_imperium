@@ -602,21 +602,18 @@ protected:
         drawResourceIcon(c, r.x + r.w - 17, r.y + 15, 23, planetInfluence(g_, pl), FONT_SMB, true);
         const bool ic = icons::available();
         int bx = x;
-        if (ic && d.trait != Trait::None) {
-            drawTraitIcon(c, d.trait, bx - 1, r.y + 27, 15);
-            bx += 16;
-        }
-        if (ic && d.trait2 != Trait::None) {  // Thunder's Edge: a second trait
-            drawTraitIcon(c, d.trait2, bx - 1, r.y + 27, 15);
-            bx += 16;
-        }
+        const std::vector<Trait> traits = traitsOf(g_, pl);  // (owner 2026-11-13: as they are now - Terraform gives all three)
+        if (ic)
+            for (Trait tr : traits) {  // (Thunder's Edge: a second trait)
+                drawTraitIcon(c, tr, bx - 1, r.y + 27, 15);
+                bx += 16;
+            }
         std::string sub;
-        if (d.trait != Trait::None) sub = traitName(d.trait);
-        if (d.trait2 != Trait::None) sub += std::string(ic ? "/" : " / ") + traitName(d.trait2);
+        for (size_t k = 0; k < traits.size(); ++k) sub += std::string(k ? (ic ? "/" : " / ") : "") + traitName(traits[k]);
         if (d.flags & kPlanetStation) sub = "Space station";
         if (d.home) sub = "Home planet";
         if (!std::strcmp(d.key, "mr")) sub = "Galactic capital";
-        drawText(c, FONT_XS, bx, r.y + 28, fitText(FONT_XS, sub, r.w / 2), d.trait != Trait::None ? traitColor(d.trait) : theme::faint);
+        drawText(c, FONT_XS, bx, r.y + 28, fitText(FONT_XS, sub, r.w / 2), !traits.empty() ? traitColor(traits[0]) : theme::faint);
         bx += textWidth(FONT_XS, fitText(FONT_XS, sub, r.w / 2)) + 8;
         const int skips = planetSkips(g_, pl);
         for (int k = 0; k < 4; ++k)
@@ -665,13 +662,22 @@ protected:
                  theme::text);
         y += 20;
         const int ix = icons::available() ? 22 : 0;
-        if (d.trait != Trait::None) {
-            if (ix) drawTraitIcon(c, d.trait, x, y - 2, 18);
-            if (ix && d.trait2 != Trait::None) drawTraitIcon(c, d.trait2, x + ix, y - 2, 18);
-            const std::string tn = d.trait2 != Trait::None ? std::string(traitName(d.trait)) + " and " + traitName(d.trait2) + " planet (both traits)"
-                                                           : std::string(traitName(d.trait)) + " planet";
-            drawText(c, FONT_SM, x + ix * (d.trait2 != Trait::None ? 2 : 1), y, tn, tc);
+        const std::vector<Trait> traits = traitsOf(g_, pl);  // (owner 2026-11-13: as they are now - Terraform gives all three)
+        if (!traits.empty()) {
+            if (ix)
+                for (size_t k = 0; k < traits.size(); ++k) drawTraitIcon(c, traits[k], x + ix * int(k), y - 2, 18);
+            std::string tn = traitName(traits[0]);
+            for (size_t k = 1; k < traits.size(); ++k) tn += std::string(k + 1 == traits.size() ? " and " : ", ") + traitName(traits[k]);
+            tn += traits.size() == 3 ? " planet (all three traits)" : traits.size() == 2 ? " planet (both traits)" : " planet";
+            drawText(c, FONT_SM, x + ix * int(traits.size()), y, tn, tc);
             y += 20;
+        }
+        if (ps.terraform || ps.ulHero || ps.sleeper) {  // (Titans: what's on it beside exploration attachments)
+            std::string on;
+            if (ps.terraform) on = "Terraform attached: +1 resource, +1 influence, all three traits.";
+            if (ps.ulHero) on += std::string(on.empty() ? "" : " ") + "Ul the Progenitor attached: +3 resources, +3 influence, Space Cannon 5 (x3).";
+            if (ps.sleeper) on += std::string(on.empty() ? "" : " ") + "A Titans sleeper token (Awaken turns it into a PDS).";
+            y = drawWrapped(c, FONT_SM, x, y, w, on, theme::gold);
         }
         if (d.flags & kPlanetStation) {  // Thunder's Edge: space stations (our wording)
             y = drawWrapped(c, FONT_SM, x, y, w,
@@ -843,7 +849,7 @@ protected:
         // stat row
         const char* labels[4] = {"Cost", "Combat", "Move", "Capacity"};
         std::string vals[4] = {costText(u), rollText(u.combat, u.combatDice), u.move ? std::to_string(u.move) : "-",
-                               u.capacity ? std::to_string(u.capacity) : "-"};
+                               u.capacity && !(t == UnitType::SpaceDock && !u.spaceOnly) ? std::to_string(u.capacity) : "-"};  // (a dock carries nothing)
         for (int k = 0; k < 4; ++k) {
             int bx = x + k * (w / 4);
             c.fillRoundRect(bx, y, w / 4 - 8, 44, 6, rgb(26, 34, 58));
@@ -859,8 +865,13 @@ protected:
         if (u.move)
             notes.push_back("Move " + std::to_string(u.move) + ": can move up to " + std::to_string(u.move) +
                             (u.move == 1 ? " system away." : " systems away."));
-        if (u.capacity) notes.push_back("Capacity " + std::to_string(u.capacity) + ": carries up to " + std::to_string(u.capacity) +
-                                        " fighters and ground forces.");
+        // (the shared technologies review, 2026-11-14) a space dock on a planet carries nothing: its "capacity" is the fighters
+        // in its system that don't count against your ships' capacity (its card text says so when it has one)
+        const bool dockFighters = t == UnitType::SpaceDock && !u.spaceOnly;
+        if (u.capacity && !dockFighters)
+            notes.push_back("Capacity " + std::to_string(u.capacity) + ": carries up to " + std::to_string(u.capacity) + " fighters and ground forces.");
+        else if (u.capacity && !*unitAbilityText(idx))
+            notes.push_back("Up to " + std::to_string(u.capacity) + " fighters in this system do not count against your ships' capacity.");
         if (u.sustain) notes.push_back("Sustain Damage: when it would be hit, it can become damaged instead of destroyed. "
                                        "It is repaired in the status phase.");
         if (u.bombard) notes.push_back("Bombardment " + rollText(u.bombard, u.bombardDice) + ": before landing on a planet, it fires at "
@@ -875,10 +886,12 @@ protected:
         if (u.ignoresShield) notes.push_back("Ignores planetary shields when bombarding.");
         if (u.production) notes.push_back(std::string("Production ") + (u.productionPlusResources ? "(planet's resources + " : "(") +
                                           std::to_string(u.production) + "): can build that many units in its system.");
-        if (u.spaceOnly) notes.push_back("Sits in the space area instead of on a planet.");
-        if (*unitAbilityText(idx) && (factionImplemented(g_.players[p].faction) || u.faction < 0))
+        const bool implemented = factionImplemented(g_.players[p].faction) || u.faction < 0;
+        if (u.spaceOnly && !(*unitAbilityText(idx) && implemented)) notes.push_back("Sits in the space area instead of on a planet.");
+        if (*unitAbilityText(idx) && implemented)
             notes.push_back(unitAbilityText(idx));
-        else if (u.faction >= 0 || t == UnitType::Flagship || t == UnitType::Mech)
+        else if (!implemented && (u.faction >= 0 || t == UnitType::Flagship || t == UnitType::Mech))  // (the Saar review: only
+            // for factions not built yet - Son of Ragh, Super Dreadnought I, ... have no text on their cards)
             notes.push_back("Its special faction ability isn't active yet (a later update adds it).");
         for (const std::string& n : notes) {
             if (y > r.y + r.h - 70) break;
@@ -1473,7 +1486,13 @@ protected:
                 case kLocked: st = "locked"; break;
                 case kReady: st = L.type == kAgent ? "ready" : "unlocked"; break;
                 case kExhausted: st = L.type == kHero ? "in play" : "exhausted"; break;
-                case kPurged: st = "purged"; break;
+                case kPurged: {
+                    // (the Titans review, fixes 27) Ul the Progenitor is attached to Elysium, not purged
+                    bool ul = false;
+                    for (const PlanetState& q : g_.planets) ul = ul || q.ulHero;
+                    st = ul && !std::strcmp(L.key, "titanshero") ? "attached to Elysium" : "purged";
+                    break;
+                }
             }
             r.kind = std::string(kType[L.type]) + " \xC2\xB7 " + st;
             r.text = on ? leaderText(ls.leader) : "";

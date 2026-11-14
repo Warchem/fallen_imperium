@@ -87,21 +87,54 @@ bool layoutLegal(const std::vector<Placed>& cells) {
     return true;
 }
 
-const LayoutDef* layoutFor(int players) {
+// The layout for a player count: the usual ones (hyperlanes at 3, 4, 5, 7, 8 players; 3 blue + 2 red tiles a
+// slice) or, with layout 1 (0.58.0), the printed board without hyperlanes (its own tile counts and extra tiles).
+struct LayoutView {
+    const LayoutCell* cells = nullptr;
+    int count = 0, blue = 3, red = 2;
+    bool standard = false;
+    const LayoutCell& operator[](int i) const { return cells[i]; }
+    explicit operator bool() const { return cells != nullptr; }
+    bool blueSlot(int slot) const { return standard ? slot < blue : slot % 5 < 3; }
+};
+LayoutView layoutFor(int players, int layout) {
+    LayoutView v;
+    if (layout == 1)
+        for (int i = 0; i < kStdLayoutCount; ++i)
+            if (kStdLayouts[i].players == players) {
+                v.cells = kStdLayoutCells + kStdLayouts[i].first;
+                v.count = kStdLayouts[i].count;
+                v.blue = kStdLayouts[i].blue;
+                v.red = kStdLayouts[i].red;
+                v.standard = true;
+                return v;
+            }
     for (int i = 0; i < kLayoutCount; ++i)
-        if (kLayouts[i].players == players) return &kLayouts[i];
-    return nullptr;
+        if (kLayouts[i].players == players) {
+            v.cells = kLayoutCells + kLayouts[i].first;
+            v.count = kLayouts[i].count;
+            return v;
+        }
+    return v;
 }
 
 }  // namespace
 
-int southernmostSeat(int players) {
-    const LayoutDef* lay = layoutFor(players);
+int layoutStartTg(const Game& g, int p) {
+    if (g.layout != 1) return 0;
+    const LayoutView lay = layoutFor(g.numPlayers, 1);
+    for (int c = 0; c < lay.count; ++c)
+        if (lay[c].kind == 1 && lay[c].a == p) return lay[c].b;
+    return 0;
+}
+
+int southernmostSeat(int players, int layout) {
+    const LayoutView lay = layoutFor(players, layout);
     if (!lay) return -1;
     int best = -1;
     float bestY = -1e9f, bestX = 1e9f;
-    for (int c = 0; c < lay->count; ++c) {
-        const LayoutCell& cell = kLayoutCells[lay->first + c];
+    for (int c = 0; c < lay.count; ++c) {
+        const LayoutCell& cell = lay[c];
         if (cell.kind != 1) continue;
         float x, y;
         hexToPixel(layoutPosToHex(cell.pos), 1.f, x, y);
@@ -117,11 +150,12 @@ int southernmostSeat(int players) {
 
 bool buildGalaxy(Game& g, Rng& rng, const std::vector<int>& factionBySeat, std::string* err, bool balanced, std::vector<int>* sliceOwner) {
     const int n = int(factionBySeat.size());
-    const LayoutDef* lay = layoutFor(n);
+    const LayoutView lay = layoutFor(n, g.layout);
     if (!lay) {
         if (err) *err = "no map layout for this many players";
         return false;
     }
+    const int nb = lay.blue, nr = lay.red, per = nb + nr;
 
     // Tile pools (base + PoK blue and red tiles; 0.33.0: Uncharted Space's only with its module).
     std::vector<int> blue, red;
@@ -133,19 +167,31 @@ bool buildGalaxy(Game& g, Rng& rng, const std::vector<int>& factionBySeat, std::
 
     // Collect the layout cells.
     std::vector<Placed> base;
-    std::vector<std::pair<int, int>> sliceCells;  // index into base, (player*8 + slot)
-    for (int c = 0; c < lay->count; ++c) {
-        const LayoutCell& cell = kLayoutCells[lay->first + c];
+    std::vector<std::pair<int, int>> sliceCells;  // index into base, (player*16 + slot)
+    std::vector<std::pair<int, int>> extraCells;  // (0.58.0) index into base, colour (0 blue, 1 red, 2 either)
+    for (int c = 0; c < lay.count; ++c) {
+        const LayoutCell& cell = lay[c];
         Placed pl{cell.pos, -1, 0, -1};
         if (cell.kind == 0) {
             pl.def = cell.a;
             pl.rotation = cell.b;
         } else if (cell.kind == 1) {
             pl.home = cell.a;
+        } else if (cell.kind == 3) {
+            extraCells.push_back({int(base.size()), cell.a});
         } else {
-            sliceCells.push_back({int(base.size()), cell.a * 8 + cell.b});
+            sliceCells.push_back({int(base.size()), cell.a * 16 + cell.b});
         }
         base.push_back(pl);
+    }
+    {
+        int eb = 0, er = 0, ea = 0;
+        for (auto& ec : extraCells) (ec.second == 0 ? eb : ec.second == 1 ? er : ea)++;
+        if (nb * n + eb > int(blue.size()) || nr * n + er > int(red.size()) ||
+            nb * n + eb + nr * n + er + ea > int(blue.size() + red.size())) {
+            if (err) *err = "not enough system tiles";
+            return false;
+        }
     }
     // Home tiles (Creuss puts its gate on the board).
     for (Placed& pl : base)
@@ -163,8 +209,13 @@ bool buildGalaxy(Game& g, Rng& rng, const std::vector<int>& factionBySeat, std::
         std::vector<int> b = blue, r = red;
         rng.shuffle(b);
         rng.shuffle(r);
-        std::vector<std::array<int, 5>> slices(n);
-        for (int p = 0; p < n; ++p) slices[p] = {b[3 * p], b[3 * p + 1], b[3 * p + 2], r[2 * p], r[2 * p + 1]};
+        std::vector<std::vector<int>> slices(static_cast<size_t>(n));
+        for (int p = 0; p < n; ++p) {
+            for (int k = 0; k < nb; ++k) slices[size_t(p)].push_back(b[size_t(nb * p + k)]);
+            for (int k = 0; k < nr; ++k) slices[size_t(p)].push_back(r[size_t(nr * p + k)]);
+        }
+        // the tiles left over for the extra cells next to Mecatol Rex (0.58.0; none in the usual layouts)
+        std::vector<int> leftBlue(b.begin() + nb * n, b.end()), leftRed(r.begin() + nr * n, r.end());
         float lo = 1e9f, hi = -1e9f, penalty = 0;
         for (int p = 0; p < n; ++p) {
             float v = 0;
@@ -207,10 +258,21 @@ bool buildGalaxy(Game& g, Rng& rng, const std::vector<int>& factionBySeat, std::
         for (int attempt = 0; attempt < 12 && !ok; ++attempt) {
             cells = base;
             for (int p = 0; p < n; ++p)
-                for (int i = 4; i > 0; --i) std::swap(slices[p][i], slices[p][rng.below(i + 1)]);
+                for (int i = per - 1; i > 0; --i) std::swap(slices[p][size_t(i)], slices[p][size_t(rng.below(i + 1))]);
             for (auto& sc : sliceCells) {
-                int player = sc.second / 8, slot = sc.second % 8;
-                cells[sc.first].def = slices[player][slot % 5];
+                int player = sc.second / 16, slot = sc.second % 16;
+                cells[sc.first].def = slices[player][size_t(slot % per)];
+            }
+            if (!extraCells.empty()) {
+                std::vector<int> lb = leftBlue, lr = leftRed;
+                rng.shuffle(lb);
+                rng.shuffle(lr);
+                for (auto& ec : extraCells) {
+                    std::vector<int>* from = ec.second == 0 ? &lb : ec.second == 1 ? &lr : (rng.below(2) ? &lr : &lb);
+                    if (from->empty()) from = from == &lb ? &lr : &lb;
+                    cells[ec.first].def = from->back();
+                    from->pop_back();
+                }
             }
             ok = layoutLegal(cells);
         }
@@ -226,7 +288,7 @@ bool buildGalaxy(Game& g, Rng& rng, const std::vector<int>& factionBySeat, std::
     // which seat's slice each cell is (0.43.0: the seeded galaxy's breakdown)
     if (sliceOwner) {
         sliceOwner->assign(best.size(), -1);
-        for (auto& sc : sliceCells) (*sliceOwner)[size_t(sc.first)] = sc.second / 8;
+        for (auto& sc : sliceCells) (*sliceOwner)[size_t(sc.first)] = sc.second / 16;
     }
     // Create the systems and planets.
     g.systems.clear();
@@ -372,7 +434,7 @@ std::vector<int> blueTilesLeft(const Game& g) {
 
 bool startGalaxyDraft(Game& g, Rng& rng, const std::vector<int>& factionBySeat, std::string* err) {
     const int n = int(factionBySeat.size());
-    const LayoutDef* lay = layoutFor(n);
+    const LayoutView lay = layoutFor(n, g.layout);
     if (!lay) {
         if (err) *err = "no map layout for this many players";
         return false;
@@ -384,11 +446,14 @@ bool startGalaxyDraft(Game& g, Rng& rng, const std::vector<int>& factionBySeat, 
     g.draft = GalaxyDraft();
     std::set<std::pair<int, int>> layoutHexes;
     int blueCells = 0, redCells = 0;
-    for (int c = 0; c < lay->count; ++c) {
-        const LayoutCell& cell = kLayoutCells[lay->first + c];
+    std::vector<std::pair<Hex, int>> extras;  // (0.58.0) cells next to Mecatol Rex for the speaker's extra tiles
+    for (int c = 0; c < lay.count; ++c) {
+        const LayoutCell& cell = lay[c];
         const Hex h = layoutPosToHex(cell.pos);
         layoutHexes.insert({h.q, h.r});
-        if (cell.kind == 0) {
+        if (cell.kind == 3) {
+            extras.push_back({h, cell.a});
+        } else if (cell.kind == 0) {
             addSystem(g, cell.a, h, cell.b, -1, false);
         } else if (cell.kind == 1) {
             const int f = factionBySeat[cell.a];
@@ -399,13 +464,13 @@ bool startGalaxyDraft(Game& g, Rng& rng, const std::vector<int>& factionBySeat, 
             dc.pos = h;
             dc.ring = int8_t(cell.pos / 100);
             g.draft.cells.push_back(dc);
-            if (cell.b % 5 < 3) ++blueCells;
+            if (lay.blueSlot(cell.b)) ++blueCells;
             else ++redCells;
         }
     }
     // The Creuss home system sits off the board beside its gate (as buildGalaxy).
-    for (int c = 0; c < lay->count; ++c) {
-        const LayoutCell& cell = kLayoutCells[lay->first + c];
+    for (int c = 0; c < lay.count; ++c) {
+        const LayoutCell& cell = lay[c];
         if (cell.kind != 1 || gateOf(factionBySeat[cell.a]) < 0) continue;
         const Hex gate = layoutPosToHex(cell.pos);
         Hex out = gate;
@@ -446,7 +511,8 @@ bool startGalaxyDraft(Game& g, Rng& rng, const std::vector<int>& factionBySeat, 
         if (kSystems[i].back == Back::Red) red.push_back(i);
     }
     const int nb = blueCells / n, nr = redCells / n;
-    if (nb * n > int(blue.size()) || nr * n > int(red.size())) {
+    if (nb * n > int(blue.size()) || nr * n > int(red.size()) ||
+        nb * n + nr * n + int(extras.size()) > int(blue.size() + red.size())) {
         if (err) *err = "not enough system tiles";
         return false;
     }
@@ -479,6 +545,44 @@ bool startGalaxyDraft(Game& g, Rng& rng, const std::vector<int>& factionBySeat, 
         }
     }
     g.draft.hands = bestHands;
+    // 0.58.0, the printed boards: before the players place tiles, the speaker puts the extra tiles face up next to
+    // Mecatol Rex (LRR setup step 6) - here drawn from the tiles nobody holds, at the layout's spaces in ring 1
+    // (anomalies / the same wormhole not side by side when another draw avoids it)
+    if (!extras.empty()) {
+        std::vector<int> lb, lr;
+        for (int d : blue)
+            if (std::none_of(bestHands.begin(), bestHands.end(), [&](const std::vector<int16_t>& h) {
+                    return std::find(h.begin(), h.end(), int16_t(d)) != h.end();
+                }))
+                lb.push_back(d);
+        for (int d : red)
+            if (std::none_of(bestHands.begin(), bestHands.end(), [&](const std::vector<int16_t>& h) {
+                    return std::find(h.begin(), h.end(), int16_t(d)) != h.end();
+                }))
+                lr.push_back(d);
+        std::vector<int> pick;
+        for (int attempt = 0; attempt < 40; ++attempt) {
+            std::vector<int> b2 = lb, r2 = lr;
+            rng.shuffle(b2);
+            rng.shuffle(r2);
+            pick.clear();
+            for (const auto& e : extras) {
+                std::vector<int>* from = e.second == 0 ? &b2 : e.second == 1 ? &r2 : (rng.below(2) ? &r2 : &b2);
+                if (from->empty()) from = from == &b2 ? &r2 : &b2;
+                pick.push_back(from->back());
+                from->pop_back();
+            }
+            bool bad = false;  // (the extras touch each other in ring 1)
+            for (size_t i = 0; i < extras.size() && !bad; ++i)
+                for (size_t j = i + 1; j < extras.size() && !bad; ++j) {
+                    if (hexDistance(extras[i].first, extras[j].first) != 1) continue;
+                    const SystemDef &a = kSystems[pick[i]], &b = kSystems[pick[j]];
+                    bad = (a.anomalies && b.anomalies) || ((a.wormholes & b.wormholes) & (kAlpha | kBeta));
+                }
+            if (!bad) break;
+        }
+        for (size_t i = 0; i < extras.size(); ++i) addSystem(g, pick[i], extras[i].first, 0, -1, false);
+    }
     g.draft.total = int16_t(g.draft.cells.size());
     g.draft.active = true;
     computeAdjacency(g);
@@ -556,6 +660,37 @@ Hex nexusSpot(int maxRing, const std::vector<Hex>& used, const std::vector<Hex>&
         }
     }
     return best;
+}
+
+bool boardAdjacent(const Game& g, int u, int v) {
+    const int n = int(g.systems.size());
+    if (u < 0 || v < 0 || u >= n || v >= n || u == v) return false;
+    const SystemState& s = g.systems[size_t(u)];
+    if (s.offBoard || g.systems[size_t(v)].offBoard || s.isHyperlane()) return false;
+    for (int d = 0; d < 6; ++d) {
+        const int j = g.findSystemAt(hexNeighbor(s.pos, d));
+        if (j < 0 || g.systems[size_t(j)].fracture != s.fracture) continue;  // (as computeAdjacency)
+        if (!g.systems[size_t(j)].isHyperlane()) {
+            if (j == v) return true;
+            continue;
+        }
+        std::vector<std::pair<int, int>> stack{{j, (d + 3) % 6}};
+        std::set<std::pair<int, int>> seen;
+        while (!stack.empty()) {
+            const auto cur = stack.back();
+            stack.pop_back();
+            if (!seen.insert(cur).second) continue;
+            const SystemState& h = g.systems[size_t(cur.first)];
+            for (int x = 0; x < 6; ++x) {
+                if (!hyperlaneJoins(h, cur.second, x)) continue;
+                const int k = g.findSystemAt(hexNeighbor(h.pos, x));
+                if (k < 0) continue;
+                if (g.systems[size_t(k)].isHyperlane()) stack.push_back({k, (x + 3) % 6});
+                else if (k == v) return true;
+            }
+        }
+    }
+    return false;
 }
 
 void computeAdjacency(Game& g) {

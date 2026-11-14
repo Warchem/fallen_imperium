@@ -186,6 +186,7 @@ struct Player {
     uint8_t cardsUsed = 0;      // bit per strategy card
     bool passed = false;
     int8_t vp = 0;
+    int16_t vpLost = 0;  // (simulator invariant only) victory points lost - Mutiny, Support for the Throne going back, ...
     std::vector<int16_t> scored;   // objectives scored (public and secret)
     std::vector<int16_t> secrets;  // secret objectives in hand, not yet scored
     std::array<int16_t, kUnitTypes> unit{};  // current definition per unit type
@@ -342,6 +343,8 @@ struct TacticalEffects {
     bool mendosa = false;       // Captain Mendosa: 1 ship moves as far as the fastest ship on the board
     bool aetherstream = false;  // Aetherstream: +1 move
     int8_t aetherFrom = -1;     // Aetherpassage: the active player's ships may pass this (Empyrean) player's ships
+    uint8_t tetherAllow = 0;    // (fixes 26) Void Tether: players the Empyrean let treat tethered borders as adjacent
+    int8_t anyPlanetGFFor = -1; // (fixes 26) anyPlanetGF for this player too, not only the active one (Umbat for another)
     int16_t swapPlanet = -1;    // Hegemonic Trade Policy: this planet's resources and influence are swapped
     // Sarween Tools (0.44.5, fixes 9): set while units are produced by an ability other than PRODUCTION (Living Rules
     // FAQ: Sarween Tools is only used with the Production ability)
@@ -470,6 +473,7 @@ struct Game {
     bool archRevealed = false;  // bots' archetypes shown (end of round 3)
     uint8_t extras = 0;         // Setup::extras: bit 0 Kingslay (0.19.0)
     uint8_t fixes = 0;          // Setup::fixes (0.33.0): rule fixes this game was started with
+    uint8_t layout = 0;         // Setup::layout (0.58.0): 1 = the printed galaxy without hyperlanes
     uint8_t modules = 0;        // Setup::modules (0.31.0): kModCodex, kModUncharted, kModThundersEdge, kModDiscordant
     uint32_t events = 0;        // Setup::events (0.36.0): galactic events in play (Thunder's Edge)
     int8_t dsLevel = 0;         // Setup::dsLevel (0.37.0): Discordant Stars batches the random pools draw from
@@ -566,6 +570,7 @@ struct Game {
     // Faction abilities (Stage 5)
     int8_t naaluToken = -1;           // player holding the Naalu "0" token this round (initiative 0)
     int16_t groundCombatPlanet = -1;  // planet of the ground combat being fought (-1 = none)
+    uint16_t zgrav = 0;               // (fixes 27) sides whose Eidolons fight as Z-Grav Eidolons in the current space combat
     std::array<int16_t, 3> creussTokens{{-1, -1, -1}};  // Creuss alpha / beta / gamma wormhole tokens (system, -1 = off the board)
     int16_t adjFlagship = -1;   // system of the Creuss flagship (delta wormhole) when adjacency was last computed
 

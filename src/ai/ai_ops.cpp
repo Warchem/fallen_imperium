@@ -240,7 +240,7 @@ const AiOp& aiOp(const Game& g, int p) {
         for (const PlanetState& ps : g.planets)
             if (ps.owner == p) infAll += planetInfluence(g, int(&ps - &g.planets[0]));
         infAll += g.players[size_t(p)].tradeGoods;
-        if (infAll >= 6) {
+        if (infAll >= aiCustodiansInf(g, p)) {
             const int foe = defenderOf(g, p, mec);
             cands.push_back({kOpCustodians, mec, foe, kVP * aiTune("opcust", 0.f) * (S.on ? std::max(0.7f, std::min(1.6f, S.mecatol)) : 1.f)});
         }
@@ -300,6 +300,9 @@ const AiOp& aiOp(const Game& g, int p) {
         if (S.on && S.betrayTarget == q && S.betrayKind == int(Betrayal::Kingslay)) v += kVP * 0.8f * std::min(1.5f, aiBetrayUrge(g, p));
         if (wantsHome && level >= 0.99f) v += kVP * 0.9f;  // (won by the space combat itself)
         if (G.otherHome > 0) v += G.otherHome * 0.6f;      // (a planet there: the landing comes after)
+        // (Sardakk review, owner 2026-11-11) Hive Command: "masses ground forces for a late push on a home system" - the
+        // trait's target home (the leader, a neighbour, from round 5) is a campaign of its own
+        if (S.on && S.homeHitTarget == q && fquirkIs(g, p, "sardakk", 1)) v += kVP * aiTune("hivepush", 0.f);
         if (v <= 0) continue;
         v = std::min(v, kVP * aiTune("ophomecap", 1.5f));  // (about one objective's worth)
         cands.push_back({kOpHome, hs, defenderOf(g, p, hs), v});
@@ -358,6 +361,166 @@ const AiOp& aiOp(const Game& g, int p) {
         last[p] = id;
     }
     return op;
+}
+
+// ---- The Saarball (the Saar review, owner 2026-11-13) --------------------------------------------------------------
+// What a factory parked in sys brings within reach: other players' and free planets in it and next to it (theirs need
+// a fight: less), Mecatol Rex there or next door; less where another of our docks already builds
+float aiSaarFront(const Game& g, int p, int sys) {
+    if (sys < 0 || sys >= int(g.systems.size())) return 0.f;
+    float v = 0;
+    auto around = [&](int a, float w) {
+        for (int16_t pl : g.systems[size_t(a)].planets) {
+            const PlanetState& ps = g.planets[size_t(pl)];
+            if (ps.owner == p || ps.destroyed) continue;
+            const float worth = (planetResources(g, pl) + planetInfluence(g, pl)) * 0.12f + 0.3f;
+            v += worth * w * (ps.owner >= 0 ? 0.7f : 1.f);
+        }
+        if (a == g.mecatol() && !(g.planets.empty())) v += 1.5f * w;
+    };
+    around(sys, 1.2f);  // (in the system itself: the carriers there land without moving)
+    bool dockNear = false;
+    for (int16_t a : g.systems[size_t(sys)].adj) {
+        if (a == sys || g.systems[size_t(a)].isHyperlane()) continue;
+        around(a, 1.f);
+        const Force& f = g.systems[size_t(a)].space[size_t(p)];
+        if (f.count(UnitType::SpaceDock)) dockNear = true;
+        for (int16_t pl : g.systems[size_t(a)].planets)
+            if (g.planets[size_t(pl)].owner == p && g.planets[size_t(pl)].units[size_t(p)].count(UnitType::SpaceDock)) dockNear = true;
+    }
+    if (dockNear) v -= aiTune("sbdocknear", 0.8f);
+    return v;
+}
+
+namespace {
+// the best odds another player's ships that could reach sys next turn would have against what we keep there
+float saarThreat(const Game& g, int p, int sys, const Force& ours) {
+    if (ours.ships() == 0) return 1.f;
+    float worst = 0.f;
+    for (int q = 0; q < g.numPlayers; ++q) {
+        if (q == p || g.players[size_t(q)].eliminated) continue;
+        Force theirs;
+        for (int s : systemsWithin(g, sys, 2)) {
+            const Force& f = g.systems[size_t(s)].space[size_t(q)];
+            if (f.nonFighterShips() == 0) continue;
+            const bool beside = s == sys || adjacentSystems(g, s, sys);
+            int cap = 0;
+            for (int t : kShipIdx) {
+                if (!f.n[t] || t == int(UnitType::Fighter)) continue;
+                if (!beside && moveValue(g, q, s, UnitType(t)) < 2) continue;
+                theirs.add(UnitType(t), f.n[t]);
+                cap += f.n[t] * unitDef(g, q, UnitType(t)).capacity;
+            }
+            const int fi = std::min<int>(f.count(UnitType::Fighter), cap);
+            if (fi > 0) theirs.add(UnitType::Fighter, fi);
+        }
+        if (theirs.nonFighterShips() == 0) continue;
+        worst = std::max(worst, fightOdds(g, q, theirs, p, ours, true));
+    }
+    return worst;
+}
+}  // namespace
+
+const SaarBall& aiSaarBall(const Game& g, int p) {
+    static SaarBall cache[8];
+    static uint64_t key[8] = {};
+    static const Game* owner[8] = {};
+    static SaarBall none;
+    if (p < 0 || p >= 8 || p >= g.numPlayers || (aiTune("saarball3", 0.f) <= 0.f && aiTune("sbpull", 0.f) <= 0.f) || g.phase != Phase::Action || g.round < 2 ||
+        aiLevelScale(g) <= 0.f || !unitDef(g, p, UnitType::SpaceDock).spaceOnly)
+        return none;
+    uint64_t k = 1469598103934665603ull;
+    auto mixIn = [&](uint64_t v) { k = (k ^ v) * 1099511628211ull; };
+    mixIn(uint64_t(g.round));
+    mixIn(g.log.size());
+    mixIn(uint64_t(g.activePlayer + 1));
+    mixIn(uint64_t(g.activeSystem + 1));
+    for (size_t s = 0; s < g.systems.size(); ++s) {
+        uint64_t v = g.systems[s].hasToken(p) ? 1 : 0;
+        for (int q = 0; q < g.numPlayers; ++q) v = v * 31 + uint64_t(g.systems[s].space[size_t(q)].ships());
+        if (v) mixIn(v * (s + 1));
+    }
+    if (owner[p] == &g && key[p] == k) return cache[p];
+    owner[p] = &g;
+    key[p] = k;
+    AiSeat seat(p);
+    SaarBall& b = cache[p];
+    b = SaarBall();
+    // the ball: the factory with the strongest escort (cost of its non-fighter ships)
+    const int home = g.players[size_t(p)].homeSystem;
+    int bestEsc = 0;
+    for (size_t s = 0; s < g.systems.size(); ++s) {
+        const Force& f = g.systems[s].space[size_t(p)];
+        if (!f.count(UnitType::SpaceDock) || f.nonFighterShips() == 0) continue;
+        if (int(s) == home && f.nonFighterShips() < 2 && foesNear(g, p, home, 2)) continue;  // (its one ship stays home)
+        int esc = 0;
+        for (int t : kShipIdx)
+            if (t != int(UnitType::Fighter) && f.n[t]) esc += f.n[t] * unitCost2(g, p, UnitType(t));
+        if (int(s) == home && foesNear(g, p, home, 1)) esc /= 2;  // (home under threat: the other one first)
+        if (esc > bestEsc) bestEsc = esc, b.ball = int(s);
+    }
+    if (b.ball < 0) return b;
+    const Force ballForce = g.systems[size_t(b.ball)].space[size_t(p)];
+    // (the escort keeps up: the slowest of its non-fighter ships sets the pace)
+    int ffMove = std::max(1, moveValue(g, p, b.ball, UnitType::SpaceDock));
+    for (int t : kShipIdx)
+        if (t != int(UnitType::Fighter) && ballForce.n[t]) ffMove = std::min(ffMove, std::max(1, moveValue(g, p, b.ball, UnitType(t))));
+    // (no Gravity Drive +1: it boosts only so many ships, and the ball moves together)
+    const std::vector<int8_t> fromBall = movesTo(g, p, b.ball);
+    const bool chaos = ownsTechKey(g, p, "cm");
+    const int maxSteps = int(aiTune("sbsteps", 4.f));
+    float best = -1e9f;
+    for (size_t t = 0; t < g.systems.size(); ++t) {
+        const SystemState& ts = g.systems[t];
+        const int d = fromBall[t];
+        if (d < 0 || ts.isHyperlane() || ts.offBoard || int(t) == home || (ts.home >= 0 && ts.home != p)) continue;
+        if (int(t) != b.ball && (otherShipsIn(g, p, int(t)) || !canEndMoveIn(g, p, int(t)))) continue;
+        // (no parking in a gravity rift - leaving it rolls for the factory - or an entropic scar: no PRODUCTION there)
+        if (anomaliesFor(g, p, int(t)) & (kRift | kScar)) continue;
+        const int steps = (d + ffMove - 1) / ffMove;
+        if (steps > maxSteps) continue;
+        float v = aiSaarFront(g, p, int(t));
+        if (chaos && (ts.d().anomalies & kAsteroid)) v += aiTune("sbrocks", 1.f);  // (Chaos Mapping: nobody can activate it)
+        const float threat = saarThreat(g, p, int(t), ballForce);
+        v *= 1.f - std::max(0.f, threat - aiTune("sbthreat", 0.35f));
+        v -= aiTune("sbstep", 0.35f) * float(steps);
+        if (int(t) == b.ball) v += aiTune("sbstay", 0.6f);  // (it sticks once there)
+        if (v > best) best = v, b.front = int(t), b.score = v, b.steps = steps;
+    }
+    if (b.front < 0) return b;
+    b.toFront = movesTo(g, p, b.front);
+    if (b.front == b.ball || g.systems[size_t(b.ball)].hasToken(p)) return b;
+    // this turn's step: the reachable system nearest the front (more within reach on a tie), safe to stop in
+    const std::vector<int8_t>& toFront = b.toFront;
+    const bool gd = moveBoost(g, p);
+    int bestD = toFront[size_t(b.ball)] >= 0 ? toFront[size_t(b.ball)] : 99;
+    float bestAround = -1e9f;
+    for (size_t x = 0; x < g.systems.size(); ++x) {
+        if (int(x) == b.ball || toFront[x] < 0 || fromBall[x] < 1 || fromBall[x] > ffMove) continue;
+        if (!canActivate(g, p, int(x)) || g.systems[x].hasToken(p) || aiPromiseForbids(g, p, int(x))) continue;
+        if (anomaliesFor(g, p, int(x)) & kRift) continue;  // (a rift on the way: the factory would roll to leave it)
+        const Reach r = shipReach(g, p, b.ball, int(x), UnitType::SpaceDock, 0);
+        if (!r.ok || r.viaRift || r.needsBonus) continue;
+        (void)gd;
+        if (otherShipsIn(g, p, int(x))) {  // (a fight on the way: only a sure one)
+            int foe = -1;
+            for (int q = 0; q < g.numPlayers; ++q)
+                if (q != p && hasShips(g, q, int(x))) foe = q;
+            if (foe < 0 && neutralShipsIn(g, int(x))) foe = kNeutral;
+            if (foe < 0 || fightOdds(g, p, ballForce, foe, g.systems[x].space[size_t(foe)], true) < 0.85f) continue;
+        }
+        const float ar = aiSaarFront(g, p, int(x));
+        if (toFront[x] < bestD || (toFront[x] == bestD && b.next >= 0 && ar > bestAround)) {
+            bestD = toFront[x];
+            bestAround = ar;
+            b.next = int(x);
+        }
+    }
+    static const bool debug = std::getenv("TI4_SAARDEBUG") != nullptr;  // (test only)
+    if (debug)
+        std::fprintf(stderr, "saarball p%d r%d ball %s front %s (%.1f, %d steps) next %s\n", p, int(g.round), kSystems[g.systems[size_t(b.ball)].def].name,
+                     kSystems[g.systems[size_t(b.front)].def].name, b.score, b.steps, b.next >= 0 ? kSystems[g.systems[size_t(b.next)].def].name : "-");
+    return b;
 }
 
 // What Mecatol Rex is worth to p taking it from its holder (0.54.0): the Imperial points it gives - p's own (Imperial in
@@ -458,7 +621,7 @@ float aiOpProgress(const Game& g, int p, const AiOp& op, const Force& f) {
     if (op.theirs.ships() == 0) return ground;
     const float o = std::max(0.02f, std::min(0.98f, fightOdds(g, p, f, op.foe, op.theirs, true)));
     const float need = std::max(0.55f, std::min(0.95f, aiTune("opsure", 0.8f)));
-    const float space = std::min(1.f, std::pow((o / (1.f - o)) / (need / (1.f - need)), 0.25f));
+    const float space = std::min(1.f, std::sqrt(std::sqrt((o / (1.f - o)) / (need / (1.f - need)))));
     const float gw = aiTune("opgroundw", 0.25f);
     return space * (1.f - gw) + ground * gw;
 }

@@ -321,11 +321,16 @@ bool Rules::executeDeal(const Deal& d) {
         }
         if (s.planet >= 0) {  // Pride of Kenara: the Hacan units go to another Hacan planet, the planet changes hands
             int dest = -1;
+            std::vector<Option> spots;  // (fixes 26, the Hacan review: "move all of your units from this planet to another
+                                        // planet you control" - the Hacan player chooses which)
             for (int x : controlledPlanets(G, from))
                 if (x != s.planet && !isDMZ(G, x)) {
-                    dest = x;
-                    if (isHomePlanet(G, x)) break;
+                    spots.push_back({x, planetName(x), sysName(G.planets[x].system)});
+                    if (dest < 0 || !isHomePlanet(G, dest)) dest = x;  // (the old choice: a home planet, else the last)
                 }
+            if (G.fixes >= 26 && spots.size() > 1 && G.planets[s.planet].units[from].groundForces() + G.planets[s.planet].units[from].count(UnitType::Fighter) > 0)
+                dest = fpick(from, Ab::PrideOfKenara, "Pride of Kenara: move your units on " + planetName(s.planet) + " to which planet?", spots,
+                             unitAbilityText(G.players[from].unit[int(UnitType::Mech)]), false, true);
             PlanetState& ps = G.planets[s.planet];
             if (dest >= 0)
                 for (int t = 0; t < kUnitTypes; ++t)

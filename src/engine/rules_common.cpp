@@ -137,7 +137,9 @@ std::string checkLandPlan(const Game& g, int p, int sys, const std::vector<int>&
             return spec.bombard ? "You don't have that many of those units here."
                                 : "You don't have that many ground forces in space here.";
     }
-    if (!spec.bombard)
+    // (fixes 27, the Naalu review - LRR FAQ "The Naalu Collective") fighters may be committed alone: the combat is a draw
+    // when only they are left, and they return to space
+    if (!spec.bombard && g.fixes < 27)
         for (auto& e : perPlanet)
             if (e.second.second > 0 && e.second.first == 0)
                 return "Fighters can only land together with ground forces (Matriarch).";
@@ -161,7 +163,7 @@ std::vector<int> moveUnitsOnly(const std::vector<int>& plan) {
     return out;
 }
 
-std::string checkMovePlan(const Game& g, int p, int active, const std::vector<int>& plan, bool allowStrand) {
+std::string checkMovePlan(const Game& g, int p, int active, const std::vector<int>& plan, bool allowStrand, bool fleetStrict) {
     if (plan.size() % 4) return "Bad answer.";
     const int nsys = int(g.systems.size());
     // Waypoints (0.56.0): routes the player chose, checked here; the units part is checked as before
@@ -204,7 +206,9 @@ std::string checkMovePlan(const Game& g, int p, int active, const std::vector<in
         // LRR 95.1: moving ships may pick up ground forces from the active system's planets too (to land on
         // another planet there - 0.30.0, owner); its space area and ships don't move
         if (from == active && loc < 0) return "Units already in the active system don't move.";
-        if (g.systems[from].hasToken(p) && !g.fx.dominusOrb && !(heroActive(g, p, "nomad") && flagshipIn(g, p, from)))
+        // (owner 2026-11-11: not the pick-up from the active system's planets - its token is this activation's; that
+        // pick-up was always refused since 0.30.0. Refused answers are never saved, so old games replay unchanged)
+        if (g.systems[from].hasToken(p) && !(from == active && loc >= 0) && !g.fx.dominusOrb && !(heroActive(g, p, "nomad") && flagshipIn(g, p, from)))
             return "Units can't leave a system that has your command token.";
         if (t < 0 || t >= kUnitTypes || k <= 0) return "Bad units.";
         UnitType ut = UnitType(t);
@@ -264,6 +268,9 @@ std::string checkMovePlan(const Game& g, int p, int active, const std::vector<in
         int need = 1;  // (0.44.9) +move each needs
     };
     std::vector<BoostFighters> boostFighters;
+    // Hil Colish (fixes 24): ships that reach the active system only through its delta wormhole there - it must move too
+    const int colishO = colishOrigin(g, p);
+    bool needsColish = false;
     for (auto& it : takeSpace) {
         const int sys = it.first;
         const Force& take = it.second;
@@ -290,6 +297,7 @@ std::string checkMovePlan(const Game& g, int p, int active, const std::vector<in
                     }
                 }
             }
+            if (r.ok && r.colish && colishO >= 0 && colishO != active && !(isFlagship(ut) && sys == colishO)) needsColish = true;
             if (!r.ok) {
                 if (ut == UnitType::Fighter) {  // fighters without enough move are carried
                     if (curatorHalf(g, p)) fightersCarried += k;  // (0.44.9: two to a slot - Stabilization Arrays)
@@ -497,14 +505,24 @@ std::string checkMovePlan(const Game& g, int p, int active, const std::vector<in
     // Gravitic Inhibitor (Li-Zho trap, Discordant Stars): at most fleet pool - 1 ships move in
     if (g.fx.dsInhibit == p && arriving.nonFighterShips() > std::max(0, fleetLimit(g, p) - 1))
         return "Gravitic Inhibitor: at most " + std::to_string(std::max(0, fleetLimit(g, p) - 1)) + " ships can move in.";
-    // Fleet pool and capacity in the active system afterwards.
+    // Fleet pool and capacity in the active system afterwards. (0.58.5, fixes 22 - owner: "I should be able to exceed
+    // the fleet pool for a tile": the move is allowed; the extra ships are removed after the combat and invasion if
+    // one happens there, else right after the move - Rules::fleetDeferSys_)
     Force after = g.systems[active].space[p];
     for (int t = 0; t < kUnitTypes; ++t) after.n[t] = uint8_t(after.n[t] + arriving.n[t]);
-    if (fleetUse(g, p, active, after) > fleetLimit(g, p) && fleetUse(g, p, active, after) > fleetUseIn(g, p, active))
+    if ((g.fixes < 22 || fleetStrict) && fleetUse(g, p, active, after) > fleetLimit(g, p) && fleetUse(g, p, active, after) > fleetUseIn(g, p, active))
         return "Your fleet pool allows only " + std::to_string(fleetLimit(g, p)) + " non-fighter ships in a system" +
                (fightersFree(g, p) ? " (fighters beyond capacity count too)." : ".");
     if (overflowOf(g, p, active, after) > capacityOverflow(g, p, active))
         return "Not enough capacity in the active system for all fighters and ground forces.";
+    if (needsColish) {
+        bool flagship = false;
+        for (size_t i = 0; i + 3 < data.size(); i += 4)
+            if (data[i] == colishO && data[i + 1] < 0 && data[i + 2] == int(UnitType::Flagship) && data[i + 3] > 0) flagship = true;
+        if (!flagship)
+            return "Some of these ships only get there through Hil Colish's delta wormhole in the active system - move Hil Colish "
+                   "too (it goes first).";
+    }
     return "";
 }
 
@@ -516,6 +534,26 @@ std::string strandWarning(const Game& g, int p, int active, const std::vector<in
     std::string where = strict.substr(strict.rfind(" in ") + 4);
     if (!where.empty() && where.back() == '.') where.pop_back();
     return "Fighters or ground forces left behind in " + where + " have no capacity there: they will be removed.";
+}
+
+bool combatAhead(const Game& g, int p, int sys) {
+    if (sys < 0 || sys >= int(g.systems.size())) return false;
+    const SystemState& s = g.systems[size_t(sys)];
+    for (int q = 0; q < kSides; ++q) {
+        if (q == p || (q >= g.numPlayers && q != kNeutral)) continue;
+        if (s.space[size_t(q)].ships() > 0) return true;  // a space combat
+        for (int16_t x : s.planets)
+            if (g.planets[size_t(x)].units[size_t(q)].groundForces() > 0) return true;  // ground forces to invade
+    }
+    return false;
+}
+
+std::string fleetOverWarning(const Game& g, int p, int active, const std::vector<int>& data) {
+    if (g.fixes < 22 || !checkMovePlan(g, p, active, data).empty() || checkMovePlan(g, p, active, data, false, true).empty()) return "";
+    const std::string n = std::to_string(fleetLimit(g, p));
+    return g.fixes == 22 && combatAhead(g, p, active)
+               ? "More ships than your fleet pool (" + n + ") here: they all fight, then you remove the extra ships after the combat and invasion."
+               : "More ships than your fleet pool (" + n + ") here: you choose and remove the extra ships right after the move (LRR 37.3).";
 }
 
 std::string checkProducePlan(const Game& g, int p, int sys, const std::vector<int>& data, int capacityLimit, int typeMask, bool fleetStrict) {
@@ -540,7 +578,7 @@ std::string checkProducePlan(const Game& g, int p, int sys, const std::vector<in
     int freeFF = 0;  // That Which Molds Flesh (Vuil'raith commander): 2 fighters / infantry don't count
     if (commanderUsable(g, p, "cabal")) freeFF = std::min(2, data[int(UnitType::Fighter)] + data[int(UnitType::Infantry)]);
     // Combat Drones (Mirveda, Discordant Stars): their space docks don't produce infantry
-    if ((g.modules & kModDiscordant) && data[int(UnitType::Infantry)] > 0 && isFaction(g, p, "mirveda") && !(g.fx.anyPlanetGF && p == g.activePlayer))
+    if ((g.modules & kModDiscordant) && data[int(UnitType::Infantry)] > 0 && isFaction(g, p, "mirveda") && !anyPlanetGFFor(g, p))
         return "Combat Drones: your space docks can't produce infantry.";
     // Desperados (Nokar, Discordant Stars): 1 destroyer doesn't count
     if ((g.modules & kModDiscordant) && data[int(UnitType::Destroyer)] > 0 && isFaction(g, p, "nokar")) ++freeFF;
@@ -561,7 +599,7 @@ std::string checkProducePlan(const Game& g, int p, int sys, const std::vector<in
     }
     // Mitosis (Arborec): space docks can't produce infantry - only the units with Production of their own
     // (Letani Warriors, Letani Behemoth) can; abilities that produce without docks are exempt.
-    if (data[int(UnitType::Infantry)] > 0 && isFaction(g, p, "arborec") && !(g.fx.anyPlanetGF && p == g.activePlayer)) {
+    if (data[int(UnitType::Infantry)] > 0 && isFaction(g, p, "arborec") && !anyPlanetGFFor(g, p)) {
         int cap = 0;
         auto add = [&](const Force& f) {
             for (int t = 0; t < kUnitTypes; ++t)
@@ -897,6 +935,7 @@ void Rules::checkWin() {
 }
 
 void Rules::loseVP(int p, int n, const std::string& why) {
+    G.players[p].vpLost = int16_t(G.players[p].vpLost + std::min<int>(n, G.players[p].vp));
     G.players[p].vp = int8_t(std::max(0, G.players[p].vp - n));
     E.log(p, pn(p) + " loses " + std::to_string(n) + " victory point" + (n > 1 ? "s" : "") + " (" + why + ") - now " +
                  std::to_string(G.players[p].vp) + ".",
@@ -947,6 +986,7 @@ void Rules::placeTokenFromReinforcements(int p, int sys, const std::string& why)
         if (c == 1) enforceFleetLimit(p);
     }
     G.systems[sys].tokens |= uint16_t(1u << p);
+    zeuTE(p, sys);  // (fixes 27: Thunder's Edge's Z'eu)
 }
 
 void Rules::gainTokens(int p, int n, bool redistribute, const std::string& why) {
@@ -1051,7 +1091,8 @@ void Rules::destroyUnits(int p, UnitType t, int k, int sys, int planet, int byPl
     if (t == UnitType::Infantry && !removing_ && (G.modules & kModDiscordant) && breakthroughsOn(G)) dsbtInfantryDied(p, planet, k);  // Dreamwalkers
     if (t == UnitType::Mech && G.players[size_t(p)].eidolonMax) eidolonLost(p);  // Absolute Synergy (Thunder's Edge)
     if (G.modules & kModThundersEdge) {  // Thunder's Edge factions (0.35.0)
-        if (galvLost > 0) galvanizedLost(p, t, galvLost, sys, planet);
+        // (fixes 24: A3 Valiance and Lyra Keen say "destroyed" - not for units removed, e.g. in a gravity rift)
+        if (galvLost > 0 && !(G.fixes >= 24 && removing_)) galvanizedLost(p, t, galvLost, sys, planet);
         if (!removing_) dameBriar(p, sys);
         if (G.fixes < 19) subatomicSplicer(p, t, k);  // Crimson technology
     }
@@ -1066,7 +1107,8 @@ void Rules::destroyUnits(int p, UnitType t, int k, int sys, int planet, int byPl
     }
     // Crash Landing (Thunder's Edge): the last ship in the active system is gone, ground forces still in its space area
     if (planet < 0 && sys >= 0 && sys == G.activeSystem && isShip(t) && p < G.numPlayers && (G.modules & kModThundersEdge) &&
-        !hasShips(G, p, sys) && G.systems[size_t(sys)].space[size_t(p)].groundForces() > 0)
+        !hasShips(G, p, sys) && G.systems[size_t(sys)].space[size_t(p)].groundForces() > 0 &&
+        !(G.fixes >= 24 && removing_))  // (fixes 24: the card says "destroyed" - not a ship removed, e.g. in a gravity rift)
         lastShipLost(p, sys);
 }
 
@@ -1074,6 +1116,12 @@ void Rules::setControl(int planet, int p) {
     PlanetState& pl = G.planets[planet];
     int old = pl.owner;
     if (old == p) return;
+    // (fixes 25, owner's faction debug pass) control passing because of coexistence (Viper EX-23 / Research Team, Puppets
+    // of the Blade, Viper Hollow - the old owner coexists by now): their structures stay, coexisting - "Coexisting
+    // structures are always blockaded" (TE rulebook); the same for neutral units that coexist there. Assimilate and
+    // Infiltrate still replace them.
+    const bool oldCoexists = G.fixes >= 25 && old >= 0 && ((pl.coexist >> old) & 1);
+    const bool neutralCoexists = G.fixes >= 25 && ((pl.coexist >> kNeutral) & 1);
     if (old >= 0 && !assimilate(planet, p, old)) {  // Assimilate (L1Z1X): the structures become theirs
         // Infiltrate: the structures become the new owner's instead.
         bool infiltrate = false;
@@ -1090,13 +1138,13 @@ void Rules::setControl(int planet, int p) {
         Force& f = pl.units[old];
         for (UnitType t : {UnitType::PDS, UnitType::SpaceDock}) {
             int k = f.count(t);
-            if (!k) continue;
+            if (!k || (oldCoexists && !infiltrate)) continue;
             destroyUnits(old, t, k, pl.system, planet, p, infiltrate ? "Infiltrate" : "captured");
             if (infiltrate) addUnits(p, t, std::min(k, unitsAvailable(G, p, t)), pl.system, planet);
         }
     }
     if (old >= 0 && G.systems[pl.system].home >= 0) actionSecret(old, "bam");
-    if (p >= 0)  // Thunder's Edge: neutral structures left on the planet are lost too (as another player's, LRR 49.5a)
+    if (p >= 0 && !neutralCoexists)  // Thunder's Edge: neutral structures left on the planet are lost too (as another player's, LRR 49.5a)
         for (int t = 0; t < kUnitTypes; ++t)
             if (pl.units[kNeutral].n[t]) destroyUnits(kNeutral, UnitType(t), pl.units[kNeutral].n[t], pl.system, planet, p, "captured");
     pl.owner = int8_t(p);
@@ -1123,7 +1171,10 @@ void Rules::setControl(int planet, int p) {
     if (G.events) eventControl(planet, p, old);  // Total War, Dangerous Wilds (galactic events)
     if (G.modules & kModDiscordant) dsControl(planet, p, old);  // Scour, Yvin Korduul (Discordant Stars)
     // Integrated Economy (0.44.5, fixes 9): after the exploration (an attachment can raise the budget) - if still ours
-    if (G.phase == Phase::Action && G.fixes >= 9 && G.planets[size_t(planet)].owner == p) integratedEconomy(p, planet);
+    // (fixes 27, the shared technologies - owner 2026-11-14 "Do A"): in every phase but the game's setup (the card has
+    // no phase; e.g. Colonial Redistribution in the agenda phase)
+    const bool ieWhen = G.phase == Phase::Action || (G.fixes >= 27 && G.phase != Phase::Setup && G.phase != Phase::GameOver);
+    if (ieWhen && G.fixes >= 9 && G.planets[size_t(planet)].owner == p) integratedEconomy(p, planet);
 }
 
 bool Rules::owns(int p, const char* key) const { return ownsTechKey(G, p, key); }
@@ -1254,6 +1305,7 @@ void Rules::fleetStateCheck() {
         if (G.players[size_t(p)].eliminated) continue;
         for (size_t s = 0; s < G.systems.size(); ++s) {
             if (inSpaceCombat_ && int(s) == combatSys_) continue;
+            if (int(s) == fleetDeferSys_ && p == G.activePlayer) continue;  // (0.58.5: after its combat and invasion)
             const Force& f = G.systems[s].space[size_t(p)];
             const int limit = fleetLimit(G, p);
             const bool fleet = f.nonFighterShips() + f.count(UnitType::Fighter) + f.count(UnitType::Mech) > limit && fleetUseIn(G, p, int(s)) > limit;
@@ -1318,7 +1370,7 @@ void Rules::removeExcessCapacity(int p, int sys) {
         if (fightersFree(G, p)) mask &= ~(1 << int(UnitType::Fighter));  // Fighter II: only ground forces need room
         chooseRemovals(p, sys, over, mask, "no capacity");
     }
-    if (fleetUseIn(G, p, sys) > fleetLimit(G, p)) enforceFleetIn(p, sys);
+    if (fleetUseIn(G, p, sys) > fleetLimit(G, p) && !(sys == fleetDeferSys_ && p == G.activePlayer)) enforceFleetIn(p, sys);  // (0.58.5)
 }
 
 void Rules::checkEliminations() {

@@ -1,0 +1,40 @@
+# Hyperlanes: Off (0.58.0, owner: the printed board without hyperlanes at any player count) - New Game ->
+# Hyperlanes Off, a random galaxy, 5 players (the +2 / +4 / +2 trade goods seats), the game's map.
+wait 5
+press A
+wait 5
+press UP
+wait 2
+press UP
+wait 2
+press UP
+wait 2
+press RIGHT
+wait 2
+shot newgame_hyperlanes_off
+press UP
+wait 2
+press LEFT
+wait 2
+press UP
+wait 2
+press UP
+wait 2
+press UP
+wait 2
+press UP
+wait 2
+press LEFT
+wait 2
+shot newgame_5p_no_hyperlanes
+press START
+wait 60
+shot game_5p_no_hyperlanes
+press R2
+wait 10
+press L1
+wait 20
+press L1
+wait 20
+shot map_5p_no_hyperlanes
+quit

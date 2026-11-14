@@ -1291,17 +1291,43 @@ static int skipList(const PlanetDef& pd, int mask, TechColor out[4]) {
     return n;
 }
 
-static void drawSkips(Canvas& c, const PlanetDef& pd, int mask, float px, float py, float pr, float size) {
+// (mirror: on the planet's upper LEFT - 0.58.3, the right-hand planet of a three-planet system has its values on the right)
+static void drawSkips(Canvas& c, const PlanetDef& pd, int mask, float px, float py, float pr, float size, bool mirror = false) {
     TechColor list[4];
     const int n = skipList(pd, mask, list);
+    const float dir = mirror ? -1.f : 1.f;
     for (int k = 0; k < n; ++k) {
         if (size >= 50 && icons::available()) {
             const int is = int(size * 0.2f);
-            drawSkipIcon(c, list[k], int(px + pr * 0.8f + k * is * 0.9f) - is / 2, int(py - pr * 0.8f) - is / 2, is);
+            drawSkipIcon(c, list[k], int(px + dir * (pr * 0.8f + k * is * 0.9f)) - is / 2, int(py - pr * 0.8f) - is / 2, is);
         } else {
-            c.fillCircle(px + pr * 0.8f + k * size * 0.1f, py - pr * 0.8f, std::max(2.5f, size * 0.06f), kSkipCol[int(list[k]) & 3]);
+            c.fillCircle(px + dir * (pr * 0.8f + k * size * 0.1f), py - pr * 0.8f, std::max(2.5f, size * 0.06f), kSkipCol[int(list[k]) & 3]);
         }
     }
+}
+
+// 0.58.3 (owner: "add influence and resource values next to the planet similar to how the tiles have them
+// physically"): at the closest zoom, the planet's resources (yellow) over its influence (blue) on its left
+// side. Returns the stack's left edge (the legendary mark goes beyond it).
+// In a three-planet system the right-hand planet has them on its right (its left faces the other planet's badges)
+// and its own marks mirrored (valuesRight).
+constexpr float kValuesFrom = 56.f;  // (the closest zoom level: at 48-50 the tiles are too crowded)
+static bool valuesRight(int np, float pxOff) { return np >= 3 && pxOff > 1.f; }
+static float drawPlanetValues(Canvas& c, int res, int inf, float px, float py, float pr, float size, bool right = false) {
+    const float is = std::min(18.f, std::max(12.f, size * 0.21f));
+    const float off = pr + is * 0.5f + std::max(1.f, size * 0.02f);
+    const float bx = right ? px + off : px - off;
+    const int s = int(is + 0.5f), x = int(bx + 0.5f);
+    for (int k = 0; k < 2; ++k) {
+        const int y = int(py + (k ? 0.55f : -0.55f) * is + 0.5f);
+        c.fillCircle(float(x), float(y), is * 0.42f, rgb(8, 10, 18), 190);  // (readable over the art tilesets)
+        drawResourceIcon(c, x, y, s, k ? inf : res, FONT_XS, k == 1);
+    }
+    return right ? px : bx - is * 0.5f;
+}
+static void legendaryBeside(Canvas& c, float px, float py, float pr, float size, float valuesLeft) {
+    if (valuesLeft < px) drawLegendaryMark(c, valuesLeft - std::max(4.f, size * 0.13f) - 1.f, py, size);
+    else drawLegendaryMark(c, px - pr - size * 0.05f, py, size);
 }
 
 static int printedSkips(const PlanetDef& pd) {
@@ -1354,10 +1380,12 @@ void MapView::drawTile(Canvas& c, int def, float cx, float cy, float size, uint3
             const PlanetDef& pd = kPlanets[d.planets[i]];
             float px, py, pr;
             planetSpot(np, i, !std::strcmp(pd.key, "mr"), d.back == Back::Home && np == 1, size, px, py, pr);
+            const bool vr = size >= kValuesFrom && valuesRight(np, px);
             px += cx;
             py += cy;
-            if (pd.legendary && size >= 26) drawLegendaryMark(c, px - pr - size * 0.05f, py, size);
-            if (pd.skip != TechColor::None && size >= 24) drawSkips(c, pd, printedSkips(pd), px, py, pr, size);
+            const float left = size >= kValuesFrom ? drawPlanetValues(c, pd.res, pd.inf, px, py, pr, size, vr) : px;
+            if (pd.legendary && size >= 26) legendaryBeside(c, px, py, pr, size, left);
+            if (pd.skip != TechColor::None && size >= 24) drawSkips(c, pd, printedSkips(pd), px, py, pr, size, vr);
         }
         return;
     }
@@ -1438,8 +1466,10 @@ void MapView::drawTile(Canvas& c, int def, float cx, float cy, float size, uint3
             else c.fillCircle(px, py, pr + 1.2f, shade(col, 0.35f));
             drawPlanetDisc(c, px, py, pr, pd, col, false);
         }
-        if (pd.legendary && size >= 26) drawLegendaryMark(c, px - pr - size * 0.05f, py, size);
-        if (pd.skip != TechColor::None && size >= 24) drawSkips(c, pd, printedSkips(pd), px, py, pr, size);
+        const bool vr = size >= kValuesFrom && valuesRight(np, px - cx);
+        const float left = size >= kValuesFrom ? drawPlanetValues(c, pd.res, pd.inf, px, py, pr, size, vr) : px;
+        if (pd.legendary && size >= 26) legendaryBeside(c, px, py, pr, size, left);
+        if (pd.skip != TechColor::None && size >= 24) drawSkips(c, pd, printedSkips(pd), px, py, pr, size, vr);
     }
 }
 
@@ -1664,31 +1694,38 @@ void MapView::drawSystem(Canvas& c, const Game& g, int sys, float cx, float cy, 
             else c.fillCircle(px, py, pr + 1.2f, shade(col, 0.35f));
             drawPlanetDisc(c, px, py, pr, pd, col, ps.exhausted);
         }
-        if (size >= 34) drawSkips(c, pd, planetSkips(g, pl), px, py, pr, size);
+        // 0.58.3: resources / influence (with attachments) beside the planet when zoomed in; on the right-hand planet
+        // of a three-planet system they go on its right and its marks swap sides (dir)
+        const bool vr = size >= kValuesFrom && valuesRight(np, px - cx);
+        const float dir = vr ? -1.f : 1.f;
+        if (size >= 34) drawSkips(c, pd, planetSkips(g, pl), px, py, pr, size, vr);
+        const float left = size >= kValuesFrom ? drawPlanetValues(c, planetResources(g, pl), planetInfluence(g, pl), px, py, pr, size, vr) : px;
         // legendary planets (owner, 0.19.0): the legendary icon on the planet's left side
-        if (isLegendaryPlanet(g, pl) && size >= 26) drawLegendaryMark(c, px - pr - size * 0.05f, py, size);
-        // a control token on a planet its owner holds without units there (closer zoom levels)
-        if (ps.owner >= 0 && size >= 50 && ps.units[ps.owner].empty())
-            cards::controlToken(c, g.players[ps.owner].faction, playerColor(g, ps.owner), int(px + pr * 0.72f), int(py + pr * 0.72f),
-                                std::max(12, int(size * 0.26f)));
+        if (isLegendaryPlanet(g, pl) && size >= 26) legendaryBeside(c, px, py, pr, size, left);
+        // who holds the planet (owner, RULES-CHECK X3 answer, 0.58.4: "show the flag when zoomed in, but the control
+        // token when zoomed out"): zoomed out (the two farther levels) their control token on the planet; zoomed in
+        // the flag (below). Units' badges are drawn over it.
+        constexpr float kFlagFrom = 44.f;
+        if (ps.owner >= 0 && ps.owner < g.numPlayers && size < kFlagFrom)
+            cards::controlToken(c, g.players[ps.owner].faction, playerColor(g, ps.owner), int(px), int(py), std::max(12, int(size * 0.36f)));
         if (ps.sleeper) {  // Titans sleeper token: a small dark disc with a teal ring
-            float sx = px - pr * 0.85f, sy = py + pr * 0.75f, sr = std::max(2.5f, size * 0.08f);
+            float sx = px - dir * pr * 0.85f, sy = py + pr * 0.75f, sr = std::max(2.5f, size * 0.08f);
             c.fillCircle(sx, sy, sr, rgb(20, 40, 44));
             c.ring(sx, sy, sr, std::max(1.f, size * 0.03f), rgb(90, 220, 200));
         }
         // Core token (Gledge, Discordant Stars): a small molten disc at the lower left
         if (!g.dsCores.empty() && std::find(g.dsCores.begin(), g.dsCores.end(), int16_t(pl)) != g.dsCores.end()) {
-            const float kx = px - pr * 0.85f, ky = py + pr * 0.85f, kr = std::max(2.5f, size * 0.07f);
+            const float kx = px - dir * pr * 0.85f, ky = py + pr * 0.85f, kr = std::max(2.5f, size * 0.07f);
             c.fillCircle(kx, ky, kr, rgb(230, 110, 30));
             c.ring(kx, ky, kr, std::max(1.f, size * 0.02f), rgb(60, 20, 10));
         }
         if (!ps.attachments.empty() || ps.terraform || ps.ulHero || pl == g.dsBasePlanet || pl == g.dsKeyPlanet) {  // attachment: a small gold diamond
-            float ax = px - pr * 0.85f, ay = py - pr * 0.85f, ar = std::max(2.5f, size * 0.07f);
+            float ax = px - dir * pr * 0.85f, ay = py - pr * 0.85f, ar = std::max(2.5f, size * 0.07f);
             float dx[4] = {ax, ax + ar, ax, ax - ar}, dy[4] = {ay - ar, ay, ay + ar, ay};
             c.fillPolygon(dx, dy, 4, hasAttachment(g, pl, "dmz") ? rgb(230, 230, 230) : theme::gold);
         }
-        // 0.57.1 (tester): who holds the planet - a flag in their colour planted on it (from the second zoom level)
-        if (ps.owner >= 0 && ps.owner < g.numPlayers && size >= 30) planetFlag(c, playerColor(g, ps.owner), px + pr * 0.3f, py - pr * 0.78f, size);
+        // 0.57.1 (tester): who holds the planet - a flag in their colour planted on it (0.58.4: zoomed in only)
+        if (ps.owner >= 0 && ps.owner < g.numPlayers && size >= kFlagFrom) planetFlag(c, playerColor(g, ps.owner), px + pr * 0.3f, py - pr * 0.78f, size);
         // ... and the mechs standing on it (from the third zoom level; the badge then counts the rest)
         const bool mechArt = size >= 44;
         int lines = 0, mechRows = 0;
@@ -1725,7 +1762,7 @@ void MapView::drawSystem(Canvas& c, const Game& g, int sys, float cx, float cy, 
             if (label.empty()) continue;
             const FontData& font = size >= 50 ? FONT_SMB : FONT_XS;
             int tw = textWidth(font, label);
-            int bx = int(px + pr * 0.5f), by = int(py + pr * 0.3f) + lines * (font.lineHeight + 1);
+            int bx = vr ? int(px - pr * 0.5f) - tw - 1 : int(px + pr * 0.5f), by = int(py + pr * 0.3f) + lines * (font.lineHeight + 1);
             c.fillRoundRect(bx - 2, by, tw + 5, font.lineHeight, 4, playerColor(g, q), 230);
             drawText(c, font, bx, by, label, rgb(10, 10, 10));
             ++lines;

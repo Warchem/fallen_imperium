@@ -109,6 +109,16 @@ struct RollMods {
     }
 };
 
+// One player's space cannon against ships in a system during the space cannon offense step (Rules::cannonGuns).
+struct CannonGuns {
+    Force guns;        // units that fire (their own Space Cannon values)
+    RollMods galv;     // Galvanize: their extra dice
+    int ul = 0;        // Ul the Progenitor's dice (Space Cannon 5)
+    int starfall = 0;  // Starfall Gunnery's dice (Space Cannon 8)
+    int dhonraz = 0;   // Dhonraz Installations' dice (Space Cannon 5)
+    bool empty() const { return guns.empty() && !ul && !starfall && !dhonraz; }
+};
+
 struct LandSpec {
     int typeMask = 0;          // unit types that may be assigned (0 = ground forces; Matriarch: + fighters)
     std::vector<int> targets;  // allowed planets (empty = every planet in the system)
@@ -124,8 +134,15 @@ std::map<int, std::vector<int>> moveRoutes(const std::vector<int>& plan);  // fr
 std::vector<int> moveUnitsOnly(const std::vector<int>& plan);              // the plan without its route tuples
 
 // Validators shared with the UI and AI (return "" if the plan is legal).
-std::string checkMovePlan(const Game& g, int p, int active, const std::vector<int>& data, bool allowStrand = false);
+// fleetStrict (0.58.5): refuse a move that puts more ships in the active system than the fleet pool allows - the rule
+// before fixes 22, and the bots' own planning since (the game allows it from fixes 22; the extra ships are removed
+// right after the move - fixes 22 alone waited for a combat there)
+std::string checkMovePlan(const Game& g, int p, int active, const std::vector<int>& data, bool allowStrand = false, bool fleetStrict = false);
 std::string strandWarning(const Game& g, int p, int active, const std::vector<int>& data);
+// 0.58.5: a legal move that takes the active system over the fleet pool - what happens then ("" when it doesn't)
+std::string fleetOverWarning(const Game& g, int p, int active, const std::vector<int>& data);
+// 0.58.5: will a combat (space or ground) happen in the active system after this player's move?
+bool combatAhead(const Game& g, int p, int sys);
 // fleetStrict (0.45.0): keep within the fleet pool even where the rules allow going over (the bots' own planning)
 std::string checkProducePlan(const Game& g, int p, int sys, const std::vector<int>& data, int capacityLimit, int typeMask = 0,
                              bool fleetStrict = false);
@@ -280,6 +297,8 @@ private:
     void lastShipLost(int p, int sys);                // Crash Landing
     void duressCheck(int p, bool strategic);          // Extreme Duress: the duressed player's next action
     void coexistCleanup();                            // coexisting units left alone take the planet
+    void coexistStructures();                         // LRR 63.4 / 79.4 for coexisting structures (fixes 25)
+    void troAgent(int p, int sys);                    // T'ro (Sardakk agent), at the end of a tactical action
     void engageCoexisting(int p, int sys, const std::vector<int>& skip);  // 0.44.2: end a coexistence with the units there
     bool skipNext_ = false;                           // Crisis: the next player's turn is skipped
     // Thunder's Edge relics (0.34.0, rules_te3.cpp)
@@ -311,7 +330,9 @@ private:
     void btActivated(int p, int sys);                 // Imperator's move
     int btLetnevBonus(int p, int sys);                // Gravleash Maneuvers: X
     // Thunder's Edge factions (rules_factions6.cpp, 0.35.0)
-    bool galvanize(int p, int sys, int planet, const std::string& why, int chooser = -1);
+    // kind (fixes 27, the Last Bastion review): 0 any unit but structures; 1 a unit that took part in the combat (space: ships;
+    // a planet: its ground forces); 2 Dame Briar - any unit but a space dock (a PDS is a unit: 1 more space cannon die)
+    bool galvanize(int p, int sys, int planet, const std::string& why, int chooser = -1, int kind = 0);
     bool galvanizeInfantry(int p, int sys);
     void liberate(int planet, int p);
     void combatEnded6(int att, int def, int sys, int planet);  // end of any combat (Phoenix Standard, ...)
@@ -321,8 +342,9 @@ private:
     int proximaCancel(int q, int sys, int planet, int hits);
     int duranium(int p, Force& f, const Force& before);
     void alastorChoice(int p, int sys);                    // The Alastor: Nekro ground forces in space fight as ships
+    bool nekroMalleon(int p);                              // (fixes 27) Nekro Malleon on any player
     bool splicerReady(int p, int o, int sys) const;        // Dimensional Splicer can fire now
-    void dimensionalSplicer(int p, int o, int sys);
+    void dimensionalSplicer(int p, int o, int sys, bool beforeCannon = false);  // (beforeCannon: the context says so)
     void zgravFlip(int p, int sys);
     void wormholeGeneratorStatus();  // the original Wormhole Generator (no Codex): start of the status phase
     void nexusTokensBack();
@@ -347,6 +369,11 @@ private:
     void oceanLimit(int p);
     bool coexistInstead(int invader, int q, int planet, int skipWho = -1);  // Research Team / Viper EX-23: true = no combat
     bool carrina(int researcher);
+    bool carrinaSpare(int researcher, int tech);  // (fixes 27) Doctor Carrina when a specialty planet would do instead
+    void carryAlong(int p, int from, int to);     // (fixes 27) a ship moved by an ability takes its fighters / ground forces
+    void ojz(int p, int opp, int sys, int notTo); // Watchful Ojz (fixes 27: at the retreat's declaration)
+    void carrinaInfantry(int d, int researcher);
+    void oceanCheck();                            // (fixes 27) Oceanbound's limit "any time" (before every question)
     int aello(int researcher, int cost);
     void statusStart6();
     void scarStatusStart();  // 0.43.4 (tester): entropic scars at the start of the status phase
@@ -358,12 +385,18 @@ private:
     void flipBreach(int p, int sys);
     void incursion(int p, int sys);
     void sundered(int p, int sys);
+    void sunderedCheck();  // (fixes 24: before every question - "move or are placed into your home system")
+    bool breachPlaceable(int sys) const;  // (fixes 24: the 7 breach tokens - a free one, or an inactive one to move)
     void crimsonCombatEnd(int att, int def, int sys);
     void breachStatus();
     void subatomicSplicer(int p, UnitType t, int k);
     void phantomProduced(int p, int sys, const int counts[kUnitTypes]);
+    void phantomProducedOne(int p, int sys, UnitType t, int k);  // (fixes 24: productions outside productionCore)
     void phantomCombat(int att, int def, int sys);
-    void revenant(int p, int sys);
+    std::vector<int> ravinPlayers() const;  // Ahk Ravin (fixes 24): players with ships in 2+ systems
+    Force ravinCargo(int q, int sys, int type);
+    bool ahkRavin(int p);
+    int revenant(int p, int sys);  // (returns the mechs in space before it, -1 if none came)
     std::vector<Option> factionActionOptions8(int p);
     bool factionAction8(int p, Ab ab);
     // the Firmament / the Obsidian (rules_factions7.cpp)
@@ -377,15 +410,20 @@ private:
     int assail(int p, int opp) const;                            // +1 to rolls against the puppet
     void heavensEye(int att, int def, int sys);                  // repair at the end of a combat round
     void myruVos(int p, int sys);                                // no space cannon against the moving ships
+    void myruVos25(int p, int sys);                              // ... fixes 25 (exact card: see rules_factions7.cpp)
+    int16_t myruQuiet_[kMaxPlayers] = {};                        // Myru Vos for another player (fixes 25): "don't ask again this round"
+    int16_t vosQuiet_[kMaxPlayers] = {};                         // Vos Hollow as a bystander (fixes 25): the same
     void vosHollow(int att, int def, int sys, const Force& beforeA, const Force& beforeD);
     void reapingWon(int att, int def, int sys, int planet);      // a combat won against a puppet
+    void reapingWin(int w, int l, int sys);                      // ... fixes 25: the combat's own winner (combatWon)
     void firmamentStatusStart();
     void firmamentStatusEnd();
     void obsidianTurnStart(int p);                               // Neural Parasite (Obsidian)
     void planesplitter(int p);                                   // after a strategic action (Obsidian)
     void malevolency(int p);                                     // end of a tactical action: pass it on
     bool enervate(int q, int card);                              // true: the Leadership primary was used
-    bool enervateFree(int q) const;                              // no command token for the secondary
+    bool enervateFree(int q, int card) const;                    // no command token for the secondary
+    void commodityGained(int p, int before);                     // fixes 25: Siphon for a commodity gain outside replenished()
     void sowingBank(int p);                                      // The Sowing: trade goods onto the card
     // Discordant Stars (rules_ds.cpp, 0.37.0)
     void dsStartingTechs(int p);
@@ -664,11 +702,14 @@ private:
     // part 3 (the rest)
     int avernusPlanet() const;                        // Stellar Genesis (Muaat): the Avernus planet (-1: not in play)
     void avernusCarry(int p, int sys, int avSys, int wsBefore);  // a war sun takes Avernus along
+    bool avernusThrough_ = false;  // (fixes 26) a war sun of the mover went through Avernus's system (set by movement)
     void yinAscendant(int p);                         // gain a random unused faction's Alliance ability
     bool slumberstate(int p, int planet);             // Titans: coexist instead of a Coalescence ground combat
     void btStatusDraws();                             // Slumberstate Computing: action cards for coexisting pairs
     void wingTransferEnd(int p, int sys);             // Argent: ships move among the Wing Transfer systems
     void voidTether(int p, int sys);                  // Empyrean: place or move a Void Tether
+    void voidTetherAllow(int p, int sys);             // (fixes 26) a person playing the Empyrean may let p cross tethers
+    void tetherCannonAllow(int q, int p, int sys);    // (fixes 26) ... and q's space cannon fire across one
     void custodiaTokens(int scorer);                  // Custodian's Favour: Imperial's Mecatol point gives 2 tokens
     void eidolonLost(int p);                          // Eidolon Maximum destroyed: the card flips back
     bool forcedSecondary_ = false;                    // Strategize: the secondary without the yes / no question
@@ -706,7 +747,10 @@ private:
     bool removing_ = false;       // units are being removed, not destroyed (no "when destroyed" effects)
     // The fleet pool at all times (0.46.1, fixes 15): fleetStateCheck runs before every question
     int fleetHold_ = 0;                    // ships are moving: the check waits for the end of the move
+    int fleetDeferSys_ = -1;               // 0.58.5 (fixes 22): the active system's fleet pool waits for its combat and invasion
     bool inFleetCheck_ = false;
+    bool inSunderedCheck_ = false;
+    uint64_t sunderedSig_[8] = {};  // (what other players have in each Crimson home after the last check)
     bool fleetDirty_ = false;              // a ship was placed in a space area since the last check
     size_t fleetLogSize_ = size_t(-1);     // game log length at the last check
     void fleetStateCheck();
@@ -770,6 +814,13 @@ private:
     bool brikkOk(int k) const { return brikkClause_ < 0 || brikkClause_ == k; }   // 0.43.0 (D12): Troubadour - "then you may end your turn" (no action, not passed)         // 0.43.0: units are being destroyed by assigned hits (Silence of Stars needs them)
     bool noRetreatToken_ = false; // Skilled Retreat under Wild, Wild Galaxy
     bool shval_ = false;          // Sh'val: skip to committing ground forces
+    struct GhomUnit {             // (fixes 25) a ground force G'hom Sek'kus brought in, and where from
+        int16_t planet;
+        int8_t type;
+        bool damaged;
+    };
+    std::vector<GhomUnit> ghomBrought_;
+    int ghomBefore_[2] = {0, 0};  // infantry / mechs in the active system's space before G'hom Sek'kus
     bool warfareTac_ = false;     // Thunder's Edge Warfare: this tactical action places no token, any system
     bool zeu_ = false;            // Z'eu Omega (Codex): this tactical action places no command token, homes excluded
     bool activated_ = false;      // 0.43.3: the last tacticalAction activated a system (it wasn't backed out of)
@@ -844,9 +895,29 @@ private:
     bool factionAction2(int p, Ab ab);
     // batch 3 (rules_factions3.cpp)
     int strategicPlayer_ = -1;        // player resolving the current strategic action (Acquiescence)
+    bool mathis_ = false;             // (fixes 26, the Winnu review) Mathis Mathinus' secondaries: not a strategic action
+    int jaeToken_ = -1;               // (fixes 26) Jae Mir Kan paid this secondary with this player's token from the board
     bool alastor_[kSides] = {};  // The Alastor: Nekro's ground forces in space fight in this space combat
+    // (fixes 27, the Nekro review - owner 2026-11-14) The Alastor: "choose any number of your ground forces in this system" -
+    // those chosen on the system's planets fight from the space area meanwhile (they never count for capacity and go back to
+    // their planets after the combat or a retreat), the space area's own left out wait aside (alastorAside_)
+    struct AlastorFrom {
+        int8_t player = -1;
+        int16_t planet = -1;
+        uint8_t n[2] = {};  // infantry, mechs
+    };
+    std::vector<AlastorFrom> alastorFrom_;
+    Force alastorAside_[kSides];
+    uint8_t alastorOwn_[kSides][2] = {};  // the space area's own ground forces fighting (infantry, mechs)
+    int alastorSys_ = -1;
+    void alastorReturn(int p);                       // they go back (idempotent)
+    void alastorChoice27(int p, int sys);
+    int alastorMask(int p) const;                    // the ground forces fighting as ships, as a unit mask (fixes 27)
+    bool shipsOrAlastor(int p, int sys) const;       // ships - or ground forces fighting as ships (fixes 27)
+    int alastorFromPlanets(int p, int ti) const;     // of them in the space area now, from the planets (ti 0 infantry, 1 mechs)
     bool singularityUsed_ = false;    // Technological Singularity asked in this combat
     int combatSide_[2] = {-1, -1};    // the two players of the current combat
+    int singularitySys_ = -1;         // (fixes 27) the system of the space combat from its very start (nekroCombatStart)
     int nekroGuess_ = -1;             // Galactic Threat: predicted outcome of the current agenda (-1 = none)
     int nekroRound_ = -1;             // round of the last Galactic Threat prediction (once per agenda phase)
     int maxUnitCost_ = 0;             // Umbat: produced units must cost at most this (0 = no limit)
@@ -860,9 +931,11 @@ private:
     void gainedControl3(int planet, int p, int old);  // Scavenge, Scavenger Zeta
     void endOfTactical3(int p, int sys);    // Reclamation, Reclaimer
     void spaceCombatStart3(int att, int def, int sys);   // Alastor, Dimensional Splicer, Antivirus
+    void nekroCombatStart(int att, int def, int sys);    // (fixes 27) Singularity's sides + Antivirus, before any kill
     void groundCombatStart3(int att, int def, int planet);  // Antivirus
     void singularity(int victim, int sys, int planet);  // Technological Singularity
-    void dynamo(int owner, int sys, int planet, int t);
+    void dynamo(int owner, int sys, int planet, int t, int unitOwner = -1);  // (fixes 26: any player's unit)
+    void acamar(int p, int sys);  // (fixes 26) Acamar (Empyrean agent) after any player's move into a system without planets
     bool watcher(int player, int card);
     void combatMods3(int p, int opp, int sys, int planet, bool space, RollMods& m);
     int productionDiscount3(int p, int sys);  // Berekar Berekon, Hegemonic Trade Policy
@@ -917,7 +990,20 @@ private:
     void combatMods4(int p, int opp, int sys, int planet, bool space, RollMods& m);  // Arvicon Rex, Visz El Vir, Z-Grav
     void combatRoundStart4(int att, int def, int sys, int planet, bool space, RollMods mods[2]);  // Supercharge
     bool thundarian(int att, int def, int sys, int hitsA, int hitsD);
-    int spaceHitsCancel(int victim, int side, int sys, int hits);  // Quantum Manipulator, The Cavalry
+    int spaceHitsCancel(int victim, int side, int sys, int hits, int attacker = -1);  // Quantum Manipulator, The Cavalry
+    int quantumManipulator(int victim, int sys, int hits, bool afb);  // (fixes 26: also against anti-fighter barrage)
+    void mercer26(int p, int sys);  // (fixes 26) Field Marshal Mercer at the end of any player's turn
+    void garvGunn27(int p);         // (fixes 27) Garv and Gunn at the end of any player's turn
+    void mendosa27(int p, int sys);  // (fixes 27) Captain Mendosa when any player activates a system
+    int sucaban27(int p, int cost);  // (fixes 27) Doctor Sucaban for any player's research; a person picks the infantry
+    void dameBriar27(int victim, int sys);  // (fixes 27) Dame Briar when any player's unit is destroyed
+    void rowlSarrig27(int p, int sys, int fighters, int inf);  // (fixes 27) Rowl Sarrig: each new unit at any dock
+    void floatingSweep();            // (fixes 27) every blockaded floating factory destroyed (end of a turn)
+    int tellurian27(int victim, int sys, int planet, int hits, int mask);  // (fixes 27) Tellurian for any player's units
+    void zeuTE(int who, int sys);    // (fixes 27) Z'eu (Thunder's Edge): a command token placed - back to the reinforcements
+    void iconoclastTE(int gainer);   // (fixes 27) Iconoclast (Thunder's Edge): a mech when another player gains a relic
+    void foresightPickup(int q, int from, int to);  // (fixes 27) Foresight: ground forces along
+    bool absoluteSynergyReady(int p) const;  // (fixes 27) Absolute Synergy offered without using the action (option 645)
     void cavalryDice(int side, int p, RollResult& r, RollKind kind);
     void spaceCombatStart4(int att, int def, int sys);  // Z-Grav Eidolon, The Cavalry
     void spaceCombatEnd4(int att, int def, int sys);
@@ -938,8 +1024,31 @@ private:
     int odlynn_ = -1, odlynnGuess_ = -1;  // Odlynn Myrr used on the current agenda: by whom, and the prediction
     int riderGuess_[kMaxPlayers] = {-1, -1, -1, -1, -1, -1, -1, -1};  // Keleres Rider predictions on the current agenda
     int16_t lawsOrderQuiet_[kMaxPlayers] = {};  // Law's Order: a human said "don't ask again" this round
+    int16_t xanderQuiet_[kMaxPlayers] = {};     // Xander when not needed (fixes 27): the same
+    int16_t carrinaQuiet_[kMaxPlayers] = {};    // Doctor Carrina when not needed (fixes 27): the same
+    bool carrinaNo_ = false;                    // (fixes 27) the Deepwrought said no: the researcher picks again
     int16_t peaceQuiet_[kMaxPlayers] = {};      // Minister of Peace: the same (0.28.0)
+    int16_t icarusQuiet_[kMaxPlayers] = {};     // Icarus Drive (fixes 24): the same
+    int16_t taivraQuiet_[kMaxPlayers] = {};     // Emissary Taivra for another player (fixes 24): the same
+    int16_t acamarQuiet_[kMaxPlayers] = {};     // Acamar for another player (fixes 26): the same
+    int16_t mercerQuiet_[kMaxPlayers] = {};     // Field Marshal Mercer for another player (fixes 26): the same
+    int16_t thundarianQuiet_[kMaxPlayers] = {}; // The Thundarian in another player's combat (fixes 26): the same
+    int16_t tetherQuiet_[kMaxPlayers] = {};     // Void Tether "allow it?" (fixes 26): the same
+    int16_t trilossaQuiet_[kMaxPlayers] = {};   // Trilossa Aun Mirik for another player (fixes 26): the same
+    int16_t garvQuiet_[kMaxPlayers] = {};       // Garv and Gunn for another player (fixes 27): the same
+    int16_t mendosaQuiet_[kMaxPlayers] = {};    // Captain Mendosa for another player (fixes 27): the same
+    int16_t sucabanQuiet_[kMaxPlayers] = {};    // Doctor Sucaban for another player's research (fixes 27): the same
+    int16_t briarQuiet_[kMaxPlayers] = {};      // Dame Briar for another player's units (fixes 27): the same
+    int16_t tellurianQuiet_[kMaxPlayers] = {};  // Tellurian for another player's units (fixes 27): the same
+    int16_t zeuQuiet_[kMaxPlayers] = {};        // Z'eu (Thunder's Edge) on another player's token (fixes 27): the same
+    bool zeuBusy_ = false;
+    int mutedFor_ = -1;  // (fixes 27, Xxekir Grom of Prophecy of Kings) only this player resolves abilities - the others are
+                         // not asked (faction questions declined, no action cards)
+    void wingTransfer(int p, int sys);          // Wing Transfer (Argent breakthrough): the tokens (fixes 26: right after activation)
+    void emissaryTaivra(int p, int sys);        // Emissary Taivra (fixes 24): after p activated sys
+    void icarusDrive(int c, int p, int sys);    // Icarus Drive (fixes 24): after p activated sys
     int16_t schemeQuiet_[kMaxPlayers] = {};     // (0.44.9) Deepgloom Executable's Scheming: "don't ask again this round"
+    int stallNoTurn_[kMaxPlayers] = {-1, -1, -1, -1, -1, -1, -1, -1};  // (fixes 27) the Yssaril refused Stall Tactics this turn
     int16_t schemeAsked_[kMaxPlayers] = {};     // (0.44.9) ... a bot asked the Yssaril this round already
     void sharedScheming(int p);                 // Deepgloom Executable: another player borrows Scheming
     uint32_t tradeChosen_ = 0;                  // players the Trade primary refreshed this time (0.29.0)
@@ -1098,6 +1207,7 @@ private:
     void tacticalAction(int p);
     void movement(int p, int sys);
     void spaceCannonOffense(int p, int sys);
+    CannonGuns cannonGuns(int q, int p, int sys) const;  // q's space cannon offense in p's tactical action (fixes 25: Myru Vos asks too)
     // 0.44.5 (fixes 9): Graviton Laser System / Antimass Deflectors with every space cannon shot at ships
     bool askGraviton(int q, int target, int sys);
     void cannonHits(int target, int sys, int hits, int mask, bool gls, const std::string& why, int q);

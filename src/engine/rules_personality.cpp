@@ -50,6 +50,10 @@ void Rules::setupPersonalities() {
         pe.evo = int8_t(prand(G, 2, p, 0, 0, uint32_t(Evo::Count)));
         pe.quirk = int8_t(prand(G, 3, p, 0, 0, uint32_t(Quirk::Count)));
         pe.fquirk = int8_t(prand(G, 4, p, 0, 0, 2));
+        if (const char* fq = std::getenv("TI4_SIMFQUIRK")) {  // (test only: every bot's faction trait - or one seat's)
+            const char* seat = std::getenv("TI4_SIMFQUIRKSEAT");
+            if (!seat || std::atoi(seat) == p) pe.fquirk = int8_t(std::atoi(fq) & 1);
+        }
         pe.now = pe.arch == int8_t(Arch::Chaotic) ? int8_t(prand(G, 5, p, 0, 0, uint32_t(Arch::Chaotic))) : pe.arch;
         for (int q = 0; q < G.numPlayers && q < 8; ++q) pe.bf[q] = q == p ? 0.f : kArchetypes[pe.arch].bStart;
     }

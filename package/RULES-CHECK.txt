@@ -1,7 +1,128 @@
-RULES-CHECK - version 0.57.1
-============================
+RULES-CHECK - version 0.59.30
+=============================
 
-NEW (0.57.1 - your tester's reports)
+0.59.30 (the faction debug pass, part 4 - Mentak, Xxcha, Naaz-Rokha, Titans
+of Ul, Naalu, Saar, Jol-Nar, the Last Bastion, the Council Keleres, the
+Deepwrought, the Ral Nel and the Nekro Virus, then the shared technologies
+and the action cards): every change was shown to you card by card and
+approved before it went in - nothing new to answer. Your answers on The
+Alastor (ground forces on the system's planets fight too, fight on without
+ships, stay on their planet on a retreat, can be picked like ships) and on
+the entropic scar (works as the rulebook says; the Scepter of Emelpar can
+pay for it; a feed note when your strategy pool is empty) are in.
+
+0.59.15 (the faction debug pass, part 3 - Muaat, Arborec, Yin, Mahact,
+Letnev, Vuil'raith, L1Z1X, Sol, Hacan, Winnu, Yssaril, Empyrean, Nomad and
+the Argent Flight): every change was shown to you card by card and
+approved before it went in - nothing new to answer. Two older answers are
+replaced by your newer ones: The Cavalry now really uses Sustain Damage
+(was "absorbs 1 hit", 0.9.0 #11), and Void Tether follows the card's own
+rules (was T8b). The Argent's two bot switches: off (your answer).
+
+0.59.05 (the faction debug pass, part 2 - the Firmament / the Obsidian
+and the Sardakk N'orr): every change was shown to you card by card and
+approved before it went in - nothing new to answer.
+
+0.59.0 (the faction debug pass, part 1 - Crimson Rebellion and Ghosts of
+Creuss): every change was shown to you card by card and approved before
+it went in - nothing new to answer. Still open from before: F2 (0.58.5),
+R1-R6 (0.58.4) and S4 (0.58.2), below.
+
+
+Your answer on F1 (0.58.51): ships may still move into a system beyond
+the fleet pool, but the extra ships are chosen and removed right after
+the move, before any combat (LRR 37.3) - done. (A game started in 0.58.5
+keeps that version's timing, so its save replays the same.)
+
+NEW (0.58.5 - your tester's reports)
+ F1.  (answered above)
+ F2.  Faunus (Maxis Central Control): a planet with neutral units on it
+      (the Fracture, minor factions' worlds) is no longer offered. OK?
+
+
+NEW (0.58.4 - your 0.58.3 feedback; how things look and handle, no rule
+changes - except S4, still open from 0.58.2)
+ R1.  X3 as you asked: at the two farther zoom levels every planet you
+      hold shows your control token; at the two closer ones the flag
+      instead (no control token there any more). OK?
+ R2.  The production wheel: every unit your faction can build has its
+      slice, clockwise from the Carrier at the top; one it can't build
+      here is dimmed and says why (blockaded, none left, needs the tech).
+      Infantry and mechs are on the wheel too (same production), and
+      where new ground forces land is a stop under the wheel. Left /
+      right turn the wheel, up / down (or the arrows, or the mouse wheel)
+      change the number, Y suggests, B clears. OK?
+ R3.  The strategy card wheel: left / right point at a card (its text
+      shows in the right-hand panel as before), A chooses it (the slice
+      lights up, Confirm turns yellow), then A again, START or a click on
+      Confirm takes it. B un-chooses. Taken cards show who has them;
+      trade goods on a card show as a gold +N. OK?
+ R4.  Your L2: I wrote lines for these pairs (both ways where it fits):
+      rivals - Jol-Nar / Nekro, Winnu / Keleres, Sardakk / Yssaril,
+      Argent / Scourge (Vaylerian), Naalu / Glimmer, Berserkers /
+      Sardakk, Berserkers / Ghemina, Naaz-Rokha / Bentor, Kollecc /
+      Bentor, Rhodun / Jol-Nar, Li-Zho / Yssaril, Hacan / Veldyr, L1Z1X /
+      Sol; allies - Hacan / Xxcha, Arborec / Khrask, Sol / Free Systems,
+      Saar / Dih-Mohn, Firmament / Kolume, Keleres / Kortali, Naaz-Rokha
+      / Ral Nel, Celdauri / Hacan, Edyn / Xxcha, Olradin / Free Systems,
+      Nomad / Titans, Kyro / Myko; old grudges - Syndicate / Vaden,
+      Celdauri / Florzen, Rhodun / Roh'Dhna, Sardakk / Xxcha, L1Z1X /
+      Nekro, Winnu / Mahact, Cabal / Lanefir. They are built from each
+      faction's voice, not from invented history. Add, swap or drop any
+      (the lines are in tools/lines/pairs.txt in the source).
+ R5.  Your L4: a promise broken between two computer players now opens
+      the betrayal codec too, and waits for A like the bots' betrayals
+      (Cards: All or Only yours; Timed shows it long enough to read both
+      lines). OK?
+ R6.  The deal cards while a bot talks: its line types out at a readable
+      pace and the game waits until it can be read (a few seconds per
+      line; holding A still hurries everything). OK, or slower / faster?
+
+Your 0.58.3 answers: S1-S3, H1-H4, X1, X2, L1, L3, L5 OK. X3 -> R1,
+L2 -> R4, L4 -> R5. (H1: the Hyperlanes choice stays with the players.)
+
+FROM 0.58.2 (your tester's reports) - S1-S3 answered OK; S4 is still open
+ S1.  Sarween Tools is not used by abilities that say "produce" without
+      the PRODUCTION ability (the LRR FAQ): Sling Relay, Freelancers (as
+      before) and now also Maximus, Rally to the Cause and Broadcast
+      Teams. Obsessive Designs, Local Contracts, the Celdauri and
+      Roh'Dhna heroes and Thunder's Edge's Construction say "use the
+      PRODUCTION ability", so Sarween Tools still applies there. OK?
+ S2.  Ahk Siever (Crimson commander): after EVERY combat (anyone's), each
+      player who can use it chooses 1 commodity / turn 1 commodity into a
+      trade good / neither. OK?
+ S3.  Brother Milor (Yin agent, Codex version, usable on anyone's
+      losses): a person isn't asked about their own combat opponent's
+      losses (unless they promised the agent to them in a deal). Other
+      players' combats still ask. OK?
+ S4.  Scanlink Drone Network (tester: "it should only trigger if there are
+      ground units"): the card says a planet with one or more of your
+      UNITS, and units are ships, ground forces and structures (LRR 96.1),
+      so a planet with only your PDS or space dock can be explored too.
+      A planet with none of your units is never offered. OK?
+
+
+ANSWERED OK (your 0.58.3 feedback) - 0.58.0 (Hyperlanes: Off, the printed boards)
+ H1.  Seven players: the rulebook's 7-player boards both use hyperlanes,
+      so with Hyperlanes Off I filled the gap in the 7-player board with
+      ordinary systems (61 systems, 7 tiles each: 5 blue, 2 red, and 4
+      more next to Mecatol Rex). No trade goods for anyone. OK, or would
+      you rather 7 players always keep their hyperlanes?
+ H2.  The extra tiles "the speaker places next to Mecatol Rex" (5, 7 and
+      8 players): in a drafted galaxy they are drawn from the tiles nobody
+      holds and put in ring 1 by the game before anyone places a tile
+      (the speaker doesn't choose where). OK?
+ H3.  Random / Seeded galaxies on the printed boards: each player gets a
+      "slice" - the spaces nearest their home, the same number for
+      everyone, filled with a balanced deal of their blue and red tiles
+      (the draft follows the rulebook: rings filled from the inside out).
+      OK?
+ H4.  Five players without hyperlanes: the three seats the rulebook marks
+      start with 2, 4 and 2 trade goods (the two seats on the right and
+      the one at the bottom of its diagram). OK?
+
+
+ANSWERED (your 0.58.3 feedback) - 0.57.1 (your tester's reports)
  X1.  Peace Accords (and the Ghemina's Kantrus) no longer take space
       stations: the Thunder's Edge rulebook says a station is gained by
       being the only player with ships in its system. OK?
@@ -15,7 +136,7 @@ NEW (0.57.1 - your tester's reports)
       zoom a planet held with no units there still shows the control token
       too (you asked for those in 0.12.1). Keep both, or only the flag?
 
-NEW (0.57.0 - the comms codec and the negotiation lines; nothing in the
+ANSWERED (your 0.58.3 feedback) - 0.57.0 (the comms codec and the negotiation lines; nothing in the
 rules changed - these are about the lines and how they show)
  L1.  Voices I invented where your gist said "unsure" (each faction's
       voice is written above its lines in tools/lines in the source, and

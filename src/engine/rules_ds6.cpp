@@ -166,6 +166,7 @@ void Rules::ds6SpaceRoundEnd(int att, int def, int sys) {
         if (G.fixes >= 12 && ((scarAt(G, sys) && !ignoresScars(G, side)) || quietusAt(G, side, sys))) continue;
         const int other = side == att ? def : att;
         if (other < 0 || !G.systems[size_t(sys)].space[size_t(other)].ships()) continue;
+        if (G.fixes >= 25 && G.fx.myruThrough == other) continue;  // Myru Vos (Thunder's Edge): no space cannon against them
         int best = -1, bestV = 99, dice = 0;
         auto consider = [&](const Force& f) {
             for (int t = 0; t < kUnitTypes; ++t) {
@@ -357,7 +358,7 @@ void Rules::ds6StatusStart() {
         if (pl.commodities > 0) opts.push_back({1, "Turn 1 commodity into a trade good", ""});
         if (opts.empty()) break;
         const int c = opts.size() == 1 ? opts[0].id : fpick(vd, Ab::DsHolding, "Holding Company (" + planetName(b) + "): what do you take?", opts);
-        if (c == 0) pl.commodities = int8_t(pl.commodities + 1);
+        if (c == 0) { const int cb_ = pl.commodities; pl.commodities = int8_t(pl.commodities + 1); commodityGained(vd, cb_); }
         else {
             pl.commodities = int8_t(pl.commodities - 1);
             gainTG(vd, 1);

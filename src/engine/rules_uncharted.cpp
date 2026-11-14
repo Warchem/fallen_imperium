@@ -203,7 +203,7 @@ bool Rules::usResolve(int p, int card, const WinCtx* c) {
                                          : pick(p, Tag::CardTarget, std::string("Free Trade Initiative (") + traitName[t] + "): which?", o);
             if (ch == 1) {
                 const int n = std::min(2, cap - pl.commodities);
-                pl.commodities = int8_t(pl.commodities + n);
+                { const int cb_ = pl.commodities; pl.commodities = int8_t(pl.commodities + n); commodityGained(p, cb_); }
                 say(p, pn(p) + " gains " + std::to_string(n) + " commodities (" + name + ").");
             } else {
                 const int n = std::min(2, int(pl.commodities));
@@ -296,7 +296,7 @@ bool Rules::usResolve(int p, int card, const WinCtx* c) {
             } else {
                 G.exploreDiscard[d].push_back(int16_t(e));
                 if (pl.commodities < cap) {
-                    pl.commodities = int8_t(pl.commodities + 1);
+                    { const int cb_ = pl.commodities; pl.commodities = int8_t(pl.commodities + 1); commodityGained(p, cb_); }
                     say(p, pn(p) + " discards " + kExploreCards[e].name + " and gains 1 commodity (" + name + ").");
                 }
             }
@@ -330,7 +330,7 @@ bool Rules::usResolve(int p, int card, const WinCtx* c) {
         const int cap = commodityCap(G, pl);
         const int room = std::max(0, cap - pl.commodities);
         const int comm = std::min(4, room), tg = 4 - comm;
-        pl.commodities = int8_t(pl.commodities + comm);
+        { const int cb_ = pl.commodities; pl.commodities = int8_t(pl.commodities + comm); commodityGained(p, cb_); }
         say(p, pn(p) + " gains " + std::to_string(comm) + " commodities" + (tg ? " and " + std::to_string(tg) + " trade goods" : "") + " (" +
                    name + ").");
         if (tg) gainTG(p, tg);
@@ -474,7 +474,7 @@ bool Rules::usResolve(int p, int card, const WinCtx* c) {
             gainTG(p, 2);
             say(p, pn(p) + " gains 2 trade goods (" + name + ").");
         } else {
-            pl.commodities = int8_t(refreshTo(G, pl));
+            { const int cb_ = pl.commodities; pl.commodities = int8_t(refreshTo(G, pl)); commodityGained(p, cb_); }
             say(p, pn(p) + " refills their commodities (" + name + ").");
         }
         return true;

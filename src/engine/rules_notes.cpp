@@ -164,6 +164,16 @@ void Rules::tradeAgreement(int owner) {
         G.players[owner].commodities = 0;
         gainTG(q, n);
         say(q, pn(q) + " receives " + std::to_string(n) + " commodities from " + pn(owner) + " (as trade goods).");
+        // (fixes 26, the Empyrean review - owner 2026-11-12) Dark Pact: "When you give a number of commodities to the
+        // Empyrean player equal to your maximum commodity value, you each gain 1 trade good" - this way too
+        if (G.fixes >= 26 && n > 0 && isFaction(G, q, "empyrean") && n >= commodityValue(G, owner))
+            for (int16_t x : G.players[owner].notesInPlay)
+                if (noteOwner(x) == q && noteType(x) == kNoteFaction) {
+                    gainTG(owner, 1);
+                    gainTG(q, 1);
+                    say(owner, pn(owner) + " and " + pn(q) + " each gain 1 trade good (Dark Pact).");
+                    break;
+                }
         return;
     }
 }

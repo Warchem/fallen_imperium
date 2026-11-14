@@ -495,7 +495,7 @@ void Rules::ds4TurnStart(int p) {
                 spendAgent(user, "vaden");
                 agentDone(user, p);
                 const int got = std::min(planetInfluence(G, x), commodityCap(G, pl) - pl.commodities);
-                pl.commodities = int8_t(pl.commodities + got);
+                { const int cb_ = pl.commodities; pl.commodities = int8_t(pl.commodities + got); commodityGained(p, cb_); }
                 ds4Event(E, p, "Yudri Sukhov", pn(p) + " gains " + std::to_string(got) + " commodities.");
             }
         }
@@ -624,7 +624,7 @@ void Rules::ds4StatusStart() {
         for (int16_t o : pl.scored) (kObjectives[o].kind == 3 ? sec : pub) += 1;
         if (sec) gainTG(p, sec);
         const int c = std::min(pub, commodityCap(G, pl) - pl.commodities);
-        if (c > 0) pl.commodities = int8_t(pl.commodities + c);
+        if (c > 0) { const int cb_ = pl.commodities; pl.commodities = int8_t(pl.commodities + c); commodityGained(p, cb_); }
         if (sec || c > 0) ds4Event(E, p, "Komdar Borodin", pn(p) + " collects interest: " + std::to_string(sec) + " trade goods, " + std::to_string(std::max(0, c)) + " commodities.");
     }
 }
@@ -945,7 +945,7 @@ void Rules::ds4PlanetsExhausted(int p, const std::vector<int>& planets) {
             if (!policyMinus(G, p, 2)) {
                 if (first(Trait::Industrial) >= 0 && pl.commodities < commodityCap(G, pl)) {
                     pl.dsPolOnce = uint8_t(pl.dsPolOnce | 4);
-                    pl.commodities = int8_t(pl.commodities + 1);
+                    { const int cb_ = pl.commodities; pl.commodities = int8_t(pl.commodities + 1); commodityGained(p, cb_); }
                     ds4Event(E, p, "Empower", pn(p) + " gains 1 commodity.");
                         if (breakthroughsOn(G)) dsbtPolicy(p);  // Insurrectionist Networking (0.43.0)
                 }

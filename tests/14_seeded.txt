@@ -2,6 +2,11 @@
 wait 5
 press A
 wait 5
+# (0.58.0: up past AI speed, Mecatol Rex (0.54.0) and Hyperlanes to Galaxy)
+press UP
+wait 2
+press UP
+wait 2
 press UP
 wait 2
 press UP

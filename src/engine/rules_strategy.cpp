@@ -76,11 +76,14 @@ void Rules::secondaryAbility(int q, int card) {
             dsSecondaryDone(q, card);  // Fine Print (Vaden)
         return;
     }
-    const bool ener = graceFree_ || enervateFree(q);  // Enervate (Grace, Discordant Stars): no command token
+    const bool ener = graceFree_ || enervateFree(q, card);  // Enervate (Grace, Discordant Stars): no command token
     const bool freeTrade = card == 4 && fac(q, "hacan");  // Masters of Trade: no token needed
     // Acquiescence (Winnu's note): no token for the secondary of the Winnu player's strategic action
     const int w = strategicPlayer_;
-    const bool acq = !ener && w >= 0 && w != q && fac(w, "winnu") && holdsNote(G, q, w, kNoteFaction);
+    // (fixes 26, the Winnu review) not for Mathis Mathinus' secondaries, and the original card (games without the Codex)
+    // works at the end of the strategy phase instead (endOfStrategyPhase)
+    const bool acq = !ener && w >= 0 && w != q && fac(w, "winnu") && holdsNote(G, q, w, kNoteFaction) &&
+                     (G.fixes < 26 || (!mathis_ && codexOn(G)));
     // Hesh and Prit (Naaz-Rokha hero): tokens come from the reinforcements; Jae Mir Kan (Mahact agent): the active player's
     const bool canPay = heshPrit_ ? reinforcementTokens(q) > 0 : (pl.strategy > 0 || jaeMirKan(q, false));
     // Mindsieve (Naalu breakthrough, Thunder's Edge): give the card's owner a promissory note instead of a token
@@ -120,7 +123,9 @@ void Rules::secondaryAbility(int q, int card) {
             if (breakthroughIs(G, q, "jolnar"))
                 for (int x : controlledPlanets(G, q))
                     if (!G.planets[size_t(x)].exhausted && planetSkips(G, x)) compounds = true;
-            if (spendable(G, q, false) < 4 && lawOwner(G, "minister_sciences") != q && !compounds) return;
+            // ((fixes 27, the Jol-Nar review - owner 2026-11-13) Brilliant: the primary it becomes costs nothing)
+            const bool brilliant = G.fixes >= 27 && fac(q, "jolnar");
+            if (spendable(G, q, false) < 4 && lawOwner(G, "minister_sciences") != q && !compounds && !brilliant) return;
             bool any = false;
             for (int t = 0; t < kTechCount && !any; ++t)
                 if (canResearchNow(G, q, t)) any = true;
@@ -163,7 +168,8 @@ void Rules::secondaryAbility(int q, int card) {
     } else if (freeTrade || heshPrit_ || ener) {
         // no token from the strategy pool (Hesh and Prit: a token from the reinforcements)
     } else if (jaeMirKan(q, true)) {
-        jae = true;  // RULES-CHECK: with Jae Mir Kan, Construction places no token of the Mahact player
+        jae = true;  // (fixes 26, owner 2026-11-12: Construction places the active player's token instead - LRR 24.3)
+        if (G.fixes >= 26) jaeToken_ = strategicPlayer_;
     } else if (!scepter(q)) {
         spendStrategy(q, 1);  // Scepter of Emelpar: from reinforcements instead
     }
@@ -177,6 +183,10 @@ void Rules::secondaryAbility(int q, int card) {
     }
     const bool wasFree = freeSecondary_;
     if (useAcq || jae || sieved || ener) freeSecondary_ = true;
+    struct JaeGuard {
+        int& v;
+        ~JaeGuard() { v = -1; }
+    } jaeGuard{jaeToken_};
     switch (card) {
         case 1: diplomacy(q, false); break;
         case 2:
@@ -188,8 +198,24 @@ void Rules::secondaryAbility(int q, int card) {
         case 5: warfare(q, (G.modules & kModDiscordant) && dsZealous(q)); break;  // Zealous (Kortali): the primary instead
         case 6:
             // Brilliant (Jol-Nar): resolve the primary ability instead.
-            if (fac(q, "jolnar") && fyes(q, Ab::Brilliant, "Brilliant: resolve Technology's primary ability instead?",
-                                          "Research 1 technology for free, then a second one for 6 resources if you like."))
+            if (G.fixes >= 27) {
+                // (fixes 27, the Jol-Nar review - owner 2026-11-13) "When you spend a command token to resolve the secondary
+                // ability": not when a note (Mindsieve) or nothing (Enervate) paid; below 4 resources (and no other way to
+                // pay) it is the only way to research, so it is used without asking
+                bool brilliant = false;
+                if (fac(q, "jolnar") && !sieved && !ener) {
+                    bool compounds = false;
+                    if (breakthroughIs(G, q, "jolnar"))
+                        for (int x : controlledPlanets(G, q))
+                            if (!G.planets[size_t(x)].exhausted && planetSkips(G, x)) compounds = true;
+                    const bool canFollow = spendable(G, q, false) >= 4 || lawOwner(G, "minister_sciences") == q || compounds;
+                    brilliant = !canFollow || fyes(q, Ab::Brilliant, "Brilliant: resolve Technology's primary ability instead?",
+                                                   std::string(abilityText(G.players[size_t(q)].faction, 1)));
+                    if (brilliant) say(q, pn(q) + " resolves Technology's primary ability instead (Brilliant).");
+                }
+                technology(q, brilliant);
+            } else if (fac(q, "jolnar") && fyes(q, Ab::Brilliant, "Brilliant: resolve Technology's primary ability instead?",
+                                                 "Research 1 technology for free, then a second one for 6 resources if you like."))
                 technology(q, true);
             else
                 technology(q, false);
@@ -396,10 +422,28 @@ void Rules::construction(int p, bool primary) {
                                                      : "Your strategy token stays here: you can't activate this system this round."});
     }
     if (opts.empty()) return;
-    int s = pick(p, Tag::ConstructionSystem, "Construction: put your strategy token in which system?", opts,
-                 "Then place a PDS or space dock on a planet you control there.", true);
+    // (fixes 26, the Mahact review - owner 2026-11-12) LRR 24.3: "spend one command token ... and place that command token
+    // in any system" - with Jae Mir Kan the token used is the active player's, so theirs goes there
+    const int jt = G.fixes >= 26 ? jaeToken_ : -1;
+    if (jt >= 0)
+        for (Option& o : opts)
+            o.detail = G.systems[size_t(o.id)].hasToken(jt) ? pn(jt) + " already has a token here: theirs goes back to their reinforcements."
+                                                            : pn(jt) + "'s command token (Jae Mir Kan) goes here: they can't activate this system this round.";
+    int s = pick(p, Tag::ConstructionSystem,
+                 jt >= 0 ? "Construction: put " + pn(jt) + "'s command token in which system?" : std::string("Construction: put your strategy token in which system?"),
+                 opts, "Then place a PDS or space dock on a planet you control there.", true);
+    if (jt >= 0) {
+        if (!G.systems[size_t(s)].hasToken(jt)) {
+            G.systems[size_t(s)].tokens |= uint16_t(1u << jt);
+            zeuTE(jt, s);  // (fixes 27)
+        }
+        say(p, pn(p) + " places " + pn(jt) + "'s command token in " + sysName(s) + " (Jae Mir Kan).", s);
+    }
     // no token was spent (Galactic Crisis Pact, Acquiescence): none is placed either
-    if (!freeSecondary_ && !G.systems[s].hasToken(p)) G.systems[s].tokens |= uint16_t(1u << p);
+    else if (!freeSecondary_ && !G.systems[s].hasToken(p)) {
+        G.systems[s].tokens |= uint16_t(1u << p);
+        zeuTE(p, s);  // (fixes 27)
+    }
     placeStructure(p, s, true, true, false);
 }
 
@@ -587,6 +631,7 @@ void Rules::warfare(int p, bool primary) {
 // ------------------------------------------------------------------ 7 Technology
 bool Rules::researchStep(int p, int resourceCost, const std::string& why, int exclude) {
     if (fac(p, "nekro")) return propagation(p, resourceCost);  // Propagation: command tokens instead
+    const int cost0 = resourceCost;  // (fixes 27: a second pick when the Deepwrought say no)
     std::vector<Option> opts;
     std::vector<int> inheritOnly;  // reachable only with Inheritance Systems (L1Z1X)
     std::vector<int> inheritMaybe;  // (0.44.9) reachable without it - it may still be used
@@ -634,7 +679,7 @@ bool Rules::researchStep(int p, int resourceCost, const std::string& why, int ex
     };
     // Doctor Carrina (Deepwrought agent, Thunder's Edge): the Deepwrought may let us ignore 1 prerequisite
     const int dwAgent = (G.modules & kModThundersEdge) ? playerOfFaction(G, "deepwrought") : -1;
-    const bool carrinaOk = dwAgent >= 0 && dwAgent != p && canUseAgent(dwAgent, "deepwrought");
+    const bool carrinaOk = dwAgent >= 0 && dwAgent != p && canUseAgent(dwAgent, "deepwrought") && !carrinaNo_;
     auto carrinaFits = [&](int t) { return carrinaOk && techAvailableToResearch(G, p, t) && shortBy(t) == 1; };
     for (int t = 0; t < kTechCount; ++t) {
         if (t == exclude || !techAvailableToResearch(G, p, t)) continue;
@@ -807,6 +852,23 @@ bool Rules::researchStep(int p, int resourceCost, const std::string& why, int ex
         if (best < 0)
             for (size_t s2 = 0; s2 < G.systems.size() && bestSys < 0; ++s2)
                 if (G.systems[s2].space[p].count(UnitType::Infantry)) bestSys = int(s2);
+        // (fixes 26, the Yin review - owner 2026-11-12) "you may return 1 of your infantry": a person chooses which (bots keep
+        // taking it from their planet with the most)
+        if (G.fixes >= 26 && G.players[size_t(p)].human) {
+            std::vector<Option> io;
+            for (size_t x = 0; x < G.planets.size(); ++x)
+                if (const int n = G.planets[x].units[p].count(UnitType::Infantry))
+                    io.push_back({int(x), planetName(int(x)), std::to_string(n) + " infantry"});
+            for (size_t s2 = 0; s2 < G.systems.size(); ++s2)
+                if (const int n = G.systems[s2].space[p].count(UnitType::Infantry))
+                    io.push_back({20000 + int(s2), "Space: " + sysName(int(s2)), std::to_string(n) + " infantry"});
+            if (io.size() > 1) {
+                const int w = fpick(p, Ab::YinCommander, "Brother Omar: return which infantry to your reinforcements?", io,
+                                    "Its prerequisites are ignored for " + std::string(kTechs[t].name) + ".", false, true);
+                best = w < 20000 ? w : -1;
+                bestSys = w >= 20000 ? w - 20000 : -1;
+            }
+        }
         removing_ = true;
         if (best >= 0) destroyUnits(p, UnitType::Infantry, 1, G.planets[best].system, best, -1, "Brother Omar");
         else if (bestSys >= 0) destroyUnits(p, UnitType::Infantry, 1, bestSys, -1, -1, "Brother Omar");
@@ -817,6 +879,15 @@ bool Rules::researchStep(int p, int resourceCost, const std::string& why, int ex
     }
     if (!usedRiftmeld && !canResearchNow(G, p, t) && !aidaFits(t) && !tearsFits(t) && !omarFits(t) && !fkFits(t) && carrinaFits(t)) {
         if (!carrina(p)) {  // (the Deepwrought said no)
+            // (fixes 27, the Deepwrought review: the research isn't lost - the player chooses another technology, as
+            // with any choice that turns out impossible; before, 3.5-4 researches a game were lost in sims)
+            if (G.fixes >= 27 && !carrinaNo_) {
+                say(p, "The Deepwrought won't help: " + pn(p) + " chooses another technology.");
+                carrinaNo_ = true;
+                const bool ok = researchStep(p, cost0, why, exclude);
+                carrinaNo_ = false;
+                return ok;
+            }
             say(p, "The Deepwrought won't help: " + pn(p) + " can't research " + kTechs[t].name + " now.");
             return false;
         }
@@ -865,6 +936,18 @@ bool Rules::researchStep(int p, int resourceCost, const std::string& why, int ex
             }
         exhaustTech(p, "aida");
         say(p, pn(p) + " uses AI Development Algorithm to ignore a prerequisite.");
+    }
+    // (fixes 27, the Deepwrought review - owner 2026-11-14: "closest with the rules, but makes sense to implement") Doctor
+    // Carrina also when the player could research without her: "You can ignore a prerequisite even if you can already meet
+    // it" (the card's notes) - offered when it keeps a specialty planet ready (otherwise ignoring one changes nothing)
+    if (G.fixes >= 27 && (G.modules & kModThundersEdge) && !usedRiftmeld && !usedTears && !aidaFirst && !carrinaNo_ && !owns(p, "pa")) {
+        int c = -1;
+        for (int k = 0; k < 4 && c < 0; ++k)
+            if (missing[k] > 0 && !skipPlanets(G, p, TechColor(k)).empty()) c = k;
+        if (c >= 0 && carrinaSpare(p, t)) {
+            --missing[c];
+            say(p, pn(p) + " ignores a prerequisite with Doctor Carrina's help.");
+        }
     }
     TechColor synA, synB;
     const bool syn = synergyOf(G, p, synA, synB);  // Thunder's Edge: the pair's specialties stand in for each other

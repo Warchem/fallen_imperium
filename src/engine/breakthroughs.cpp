@@ -11,70 +11,101 @@ namespace ti {
 namespace {
 constexpr TechColor B = TechColor::Blue, G_ = TechColor::Green, R = TechColor::Red, Y = TechColor::Yellow, N = TechColor::None;
 const BreakthroughDef kBt[] = {
-    {"arborec", "Psychospore", G_, R, "Action: exhaust it to take one of your command tokens back from a system with your infantry, "
-                                     "then place 1 infantry there.", true},
-    {"argent", "Wing Transfer", B, Y, "After you activate a system holding only your units: put command tokens from your reinforcements "
-                                     "in adjacent systems holding only your units; at the end of the action, ships may move among those "
-                                     "systems.", true},
-    {"empyrean", "Void Tether", B, G_, "After you activate a system with or next to your units or planets: place or move a Void Tether on "
-                                      "one of its borders - other players don't count those two systems as adjacent unless you allow it.",
+    {"arborec", "Psychospore", G_, R, "ACTION: Exhaust this card to remove a command token from a system that contains 1 or more of "
+                                     "your infantry and return it to your reinforcements. Then, place 1 infantry in that system.", true},
+    {"argent", "Wing Transfer", B, Y, "When you activate a system that contains only your units, you may place command tokens from your "
+                                     "reinforcements into any systems adjacent to that system that contain only your units; at the end of "
+                                     "this action, you may move ships among the active system and systems adjacent to it that contain your "
+                                     "command tokens.", true},  // (the Argent review, 2026-11-13: the card)
+    {"empyrean", "Void Tether", B, G_, "When you activate a system that contains or is adjacent to a unit or planet you control, you may "
+                                      "place or move 1 of your Void Tether tokens onto a border that system shares with another system; "
+                                      "other players do not treat those systems as adjacent to each other unless you allow it.",
+     true},  // (the Empyrean review: the card's wording)
+    {"letnev", "Gravleash Maneuvers", B, R, "Before you roll dice during space combat, apply +X to the results of 1 of your ship's rolls, "
+                                           "where X is the number of ship types you have in the combat. During movement, your non-fighter "
+                                           "ships' move values are equal to the highest move value amongst moving ships in the system they "
+                                           "started in.", true},
+    {"muaat", "Stellar Genesis", Y, R, "When you gain this card, place the Avernus planet token into a non-home system that is adjacent "
+                                      "to a planet you control; gain the Avernus planet card and ready it. After you move one of your war suns "
+                                      "out of or through Avernus's system and into a non-home system, you may move the Avernus token with it.", true},
+    {"cabal", "Al'Raith Ix Ianovar", G_, R, "This breakthrough causes The Fracture to enter play without a roll, if it is not already in "
+                                           "play. After this card enters play, move up to 2 ingress tokens into systems that contain "
+                                           "gravity rifts. Apply +1 to the MOVE value of each of your ships that start their movement in "
+                                           "The Fracture.", true},
+    {"l1z1x", "Fealty Uplink", G_, R, "When you gain control of a planet, place infantry from your reinforcements equal to that planet's influence value on that planet.", true},
+    {"sardakk", "N'orr Supremacy", B, R, "After you win a combat, either gain 1 command token or research a unit upgrade technology.", true},
+    {"sol", "Bellum Gloriosum", G_, Y, "When you produce a ship that has capacity, you may also produce any combination of ground "
+                                      "forces or fighters up to that ship's capacity; they do not count against your PRODUCTION "
+                                      "limit.", true},  // (the Sol review: the card's wording)
+    {"winnu", "Imperator", B, R, "Apply +1 to the results of each of your unit's combat rolls for each \"Support for the Throne\" "
+                                "in your opponent's play area. After you activate a system that contains a legendary planet, apply +1 "
+                                "to the move value of 1 of your ships during this tactical action.", true},  // (the Winnu review: the card's wording)
+    {"yin", "Yin Ascendant", G_, Y, "When you gain this card or score a public objective, gain the alliance ability of a random, "
+                                   "unused faction.", true},
+    {"ghost", "Particle Synthesis", B, Y, "Each wormhole in a system that contains your ships gains PRODUCTION 1 as if it were a "
+                                          "unit you control. Reduce the combined cost of units you produce in systems that contain "
+                                          "wormholes by 1 for each wormhole in that system.", true},
+    {"hacan", "Auto-Factories", Y, R, "When you produce 3 or more non-fighter ships, place 1 command token from your reinforcements "
+                                     "into your fleet pool.", true},  // (the Hacan review: the card's wording)
+    {"mahact", "Vaults of the Heir", G_, Y, "ACTION: Exhaust this card and purge 1 of your technologies to gain 1 relic.", true},
+    {"mentak", "The Table's Grace", G_, Y, "If you have the Cruiser II unit upgrade technology, flip this card and place it on top of "
+                                          "Cruiser II. Corsair: Cost 2, Combat 6, Move 3, Capacity 2. If the active system contains another "
+                                          "player's non-fighter ships, this unit can move through systems that contain other players' ships.",
+     true},  // (the Mentak review, 2026-11-13: the card)
+    {"nekro", "Valefar Assimilator Z", N, N, "When you would gain another player's technology using one of your faction abilities, you "
+                                            "may instead place one of your \"Z\" assimilator tokens on that player's faction sheet. Your "
+                                            "flagship gains the text abilities of that faction's flagship in addition to its own.",
+     true},  // (the Nekro review, 2026-11-14: the card)
+    {"titans", "Slumberstate Computing", G_, Y, "When COALESCENCE results in a ground combat, if you commit no other units, you may "
+                                               "choose for your units to coexist instead. During the status phase, for each player you "
+                                               "are coexisting with, you and that player each draw 1 additional action card. Other "
+                                               "players may allow you to place a sleeper token on a planet they control.", true},
+    {"xxcha", "Archon's Gift", G_, Y, "You can spend influence as if it were resources. You can spend resources as if it were influence.",
+     true},  // (the Xxcha review, 2026-11-13: the card)
+    {"nomad", "Thunder's Paradox", G_, Y, "At the start of any player's turn, you may exhaust 1 of your agents to ready any other agent.", true},  // (the Nomad review: the card)
+    {"jolnar", "Specialist Compounds", G_, Y, "When you research technology using the 'Technology' strategy card, you may exhaust a "
+                                             "planet that has a technology specialty instead of spending resources; if you do, you "
+                                             "must research a technology of that color.",
      true},
-    {"letnev", "Gravleash Maneuvers", B, R, "Before your space combat rolls: +X to one ship's roll, X = the ship types you have in the "
-                                           "fight. Moving ships all use the best move value among the ships that started with them.", true},
-    {"muaat", "Stellar Genesis", Y, R, "When you gain it: put the Avernus planet next to one of your planets (not a home system) and take "
-                                      "it, ready. Your war suns leaving Avernus's system may take it along.", true},
-    {"cabal", "Al'Raith Ix Ianovar", G_, R, "The Fracture enters play (no roll); move up to 2 ingress tokens into gravity rifts. Your "
-                                           "ships starting in the Fracture get +1 move.", true},
-    {"l1z1x", "Fealty Uplink", G_, R, "When you gain control of a planet, place infantry on it equal to its influence.", true},
-    {"sardakk", "N'orr Supremacy", B, R, "After you win a combat: gain 1 command token, or research a unit upgrade.", true},
-    {"sol", "Bellum Gloriosum", G_, Y, "When you produce a ship with capacity, you may also produce ground forces or fighters up to "
-                                      "its capacity, outside your Production limit.", true},
-    {"winnu", "Imperator", B, R, "+1 to your combat rolls for each Support for the Throne in your opponent's play area. After you "
-                                "activate a system with a legendary planet, 1 of your ships moves 1 further.", true},
-    {"yin", "Yin Ascendant", G_, Y, "When you gain it and when you score a public objective: gain the Alliance ability of a random "
-                                   "faction nobody plays.", true},
-    {"ghost", "Particle Synthesis", B, Y, "Each wormhole in a system with your ships has Production 1. Units you produce in a "
-                                          "system with wormholes cost 1 less per wormhole.", true},
-    {"hacan", "Auto-Factories", Y, R, "When you produce 3 or more non-fighter ships, put 1 command token from your reinforcements in "
-                                     "your fleet pool.", true},
-    {"mahact", "Vaults of the Heir", G_, Y, "Action: exhaust it and purge one of your technologies to gain a relic.", true},
-    {"mentak", "The Table's Grace", G_, Y, "With Cruiser II: your cruisers become Corsairs (combat 6, move 3, capacity 2) and may "
-                                          "move through other players' ships when the active system holds other players' non-fighter "
-                                          "ships.", true},
-    {"nekro", "Valefar Assimilator Z", N, N, "When one of your faction abilities would give you another player's technology, you may "
-                                            "instead give your flagship that faction's flagship abilities.", true},
-    {"titans", "Slumberstate Computing", G_, Y, "When Coalescence would start a ground combat and you commit nothing else, your units "
-                                               "may coexist instead. Status phase: you and each player you coexist with draw 1 "
-                                               "more action card.", true},
-    {"xxcha", "Archon's Gift", G_, Y, "You may spend influence as resources and resources as influence.", true},
-    {"nomad", "Thunder's Paradox", G_, Y, "At the start of any player's turn: exhaust 1 of your agents to ready another agent.", true},
-    {"jolnar", "Specialist Compounds", G_, Y, "When you research with the Technology card: exhaust a planet with a technology "
-                                             "specialty instead of spending resources, and research a technology of that colour.",
-     true},
-    {"naalu", "Mindsieve", G_, R, "When you would use the secondary of another player's strategy card: give them a promissory note "
-                                 "instead of spending a command token.", true},
-    {"saar", "Deorbit Barrage", B, R, "Action: exhaust it and spend resources: on a planet up to 2 systems from an asteroid field "
-                                     "with your ships, roll that many dice; each 4 or more is a hit on a ground force there.", true},
-    {"yssaril", "Deepgloom Executable", G_, Y, "Other players may ask to use your Stall Tactics; when you allow it, you may "
-                                              "trade with them afterwards.", true},
-    {"keleres", "I.I.H.Q. Modernization", G_, Y, "When you gain it: take the Custodia Vigilia planet and its legendary ability. You are "
-                                                "neighbours of everyone with units or planets in or next to Mecatol Rex.", true},
-    {"naaz", "Absolute Synergy", B, G_, "With 4 mechs in one system, return 3 of them to flip this onto your mech card: Eidolon "
-                                       "Maximum (combat 4 x4, move 3, sustain damage; a ship and a ground force).", true},
+    {"naalu", "Mindsieve", G_, R, "When you would resolve the secondary ability of another player's strategy card, you may give them a "
+                                 "promissory note to resolve it without spending a command token.", true},
+    {"saar", "Deorbit Barrage", B, R, "ACTION: Exhaust this card and spend any amount of resources to choose a planet up to 2 systems "
+                                     "away from an asteroid field that contains your ships; roll a number of dice equal to the amount "
+                                     "spent and assign 1 hit to a ground force on that planet for each roll of 4 or greater.", true},
+    {"yssaril", "Deepgloom Executable", G_, Y, "You can allow other players to use your STALL TACTICS or SCHEMING faction abilities; "
+                                              "when you do, you may resolve a transaction with that player. During the action phase, "
+                                              "that transaction does not count against the once-per-player transaction limit for that "
+                                              "turn.", true},  // (the Yssaril review: the card's wording)
+    {"keleres", "I.I.H.Q. Modernization", G_, Y, "When you gain this card, gain the Custodia Vigilia planet card and its legendary planet "
+                                                "ability card. You are neighbors with all players that have units or control planets in or "
+                                                "adjacent to the Mecatol Rex system. (Custodia Vigilia: 2 resources, 3 influence. Custodian's "
+                                                "Favour: While you control Mecatol Rex, it gains SPACE CANNON 5 and PRODUCTION 3. Gain 2 command "
+                                                "tokens when another player scores a victory point with the second clause of the \"Imperial\" "
+                                                "strategy card.)", true},  // (the Keleres review: the card's wording)
+    {"naaz", "Absolute Synergy", B, G_, "When you have 4 mechs in the same system, you may return 3 of those mechs to your "
+                                       "reinforcements to flip this card and place it on top of your mech card. Eidolon Maximum: "
+                                       "[Combat 4 (x4), Move 3, Sustain Damage] This unit is both a ship and ground force. It cannot "
+                                       "be assigned hits from unit abilities. Repair it at the start of every combat round. Game "
+                                       "effects cannot place or produce your mechs. When this unit is destroyed or removed, flip "
+                                       "this card and return it to your play area.", true},
     // Thunder's Edge factions (part 4)
-    {"bastion", "The Icon", Y, R, "When you produce ships: exhaust it to place them in a system with your command token, your ground "
-                                 "forces and no other player's ships.", true},
-    {"crimson", "Resonance Generator", B, R, "Your ships starting in your home system or in a system with an active breach get +1 "
-                                            "move. Action: exhaust it to flip a breach, or place an active breach where you have units.",
+    {"bastion", "The Icon", Y, R, "When you produce ships, you may exhaust this card to place those ships in a system that contains 1 "
+                                 "of your command tokens, at least 1 of your ground forces, and no other player's ships.", true},
+    {"crimson", "Resonance Generator", B, R, "During your tactical actions, your ships that start their move in your home system or "
+                                            "in a system with an active breach get +1 move. Action: exhaust it to flip any breach, or to "
+                                            "place an active breach in a non-home system with your units.",
      true},
-    {"firmament", "The Sowing", G_, Y, "When you gain it and at the start of the status phase: place up to 3 of your trade goods on it. "
-                                      "(The Obsidian: The Reaping.)", true},
-    {"obsidian", "The Reaping", G_, Y, "Each time you win a combat against a puppeted player, put 1 trade good on it; at the start of "
-                                      "the status phase, take them and as many again.", true},
-    {"deepwrought", "Visionaria Select", G_, Y, "Action: exhaust it - every other player may spend 3 trade goods and give you a "
-                                               "promissory note to research a generic technology; you gain each one researched.", true},
-    {"ralnel", "Data Skimmer", G_, Y, "In the action phase, before you pass: other players' discarded action cards go onto this card. "
-                                     "When you pass, keep 1 of them and discard the rest.", true},
+    {"firmament", "The Sowing", G_, Y, "When you gain this card and at the start of the status phase, you may place up to 3 of your trade "
+                                      "goods on this card. Flip this card if you become The Obsidian faction.", true},
+    {"obsidian", "The Reaping", G_, Y, "Place 1 trade good from the supply onto this card each time you win a combat against a puppeted "
+                                      "player. At the start of the status phase, gain all trade goods on this card, then gain an equal "
+                                      "number of trade goods from the supply.", true},
+    {"deepwrought", "Visionaria Select", G_, Y, "ACTION: Exhaust this card to allow each other player to spend 3 trade goods and "
+                                               "give you 1 promissory note. Each player that does may research a non-faction, non-unit "
+                                               "upgrade technology. You also gain each technology researched in this way.", true},  // (the Deepwrought review: the card's wording)
+    {"ralnel", "Data Skimmer", G_, Y, "During the action phase, if you have not passed, when other players would discard action cards, "
+                                     "they are placed on this card instead. When you pass, take 1 action card from this card and "
+                                     "discard the rest.", true},  // (the Ral Nel review: the card's wording)
     // Discordant Stars (0.43.0, owner D1: with Thunder's Edge too) - done is set as each is implemented (rules_dsbt.cpp)
     {"axis", "Arms Brokerage", B, R, "At the start of another player's turn, exhaust it: that player uses 1 of your unit upgrades as their own "
                                     "this turn. After you refill commodities, gain a trade good per unit upgrade you own.", true},

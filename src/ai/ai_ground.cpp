@@ -58,6 +58,8 @@ const Slices& slices(const Game& g) {
     static Slices s;
     uint64_t key = (uint64_t(g.seed) << 20) ^ (uint64_t(g.systems.size()) << 4) ^ uint64_t(g.numPlayers);
     for (const Player& pl : g.players) key = key * 131 + uint64_t(pl.homeSystem + 1);
+    // (systems that changed places - Riftwalker Meian - or tiles added in play: worked out again)
+    for (const SystemState& sy : g.systems) key = key * 31 + uint64_t(uint32_t(sy.pos.q * 977 + sy.pos.r));
     if (s.key == key && s.owner.size() == g.systems.size()) return s;
     s.key = key;
     const int n = int(g.systems.size()), np = g.numPlayers;

@@ -280,7 +280,7 @@ void Rules::ds5RoundEnd(int att, int def, int sys, bool space) {
         if (pl.commodities > 0) opts.push_back({1, "Turn 1 commodity into a trade good", ""});
         if (opts.empty()) continue;
         const int c = opts.size() == 1 ? opts[0].id : fpick(side, Ab::DsNecrophage, "Necrophage: what do you take from the fallen?", opts);
-        if (c == 0) pl.commodities = int8_t(pl.commodities + 1);
+        if (c == 0) { const int cb_ = pl.commodities; pl.commodities = int8_t(pl.commodities + 1); commodityGained(side, cb_); }
         else {
             pl.commodities = int8_t(pl.commodities - 1);
             gainTG(side, 1);
@@ -331,7 +331,7 @@ void Rules::ds5UnitsDestroyed(int p, UnitType t, int k, int sys, int planet, int
             Player& mp = G.players[size_t(my)];
             qarnyxRound_ = combatRound_;
             if (mp.commodities < commodityCap(G, mp)) {
-                mp.commodities = int8_t(mp.commodities + 1);
+                { const int cb_ = mp.commodities; mp.commodities = int8_t(mp.commodities + 1); commodityGained(my, cb_); }
                 ds5Event(E, my, "Psyclobea Qarnyx", pn(my) + " gains 1 commodity from the wreckage.", sys);
             }
         }
@@ -940,7 +940,10 @@ void Rules::ds5Produced(int p, int sys, const Force& made) {
             if (s >= 0) {
                 dsOncePerAction_ = uint8_t(dsOncePerAction_ | 1);
                 ds5Event(E, p, "Rally to the Cause", pn(p) + " rallies the free worlds of " + sysName(s) + ".", s);
+                const bool na = notProductionAbility_;  // (0.58.2, fixes 21: "produce", not PRODUCTION - no Sarween Tools)
+                if (G.fixes >= 21) notProductionAbility_ = true;
                 productionCore(p, s, 2, false, true);
+                notProductionAbility_ = na;
                 // Liberator (mech): 1 trade good for a mech on one of their planets next to it
                 if (mechAbilities(G) && unitsAvailable(G, p, UnitType::Mech) > 0 && pl.tradeGoods > 0) {
                     std::vector<Option> where;
@@ -999,7 +1002,10 @@ void Rules::ds5Control(int planet, int p, int old) {
         fyes(p, Ab::DsBroadcast, "Play " + pn(fs) + "'s Broadcast Teams: produce up to 2 ships in " + sysName(sys) + "?", "The note goes back.")) {
         returnNote(p, makeNote(fs, kNoteFaction));
         ds5Event(E, p, "Broadcast Teams", pn(p) + "'s broadcast rallies a fleet over " + planetName(planet) + ".", sys);
+        const bool na = notProductionAbility_;  // (0.58.2, fixes 21: "produce", not PRODUCTION - no Sarween Tools)
+        if (G.fixes >= 21) notProductionAbility_ = true;
         productionCore(p, sys, 2, false, true);
+        notProductionAbility_ = na;
     }
     // President Cyhn (Free Systems commander): a non-home planet taken in a tactical action - 1 ship with their ships here
     if (tactical && commanderUsable(G, p, "freesystems") && !isHome5(G, planet) && hasShips(G, p, sys) &&
@@ -1325,7 +1331,7 @@ void Rules::ds5AgendaResolved(int outcome, const std::vector<int>& voted) {
         for (int q = 0; q < G.numPlayers; ++q) {
             Player& ql = G.players[size_t(q)];
             if (size_t(q) < voted.size() && voted[size_t(q)] == outcome && ql.commodities < commodityCap(G, ql)) {
-                ql.commodities = int8_t(ql.commodities + 1);
+                { const int cb_ = ql.commodities; ql.commodities = int8_t(ql.commodities + 1); commodityGained(q, cb_); }
                 ++n;
             }
         }
@@ -1870,7 +1876,7 @@ bool Rules::ds5Action(int p, Ab ab) {
             enforceFleetLimit(q);
             ds5Event(E, p, "Shipmonger Zsknck", pn(q) + " receives a " + unitTypeName(UnitType(t)) + " from the shipmonger.", s);
             if (q != p) {
-                pl.commodities = int8_t(std::min(commodityCap(G, pl), pl.commodities + 2));
+                { const int cb_ = pl.commodities; pl.commodities = int8_t(std::min(commodityCap(G, pl), pl.commodities + 2)); commodityGained(p, cb_); }
                 dsReplenished(p, false);  // (gained, not replenished)
             }
             return true;

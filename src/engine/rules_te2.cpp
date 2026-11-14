@@ -75,10 +75,34 @@ std::vector<int> Rules::mercenaryPlanets() const {
 // ------------------------------------------------------------------ coexistence
 // A player whose units coexist on a planet neither fights there nor controls it; when their units are the only ones
 // left on it, they gain control of it (exhausted).
+// (fixes 25, owner's faction debug pass 2026-11-11) LRR 63.4 / 79.4: a player's PDS or space dock on a planet with none of
+// their own ground forces and another player's units there is destroyed - so a coexisting player whose ground forces on
+// someone else's planet are gone (a fight, bombardment, Seethe, picked up) loses the structures they left there
+void Rules::coexistStructures() {
+    if (G.fixes < 25 || !(G.modules & kModThundersEdge)) return;
+    for (size_t x = 0; x < G.planets.size(); ++x) {
+        PlanetState& ps = G.planets[x];
+        for (int q = 0; q < G.numPlayers; ++q) {
+            if (q == ps.owner || !ps.units[size_t(q)].structures() || groundForcesOn(G, q, int(x)) > 0) continue;
+            bool others = false;
+            for (int o = 0; o < G.numPlayers; ++o)
+                if (o != q && !ps.units[size_t(o)].empty()) others = true;
+            if (!others) continue;
+            for (UnitType t : {UnitType::PDS, UnitType::SpaceDock})
+                if (const int k = ps.units[size_t(q)].count(t))
+                    destroyUnits(q, t, k, ps.system, int(x), ps.owner, "none of their ground forces left there");
+            if (ps.units[size_t(q)].empty()) ps.coexist = uint16_t(ps.coexist & ~(1u << q));
+        }
+    }
+}
+
 void Rules::coexistCleanup() {
+    coexistStructures();  // (fixes 25)
     for (size_t x = 0; x < G.planets.size(); ++x) {
         PlanetState& ps = G.planets[x];
         if (!ps.coexist) continue;
+        if (G.fixes >= 25 && ((ps.coexist >> kNeutral) & 1) && ps.units[kNeutral].empty())  // (no neutral units left)
+            ps.coexist = uint16_t(ps.coexist & ~(1u << kNeutral));
         for (int q = 0; q < G.numPlayers; ++q) {
             if (!((ps.coexist >> q) & 1)) continue;
             if (ps.units[size_t(q)].empty()) {

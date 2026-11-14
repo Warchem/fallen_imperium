@@ -5,6 +5,7 @@
 namespace ti {
 
 #include "engine/gen/gamedata.inc"
+#include "engine/gen/std_layouts.inc"  // (0.58.0)
 
 const int kPlanetCount = int(sizeof(kPlanets) / sizeof(kPlanets[0]));
 const int kSystemCount = int(sizeof(kSystems) / sizeof(kSystems[0]));
@@ -13,6 +14,7 @@ const int kTechCount = int(sizeof(kTechs) / sizeof(kTechs[0]));
 const int kFactionCount = int(sizeof(kFactions) / sizeof(kFactions[0]));
 const int kObjectiveCount = int(sizeof(kObjectives) / sizeof(kObjectives[0]));
 const int kLayoutCount = int(sizeof(kLayouts) / sizeof(kLayouts[0]));
+const int kStdLayoutCount = int(sizeof(kStdLayouts) / sizeof(kStdLayouts[0]));
 const int kActionCardCount = int(sizeof(kActionCards) / sizeof(kActionCards[0]));
 const int kAgendaCount = int(sizeof(kAgendas) / sizeof(kAgendas[0]));
 const int kExploreCardCount = int(sizeof(kExploreCards) / sizeof(kExploreCards[0]));
@@ -164,84 +166,110 @@ struct KeyText {
 };
 
 const KeyText kTechText[] = {
-    {"amd", "Asteroid fields don't stop your ships. Space cannon fired at your units by other players rolls 1 lower.", true},
-    {"gd", "After you activate a system, one of your ships gets +1 move for that tactical action.", true},
-    {"fl", "On each of your turns in the action phase you may take 2 actions instead of 1.", true},
-    {"lwd", "Other players' ships don't block your ships' movement through their systems.", true},
-    {"det", "After your tactical action: explore the frontier token in the active system if your ships are there. Your ships may also retreat into adjacent systems without other players' units.", true},
-    {"sr", "Action: exhaust it - 1 ship is built in a system with one of your space docks (paid as usual).", true},
-    {"nm", "Draw 1 extra action card in each status phase.", true},
-    {"dxa", "When you win a ground combat: you may put 1 of your infantry from reinforcements on that planet.", true},
-    {"hm", "Gain 1 extra command token during each status phase.", true},
-    {"x89_base", "After your bombardment destroys at least 1 enemy infantry on a planet, you may destroy all enemy infantry there.", true},
-    {"pa", "Use technology specialties without exhausting planets, even exhausted ones. In the action phase, exhaust specialty planets for 1 trade good each.", true},
-    {"bs", "At the end of your turn, exhaust to ready one of your tech-specialty planets or another technology.", true},
-    {"ps", "When your units use bombardment or space cannon, one of them rolls 1 extra die.", true},
-    {"md_base", "Exhaust at the start of a ground combat round on a planet with your planetary-shield unit: your opponent rolls no dice that round.", true},
-    {"da", "Each combat round, after hits are assigned, repair 1 of your damaged units that did not take damage this round.", true},
-    {"asc", "Space combat start, with 3 or more non-fighter ships of yours there: the other side loses 1 non-fighter ship of their choice.", true},
-    {"aida", "Exhaust to ignore 1 prerequisite of a unit upgrade, or to cut production cost by your number of unit upgrades.", true},
-    {"sar", "After producing, exhaust to place a mech on a planet you control in that system; gain a trade good when one of your mechs is destroyed.", true},
-    {"st", "When your units produce, the combined cost is reduced by 1.", true},
-    {"gls", "Exhaust before your space cannon fires: its hits must be assigned to non-fighter ships if possible.", true},
-    {"td", "At the start of your turn, exhaust to move up to 4 of your ground forces (from planets or space) onto planets you control.", true},
-    {"ie", "After you gain control of a planet, you may produce units there with combined cost up to its resource value.", true},
-    {"sdn", "When you activate a system, you may explore a planet there that holds your units.", true},
-    {"pi", "At the end of your turn, exhaust to rearrange your command tokens. When voting in the agenda phase, you may cast 3 extra votes (exhausted if that outcome loses).", true},
+    // (the shared technologies review, 2026-11-14: the cards' wording - AsyncTI4 technologies/pok.json; X-89 = Codex I's
+    // version, which the game plays without the Codex)
+    {"amd", "Your ships can move into and through asteroid fields. When other players' units use SPACE CANNON against your units, apply -1 to the result of each die roll.", true},
+    {"gd", "After you activate a system, apply +1 to the move value of 1 of your ships during this tactical action.", true},
+    {"fl", "During each of your turns of the action phase, you may perform 2 actions instead of 1.", true},
+    {"lwd", "Your ships can move through systems that contain other players' ships.", true},
+    {"det", "After you perform a tactical action in a system that contains a frontier token, if you have 1 or more ships in that system, explore that token. Your ships can retreat into adjacent systems that do not contain other players' units, even if you do not have units or control planets in that system.", true},
+    {"sr", "ACTION: Exhaust this card to produce 1 ship in any system that contains one of your space docks.", true},
+    {"nm", "During the status phase, draw 2 action cards instead of 1.", true},
+    {"dxa", "After you win a ground combat, you may place 1 infantry from your reinforcements on that planet.", true},
+    {"hm", "During the status phase, gain 3 command tokens instead of 2.", true},
+    {"x89_base", "After 1 or more of your units use BOMBARDMENT against a planet, if at least 1 of your opponent's infantry was destroyed, you may destroy all of your opponent's infantry on that planet.", true},
+    {"pa", "You can use technology specialties on planets you control without exhausting them, even if those planets are exhausted. During the action phase, you can exhaust planets you control that have technology specialties to gain 1 trade good.", true},
+    {"bs", "You may exhaust this card at the end of your turn to ready 1 of your planets that has a technology specialty or 1 of your other technologies.", true},
+    {"ps", "When 1 or more of your units use BOMBARDMENT or SPACE CANNON, 1 of those units may roll 1 additional die.", true},
+    {"md_base", "You may exhaust this card at the start of a round of ground combat on a planet that contains 1 or more of your units that have PLANETARY SHIELD; your opponent cannot make combat rolls this combat round.", true},
+    {"da", "During each combat round, after you assign hits to your units, repair 1 of your damaged units that did not use SUSTAIN DAMAGE during this combat round.", true},
+    {"asc", "At the start of a space combat in a system that contains 3 or more of your non-fighter ships, your opponent must destroy 1 of their non-fighter ships.", true},
+    {"aida", "When you research a unit upgrade technology, you may exhaust this card to ignore any 1 prerequisite. When 1 or more of your units use PRODUCTION, you may exhaust this card to reduce the combined cost of the produced units by the number of unit upgrade technologies that you own.", true},
+    {"sar", "After 1 or more of your units use PRODUCTION, you may exhaust this card to place 1 mech from your reinforcements on a planet you control in that system. After 1 of your mechs is destroyed, gain 1 trade good.", true},
+    {"st", "When 1 or more of your units use PRODUCTION, reduce the combined cost of the produced units by 1.", true},
+    {"gls", "You may exhaust this card before 1 or more of your units uses SPACE CANNON; hits produced by those units must be assigned to non-fighter ships if able.", true},
+    {"td", "You may exhaust this card at the start of your turn during the action phase; remove up to 4 of your ground forces from the game board and place them on 1 or more planets you control.", true},
+    {"ie", "After you gain control of a planet, you may produce any number of units on that planet that have a combined cost equal to or less than that planet's resource value.", true},
+    {"sdn", "When you activate a system, you may explore 1 planet in that system which contains 1 or more of your units.", true},
+    {"pi", "At the end of your turn, you may exhaust this card to redistribute your command tokens. When you cast votes during the agenda phase, you may cast 3 additional votes; if you do, and the outcome you voted for is not resolved, exhaust this card.", true},
     // Faction technologies (Stage 5, batch 1)
-    {"l4", "During your invasions, other players can't use space cannon against your units.", true},
-    {"nes", "Sustain Damage on your units soaks up 2 hits each time instead of 1.", true},
-    {"qdn", "At the end of the strategy phase, you may spend 1 strategy token and give another player 3 trade goods to swap one of your strategy cards for one of theirs.", true},
-    {"pm", "Action: exhaust and spend 1 strategy token to gain 4 trade goods; another player of your choice gains 2.", true},
-    {"ers", "After another player activates a system that contains your ships, gain 4 trade goods.", true},
-    {"scc", "After you activate a system with your units, exhaust: this activation, it counts as adjacent to every system with your units.", true},
-    {"vpw", "After the ground combat rolls, if your opponent scored at least 1 hit, you score 1 extra hit.", true},
-    {"it", "When another player plays an action card, you may exhaust this and spend 1 strategy token to cancel it.", true},
-    {"nf", "After another player activates a system with your ships, you may exhaust this and spend 1 strategy token to end their turn.", true},
+    {"l4", "During an invasion, units cannot use SPACE CANNON against your units.", true},  // (the Letnev review: the cards' wording)
+    {"nes", "When 1 of your units uses SUSTAIN DAMAGE, cancel 2 hits instead of 1.", true},
+    // (the Hacan review, 2026-11-12: the cards' wording)
+    {"qdn", "At the end of the strategy phase, you may spend 1 token from your strategy pool and give another player 3 of your trade goods. If you do, give 1 of your strategy cards to that player and take 1 of their strategy cards.", true},
+    {"pm", "ACTION: Exhaust this card and spend 1 token from your strategy pool to gain 4 trade goods and choose 1 other player; that player gains 2 trade goods.", true},
+    {"ers", "After another player activates a system that contains 1 or more of your ships, gain 4 trade goods.", true},
+    {"scc", "You may exhaust this card after you activate a system that contains 1 or more of your units; that system is adjacent "
+            "to all other systems that contain 1 or more of your units during this activation.", true},
+    {"vpw", "After making combat rolls during a round of ground combat, if your opponent produced 1 or more hits, you produce 1 additional hit.", true},
+    // (the Xxcha review, 2026-11-13: the cards' wording)
+    {"it", "You may exhaust this card and spend 1 token from your strategy pool when another player plays an action card; cancel that "
+           "action card.", true},
+    {"nf", "After another player activates a system that contains 1 or more of your ships, you may exhaust this card and spend 1 token "
+           "from your strategy pool; immediately end that player's turn.", true},
     // Faction technologies (Stage 5, batch 2)
-    {"bio", "At the end of the status phase, you may move any of your infantry from planets you control to your planets in the same or adjacent systems.", true},
-    {"is", "When you research a technology, you may exhaust this and spend 2 resources to ignore all its prerequisites.", true},
-    {"mc", "Each trade good you spend is worth 2 resources or 2 influence.", true},
-    {"so", "After a space combat you were in, gain 1 trade good; if you won, you may produce 1 ship there of a type destroyed in that combat.", true},
-    {"ng", "After another player activates a system with your ships, they lose 1 token from their fleet pool.", true},
-    {"yso", "After your units produce, put 1 infantry from your reinforcements on a planet you control in that system.", true},
-    {"ic", "At the start of a space combat, you may destroy 1 of your cruisers or destroyers there to make 1 hit that must go to a non-fighter ship if possible.", true},
-    {"tp", "During your turns, players who have passed can't play action cards.", true},
-    {"mi", "Action: exhaust to look at another player's action cards and take 1 of them.", true},
+    {"bio", "At the end of the status phase, you may remove any number of infantry from planets you control and place them on 1 or more planets you control in the same or adjacent systems.", true},
+    {"is", "You may exhaust this card and spend 2 resources when you research a technology; ignore all of that technology's prerequisites.", true},  // (the L1Z1X review: the card's wording)
+    // (the Mentak review, 2026-11-13: the cards' wording)
+    {"mc", "When you spend trade goods, each trade good is worth 2 resources or influence instead of 1.", true},
+    {"so", "After you win or lose a space combat, gain 1 trade good; if you won the combat, you may also produce 1 ship in that system "
+           "of any ship type that was destroyed during the combat.", true},
+    {"ng", "After another player activates a system that contains 1 or more of your ships, that player removes 1 token from their fleet "
+           "pool and returns it to their reinforcements.", true},
+    // (the Yin review, 2026-11-12: the cards' wording - Yin Spinner without the Codex / Thunder's Edge)
+    {"yso", "After 1 or more of your units use PRODUCTION, place 1 infantry from your reinforcements on a planet you control in that system.", true},
+    {"ic", "At the start of a space combat, you may destroy 1 of your cruisers or destroyers in the active system to produce 1 hit against your opponent's ships; that hit must be assigned by your opponent to 1 of their non-fighter ships if able.", true},
+    // (the Yssaril review, 2026-11-12: the cards' wording)
+    {"tp", "During your turn of the action phase, players that have passed cannot play action cards.", true},
+    {"mi", "ACTION: Exhaust this card to look at another player's hand of action cards. Choose 1 of those cards and add it to your hand.", true},
     // Faction technologies (Stage 5, batch 3)
-    {"wg", "Action: exhaust to place or move a Creuss wormhole token into a system with a planet you control, or a non-home system without other players' ships.", true},
-    {"ds", "At the start of a space combat in a system with a wormhole and your ships, you may make 1 hit on one of your opponent's ships.", true},
-    {"mr", "Supernovas are open to your ships as a destination (not to pass through); a supernova holding your units produces 5 for you.", true},
-    {"cm", "Other players can't activate asteroid fields with your ships. At the start of your turn you may produce 1 unit in a system with your producing units.", true},
-    {"lgf", "During your tactical actions, if you don't control Mecatol Rex, its system counts as an alpha and beta wormhole. Action: if you control it, exhaust to put 1 infantry there.", true},
-    {"htp", "When your units produce, you may exhaust this to swap a planet's resources and influence for that production.", true},
-    {"vax", "When you would gain another player's technology with a faction ability, you may put the X token on one of their faction technologies instead: this card then has that technology's text.", true},
-    {"vay", "When you would gain another player's technology with a faction ability, you may put the Y token on one of their faction technologies instead: this card then has that technology's text.", true},
-    {"as", "After you or a neighbour activates a system next to an anomaly, you may give that player's ships +1 move this tactical action.", true},
-    {"vw", "After a player moves ships into a system with your units, they must give you 1 promissory note from their hand, if they can.", true},
+    {"wg", "ACTION: Exhaust this card to place or move a Creuss wormhole token into either a system that contains a planet you control or a non-home system that does not contain another player's ships.", true},
+    {"ds", "At the start of space combat in a system that contains a wormhole and 1 or more of your ships, you may produce 1 hit and assign it to 1 of your opponent's ships.", true},
+    {"mr", "Your ships can move into supernovas. Each supernova that contains 1 or more of your units gains the PRODUCTION 5 ability as if it were 1 of your units.", true},
+    {"cm", "Other players cannot activate asteroid fields that contain 1 or more of your ships. At the start of your turn during the action "
+           "phase, you may produce 1 unit in a system that contains at least 1 of your units that has PRODUCTION.", true},
+    // (the Winnu review, 2026-11-12: the cards' wording)
+    {"lgf", "During your tactical actions, if you do not control Mecatol Rex, treat its system as if it has both an \xCE\xB1 and \xCE\xB2 wormhole. ACTION: If you control Mecatol Rex, exhaust this card to place 1 infantry from your reinforcements on Mecatol Rex.", true},
+    {"htp", "Exhaust this card when 1 or more of your units use PRODUCTION; swap the resource and influence values of 1 planet you control during that use of Production.", true},
+    // (the Nekro review, 2026-11-14: the cards' wording)
+    {"vax", "When you would gain another player's technology using 1 of your faction abilities, you may place the \"X\" assimilator token "
+            "on a faction technology owned by that player instead. While that token is on a technology, this card gains that technology's "
+            "text. You cannot place an assimilator token on technology that already has an assimilator token.", true},
+    {"vay", "When you would gain another player's technology using 1 of your faction abilities, you may place the \"Y\" assimilator token "
+            "on a faction technology owned by that player instead. While that token is on a technology, this card gains that technology's "
+            "text. You cannot place an assimilator token on technology that already has an assimilator token.", true},
+    // (the Empyrean review, 2026-11-12: the cards' wording)
+    {"as", "After you or one of your neighbors activates a system that is adjacent to an anomaly, you may apply +1 to the move value of all of that player's ships during this tactical action.", true},
+    {"vw", "After a player moves ships into a system that contains 1 or more of your units, they must give you 1 promissory note from their hand, if able.", true},
     // Faction technologies (Stage 5, batch 4)
-    {"ah", "Other players can't move ships through systems with your structures. Planets with your structures have Production 1.", true},
-    {"gr", "Before a player votes, you may exhaust this: they must cast at least 1 vote for the outcome you choose, or lose a token from their fleet pool.", true},
-    {"pfa", "After you explore a planet, ready it.", true},
-    {"sc", "Exhaust when a combat round begins: every combat die of yours gets +1 that round.", true},
-    {"tcs", "After any player's agent is exhausted, you may exhaust this to ready it. If it is another player's agent, you may then trade with that player (neighbours or not).", true},
-    {"vtx", "Action: exhaust to capture 1 unit from another player's reinforcements, of a type they have next to one of your space docks.", true},
+    {"ah", "Other players cannot move ships through systems that contain your structures. Each planet that contains 1 or more of your "
+           "structures gains the PRODUCTION 1 ability as if it were a unit.", true},  // (the Argent review, 2026-11-13: the card)
+    {"gr", "You may exhaust this card before a player casts votes; that player must cast at least 1 vote for an outcome of your choice or remove 1 token from their fleet pool and return it to their reinforcements.", true},
+    {"pfa", "After you explore a planet, ready that planet.", true},
+    {"sc", "At the start of a combat round, you may exhaust this card to apply +1 to the result of each of your unit's combat rolls "
+           "during this combat round.", true},
+    // (the Nomad review, 2026-11-13: the card's wording)
+    {"tcs", "After any player's agent becomes exhausted, you may exhaust this card to ready that agent; if you ready another player's agent, you may perform a transaction with that player.", true},
+    {"vtx", "ACTION: Exhaust this card to choose another player's non-structure unit in a system that is adjacent to 1 or more of your space docks. Capture 1 unit of that type from that player's reinforcements.", true},  // (the Vuil'raith review: the card's wording)
     // Council Keleres (Thunder's Edge, 0.21.0)
-    {"asn", "Once per action, after one of your units uses Production, you may use the Production of another of your units, in any system.", true},
-    {"executiveorder", "Action: exhaust to draw the top or bottom agenda; it is voted on now, as if you were the speaker, and your trade goods and resources count as votes.", true},
+    {"asn", "Once per action, when you resolve a unit's PRODUCTION ability, you may resolve another of your unit's PRODUCTION abilities in any system. (In another system: the units in this one have produced already.)", true},  // (the Keleres review: the card's wording)
+    {"executiveorder", "ACTION: Exhaust this card and draw the top or bottom card of the agenda deck. Players immediately vote on this agenda as if you were the speaker; you can spend trade goods and resources on this agenda as if they were votes.", true},  // (the Keleres review: the card's wording)
     // Thunder's Edge factions (0.35.0)
-    {"proxima", "Ground combat round start: you may fire 3 dice (8+) at the enemy's ground forces, then the same at your own. Bombardment hits on your ground forces lose 1 per galvanized unit of yours there.", true},
-    {"helios2", "Your space docks: the planet gets 2 more resources, Production = its resources + 4, up to 3 fighters need no capacity.", true},
-    {"hydrothermal", "At the start of the status phase: gain 1 trade good for each ocean card in play.", true},
-    {"radical", "At the start of the status phase: you may swap one of your technologies (not a unit upgrade) for one of its colour with exactly 1 more prerequisite.", true},
+    {"proxima", "Cancel 1 hit produced by BOMBARDMENT rolls made against your ground forces for each of your galvanized units present. "
+                "At the start of a round of ground combat, you may resolve BOMBARDMENT 8 (x3) against your opponent's ground forces; if "
+                "you do, make an identical roll against your ground forces.", true},
+    {"helios2", "This unit's PRODUCTION value is equal to 4 more than the resource value of this planet. The resource value of this "
+                "planet is increased by 2. Up to 3 fighters in this system do not count against your ships' capacity.", true},
+    {"hydrothermal", "At the start of the status phase, gain 1 trade good for each ocean card in play.", true},  // (the Deepwrought review: the card's wording)
+    {"radical", "At the start of the status phase, you may replace one of your non-unit upgrade technologies with a technology of the same color that has exactly 1 more prerequisite.", true},  // (the Deepwrought review: the card's wording)
     {"subatomic", "When one of your ships is destroyed: you may produce one of the same type at a space dock in your home system.", true},
     {"exile2", "Unit upgrade (destroyer): Exile II - combat 7, anti-fighter barrage 6 (x3); after any combat within 2 systems it may open a breach (active or not).", true},
-    {"nanomachines", "Action, exhausting it - one of three: a PDS on a planet of yours; every damaged unit of yours repaired; or an action card from your hand swapped for the top of the deck.", true},
-    {"linkship2", "Unit upgrade (destroyer): Linkship II - move 4, anti-fighter barrage 6 (x3). Every Linkship can fire the space cannon of one of your structures carried in its space area.", true},
-    {"planesplitter-firm", "When you gain it: the Fracture comes into play. It turns over when you become the Obsidian.", true},
-    {"parasite-firm", "At the start of the status phase: you may put 1 infantry from your reinforcements on a planet you control in your home system. It turns over when you become the Obsidian.", true},
-    {"planesplitter-obs", "When you perform a strategic action: you may move an ingress token into a system with or next to your units. (It can't be researched.)", true},
-    {"parasite-obs", "At the start of your turn: destroy 1 of another player's infantry in or next to a system with your infantry. (It can't be researched.)", true},
+    {"nanomachines", "ACTION: Exhaust this card to place 1 PDS on a planet you control. ACTION: Exhaust this card to repair all of your damaged units. ACTION: Exhaust this card and discard 1 action card to draw 1 action card.", true},  // (the Ral Nel review: the card's wording)
+    {"linkship2", "Cost 1, Combat 8, Move 4, ANTI-FIGHTER BARRAGE 6 (x3). This unit can use the SPACE CANNON ability of one of your structures in its space area; each linkship can trigger the same structure.", true},  // (the Ral Nel review: the card's wording)
+    {"planesplitter-firm", "When you gain this card, put The Fracture into play. Flip this card if the Obsidian faction is in play.", true},
+    {"parasite-firm", "At the start of the status phase, you may place 1 infantry from your reinforcements on a planet you control in your home system. Flip this card if the Obsidian faction is in play.", true},
+    {"planesplitter-obs", "When you perform a strategic action, you may move an ingress token into a system that contains or is adjacent to your units. This technology cannot be researched.", true},
+    {"parasite-obs", "At the start of your turn, destroy 1 of another player's infantry in or adjacent to a system that contains your infantry. This technology cannot be researched.", true},
     // Discordant Stars batch 1 (0.37.0)
     {"dskortg", "After you win a combat: exhaust it to take your command token back from that system.", true},
     {"dskortr", "Once per space combat, after one of your non-fighter ships is destroyed: 1 hit on one of your opponent's ships that isn't a carrier.", true},
@@ -360,16 +388,24 @@ void setCodexTexts(bool on, bool latest) {
     }
 }
 bool codexTexts() { return g_codexTexts; }
-bool g_teXxchaTexts = false;
-void setThundersEdgeTexts(bool xxchaHero) {
+bool g_teXxchaTexts = false, g_teNaaluTexts = false;
+void setThundersEdgeTexts(bool xxchaHero, bool naalu) {
     g_teXxchaTexts = xxchaHero;
+    g_teNaaluTexts = naalu;
     if (const char** slot = omegaSlot('l', "xxchahero"))
         *slot = xxchaHero ? "Xxekir Grom" : g_codexTexts ? "Xxekir Grom \xCE\xA9" : "Xxekir Grom";
+    // (fixes 27, the Naalu review) Thunder's Edge's own Z'eu and Iconoclast: their names without the Omega sign
+    if (const char** slot = omegaSlot('l', "naaluagent")) *slot = naalu ? "Z'eu" : g_codexTexts ? "Z'eu \xCE\xA9" : "Z'eu";
+    if (const char** slot = omegaSlot('u', "naalu_mech")) *slot = naalu ? "Iconoclast" : g_codexTexts ? "Iconoclast \xCE\xA9" : "Iconoclast";
 }
 bool teXxchaHeroTexts() { return g_teXxchaTexts; }
+bool teNaaluTexts() { return g_teNaaluTexts; }
 // 0.44.9 (owner's answer P1): games without the Codex / Thunder's Edge play the original Wormhole Generator
 bool g_wgOriginal = false;
 void setWormholeGeneratorOriginal(bool on) { g_wgOriginal = on; }
+// (fixes 26, the Muaat review - owner 2026-11-12): games without the Codex / Thunder's Edge play the original Magmus Reactor
+bool g_mrOriginal = false;
+void setMagmusReactorOriginal(bool on) { g_mrOriginal = on; }
 std::string plainName(const char* name) {
     std::string s = name ? name : "";
     while (s.size() >= 2 && s.compare(s.size() - 2, 2, "\xCE\xA9") == 0) s.resize(s.size() - 2);  // (0.44.6: Omega Omega too)
@@ -379,22 +415,32 @@ std::string plainName(const char* name) {
 
 const char* techSummary(int t) {
     if (t < 0 || t >= kTechCount) return "";
+    if (g_mrOriginal && !std::strcmp(kTechs[t].key, "mr"))
+        return "Your ships can move into supernovas. After 1 or more of your units use PRODUCTION in a system that either "
+               "contains a war sun or is adjacent to a supernova, gain 1 trade good.";
     if (g_wgOriginal && !std::strcmp(kTechs[t].key, "wg"))
-        return "Start of the status phase: you may put a Creuss wormhole token (or move one) into a system with a planet "
-               "you control, or a non-home system without other players' ships.";
+        return "At the start of the status phase, place or move a Creuss wormhole token into either a system that contains a "
+               "planet you control or a non-home system that does not contain another player's ships.";
     if (g_codexTexts) {
-        if (!std::strcmp(kTechs[t].key, "md_base"))
-            return "Whenever a system with your structures is activated (by anyone), each structure there gains 1 infantry "
-                   "beside it. A ground combat on a planet with your structures opens with 1 free hit on the enemy.";
+        if (!std::strcmp(kTechs[t].key, "md_base"))  // (the shared technologies review: the card, Magen Defense Grid ΩΩ)
+            return "When any player activates a system that contains 1 or more of your structures, place 1 infantry from your "
+                   "reinforcements with each of those structures. At the start of ground combat on a planet that contains 1 or "
+                   "more of your structures, produce 1 hit and assign it to 1 of your opponent's ground forces.";
         if (!std::strcmp(kTechs[t].key, "yso"))
-            return "After you produce units, put up to 2 infantry from your reinforcements on any planets you control or in "
-                   "space with any of your ships.";
-        if (!std::strcmp(kTechs[t].key, "x89_base") && g_codexLatest)
-            return "Your units' bombardment and ground combat rolls make twice as many hits. Each planet you bombard is exhausted.";
+            return "After you produce units, place up to 2 infantry from your reinforcements on any planet you control or in "
+                   "any space area that contains 1 or more of your ships.";
+        if (!std::strcmp(kTechs[t].key, "x89_base") && g_codexLatest)  // (the shared technologies review: the card, ΩΩ)
+            return "Double the hits produced by your units' BOMBARDMENT and ground combat rolls. Exhaust each planet you use "
+                   "BOMBARDMENT against.";
     }
     for (const auto& k : kTechText)
         if (!std::strcmp(k.key, kTechs[t].key)) return k.text;
-    if (kTechs[t].unitUpgrade) return "Unit upgrade: improves the matching unit's stats.";
+    if (kTechs[t].unitUpgrade) {
+        // (the shared technologies review, 2026-11-14) the upgraded unit's card text when it has one (Dreadnought II, PDS II...)
+        for (int u = 0; u < kUnitCount; ++u)
+            if (kUnits[u].tech == t && *unitAbilityText(u)) return unitAbilityText(u);
+        return "Unit upgrade: improves the matching unit's stats.";
+    }
     return "Faction technology. Its special effect arrives with faction abilities (Stage 5).";
 }
 

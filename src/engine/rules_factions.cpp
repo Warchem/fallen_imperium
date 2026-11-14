@@ -21,6 +21,11 @@ int infantryOnBoard(const Game& g, int p) { return unitsOnBoard(g, p, UnitType::
 // ------------------------------------------------------------------ asking
 int Rules::fpick(int p, Ab ab, const std::string& prompt, std::vector<Option> opts, const std::string& context, bool onMap,
                  bool onPlanets) {
+    if (mutedFor_ >= 0 && p != mutedFor_) {  // (fixes 27) another player can't resolve abilities now: the "don't" answer
+        for (const Option& o : opts)
+            if (o.id == -1) return -1;
+        if (opts.size() == 2 && opts[0].id == 1 && opts[1].id == 0) return 0;  // (fyes)
+    }
     const int prev = curAbility_;
     curAbility_ = int(ab);
     int r = pick(p, Tag::Faction, prompt, std::move(opts), context, onMap, onPlanets);
@@ -30,6 +35,7 @@ int Rules::fpick(int p, Ab ab, const std::string& prompt, std::vector<Option> op
 
 std::vector<int> Rules::fpickMany(int p, Ab ab, const std::string& prompt, std::vector<Option> opts, int minPick, int maxPick,
                                   const std::string& context, bool onPlanets) {
+    if (mutedFor_ >= 0 && p != mutedFor_ && minPick == 0) return {};  // (fixes 27) another player can't resolve abilities now
     const int prev = curAbility_;
     curAbility_ = int(ab);
     std::vector<int> r = pickMany(p, Tag::Faction, prompt, std::move(opts), minPick, maxPick, context, onPlanets);
@@ -123,7 +129,8 @@ void Rules::checkUnlocks() {
             auto is = [&](const char* k) { return !std::strcmp(L.key, k); };
             bool ok = false;
             if (L.type == kHero) {
-                ok = pl.scored.size() >= 3;
+                // (fixes 25, owner's faction debug pass) secrets scored through Plots Within Plots are scored objectives too
+                ok = pl.scored.size() + (G.fixes >= 25 ? pl.plotted.size() : 0) >= 3;
             } else if (L.type == kCommander) {
                 if (is("solcommander") || is("xxchacommander")) {
                     int sum = 0;
@@ -167,8 +174,9 @@ void Rules::checkUnlocks() {
                     ok = pl.usedFactionAbility;
                 } else if (is("ghostcommander")) {
                     int n = 0;
+                    // (fixes 24: Nexus Sovereignty only stops Mallice's wormholes during movement - qeWormholes keeps them)
                     for (size_t s = 0; s < G.systems.size(); ++s)
-                        if ((wormholesOf(G, int(s)) & (kAlpha | kBeta)) && hasUnits(G, p, int(s))) ++n;
+                        if ((G.fixes >= 24 ? qeWormholes(G, int(s)) : uint8_t(wormholesOf(G, int(s)) & (kAlpha | kBeta))) && hasUnits(G, p, int(s))) ++n;
                     ok = n >= 3;
                 } else if (is("muaatcommander")) {
                     ok = pl.producedWarSun;
@@ -214,7 +222,14 @@ void Rules::checkUnlocks() {
                 } else if (is("titanscommander")) {
                     ok = structuresOf(G, p) >= 5;
                 } else if (is("bastioncommander")) {  // Thunder's Edge factions (0.35.0)
-                    ok = galvanizedOnBoard(G, p) >= 3;
+                    // ((fixes 27, the Last Bastion review - owner 2026-11-13) "There are 3 galvanized units on the game
+                    // board": anyone's - Dame Briar and Raise the Standard galvanize other players' units)
+                    int n = 0;
+                    if (G.fixes >= 27)
+                        for (int q = 0; q < G.numPlayers; ++q) n += galvanizedOnBoard(G, q);
+                    else
+                        n = galvanizedOnBoard(G, p);
+                    ok = n >= 3;
                 } else if (is("ralnelcommander")) {
                     ok = G.lastPasser == p;
                 } else if (is("deepwroughtcommander")) {
@@ -439,7 +454,18 @@ std::vector<Option> Rules::factionActionOptions(int p, bool freeOnly) {
     };
     if (canUseAgent(p, "hacan"))
         add(Ab::HacanAgent, true, "Agent: Carth of Golden Sands", "Exhaust to gain 2 commodities or refill another player's. Doesn't use your action.");
-    if (canUseAgent(p, "nekro") && (!pl.actionCards.empty() || pl.tactic + pl.fleet + pl.strategy > 0))
+    // (fixes 27, the Nekro review - owner 2026-11-14) Nekro Malleon: "choose a player: that player may discard 1 action card or
+    // spend 1 command token from their command sheet to gain 2 trade goods" - any player who could
+    if (G.fixes >= 27 && canUseAgent(p, "nekro")) {
+        bool someone = false;
+        for (int q = 0; q < G.numPlayers; ++q) {
+            const Player& o = G.players[size_t(q)];
+            someone = someone || (!o.eliminated && (!o.actionCards.empty() || o.tactic + o.fleet + o.strategy > 0));
+        }
+        if (someone)
+            add(Ab::NekroAgent, true, "Agent: Nekro Malleon",
+                "Choose a player: they may discard an action card or spend a command token to gain 2 trade goods. Doesn't use your action.");
+    } else if (canUseAgent(p, "nekro") && (!pl.actionCards.empty() || pl.tactic + pl.fleet + pl.strategy > 0))
         add(Ab::NekroAgent, true, "Agent: Nekro Malleon", "Discard an action card or spend a command token: gain 2 trade goods. Doesn't use your action.");
     if (freeOnly) return o;
     if (fac(p, "sol") && pl.strategy > 0) {
@@ -451,25 +477,25 @@ std::vector<Option> Rules::factionActionOptions(int p, bool freeOnly) {
     if (techReady(p, "pm") && pl.strategy > 0)
         add(Ab::ProductionBiomes, false, "Production Biomes", "Exhaust and spend 1 strategy token: gain 4 trade goods, another player gains 2.");
     // Z'eu Omega (Naalu agent, Codex 0.31.0): a player takes a tactical action without placing a command token
-    if (codexOn(G) && canUseAgent(p, "naalu"))
-        add(Ab::NaaluAgent, false, "Agent: Z'eu", "Exhaust: you or another player take a tactical action in a non-home system without a command token.");
+    if (codexOn(G) && !teNaalu(G) && canUseAgent(p, "naalu"))  // (fixes 27: not with Thunder's Edge's own Z'eu)
+        add(Ab::NaaluAgent, false, "Agent: Z'eu", leaderText(findLeader("naaluagent")));
     if (canUseAgent(p, "xxcha")) {
         bool any = false;
         for (const PlanetState& ps : G.planets)
             if (ps.owner >= 0 && ps.exhausted && !ps.destroyed) any = true;
-        if (any) add(Ab::XxchaAgent, false, "Agent: Ggrocuto Rinn", "Exhaust to ready a planet (and maybe remove 1 infantry from it).");
+        if (any) add(Ab::XxchaAgent, false, "Agent: Ggrocuto Rinn", leaderText(findLeader("xxchaagent")));
     }
     if (heroUnlocked(G, p)) {
         if (fac(p, "sol") && tokensOnBoard(p) > 0)
             add(Ab::SolHero, false, "Hero: Jace X", "Return all your command tokens on the board to your reinforcements. Purged afterwards.");
         if (fac(p, "letnev"))
             add(Ab::LetnevHero, false, "Hero: Darktalon Treilla", "This round, no limit on non-fighter ships per system. Purged at the end of the round.");
-        if (fac(p, "jolnar")) add(Ab::JolnarHero, false, "Hero: Rin", "Swap technologies for others of the same colour. Purged afterwards.");
+        if (fac(p, "jolnar")) add(Ab::JolnarHero, false, "Hero: Rin", leaderText(findLeader("jolnarhero")));
         if (fac(p, "xxcha") && teXxchaHero(G)) {  // (0.57.1: Thunder's Edge's Xxekir Grom)
             if (!xxchaHeroSpots(p).empty())
-                add(Ab::XxchaHero, false, "Hero: Xxekir Grom", "Place up to 4 PDS or mechs on your planets and ready those planets. Purged afterwards.");
+                add(Ab::XxchaHero, false, "Hero: Xxekir Grom", leaderText(findLeader("xxchahero")));
         } else if (fac(p, "xxcha") && G.agendaDeck.size() + G.agendaDiscard.size() >= 2 && !codexOn(G))  // (Omega: passive)
-            add(Ab::XxchaHero, false, "Hero: Xxekir Grom", "Look at 5 agendas, resolve 2 of them your way. Purged afterwards.");
+            add(Ab::XxchaHero, false, "Hero: Xxekir Grom", leaderText(findLeader("xxchahero")));
     }
     for (const Option& x : factionActionOptions2(p)) o.push_back(x);
     return o;
@@ -576,8 +602,14 @@ bool Rules::factionAction(int p, int option) {
             }
             int owner = G.planets[x].owner;
             if (near && owner != p && G.planets[x].units[owner].count(UnitType::Infantry) > 0 &&
-                fyes(p, Ab::XxchaAgent, "Remove 1 of " + pn(owner) + "'s infantry from " + planetName(x) + "?", ""))
+                fyes(p, Ab::XxchaAgent, "Remove 1 of " + pn(owner) + "'s infantry from " + planetName(x) + "?", "")) {
+                // (fixes 27, the Xxcha review - owner 2026-11-13) "remove 1 infantry ... and return it to its reinforcements" - a
+                // removal, not a destruction (no Crimson Legionnaire, Devour, Infantry II, ...)
+                const bool was = removing_;
+                if (G.fixes >= 27) removing_ = true;
                 destroyUnits(owner, UnitType::Infantry, 1, sys, x, p, "Ggrocuto Rinn");
+                removing_ = was;
+            }
             return true;
         }
         case Ab::SolHero: {
@@ -676,9 +708,12 @@ bool Rules::factionAction(int p, int option) {
                 G.agendaDeck.pop_back();
             }
             E.revealed();
-            purgeHero(p);
+            if (G.fixes < 27) purgeHero(p);  // (fixes 27, the Xxcha review - owner 2026-11-13: "Then, purge this card" - at the end)
             leaderEvent(E, G, p, pl.leaders[leaderIndex(G, p, kHero)].leader, "hero",
                         pn(p) + " uses Xxekir Grom: they look at the top agendas and resolve 2.");
+            // (fixes 27) "Other players cannot resolve abilities during this action"
+            const int mutedWas = mutedFor_;
+            if (G.fixes >= 27) mutedFor_ = p;
             std::vector<Option> opts;
             for (int16_t a : top) {
                 bool ok = agendaRevealable(a) && std::strcmp(kAgendas[a].key, "covert") != 0 && kAgendas[a].elect != Elect::Law;
@@ -709,6 +744,8 @@ bool Rules::factionAction(int p, int option) {
                 G.currentAgenda = -1;
                 curAgenda_ = prev;
             }
+            mutedFor_ = mutedWas;
+            if (G.fixes >= 27) purgeHero(p);
             return true;
         }
         default: return factionAction2(p, ab);
@@ -841,10 +878,17 @@ bool Rules::afterActivation(int p, int sys) {
 void Rules::endOfTacticalFactions(int p, int sys) {
     endOfTactical3(p, sys);  // Reclamation, Reclaimer
     endOfTactical4(p, sys);  // Il Na Viroset, captured units and blockades
-    // T'ro (Sardakk agent): 2 infantry on a planet the active player controls in the active system.
-    // Only for themselves (see Viscount Unlenn) - or the Yssaril player using Ssruu.
+    troAgent(p, sys);
+}
+
+// T'ro (Sardakk agent): 2 infantry on a planet the active player controls in the active system. Only for themselves (see
+// Viscount Unlenn) - or the Yssaril player using Ssruu. (fixes 25, Sardakk review 2026-11-11: also when the tactical
+// action ends early - Minister of Peace, Nullification Field - and not offered with no infantry in their reinforcements,
+// which can't happen while infantry tokens make them unlimited: unitLimit 99)
+void Rules::troAgent(int p, int sys) {
     const int s = agentUser(p, "sardakk");  // or a player who promised its agent in a deal
     if (s < 0 || G.players[p].eliminated) return;
+    if (G.fixes >= 25 && unitsAvailable(G, p, UnitType::Infantry) <= 0) return;
     std::vector<Option> opts;
     for (int16_t x : G.systems[sys].planets)
         if (G.planets[x].owner == p && !isDMZ(G, x)) opts.push_back({x, planetName(x), ""});
@@ -864,7 +908,19 @@ void Rules::endOfTacticalFactions(int p, int sys) {
 
 bool Rules::shvalCheck(int p, int sys) {
     shval_ = false;
-    if (!fac(p, "sardakk") || !heroUnlocked(G, p) || G.systems[sys].space[p].groundForces() == 0) return false;
+    if (!fac(p, "sardakk") || !heroUnlocked(G, p)) return false;
+    // (fixes 25, Sardakk review 2026-11-11: also with no ground forces in space when G'hom Sek'kus can bring some in)
+    bool ghom = false;
+    if (G.fixes >= 25 && commanderUsable(G, p, "sardakk")) {
+        auto from = [&](int s2) {
+            for (int16_t x : G.systems[size_t(s2)].planets)
+                if (G.planets[size_t(x)].units[size_t(p)].groundForces() > 0) ghom = true;
+        };
+        from(sys);
+        for (int16_t a : G.systems[size_t(sys)].adj)
+            if (!G.systems[size_t(a)].hasToken(p)) from(a);
+    }
+    if (G.systems[sys].space[p].groundForces() == 0 && !ghom) return false;
     bool target = false;
     for (int16_t x : G.systems[sys].planets)
         if (G.planets[x].owner != p && !isDMZ(G, x)) target = true;
@@ -880,7 +936,10 @@ bool Rules::shvalCheck(int p, int sys) {
 }
 
 void Rules::ghomSekkus(int p, int sys) {
+    ghomBrought_.clear();
     if (!commanderUsable(G, p, "sardakk")) return;
+    ghomBefore_[0] = G.systems[sys].space[p].count(UnitType::Infantry);
+    ghomBefore_[1] = G.systems[sys].space[p].count(UnitType::Mech);
     std::vector<Option> opts;
     auto addFrom = [&](int s) {
         for (int16_t x : G.systems[s].planets) {
@@ -917,8 +976,13 @@ void Rules::ghomSekkus(int p, int sys) {
                                                                                                                            : UnitType::Infantry;
             curValue_ = 0;
         }
+        // (fixes 25, Sardakk review 2026-11-11: a damaged mech stays damaged - remove() takes an undamaged one first, so
+        // it is damaged when none is left undamaged)
+        const bool damaged = f.n[int(t)] - f.dmg[int(t)] <= 0;
         f.remove(t, 1, false);
         G.systems[sys].space[p].add(t, 1);
+        if (G.fixes >= 25 && damaged) ++G.systems[sys].space[p].dmg[int(t)];
+        ghomBrought_.push_back({int16_t(x), int8_t(t), damaged});
         ++brought[t == UnitType::Mech ? 1 : 0];
     }
     if (!picks.empty() && choose) {
@@ -949,7 +1013,8 @@ void Rules::afterDiplomacy(int p) {
         if (G.fixes >= 20 && isStation(G, int(x))) continue;
         if (std::find(near.begin(), near.end(), int(ps.system)) == near.end()) continue;
         bool units = false;
-        for (int q = 0; q < G.numPlayers; ++q)
+        // (fixes 27, the Xxcha review - owner 2026-11-13) neutral units count as another player's (Thunder's Edge rulebook)
+        for (int q = 0; q < (G.fixes >= 27 ? kSides : G.numPlayers); ++q)
             if (!ps.units[q].empty()) units = true;
         if (units) continue;
         opts.push_back({int(x), planetName(int(x)),
@@ -1011,6 +1076,35 @@ void Rules::endOfStrategyPhase() {
         abilityEvent(E, p, "Quantum Datahub Node",
                      pn(p) + " swaps " + strategyName(mine) + " for " + pn(q) + "'s " + strategyName(theirs) + " (Quantum Datahub Node).");
     }
+    // Acquiescence, the original card (fixes 26, the Winnu review - games without the Codex; the Omega works in the Winnu's
+    // strategic actions): "At the end of the strategy phase: Exchange 1 of your strategy cards with a strategy card that was
+    // chosen by the Winnu player. Then, return this card to the Winnu player."
+    if (G.fixes >= 26 && !codexOn(G)) {
+        const int w = playerOfFaction(G, "winnu");
+        for (int q : initiativeOrder(G)) {
+            if (w < 0 || q == w || G.players[q].eliminated || G.players[w].cards.empty() || G.players[q].cards.empty() ||
+                !holdsNote(G, q, w, kNoteFaction))
+                continue;
+            std::vector<Option> opts;
+            for (int8_t mine : G.players[q].cards)
+                for (int8_t theirs : G.players[w].cards)
+                    opts.push_back({mine * 100 + theirs, std::string("Your ") + strategyName(mine) + " for " + pn(w) + "'s " + strategyName(theirs), ""});
+            opts.push_back({-1, "Keep the card", ""});
+            const int c = fpick(q, Ab::Acquiescence, "Play " + pn(w) + "'s Acquiescence: exchange a strategy card with theirs?", opts,
+                                factionNoteText(G.players[w].faction, kNoteFaction));
+            if (c < 0) continue;
+            const int mine = c / 100, theirs = c % 100;
+            auto& a = G.players[q].cards;
+            auto& b = G.players[w].cards;
+            *std::find(a.begin(), a.end(), int8_t(mine)) = int8_t(theirs);
+            *std::find(b.begin(), b.end(), int8_t(theirs)) = int8_t(mine);
+            G.cardOwner[mine] = int8_t(w);
+            G.cardOwner[theirs] = int8_t(q);
+            returnNote(q, makeNote(w, kNoteFaction));
+            abilityEvent(E, q, "Acquiescence",
+                         pn(q) + " plays Acquiescence: " + strategyName(mine) + " for " + pn(w) + "'s " + strategyName(theirs) + ".");
+        }
+    }
 }
 
 // ------------------------------------------------------------------ agendas
@@ -1019,8 +1113,7 @@ bool Rules::quashCheck(int a) {
         if (G.players[p].eliminated) continue;
         // Quash
         if (fac(p, "xxcha") && G.players[p].strategy > 0 &&
-            fyes(p, Ab::Quash, std::string("Quash ") + kAgendas[a].name + "?",
-                 "Spend 1 strategy token: it is discarded and the next agenda is voted on instead.")) {
+            fyes(p, Ab::Quash, std::string("Quash ") + kAgendas[a].name + "?", abilityText(G.players[p].faction, 1))) {
             spendStrategy(p, 1);
             abilityEvent(E, p, "Quash", pn(p) + " quashes " + kAgendas[a].name + ".");
             return true;
@@ -1029,6 +1122,8 @@ bool Rules::quashCheck(int a) {
         for (int16_t n : std::vector<int16_t>(G.players[p].notes)) {
             int owner = noteOwner(n);
             if (owner == p || noteType(n) != kNoteFaction || !isFaction(G, owner, "xxcha")) continue;
+            // (fixes 27, the Xxcha review - LRR 1.17 "then": the token must come off the Xxcha's strategy pool first)
+            if (G.fixes >= 27 && G.players[owner].strategy <= 0) continue;
             if (!fyes(p, Ab::PoliticalFavor, "Play " + pn(owner) + "'s Political Favor against " + kAgendas[a].name + "?",
                       factionNoteText(G.players[owner].faction, kNoteFaction)))
                 continue;
@@ -1045,7 +1140,8 @@ int Rules::extraVotes(int p, int outcome) {
     Player& pl = G.players[p];
     if (!commanderUsable(G, p, "hacan") || pl.tradeGoods <= 0) return 0;
     std::vector<Option> opts;
-    for (int k = 0; k <= pl.tradeGoods && k <= 10; ++k)
+    // (fixes 26, the Hacan review: "You may spend any number of trade goods" - the list stopped at 10)
+    for (int k = 0; k <= pl.tradeGoods && (k <= 10 || G.fixes >= 26); ++k)
         opts.push_back({k, k == 0 ? std::string("None") : std::to_string(k) + " trade good" + (k > 1 ? "s" : ""),
                         k ? "+" + std::to_string(2 * k) + " votes" : ""});
     const int prev = G.currentAgenda;
@@ -1090,7 +1186,86 @@ bool Rules::harruhgFree(int p) {
     return true;
 }
 
+// (fixes 27, the Jol-Nar review - owner 2026-11-13) Doctor Sucaban: "When a player spends resources to research: You may
+// exhaust this card to allow that player to remove any number of their infantry from the game board. For each unit removed,
+// reduce the resources spent by 1" - any player's research; the Jol-Nar decide (a person is asked - sucabanQuiet_ -, a bot
+// when it promised); the researching player removes them - a person picks which (owner: the bots as before)
+int Rules::sucaban27(int p, int cost) {
+    if (cost <= 0 || p < 0 || p >= G.numPlayers || infantryOnBoard(G, p) == 0) return cost;
+    const std::string text = leaderText(findLeader("jolnaragent"));
+    int user = -1;
+    if (canUseAgent(p, "jolnar")) {
+        if (fyes(p, Ab::JolnarAgent, "Exhaust Doctor Sucaban to pay for this research with infantry?", text)) user = p;
+    } else {
+        for (int o : initiativeOrder(G)) {
+            if (o == p || !canUseAgent(o, "jolnar")) continue;
+            const bool promised = G.agentFor[o] == p;
+            const bool human = G.players[size_t(o)].human;
+            if (!promised && !(human && sucabanQuiet_[o] != G.round)) continue;
+            agentFor(o, p);
+            std::vector<Option> yn = {{1, "Yes", ""}, {0, "No", ""}};
+            if (human && !promised) yn.push_back({3, "No, and don't ask again this round", "You'll be asked again next round."});
+            const int c = fpick(o, Ab::JolnarAgent, "Exhaust Doctor Sucaban: " + pn(p) + " may pay for this research with infantry?", yn,
+                                pn(p) + " spends " + std::to_string(cost) + " resources to research. " + text);
+            curFor_ = -1;
+            if (c == 3) sucabanQuiet_[o] = int16_t(G.round);
+            if (c != 1) continue;
+            user = o;
+            break;
+        }
+    }
+    if (user < 0) return cost;
+    spendAgent(user, "jolnar");
+    agentDone(user, p);
+    std::vector<Option> opts;
+    for (int k = 0; k <= std::min(cost, infantryOnBoard(G, p)); ++k)
+        opts.push_back({k, std::to_string(k) + " infantry", k ? std::to_string(k) + " resources less" : ""});
+    const int k = fpick(p, Ab::JolnarAgent, "Doctor Sucaban: remove how many of your infantry?", opts, "Each one reduces the cost by 1.");
+    for (int i = 0; i < k; ++i) {
+        int sys = -1, planet = -1;
+        if (G.players[size_t(p)].human) {  // (a person: from where)
+            std::vector<Option> where;
+            for (size_t s = 0; s < G.systems.size(); ++s)
+                if (const int n = G.systems[s].space[size_t(p)].count(UnitType::Infantry))
+                    where.push_back({10000 + int(s), "In space: " + sysName(int(s)), std::to_string(n) + " infantry"});
+            for (size_t x = 0; x < G.planets.size(); ++x)
+                if (const int n = G.planets[x].units[size_t(p)].count(UnitType::Infantry))
+                    where.push_back({int(x), planetName(int(x)), std::to_string(n) + " infantry"});
+            if (where.empty()) break;
+            const int w = where.size() == 1 ? where[0].id
+                                             : fpick(p, Ab::JolnarAgent, "Doctor Sucaban: remove an infantry from where? (" + std::to_string(k - i) + " to go)",
+                                                     where, "");
+            if (w >= 10000) sys = w - 10000;
+            else if (w >= 0) {
+                planet = w;
+                sys = G.planets[size_t(w)].system;
+            }
+        } else {  // (a bot: the biggest groups, space areas first - as before)
+            int bestN = 0;
+            for (size_t s = 0; s < G.systems.size(); ++s)
+                if (G.systems[s].space[p].count(UnitType::Infantry) > bestN) {
+                    bestN = G.systems[s].space[p].count(UnitType::Infantry) + 10;
+                    sys = int(s);
+                    planet = -1;
+                }
+            if (sys < 0)
+                for (size_t x = 0; x < G.planets.size(); ++x)
+                    if (G.planets[x].units[p].count(UnitType::Infantry) > bestN) {
+                        bestN = G.planets[x].units[p].count(UnitType::Infantry);
+                        sys = G.planets[x].system;
+                        planet = int(x);
+                    }
+        }
+        if (sys < 0) break;
+        removing_ = true;
+        destroyUnits(p, UnitType::Infantry, 1, sys, planet, -1, "Doctor Sucaban");
+        removing_ = false;
+    }
+    return cost - k;
+}
+
 int Rules::sucaban(int p, int cost) {
+    if (G.fixes >= 27) return sucaban27(p, cost);
     const int j = agentUser(p, "jolnar");  // themselves (or Ssruu), or a player who promised its agent
     if (cost <= 0 || j < 0 || infantryOnBoard(G, p) == 0) return cost;
     agentFor(j, p);
@@ -1133,6 +1308,9 @@ void Rules::researchAgreement(int p, int tech) {
     if (!fac(p, "jolnar") || G.phase == Phase::Setup || kTechs[tech].faction >= 0) return;
     for (int q = 0; q < G.numPlayers; ++q) {
         if (q == p || G.players[q].eliminated || !holdsNote(G, q, p, kNoteFaction) || G.players[q].hasTech(tech)) continue;
+        // (fixes 27, the Jol-Nar review - owner 2026-11-13) only a technology the holder could own: not a unit upgrade its
+        // faction's own replaces (Sol and Carrier II - their Advanced Carriers became Carrier IIs)
+        if (G.fixes >= 27 && !techAvailableToResearch(G, q, tech)) continue;
         if (!fyes(q, Ab::ResearchAgreement, std::string("Play Research Agreement to gain ") + kTechs[tech].name + "?",
                   factionNoteText(G.players[p].faction, kNoteFaction)))
             continue;
@@ -1390,6 +1568,39 @@ void Rules::afterCombatRolls(int att, int def, int sys, RollResult& rA, RollResu
             const int Lt = playerOfFaction(G, "letnev");
             if (Lt < 0 || Lt == p || !holdsNote(G, p, Lt, kNoteFaction)) continue;
             if (rr[1 - i]->hits == 0 && rr[i]->hits == int(rr[i]->dice.size())) continue;  // nothing to gain
+            if (G.fixes >= 26) {
+                // (fixes 26, the Letnev review - owner 2026-11-12) "You may reroll all of your opponent's dice. You may reroll
+                // any number of your dice." - two choices: the opponent's dice only if the holder says so (not asked when
+                // they rolled no hits: a reroll could only give them some)
+                if (!fyes(p, Ab::WarFunding,
+                          "Play War Funding: reroll your misses; you may also reroll all of " + pn(o) + "'s dice (" +
+                              std::to_string(rr[1 - i]->hits) + " hits)?",
+                          factionNoteText(G.players[Lt].faction, kNoteFaction)))
+                    continue;
+                returnNote(p, makeNote(Lt, kNoteFaction));
+                bool theirs = false;
+                if (rr[1 - i]->hits > 0) {
+                    int expect10 = 0;  // (for the bots: the hits the opponent's dice score on average, x10)
+                    for (int8_t nd : rr[1 - i]->need) expect10 += std::max(0, std::min(10, 11 - int(nd)));
+                    curValue_ = rr[1 - i]->hits * 1000 + expect10;
+                    theirs = fyes(p, Ab::WarFunding,
+                                  "War Funding: reroll all of " + pn(o) + "'s dice (" + std::to_string(rr[1 - i]->hits) +
+                                      (rr[1 - i]->hits == 1 ? " hit" : " hits") + ")?",
+                                  "All of them are rolled again - hits too.");
+                    curValue_ = 0;
+                }
+                abilityEvent(E, p, "War Funding",
+                             pn(p) + " plays War Funding" + (theirs ? ": " + pn(o) + "'s dice are rolled again." : "."), sys);
+                if (theirs) {
+                    rerollDice(o, *rr[1 - i], true);
+                    reportRoll(o, sys, "War Funding reroll", *rr[1 - i]);
+                }
+                if (rr[i]->hits < int(rr[i]->dice.size())) {
+                    rerollDice(p, *rr[i], false);
+                    reportRoll(p, sys, "War Funding reroll", *rr[i]);
+                }
+                break;
+            }
             if (!fyes(p, Ab::WarFunding,
                       "Play War Funding: reroll all of " + pn(o) + "'s dice (" + std::to_string(rr[1 - i]->hits) +
                           " hits) and your misses?",
@@ -1426,43 +1637,81 @@ void Rules::afterCombatRolls(int att, int def, int sys, RollResult& rA, RollResu
 
 void Rules::afterSpaceRound(int att, int def, int sys) {
     // Exotrireme II: destroy it to destroy up to 2 ships here.
+    // (fixes 25, owner's faction debug pass 2026-11-11: each Exotrireme II has the ability - asked again while one is left
+    // and the opponent has ships (LRR 1.18); the targets are listed damaged / undamaged, so the Sardakk choose which go)
+    static const char* const kExoText =
+        "Exotrireme II: \"After a round of space combat, you may destroy this unit to destroy up to 2 ships in this system.\"";
     for (int p : {att, def}) {
         if (p >= G.numPlayers) continue;  // (Thunder's Edge: neutral units have no abilities)
         int o = p == att ? def : att;
-        Force& f = G.systems[sys].space[p];
-        if (!fac(p, "sardakk") || std::strcmp(unitKey(G, p, UnitType::Dreadnought), "sardakk_dreadnought2") != 0 ||
-            f.count(UnitType::Dreadnought) == 0 || !hasShips(G, o, sys))
-            continue;
-        if (!fyes(p, Ab::Exotrireme, "Destroy an Exotrireme II to destroy up to 2 of " + pn(o) + "'s ships?", ""))
-            continue;
-        std::vector<Option> opts;
-        const Force& e = G.systems[sys].space[o];
-        for (int t : kShipIdx)
-            for (int k = 0; k < e.n[t] && k < 2; ++k) opts.push_back({t * 16 + k, unitTypeName(UnitType(t)), ""});
-        std::vector<int> picks = fpickMany(p, Ab::Exotrireme, "Exotrireme II: destroy which ships?", opts, 1,
-                                           std::min<int>(2, int(opts.size())));
-        destroyUnits(p, UnitType::Dreadnought, 1, sys, -1, -1, "Exotrireme II");
-        int count[kUnitTypes] = {};
-        for (int id : picks) ++count[id / 16];
-        for (int t = 0; t < kUnitTypes; ++t)
-            if (count[t]) destroyUnits(o, UnitType(t), count[t], sys, -1, p, "Exotrireme II");
-        removeExcessCapacity(o, sys);
+        for (int again = 0;; ++again) {
+            Force& f = G.systems[sys].space[p];
+            if (!fac(p, "sardakk") || std::strcmp(unitKey(G, p, UnitType::Dreadnought), "sardakk_dreadnought2") != 0 ||
+                f.count(UnitType::Dreadnought) == 0 || !hasShips(G, o, sys))
+                break;
+            if (again > 0 && G.fixes < 25) break;
+            if (!fyes(p, Ab::Exotrireme,
+                      again ? "Destroy another Exotrireme II to destroy up to 2 more of " + pn(o) + "'s ships?"
+                            : "Destroy an Exotrireme II to destroy up to 2 of " + pn(o) + "'s ships?",
+                      kExoText))
+                break;
+            std::vector<Option> opts;
+            Force& e = G.systems[sys].space[o];
+            for (int t : kShipIdx) {
+                if (G.fixes >= 25) {  // id: type * 16 + k (undamaged), + 8 (damaged)
+                    const std::string name = unitTypeName(UnitType(t));
+                    for (int k = 0; k < e.n[t] - e.dmg[t] && k < 2; ++k) opts.push_back({t * 16 + k, name, ""});
+                    for (int k = 0; k < e.dmg[t] && k < 2; ++k) opts.push_back({t * 16 + 8 + k, name + " (damaged)", ""});
+                } else {
+                    for (int k = 0; k < e.n[t] && k < 2; ++k) opts.push_back({t * 16 + k, unitTypeName(UnitType(t)), ""});
+                }
+            }
+            std::vector<int> picks = fpickMany(p, Ab::Exotrireme, "Exotrireme II: destroy which ships?", opts, 1,
+                                               std::min<int>(2, int(opts.size())));
+            destroyUnits(p, UnitType::Dreadnought, 1, sys, -1, -1, "Exotrireme II");
+            int count[kUnitTypes] = {}, damaged[kUnitTypes] = {};
+            for (int id : picks) {
+                ++count[id / 16];
+                if (G.fixes >= 25 && (id % 16) >= 8) ++damaged[id / 16];
+            }
+            for (int t = 0; t < kUnitTypes; ++t) {
+                if (!count[t]) continue;
+                if (G.fixes < 25) {
+                    destroyUnits(o, UnitType(t), count[t], sys, -1, p, "Exotrireme II");
+                    continue;
+                }
+                // (destroyUnits takes damaged units first: the damaged ones not chosen step aside meanwhile)
+                const int hidden = std::max(0, int(e.dmg[t]) - damaged[t]);
+                e.dmg[t] = uint8_t(e.dmg[t] - hidden);
+                destroyUnits(o, UnitType(t), count[t], sys, -1, p, "Exotrireme II");
+                Force& e2 = G.systems[sys].space[o];
+                e2.dmg[t] = uint8_t(std::min<int>(e2.n[t], e2.dmg[t] + hidden));
+            }
+            removeExcessCapacity(o, sys);
+        }
     }
 }
 
 void Rules::groundCombatStartFactions(int att, int def, int planet) {
     const int sys = G.planets[planet].system;
     groundCombatStart3(att, def, planet);  // Antivirus
-    for (int p : {att, def}) {
-        if (p >= G.numPlayers) continue;  // (Thunder's Edge: neutral units have no abilities)
-        // Claire Gibson (Sol commander): +1 infantry when defending your planet
-        if (G.planets[planet].owner == p && commanderUsable(G, p, "sol") &&
-            fyes(p, Ab::SolCommander, "Claire Gibson: put 1 infantry on " + planetName(planet) + "?", "")) {
-            addUnits(p, UnitType::Infantry, 1, sys, planet);
-            say(p, pn(p) + " puts 1 infantry on " + planetName(planet) + " (Claire Gibson).", sys);
+    // Claire Gibson (Sol commander): +1 infantry when defending your planet
+    auto claire = [&](bool late) {
+        for (int p : {att, def}) {
+            if (p >= G.numPlayers) continue;  // (Thunder's Edge: neutral units have no abilities)
+            // (fixes 26, the Sol review - LRR 1.19: abilities at the same time go in initiative order from the active
+            // player, so the active player's Indoctrination / Greyfire Mutagen come first)
+            if ((G.fixes >= 26 && G.phase == Phase::Action && G.activePlayer >= 0 && p != G.activePlayer) != late) continue;
+            if (G.planets[planet].owner == p && commanderUsable(G, p, "sol") &&
+                fyes(p, Ab::SolCommander, "Claire Gibson: put 1 infantry on " + planetName(planet) + "?", "")) {
+                addUnits(p, UnitType::Infantry, 1, sys, planet);
+                say(p, pn(p) + " puts 1 infantry on " + planetName(planet) + " (Claire Gibson).", sys);
+            }
         }
-    }
+    };
+    claire(false);
     groundCombatStart2(att, def, planet);  // Indoctrination, Greyfire Mutagen
+    claire(true);
     tekklar_[att] = tekklar_[def] = 0;
     if (G.activeSystem != sys) return;  // only during an invasion
     for (int p : {att, def}) {
@@ -1479,7 +1728,15 @@ void Rules::groundCombatStartFactions(int att, int def, int planet) {
 }
 
 void Rules::sustained(int victim, int attacker, int sys, int planet, int t) {
-    dynamo(victim, sys, planet, t);  // Empyrean flagship
+    // Dynamo (Empyrean flagship). (fixes 26, the Empyrean review - owner 2026-11-12) "After any player's unit in this
+    // system or an adjacent system uses SUSTAIN DAMAGE": each Dynamo near, in the order of LRR 1.19 (the first repairs it)
+    if (G.fixes >= 26) {
+        if (victim < G.numPlayers)
+            for (int e : windowOrder())
+                if (e < G.numPlayers) dynamo(e, sys, planet, t, victim);
+    } else {
+        dynamo(victim, sys, planet, t);
+    }
     // Rear Admiral Farran (Letnev commander)
     if (commanderUsable(G, victim, "letnev")) {
         gainTG(victim, 1);

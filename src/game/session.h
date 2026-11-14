@@ -73,6 +73,11 @@ public:
     uint32_t durationOf(const ti::Event& e) const;
     // The speed setting as a time factor (1.6 slow, 1 normal, 0.45 fast, 0 instant).
     float speedFactor() const;
+    // 0.58.4: the screen needs the event it is showing for longer (a bot's spoken line to read) - not while A
+    // hurries the game along.
+    void extendShow(uint32_t until) {
+        if (!hurry_ && int32_t(until - showUntil_) > 0) showUntil_ = until;
+    }
     // START during a combat (0.22.0): the rest of it is shown at once.
     void skipCombat() {
         if (inCombat_) skipCombat_ = true;

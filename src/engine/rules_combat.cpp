@@ -175,8 +175,37 @@ void Rules::assignHits(int victim, int sys, int planet, int hits, int mask, cons
     if (maxAbs <= 0) return;
     Force& f = planet >= 0 ? G.planets[planet].units[victim] : G.systems[sys].space[victim];
     if (hits >= maxAbs) {
-        for (int t = 0; t < kUnitTypes; ++t)
-            if ((!mask || ((mask >> t) & 1)) && f.n[t]) destroyUnits(victim, UnitType(t), f.n[t], sys, planet, attacker, why.c_str());
+        // (fixes 26, the Yin review) the units there when the hits came: one that arrives while they are destroyed (Brother
+        // Milor's 2 fighters after the carrier) isn't destroyed by the same hits - the extra hits are lost
+        const Force hitNow = f;
+        // (fixes 26, the Letnev review - owner 2026-11-12) LRR 78.6a: "Before assigning hits, players may use their units'
+        // Sustain Damage abilities to cancel hits" - also when the rest destroys them. With something to gain from it (Rear
+        // Admiral Farran: a trade good; Valkyrie Exoskeleton: a hit back) every unit that can sustain does, then all go.
+        std::vector<int> sus;
+        if (G.fixes >= 26 && victim < G.numPlayers &&
+            (commanderUsable(G, victim, "letnev") || (inGroundCombat_ && planet >= 0 && fac(victim, "sardakk") && mechAbilities(G))))
+            for (int t = 0; t < kUnitTypes; ++t) {
+                if ((mask && !((mask >> t) & 1)) || !unitSustainsAt(G, victim, UnitType(t), sys, planet)) continue;
+                while (f.dmg[t] < f.n[t]) {
+                    sus.push_back(t);
+                    f.dmg[t] = uint8_t(f.dmg[t] + 1);
+                    Event e;
+                    e.kind = EventKind::Damaged;
+                    e.player = int8_t(victim);
+                    e.other = int8_t(attacker);
+                    e.system = int16_t(sys);
+                    e.planet = int16_t(planet);
+                    e.unit = int8_t(t);
+                    e.count = 1;
+                    e.text = pn(victim) + "'s " + unitLabel(G, victim, UnitType(t)) + " sustains damage.";
+                    E.emit(e);
+                }
+            }
+        for (int t = 0; t < kUnitTypes; ++t) {
+            const int k = G.fixes >= 26 ? std::min<int>(hitNow.n[t], f.n[t]) : f.n[t];
+            if ((!mask || ((mask >> t) & 1)) && k > 0) destroyUnits(victim, UnitType(t), k, sys, planet, attacker, why.c_str());
+        }
+        for (int t : sus) sustained(victim, attacker, sys, planet, t);
         return;
     }
     Decision d;
@@ -225,7 +254,8 @@ void Rules::assignHits(int victim, int sys, int planet, int hits, int mask, cons
     if (planet < 0 || wildDH)
         for (int t : sustainedTypes) {
             if (f.dmg[t] == 0) continue;
-            if (planet < 0 ? !isShip(UnitType(t)) : UnitType(t) != UnitType::Mech) continue;
+            // (fixes 27: a mech fighting as a ship with The Alastor - Direct Hit on it, the owner 2026-11-14)
+            if (planet < 0 ? !isShip(UnitType(t)) && !((alastorMask(victim) >> t) & 1) : UnitType(t) != UnitType::Mech) continue;
             WinCtx w;
             w.w = Win::AfterSustain;
             w.a = victim;
@@ -259,6 +289,19 @@ std::vector<int> Rules::retreatOptions(int p, int sys) const {
         if (G.fixes >= 11 && hasUnits(G, kNeutral, a)) empty = false;  // (0.44.7: neutral units are units too - Thunder's Edge)
         if (mine || (det && empty)) out.push_back(a);
     }
+    // (fixes 26, the Nomad review - owner 2026-11-13) Memoria: "treat this unit as if it were adjacent to systems that contain
+    // 1 or more of your mechs" - when the flagship is the only ship retreating (with what it carries), those systems too
+    if (G.fixes >= 26 && p < G.numPlayers && flagshipText(G, p, "nomad") && flagshipIn(G, p, sys) && G.systems[size_t(sys)].space[p].nonFighterShips() == 1)
+        for (size_t a = 0; a < G.systems.size(); ++a) {
+            if (int(a) == sys || std::find(out.begin(), out.end(), int(a)) != out.end() || G.systems[a].isHyperlane() || G.systems[a].offBoard) continue;
+            bool mech = G.systems[a].space[p].count(UnitType::Mech) > 0;
+            for (int16_t x : G.systems[a].planets) mech = mech || G.planets[size_t(x)].units[p].count(UnitType::Mech) > 0;
+            if (!mech || int(a) == dsBlockRetreat_[p] || otherShipsIn(G, p, int(a))) continue;
+            const uint8_t an = G.systems[a].d().anomalies;
+            if ((an & kSupernova) && !owns(p, "mr")) continue;
+            if ((an & kAsteroid) && !owns(p, "amd")) continue;
+            out.push_back(int(a));
+        }
     if (G.modules & kModDiscordant) dsRetreatExtra(p, sys, out);  // Nokar Navigator, Jack Hallard, Freelance Outfit
     // Cult of the All-Mother (Ghoti breakthrough, 0.43.0): any empty system without other players' ships
     if ((G.modules & kModDiscordant) && breakthroughsOn(G) && p < G.numPlayers && breakthroughIs(G, p, "ghoti"))
@@ -319,6 +362,7 @@ void Rules::retreatCargo(int p, int from) {
 void Rules::doRetreat(int p, int from, int to) {
     // LRR 78.7: all ships (and what they carry) move to one adjacent system;
     // whatever doesn't fit is removed there. A command token is placed there.
+    if (G.fixes >= 27 && from == alastorSys_) alastorReturn(p);  // (The Alastor: the planets' ground forces stay on them)
     retreatCargo(p, from);  // (0.54.0, fixes 18: ground forces from the planets too)
     Force& src = G.systems[from].space[p];
     Force& dst = G.systems[to].space[p];
@@ -343,6 +387,9 @@ void Rules::doRetreat(int p, int from, int to) {
     // A retreat through the ion storm's wormhole flips it too (owner, RULES-CHECK 0.5.0 #2).
     if (ionStormStep(G, from, to)) ionStormUsed(G.ionStorm);
     checkNexus(to);  // LRR 100.2: units moving into the nexus activate it
+    // (fixes 27, the Saar review - owner 2026-11-13) a lone Saar floating factory there is blockaded now: "If this unit is
+    // blockaded, it is destroyed" (a retreat or Skilled Retreat)
+    if (G.fixes >= 27) checkFloatingFactories(to);
 }
 
 void Rules::combatStart(int att, int def, int sys, int planet) {
@@ -383,6 +430,7 @@ void Rules::combatWon(int winner, int loser, int sys, bool space) {
     E.emit(e);
     edictWon(winner, loser);  // Mahact
     btWonCombat(winner, loser, sys);  // N'orr Supremacy (Thunder's Edge)
+    if (G.modules & kModThundersEdge) reapingWin(winner, loser, sys);  // The Reaping (Obsidian breakthrough; fixes 25)
     if ((G.modules & kModDiscordant) && breakthroughsOn(G)) dsbtWonCombat(winner, loser, sys, space);  // (0.43.0)
     if (G.modules & kModDiscordant) dsWonCombat(winner, loser, sys, space);  // Discordant Stars
     int maxVp = 0;
@@ -447,6 +495,10 @@ int Rules::duranium(int p, Force& f, const Force& before) {
 
 void Rules::spaceCombat(int att, int def, int sys) {
     combatStart(att, def, sys, -1);
+    // (fixes 27, the Nekro review - owner 2026-11-14) Technological Singularity: "Once per combat, after 1 of your opponent's
+    // units is destroyed" - from the very start (Assault Cannon, Ambush, ...), and Antivirus ("At the start of a combat") before
+    // those
+    if (G.fixes >= 27) nekroCombatStart(att, def, sys);
     if ((G.modules & kModDiscordant) && breakthroughsOn(G)) dsbtSpaceCombatStart(att, def, sys);  // Mirage Craft (0.43.0)
     if (G.modules & kModThundersEdge) phantomCombat(att, def, sys);  // Homesick Phantom (Crimson hero)
     SystemState& s = G.systems[sys];
@@ -472,6 +524,23 @@ void Rules::spaceCombat(int att, int def, int sys) {
             else alastor_[p] = false;
             zgravFlip(p, sys);
         }
+    // (fixes 27) the planets' ground forces fighting from the space area - the combat screens take the new forces
+    if (G.fixes >= 27 && alastorSys_ == sys && (!alastorFrom_.empty() || !alastorAside_[att].empty() || !alastorAside_[def].empty())) {
+        Event e;
+        e.kind = EventKind::CombatStart;
+        e.player = int8_t(att);
+        e.other = int8_t(def);
+        e.system = int16_t(sys);
+        e.planet = -1;
+        e.space = true;
+        e.a = s.space[att];
+        e.b = s.space[def];
+        e.text = "The Alastor's ground forces take their places in " + sysName(sys) + ".";
+        E.emit(e);
+    }
+    // (fixes 25, owner's faction debug pass) Vos Hollow: ships destroyed before the first round count too
+    const bool vosEarly = G.fixes >= 25 && (G.modules & kModThundersEdge);
+    const Force startA = s.space[att], startD = s.space[def];
     auto acShips = [&](int side) {  // non-fighter ships for Assault Cannon
         int n = s.space[side].nonFighterShips();
         if (v13) {
@@ -515,10 +584,18 @@ void Rules::spaceCombat(int att, int def, int sys) {
             feedNote(def, pn(def) + "'s Assault Cannon can't fire: " + pn(att) +
                               "'s went first (active player) and left fewer than 3 non-fighter ships.");
         const bool spl = v13 && side < G.numPlayers && splicerReady(side, other, sys);
-        if (spl && acReady(side, other) &&
-            fyes(side, Ab::DimensionalSplicer, "Resolve Dimensional Splicer before Assault Cannon?",
-                 "Both happen at the start of this combat - you choose the order.")) {
-            dimensionalSplicer(side, other, sys);
+        bool splFirst = false;
+        if (spl && acReady(side, other)) {
+            const int cf = curFor_, cv = curValue_;
+            curFor_ = other;  // (for the AI: whose ships, in which system)
+            curValue_ = sys;
+            splFirst = fyes(side, Ab::DimensionalSplicer, "Resolve Dimensional Splicer before Assault Cannon?",
+                            "Both happen at the start of this combat - you choose the order.");
+            curFor_ = cf;
+            curValue_ = cv;
+        }
+        if (splFirst) {
+            dimensionalSplicer(side, other, sys, true);
             if (acReady(side, other)) assaultCannon(side, other);
             continue;
         }
@@ -529,6 +606,7 @@ void Rules::spaceCombat(int att, int def, int sys) {
     spaceCombatStart3(att, def, sys);  // The Alastor, Dimensional Splicer, Antivirus
     spaceCombatStart4(att, def, sys);  // Z-Grav Eidolon, The Cavalry
     if (G.modules & kModDiscordant) dsSpaceCombatStart(att, def, sys);  // Lost Cause, Projection of Power
+    if (vosEarly) vosHollow(att, def, sys, startA, startD);  // (Assault Cannon, Dimensional Splicer)
     // Units that fight: ships - and, with The Alastor, the Nekro player's ground forces in space;
     // Z-Grav Eidolons (Naaz-Rokha mechs) in the active system.
     auto fmask = [&](int p) {
@@ -586,6 +664,7 @@ void Rules::spaceCombat(int att, int def, int sys) {
 
         // Anti-fighter barrage (first round only)
         if (round == 1) {
+            const Force afbA = s.space[att], afbD = s.space[def];  // (Vos Hollow, fixes 25)
             for (int side : {att, def}) {
                 int other = side == att ? def : att;
                 const int si = side == att ? 0 : 1;
@@ -601,7 +680,7 @@ void Rules::spaceCombat(int att, int def, int sys) {
                 if (afb.empty() && !cavalry && !metaliArm && !dsAfb && !dsAfb5) continue;
                 if ((scarAt(G, sys) && !ignoresScars(G, side)) || quietusAt(G, side, sys)) continue;  // Thunder's Edge: no anti-fighter barrage inside an entropic scar (the Quietus; 0.44.4: the Nivyn ignore it)
                 // Iconoclast Omega (Naalu mech, Codex 0.31.0): no anti-fighter barrage against the Naalu's units in its system
-                if (codexOn(G) && fac(other, "naalu") && mechAbilities(G) &&
+                if (codexOn(G) && !teNaalu(G) && fac(other, "naalu") && mechAbilities(G) &&
                     (s.space[other].count(UnitType::Mech) || [&] {
                         for (int16_t x : s.planets)
                             if (G.planets[x].units[other].count(UnitType::Mech)) return true;
@@ -640,8 +719,10 @@ void Rules::spaceCombat(int att, int def, int sys) {
                 cavalryDice(si, side, r, RollKind::AFB);
                 reportRoll(side, sys, "Anti-fighter barrage", r);
                 afterUnitRoll(side, other, sys, r, "anti-fighter barrage");
+                // (fixes 26, the Nomad review - owner 2026-11-13) Quantum Manipulator: "during combat" - the barrage too
+                if (G.fixes >= 26 && r.hits > 0 && other < G.numPlayers) r.hits = quantumManipulator(other, sys, r.hits, true);
                 if (waylay) {
-                    if (r.hits) assignHits(other, sys, -1, r.hits, kShipMask, "anti-fighter barrage (Waylay)", side);
+                    if (r.hits) assignHits(other, sys, -1, r.hits, kShipMask | alastorMask(other), "anti-fighter barrage (Waylay)", side);
                 } else if (r.hits) {
                     destroyUnits(other, UnitType::Fighter, std::min(r.hits, fightersBefore), sys, -1, side, "anti-fighter barrage");
                     raidFormation(side, other, sys, r.hits - fightersBefore);  // Argent
@@ -649,6 +730,7 @@ void Rules::spaceCombat(int att, int def, int sys) {
                 strikeWingAlpha(side, other, sys, r);
                 if (fightersBefore > 0 && s.space[other].count(UnitType::Fighter) == 0) actionSecret(side, "fwp");
             }
+            if (vosEarly) vosHollow(att, def, sys, afbA, afbD);  // (the barrage's losses)
             if (!fighting(att) || !fighting(def)) break;
         }
 
@@ -693,6 +775,16 @@ void Rules::spaceCombat(int att, int def, int sys) {
                 rd = ra = false;
             }
         }
+        // Watchful Ojz (Ral Nel commander; fixes 27, the Ral Nel review): "When you declare a retreat: Immediately retreat up
+        // to 2 of your ships" - before this round's rolls
+        if ((rd || ra) && (G.modules & kModThundersEdge) && G.fixes >= 27) {
+            const int who = rd ? def : att;
+            ojz(who, who == def ? att : def, sys, -1);
+            if (!hasShips(G, who, sys)) {  // (all of them gone: the combat is over)
+                retreater = who;
+                break;
+            }
+        }
         RollResult rA, rD;
         for (int again = 0; again < 4; ++again) {
             Force fa = fighters(att), fd = fighters(def);  // transported ground forces don't roll
@@ -730,8 +822,8 @@ void Rules::spaceCombat(int att, int def, int sys) {
         const int keepA = dsOn ? dsUncancellable(att, def, sys, rA) : 0, keepD = dsOn ? dsUncancellable(def, att, sys, rD) : 0;  // Raider II
         shields(def, rA.hits);
         shields(att, rD.hits);
-        rA.hits = spaceHitsCancel(def, 1, sys, rA.hits);  // The Cavalry, Quantum Manipulator
-        rD.hits = spaceHitsCancel(att, 0, sys, rD.hits);
+        rA.hits = spaceHitsCancel(def, 1, sys, rA.hits, att);  // The Cavalry, Quantum Manipulator
+        rD.hits = spaceHitsCancel(att, 0, sys, rD.hits, def);
         if (dsOn) {  // Queen Lorena (Kortali commander)
             rA.hits = std::max(keepA, dsCancelHits(def, att, sys, -1, rA.hits));
             rD.hits = std::max(keepD, dsCancelHits(att, def, sys, -1, rD.hits));
@@ -793,8 +885,12 @@ void Rules::spaceCombat(int att, int def, int sys) {
             w.sys = sys;
             window(w);
         }
-        afterSpaceRound(att, def, sys);  // Exotrireme II
-        if (hasShips(G, att, sys) && hasShips(G, def, sys)) devotion(att, def, sys);  // Yin
+        // Exotrireme II ("after a round of space combat"; fixes 25, owner 2026-11-11: after the Retreat step - LRR 78.7 /
+        // 78.8 make it step 5 of the round, so ships that retreat get away; below)
+        if (G.fixes < 25) afterSpaceRound(att, def, sys);
+        // Devotion (Yin): "after each space combat round" - (fixes 26, the Yin review - owner 2026-11-12) after the Retreat
+        // step, which ends the round (LRR 78.7 / 78.8; below), as Exotrireme II
+        if (G.fixes < 26 && hasShips(G, att, sys) && hasShips(G, def, sys)) devotion(att, def, sys);
         // LRR 78.7: retreat only happens if the opponent still has ships.
         int who = rd ? def : ra ? att : -1;
         int opp = who == def ? att : def;
@@ -815,6 +911,8 @@ void Rules::spaceCombat(int att, int def, int sys) {
                 break;
             }
         }
+        if (G.fixes >= 25) afterSpaceRound(att, def, sys);  // Exotrireme II, after the Retreat step (no retreat happened)
+        if (G.fixes >= 26 && hasShips(G, att, sys) && hasShips(G, def, sys)) devotion(att, def, sys);  // Devotion (Yin), the same
         // (0.44.9, fixes 13 - the owner's answer W14; Living Rules FAQ) a combat nobody can win - e.g. Duranium Armor and
         // Non-Euclidean Shielding cancelling every hit: 20 rounds in a row without a unit lost, then the attacker retreats,
         // or is destroyed if it can't
@@ -844,6 +942,11 @@ void Rules::spaceCombat(int att, int def, int sys) {
     G.dsKomatSys = -1;  // (Komat: the same)
     // LRR 78.10: the player with ships left in the system wins (a retreat counts).
     bool a = fighting(att), d = fighting(def);
+    if (G.fixes >= 27) {  // (The Alastor: the planets' ground forces go back, those aside return)
+        alastorReturn(att);
+        alastorReturn(def);
+        alastorSys_ = -1;
+    }
     alastor_[att] = alastor_[def] = false;
     int winner = combatDraw_ ? -1 : (a && !d) ? att : (d && !a) ? def : -1;
     // Subversive (Kyro, Discordant Stars): a combat that would end in a draw is theirs
@@ -1024,14 +1127,20 @@ void Rules::groundCombat(int att, int def, int planet) {
             r.hits *= 2;
             say(side, pn(side) + "'s ground combat hits are doubled (X-89 Bacterial Weapon): " + std::to_string(r.hits) + ".", sys);
         }
-        // Valkyrie Particle Weave: +1 hit if the opponent scored any
-        if (owns(att, "vpw") && rD.hits > 0 && !magen) {
-            ++rA.hits;
-            say(att, pn(att) + " scores 1 extra hit (Valkyrie Particle Weave).", sys);
-        }
-        if (owns(def, "vpw") && rA.hits > 0) {
-            ++rD.hits;
-            say(def, pn(def) + " scores 1 extra hit (Valkyrie Particle Weave).", sys);
+        // Valkyrie Particle Weave: +1 hit if the opponent produced any (fixes 25, Sardakk review 2026-11-11: the hits their
+        // dice produced - one side's extra hit doesn't trigger the other's (a Nekro with it against the Sardakk); the
+        // card's wording in the log)
+        {
+            const int hitsA = rA.hits;
+            const std::string vpwLine = G.fixes >= 25 ? " produces 1 additional hit (Valkyrie Particle Weave)." : " scores 1 extra hit (Valkyrie Particle Weave).";
+            if (owns(att, "vpw") && rD.hits > 0 && !magen) {
+                ++rA.hits;
+                say(att, pn(att) + vpwLine, sys);
+            }
+            if (owns(def, "vpw") && (G.fixes >= 25 ? hitsA : rA.hits) > 0) {
+                ++rD.hits;
+                say(def, pn(def) + vpwLine, sys);
+            }
         }
         // Carapace Plating (Uncharted Space): cancel up to 2 hits; Shields Holding too (Wild, Wild Galaxy)
         for (int side : {att, def}) {
@@ -1106,6 +1215,10 @@ void Rules::groundCombat(int att, int def, int planet) {
         }
         harrow(att, def, planet);  // L1Z1X: bombardment after each round
         if (G.modules & kModThundersEdge) alarum(att, def, planet);  // Ral Nel mech
+        // Heaven's Eye (fixes 25, owner's faction debug pass): "the end of every combat round" - ground combat rounds too
+        // (LRR 42.4: they have "end of combat round" effects); a Firmament flagship in the space area above
+        if ((G.modules & kModThundersEdge) && G.fixes >= 25)
+            for (int q = 0; q < G.numPlayers; ++q) heavensEye(q, -1, sys);
         if ((G.modules & kModDiscordant) && breakthroughsOn(G) && dsbtGroundRoundEnd(att, def, planet)) {  // Hidden Hardpoints (0.43.0)
             if (G.fixes >= 8) {  // 0.44.4: the combat screen closes (nobody won - the units coexist)
                 Event e;
@@ -1121,6 +1234,17 @@ void Rules::groundCombat(int att, int def, int planet) {
         }
     }
     bool a = fighting(att) > 0, d = fighting(def) > 0;
+    // (fixes 27, the Naalu review - LRR FAQ "The Naalu Collective": "If no Naalu ground forces are present, the combat is
+    // considered to be a draw") the Matriarch's fighters alone don't win a ground combat
+    bool onlyFighters = false;
+    if (G.fixes >= 27)
+        for (int side : {att, def}) {
+            const Force fo = ground(side);
+            if (fighting(side) > 0 && fo.groundForces() + fo.count(UnitType::PDS) == 0) {
+                (side == att ? a : d) = false;
+                onlyFighters = true;
+            }
+        }
     int winner = (a && !d) ? att : (d && !a) ? def : -1;
     if (winner < 0 && (G.modules & kModDiscordant) && dsDrawWinner(att, def) >= 0) {  // Subversive (Kyro): the draw is theirs
         winner = dsDrawWinner(att, def);
@@ -1141,7 +1265,8 @@ void Rules::groundCombat(int att, int def, int planet) {
         e.system = int16_t(sys);
         e.planet = int16_t(planet);
         e.space = false;
-        e.text = "Both sides' ground forces are wiped out on " + planetName(planet) + " - a draw.";
+        e.text = onlyFighters ? "The ground combat on " + planetName(planet) + " is a draw: only fighters are left (Matriarch)."
+                              : "Both sides' ground forces are wiped out on " + planetName(planet) + " - a draw.";
         E.emit(e);
         combatEnded6(att, def, sys, planet);
         return;

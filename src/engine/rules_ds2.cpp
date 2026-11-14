@@ -382,7 +382,7 @@ void Rules::dsSpecialtyUsed(int p, const std::vector<int>& planets) {
     if (fac(p, "zealots")) {
         const int n = std::min<int>(int(planets.size()), commodityCap(G, pl) - pl.commodities);
         if (n > 0) {
-            pl.commodities = int8_t(pl.commodities + n);
+            { const int cb_ = pl.commodities; pl.commodities = int8_t(pl.commodities + n); commodityGained(p, cb_); }
             say(p, pn(p) + " gains " + std::to_string(n) + " commodit" + (n > 1 ? "ies" : "y") + " (Ancient Knowledge).");
         }
     }
@@ -537,7 +537,7 @@ void Rules::dsPassed(int p) {
             if (q != p && G.players[size_t(q)].passed && !G.players[size_t(q)].eliminated) ++n;
         n = std::min(n, commodityCap(G, pl) - pl.commodities);
         if (n > 0) {
-            pl.commodities = int8_t(pl.commodities + n);
+            { const int cb_ = pl.commodities; pl.commodities = int8_t(pl.commodities + n); commodityGained(p, cb_); }
             say(p, pn(p) + " gains " + std::to_string(n) + " commodit" + (n > 1 ? "ies" : "y") + " (Applied Biothermics).");
         }
     }

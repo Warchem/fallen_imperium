@@ -14,6 +14,8 @@
 #include "gfx/canvas.h"
 #include "ui/map_view.h"
 
+Rect decisionPanelRect();  // (below)
+
 class DecisionUI {
 public:
     DecisionUI(const ti::Game& g, const ti::Decision& d) : g_(g), d_(d) { d_.context = keyText(d_.context); }
@@ -22,12 +24,18 @@ public:
     virtual bool update(const Input& in, uint32_t now) = 0;
     virtual void draw(Canvas& c, uint32_t now) = 0;
     virtual bool mapMode() const { return false; }
+    // 0.58.4: does a click on nothing (the map, a gap in the panel) confirm, as A? Not for lists and the row editors
+    // (production, payment, moves, hits, landing, tokens): their rows and the hint bar's A are clicked instead - a
+    // stray click on the map submitted them. Picking on the map still clicks through.
+    virtual bool bareClickConfirms() const { return true; }
     // The id of the option under the cursor (list choices), or -1.
     virtual int highlightedValue() const { return -1; }
     virtual std::vector<std::pair<std::string, std::string>> hints() const = 0;
     // Does B back out of something inside this question right now? When it
     // doesn't, B undoes the previous step instead (owner, 0.19.0: one button).
     virtual bool backAvailable() const { return true; }
+    // Where it draws (0.58.4: the wheel menus are taller than the usual panel) - the mouse wheel works there.
+    virtual Rect area() const { return decisionPanelRect(); }
     // Covers the whole screen (the research cards): the mouse wheel scrolls it, never the map (0.29.0).
     virtual bool fullScreen() const { return false; }
     // Widescreen (0.46.0): laid out for the whole 640-wide screen - drawn centred on a wider one.

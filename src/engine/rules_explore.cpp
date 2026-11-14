@@ -44,9 +44,13 @@ void Rules::setupExploration() {
         if (us || kRelics[r].source != Source::Uncharted) G.relicDeck.push_back(int16_t(r));
     }
     E.rng().shuffle(G.relicDeck);
-    // LRR 38.1: a frontier token in every system without planets (not hyperlanes).
-    for (SystemState& s : G.systems)
-        if (!s.isHyperlane() && s.planets.empty()) s.frontier = true;
+    // LRR 38.1: a frontier token in every system without planets (not hyperlanes). (fixes 26, the Empyrean review - owner
+    // 2026-11-12: the Thunder's Edge rulebook - "A system that contains a space station and no planets gets a frontier token
+    // during setup")
+    for (size_t x = 0; x < G.systems.size(); ++x) {
+        SystemState& s = G.systems[x];
+        if (!s.isHyperlane() && (G.fixes >= 26 ? planetless(G, int(x)) : s.planets.empty())) s.frontier = true;
+    }
 }
 
 int Rules::drawExplore(int type) {
@@ -276,6 +280,7 @@ void Rules::resolveExplore(int p, int c, int sys, int planet) {
                     if (pay(p, cost, false, "Freelancers", false, 0, 0, true)) {
                         addUnits(p, ut, 1, sys, isGroundForce(ut) ? planet : -1);
                         say(p, pn(p) + " produces 1 " + unitTypeName(ut) + " (Freelancers).", sys);
+                        if (G.modules & kModThundersEdge) phantomProducedOne(p, sys, ut, 1);  // Homesick Phantom (fixes 24)
                         removeExcessCapacity(p, sys);
                         enforceFleetLimit(p);
                     }
@@ -463,6 +468,7 @@ void Rules::takeRelic(int p, int r) {
     if (relicIs(r, "shard")) gainVP(p, 1, "Shard of the Throne");
     if (relicIs(r, "obsidian")) drawSecret(p);
     teTakeRelic(p, r);  // Thunder's Edge: Book of Latvinia
+    iconoclastTE(p);    // (fixes 27) Thunder's Edge's Iconoclast: a Naalu mech when another player gains a relic
 }
 
 void Rules::loseRelic(int p, int r, bool purge) {
@@ -675,7 +681,7 @@ void Rules::mawOfWorlds() {
         if (t < 0) continue;
         loseRelic(p, findRelic("mawofworlds"), true);
         for (int x : controlledPlanets(G, p)) G.planets[x].exhausted = true;
-        researchTech(p, t);
+        researchTech(p, t, G.fixes < 27);  // (fixes 27: "gain 1 technology" - not research, as Plagiarize)
         E.log(p, pn(p) + " gains " + kTechs[t].name + ".", EventKind::Research);
     }
 }
@@ -932,7 +938,9 @@ std::vector<Option> Rules::domnaShips(int p) const {
 std::vector<int> Rules::domnaDestinations(int p, int from) const {
     std::vector<int> out;
     for (size_t s = 0; s < G.systems.size(); ++s) {
-        if (int(s) == from || G.systems[s].isHyperlane() || !adjacentSystems(G, from, int(s))) continue;
+        if (int(s) == from || G.systems[s].isHyperlane() ||
+            !(adjacentSystems(G, from, int(s)) || (G.fixes >= 24 && qeLinked(G, p, from, int(s)))))  // (Quantum Entanglement)
+            continue;
         if (otherShipsIn(G, p, int(s))) continue;
         if (G.fixes >= 12 ? !canEndMoveIn(G, p, int(s)) : (G.systems[s].d().anomalies & kSupernova) != 0) continue;  // (0.44.8: Magmus)
         out.push_back(int(s));

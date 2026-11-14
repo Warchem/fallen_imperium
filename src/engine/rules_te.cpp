@@ -167,6 +167,7 @@ void Rules::tePass(int p) {
             bool units = false;
             for (int q = 0; q < G.numPlayers; ++q)
                 if (!ps.units[q].empty()) units = true;
+            if (G.fixes >= 22 && !ps.units[size_t(kNeutral)].empty()) units = true;  // (0.58.5: neutral units - the Fracture, minor factions)
             if (units) continue;
             opts.push_back({int(x), planetName(int(x)),
                             (ps.owner >= 0 ? pn(ps.owner) + "'s - " : std::string("unclaimed - ")) + std::to_string(planetResources(G, int(x))) +
@@ -263,10 +264,15 @@ void Rules::tempestaWindow(int p, int sys) {
 // Entropic scars (Thunder's Edge rulebook, 0.43.4 - the tester found it missing; fixes >= 5): at the start of the
 // status phase a player with ships in an entropic scar may spend a token from their strategy pool to gain one of
 // their faction technologies.
+// (fixes 27 - the owner 2026-11-14) the Scepter of Emelpar ("When you would spend a token from your strategy pool, you may exhaust
+// this card to spend a token from your reinforcements instead") pays for it too; and a person with ships in a scar but nothing to
+// spend it with is told so in the feed (a note: not in the game log)
 void Rules::scarStatusStart() {
+    const bool v27 = G.fixes >= 27;
     for (int p : initiativeOrder(G)) {
         Player& pl = G.players[size_t(p)];
-        if (pl.eliminated || pl.strategy <= 0) continue;
+        const bool emel = v27 && !pl.eliminated && relicReady(p, "emelpar") && reinforcementTokens(p) > 0;
+        if (pl.eliminated || (pl.strategy <= 0 && !emel && !(pl.human && v27))) continue;
         int where = -1;
         for (size_t s = 0; s < G.systems.size() && where < 0; ++s)
             if (scarAt(G, int(s)) && hasShips(G, p, int(s))) where = int(s);
@@ -276,14 +282,36 @@ void Rules::scarStatusStart() {
             if (kTechs[t].faction >= 0 && kTechs[t].faction == pl.faction && !pl.hasTech(t) && techImplemented(t))
                 opts.push_back({t, kTechs[t].name, techSummary(t)});
         if (opts.empty()) continue;
-        opts.push_back({-1, "Nothing", "Keep the strategy token."});
+        if (pl.strategy <= 0 && !emel) {  // (a person only - see above)
+            feedNote(p, "Your ships are in the entropic scar at " + sysName(where) +
+                            ", but your strategy pool is empty: no faction technology this status phase (it costs 1 strategy token).");
+            continue;
+        }
+        const bool onlyScepter = pl.strategy <= 0;
+        opts.push_back({-1, "Nothing", onlyScepter ? "Keep the Scepter of Emelpar ready." : "Keep the strategy token."});
         const int t = fpick(p, Ab::ScarTech,
-                            "Entropic scar (" + sysName(where) + "): spend a strategy token to gain one of your faction technologies?", opts);
-        if (t < 0 || t >= kTechCount || pl.strategy <= 0) continue;
-        if (G.fixes >= 10) spendStrategy(p, 1);  // (0.44.6: the usual way - Stone's Embrace, the Rook, Magmus...)
-        else --pl.strategy;
+                            "Entropic scar (" + sysName(where) + "): spend a strategy token to gain one of your faction technologies?", opts,
+                            onlyScepter ? "Your strategy pool is empty: the Scepter of Emelpar is exhausted to spend a token from your reinforcements instead." : "");
+        if (t < 0 || t >= kTechCount || (pl.strategy <= 0 && !emel)) continue;
+        bool scepterUsed = false;
+        if (v27 && emel) {
+            if (onlyScepter) {
+                exhaustRelic(p, "emelpar");
+                scepterUsed = true;
+            } else {
+                scepterUsed = scepter(p);
+            }
+        }
+        if (scepterUsed) {
+            // (a token from the reinforcements: spent tokens go back there, so nothing moves)
+        } else if (G.fixes >= 10) {
+            spendStrategy(p, 1);  // (0.44.6: the usual way - Stone's Embrace, the Rook, Magmus...)
+        } else {
+            --pl.strategy;
+        }
         researchTech(p, t, false);
-        say(p, pn(p) + " spends a strategy token in the entropic scar at " + sysName(where) + " and gains " + kTechs[t].name + ".", where);
+        say(p, pn(p) + (scepterUsed ? " exhausts the Scepter of Emelpar in the entropic scar at " : " spends a strategy token in the entropic scar at ") +
+                   sysName(where) + " and gains " + kTechs[t].name + ".", where);
     }
 }
 

@@ -5,10 +5,18 @@
 
 #include "gfx/canvas.h"
 #include "gfx/font.h"
+#include "platform/platform.h"
 #include "ui/theme.h"
 
 namespace transition {
 bool pending = false;
+int style = 0;
+void pickStyle() {  // (display only: never the game's dice)
+    static uint32_t n = 0;
+    uint32_t h = (monotonicMs() + 0x9e3779b9u * ++n) * 2654435761u;
+    h ^= h >> 16;
+    style = int(h & 1u);
+}
 
 namespace {
 constexpr int kCellW = 9, kCellH = 13, kRows = 480 / kCellH + 1;
@@ -45,6 +53,26 @@ void glyph(Canvas& c, int x, int y, bool one, uint32_t col, int a) {
     }
 }
 
+// 0.58.3 (owner: "replace the 0s and 1s with 0s, 1s, and random lazaxian font"): a Lazaxian letter in the cell,
+// 7 x 11 single pixels (tools/gen_laz_glyphs.py), each row's runs as one rectangle.
+#include "ui/gen/laz_glyphs.inc"
+void lazGlyph(Canvas& c, int x, int y, int letter, uint32_t col, int a) {
+    const uint8_t* rows = kLazGlyphs[letter % 26];
+    for (int r = 0; r < 11; ++r) {
+        const unsigned bits = rows[r];
+        for (int b = 0; b < 7;) {
+            if (!(bits & (1u << b))) {
+                ++b;
+                continue;
+            }
+            int e = b;
+            while (e < 7 && (bits & (1u << e))) ++e;
+            c.fillRect(x + b, y + r, e - b, 1, col, a);
+            b = e;
+        }
+    }
+}
+
 // Covers each row from both edges up to front(row) units in (0 = nothing, half the width+ = all).
 void flood(Canvas& c, float reach, uint32_t t, bool back) {
     Whole wh(c);
@@ -72,17 +100,23 @@ void flood(Canvas& c, float reach, uint32_t t, bool back) {
             if (inside < 0.f) continue;
             const uint32_t h = hash3(uint32_t(col), uint32_t(row), t / 110u + uint32_t(col * 7 + row * 3) % 5u);
             const bool one = (h & 1u) != 0;
+            const uint32_t h2 = hash3(h, 0x1a2au, 77u);
+            const bool laz = h2 % 100u < 30u;  // about a third of the cells: a Lazaxian letter
             uint32_t colr;
             int a;
-            if (inside < 26.f) {  // the crest: pale cyan
-                colr = mix(rgb(90, 190, 225), rgb(190, 235, 245), int((1.f - inside / 26.f) * 255.f));
+            const bool red = laz && style == 1;  // (0.58.4: the red flood's letters)
+            if (inside < 26.f) {  // the crest: pale cyan (pale rose)
+                colr = red ? mix(rgb(185, 90, 85), rgb(235, 180, 170), int((1.f - inside / 26.f) * 255.f))
+                           : mix(rgb(90, 190, 225), rgb(190, 235, 245), int((1.f - inside / 26.f) * 255.f));
                 a = 215;
             } else {
                 const int b = int((h >> 4) % 100u);
-                colr = b < 12 ? rgb(120, 200, 230) : b < 55 ? rgb(40, 130, 205) : rgb(24, 80, 170);
+                colr = red ? (b < 12 ? rgb(200, 105, 95) : b < 55 ? rgb(160, 60, 58) : rgb(118, 40, 44))
+                           : (b < 12 ? rgb(120, 200, 230) : b < 55 ? rgb(40, 130, 205) : rgb(24, 80, 170));
                 a = back ? 160 : 120 + int((h >> 12) % 70u);
             }
-            glyph(c, x0 + x + 1, y + 1, one, colr, int(float(a) * flick));
+            if (laz) lazGlyph(c, x0 + x + 1, y + 1, int((h2 >> 8) % 26u), colr, int(float(a) * flick));
+            else glyph(c, x0 + x + 1, y + 1, one, colr, int(float(a) * flick));
         }
         // scanlines across the covered part of the row
         for (int sy = 2; sy < kCellH; sy += 3) {

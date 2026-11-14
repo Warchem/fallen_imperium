@@ -224,22 +224,31 @@ private:
     static std::string tilesetLabel() { return std::string("Tilesets: ") + retro::tilesetName(retro::tileset()); }
 
     // A rolling marquee of stars (0.28.0, owner): three layers drifting left at their own speeds.
+    // 0.58.4 (owner: "cut off where the aspect ratio for the miyoo mini was"): on a widescreen PC the title is laid
+    // out in the middle 640 units, so the stars are drawn on the whole canvas (view reset, as many per unit of width).
     static void drawMarquee(Canvas& c, uint32_t now) {
         static const int kSpeed[3] = {6, 13, 26};  // units per second
+        const int ox = c.viewX(), vw = c.width();
+        const Rect clip = c.clip();
+        c.setView(0, c.fullWidth());
+        const int W = c.width();
+        const int n = 46 * W / 640;
         for (int layer = 0; layer < 3; ++layer)
-            for (int i = 0; i < 46; ++i) {
+            for (int i = 0; i < n; ++i) {
                 uint32_t h = uint32_t(i * 2654435761u) ^ uint32_t(layer * 40503u + 977u);
                 h ^= h >> 15;
                 h *= 2246822519u;
                 h ^= h >> 13;
                 const int y = int(h % 452u);
-                const int x0 = int((h >> 9) % 640u);
-                const int x = ((x0 - int((uint64_t(now) * uint64_t(kSpeed[layer]) / 1000u) % 640u)) % 640 + 640) % 640;
+                const int x0 = int((h >> 9) % uint32_t(W));
+                const int x = ((x0 - int((uint64_t(now) * uint64_t(kSpeed[layer]) / 1000u) % uint64_t(W))) % W + W) % W;
                 const int a = 70 + layer * 60 + int((h >> 20) % 40u);
                 const uint32_t col = (h >> 3) % 7 == 0 ? rgb(170, 200, 255) : (h >> 3) % 11 == 0 ? rgb(255, 210, 170) : rgb(230, 234, 245);
                 if (layer == 2) c.fillRect(x, y, 2, 2, col, a);
                 else c.fillRect(x, y, 1, 1, col, a);
             }
+        c.setView(ox, vw);
+        c.setClip(clip);
     }
     // The Credits black hole (0.28.0): a dark heart, a turning ring of neon dust, a glow when the mouse is on it.
     void drawBlackHole(Canvas& c, uint32_t now) const {

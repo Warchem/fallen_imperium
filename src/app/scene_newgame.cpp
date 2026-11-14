@@ -112,7 +112,7 @@ public:
         return factionShortName(f);
     }
 
-    enum Row { kPlayers, kSeats, kVP, kTrade, kGalaxy, kMecatol, kSpeed, kStart, kRows };
+    enum Row { kPlayers, kSeats, kVP, kTrade, kGalaxy, kHyperlanes, kMecatol, kSpeed, kStart, kRows };
     enum Col { kWho, kFaction, kColour, kLevel, kPers, kCols };
 
     int humans() const {
@@ -122,8 +122,9 @@ public:
         return n;
     }
     // the seat you sit in: the one at the bottom of the map if a person plays it, else the first person's
+    int layout() const { return hyperlanes_ ? 0 : 1; }  // (0.58.0) Setup::layout
     int primary() const {
-        const int bottom = std::max(0, southernmostSeat(players_));
+        const int bottom = std::max(0, southernmostSeat(players_, layout()));
         if (seats_[size_t(bottom)].human) return bottom;
         for (int i = 0; i < players_; ++i)
             if (seats_[size_t(i)].human) return i;
@@ -131,7 +132,7 @@ public:
     }
     void resetSeats() {
         for (SeatSetup& s : seats_) s = SeatSetup();
-        const int bottom = std::max(0, southernmostSeat(players_));
+        const int bottom = std::max(0, southernmostSeat(players_, layout()));
         seats_[size_t(bottom)].human = true;
         seats_[size_t(bottom)].color = myColor_;
     }
@@ -228,6 +229,7 @@ public:
         if (pending_) {  // the transition plays; then the game
             if (!startAt_) {
                 startAt_ = now;
+                transition::pickStyle();  // 0.58.4: blue or red Lazaxian letters, at random
                 // 0.30.0 (owner): the title's song fades out with the flood; GAME START brings the game's
                 audio::musicFadeOut(int(transition::kFlood + transition::kReveal / 2));
             }
@@ -245,6 +247,7 @@ public:
             myColor_ = std::max(-1, std::min(7, app.settings().getInt("color", 0)));
             freeTrade_ = app.settings().getInt("trade_r1", 1) != 0;
             contested_ = app.settings().getInt("mecatol_contested", 1) != 0;  // (0.54.0)
+            hyperlanes_ = app.settings().getInt("hyperlanes", 1) != 0;          // (0.58.0)
             draft_ = app.settings().getInt("galaxy_draft", 1) != 0;
             galaxy_ = std::max(0, std::min(2, app.settings().getInt("galaxy_mode", draft_ ? 1 : 0)));  // 0.43.0: + Seeded
             mapSeed_ = uint32_t(std::max(1, app.settings().getInt("map_seed", int(now % 99991u) + 1)));
@@ -301,6 +304,14 @@ public:
                 case kVP: vp_ = vp_ == 10 ? 14 : 10; break;
                 case kTrade: freeTrade_ = !freeTrade_; break;
                 case kMecatol: contested_ = !contested_; break;
+                case kHyperlanes: {  // (0.58.0) the seat at the bottom of the map can change: your seat moves with it
+                    const int was = std::max(0, southernmostSeat(players_, layout()));
+                    hyperlanes_ = !hyperlanes_;
+                    const int now2 = std::max(0, southernmostSeat(players_, layout()));
+                    if (was != now2) std::swap(seats_[size_t(was)], seats_[size_t(now2)]);
+                    previewKey_ = 0;
+                    break;
+                }
                 case kGalaxy: galaxy_ = (galaxy_ + (step > 0 ? 1 : 2)) % 3; break;  // Random, Draft, Seeded (0.43.0)
                 case kSpeed: speed_ = (speed_ + (step > 0 ? 1 : 3)) % 4; break;
                 case kSeats:
@@ -322,18 +333,20 @@ public:
         if (me >= 0) app.settings().setInt("color", seats_[size_t(me)].color);
         app.settings().setInt("trade_r1", freeTrade_ ? 1 : 0);
         app.settings().setInt("mecatol_contested", contested_ ? 1 : 0);
+        app.settings().setInt("hyperlanes", hyperlanes_ ? 1 : 0);
         app.settings().setInt("galaxy_draft", galaxy_ == 1 ? 1 : 0);
         app.settings().setInt("galaxy_mode", galaxy_);
         app.settings().setInt("map_seed", int(mapSeed_));
         app.settings().save();
         Setup s;
         s.players = players_;
-        s.human = watch ? std::max(0, southernmostSeat(players_)) : me;
+        s.human = watch ? std::max(0, southernmostSeat(players_, layout())) : me;
         s.vpGoal = vp_;
         s.humanColor = -1;
         s.trade = 1 | (freeTrade_ ? 2 : 0) | 4 | 8;  // community X-1 trades; round-1 free refills when a bot plays Trade (house rule)
         s.draft = galaxy_ == 1 ? 1 : 0;            // players build the galaxy (0.15.0) or a random one
         s.mapSeed = galaxy_ == 2 ? mapSeed_ : 0;   // ...or the map of the player's number (0.43.0)
+        s.layout = layout();                        // the printed board without hyperlanes (0.58.0)
         s.modules = app.settings().getInt("modules", ti::kModCodex);  // the Modules screen (0.31.0)
         if (s.modules & ti::kModThundersEdge) {  // galactic events (0.36.0): only the playable ones
             const int ev = app.settings().getInt("events", 0);
@@ -422,7 +435,7 @@ public:
             c.fillRoundRect(40, 368, 560, 20, 8, rgb(10, 4, 18), 175);
         }
         drawTextAligned(c, FONT_LG, 0, 22, 640, Align::Center, "New game", theme::gold);
-        Rect r{100, 46, 440, 312};  // (0.54.0: 7 rows - Mecatol Rex added)
+        Rect r{100, 44, 440, 318};  // (0.54.0: 7 rows - Mecatol Rex added; 0.58.0: 8 - Hyperlanes)
         drawPanel(c, r, theme::panel, theme::border, 12, retro::on() || retro::hd() ? 228 : 255);
         struct R {
             const char* label;
@@ -437,11 +450,12 @@ public:
              galaxy_ == 1 ? "Everyone places tiles in turn"
              : galaxy_ == 2 ? keyLabel("L1") + "/" + keyLabel("R1") + " seed, " + keyLabel("X") + " new, " + keyLabel("Y") + " the slices"
                             : "A balanced random map"},
+            {"Hyperlanes", hyperlanes_ ? "On" : "Off", hyperlaneDetail()},
             {"Mecatol Rex", contested_ ? "Contested" : "Calm",
              contested_ ? "Bots fight its holder for it - Imperial's points" : "Bots take it only when its holder leaves it open"},
             {"AI speed", kSpeedNames[speed_], ""},
         };
-        const int rowH = 34;
+        const int rowH = 31;
         int y = r.y + 14;
         for (int i = 0; i < kRows - 1; ++i) {
             const bool sel = i == sel_;
@@ -489,6 +503,19 @@ public:
         drawHintBar(c, {{"\xE2\x97\x80\xE2\x96\xB6", "Change"}, {"A", "Choose"}, {"START", watch ? "Watch" : "Begin"}, {"B", "Back"}});
     }
 
+    // 0.58.0 (owner): Hyperlanes On = the usual maps; Off = the printed board without them, at any player count
+    std::string hyperlaneDetail() const {
+        if (players_ == 6) return "Six players never use them";
+        if (hyperlanes_) return "The usual map: hyperlanes fill the gaps";
+        switch (players_) {
+            case 3: return "The printed 3-player board, 8 tiles each";
+            case 4: return "The printed 4-player board, 8 tiles each";
+            case 5: return "Printed board; 3 seats get +2/+4/+2 trade goods";
+            case 7: return "The 7-player board, its gap filled with systems";
+            default: return "The printed 8-player board, 61 systems";
+        }
+    }
+
     // ------------------------------------------------------------ the seeded galaxy (0.43.0)
     void setSeed(uint32_t v) {
         mapSeed_ = std::max<uint32_t>(1, std::min<uint32_t>(999999u, v));
@@ -496,12 +523,13 @@ public:
     }
     // The map this seed makes for these seats, built the way the game will build it, and each slice's numbers.
     void buildPreview() {
-        const uint64_t key = (uint64_t(mapSeed_) << 8) ^ uint64_t(players_) ^ (uint64_t(modules_) << 40);
+        const uint64_t key = (uint64_t(mapSeed_) << 8) ^ uint64_t(players_) ^ (uint64_t(modules_) << 40) ^ (uint64_t(layout()) << 60);
         if (key == previewKey_) return;
         previewKey_ = key;
         preview_ = ti::Game();
         preview_.numPlayers = players_;
         preview_.modules = modules_;
+        preview_.layout = uint8_t(layout());
         preview_.players.assign(size_t(players_), ti::Player());
         std::vector<int> homes(static_cast<size_t>(players_), 0);
         for (int i = 0; i < players_; ++i) {
@@ -801,7 +829,7 @@ public:
         for (int k = 0; k < kCols; ++k) drawText(c, FONT_XS, kX[k] + 4, y, kHead[k], colSel_ == k ? theme::gold : theme::faint);
         y += 16;
         const int rowH = players_ > 6 ? 34 : 40;
-        const int bottom = std::max(0, southernmostSeat(players_));
+        const int bottom = std::max(0, southernmostSeat(players_, layout()));
         const int me = primary();
         int personNo = 1;
         for (int i = 0; i < players_; ++i) {
@@ -887,6 +915,7 @@ private:
     std::vector<std::pair<int, int>> factions_;  // (faction, Keleres home: -1 = random)
     bool freeTrade_ = true, draft_ = true;
     bool contested_ = true;  // Mecatol Rex: Contested / Calm (0.54.0, Setup::extras bit 128)
+    bool hyperlanes_ = true; // Hyperlanes: On / Off (0.58.0, Setup::layout 0 / 1)
     int galaxy_ = 1;              // 0 Random, 1 Draft, 2 Seeded (0.43.0)
     uint32_t mapSeed_ = 1;
     bool slicesOpen_ = false, previewOk_ = false;

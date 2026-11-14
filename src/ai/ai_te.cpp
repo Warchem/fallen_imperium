@@ -114,6 +114,9 @@ float sliceCost(const Game& g, int p, int s) {
 // Thunder's Edge (a legendary planet) when the sixth is claimed.
 float sliceWorth(const Game& g, int p) {
     const Player& me = g.players[size_t(p)];
+    // (0.59.0, owner: "the Crimson don't expand into their slice") the Resonance Generator is their Slipstream - the +1
+    // move out of a home beside the board: the first slice before anything else
+    if (!me.breakthrough && isFaction(g, p, "crimson") && aiTune("crimsonexp", 1.f) > 0.f) return 15.f;
     if (!me.breakthrough) return aiCoreExpeditionLater(g, p) ? 3.5f : 9.f;  // 0.43.0: the guide's round
     const int mine = slicesOf(g, p), all = slicesClaimed(g);
     int rival = 0;
@@ -140,6 +143,52 @@ float fightWorth(const Game& g, int p, int t) {
     const UnitDef& u = unitDef(g, p, UnitType(t));
     if (u.combat <= 0) return 0.f;
     return float(std::max(0, 11 - u.combat)) * float(std::max<int>(1, u.combatDice)) + (u.sustain ? 3.f : 0.f);
+}
+// (0.59.0, owner: "the Crimson don't expand into their slice") Ahk Ravin as a ferry: a loaded ship at the home beside
+// the board trades places with a cheap ship out at free planets - the whole wave lands next turn instead of two trips
+// later. 'front' = the ship out there, 'back' = the carrier at home; the worth of the planets it brings in reach.
+float ravinExpand(const Game& g, int p, int* front, int* back) {
+    if (aiTune("ravinexp", 1.f) <= 0.f || !isFaction(g, p, "crimson")) return 0.f;
+    const int home = g.players[size_t(p)].homeSystem;
+    if (home < 0 || !g.systems[size_t(home)].offBoard) return 0.f;
+    const SystemState& hs = g.systems[size_t(home)];
+    if (hs.hasToken(p)) return 0.f;  // (LRR 95.3: nothing would go along)
+    int carrier = -1, cap = 0;
+    for (int t : kShipIdx)
+        if (t != int(UnitType::Fighter) && hs.space[size_t(p)].n[t] && unitDef(g, p, UnitType(t)).capacity > cap)
+            cap = unitDef(g, p, UnitType(t)).capacity, carrier = t;
+    int gf = hs.space[size_t(p)].groundForces();
+    for (int16_t x : hs.planets) gf += g.planets[size_t(x)].units[size_t(p)].groundForces();
+    if (carrier < 0 || cap < 2 || gf < 2) return 0.f;
+    auto freeWorth = [&](int x) {
+        float v = 0.f;
+        for (int16_t pl : g.systems[size_t(x)].planets) {
+            const PlanetState& ps = g.planets[size_t(pl)];
+            if (ps.owner >= 0 || ps.destroyed || (g.systems[size_t(x)].custodians && !g.custodiansRemoved) || neutralGroundOn(g, pl) > 0) continue;
+            v += aiPlanetValue(g, p, pl);
+        }
+        return v;
+    };
+    float best = 0.f;
+    for (size_t s = 0; s < g.systems.size(); ++s) {
+        const SystemState& ss = g.systems[s];
+        if (int(s) == home || ss.offBoard || ss.isHyperlane() || !ss.space[size_t(p)].ships() || otherShipsIn(g, p, int(s))) continue;
+        int ship = -1, cost = 1 << 20;  // the cheapest ship there goes home
+        for (int t : kShipIdx)
+            if (ss.space[size_t(p)].n[t] && !isFlagship(UnitType(t)) && unitCost2(g, p, UnitType(t)) < cost)
+                cost = unitCost2(g, p, UnitType(t)), ship = t;
+        if (ship < 0) continue;
+        float v = ss.hasToken(p) ? 0.5f * freeWorth(int(s)) : freeWorth(int(s));  // (with our token: landed next round)
+        for (int16_t a : ss.adj)
+            if (!g.systems[size_t(a)].hasToken(p) && !otherShipsIn(g, p, a) && !g.systems[size_t(a)].offBoard) v += 0.6f * freeWorth(a);
+        v *= 0.12f;
+        if (v > best) {
+            best = v;
+            if (front) *front = int(s) * 16 + ship;
+            if (back) *back = home * 16 + carrier;
+        }
+    }
+    return std::min(best, 3.f);
 }
 float ravinPair(const Game& g, int p, int* front, int* back) {
     float best = 0.f;
@@ -347,7 +396,12 @@ bool aiTeAnswer(const Game& g, const Decision& d, Answer& out) {
                 return t == kNoteSupportThrone || t == kNoteAlliance ? -50.f : -noteDefaultValue(g, id);
             });
             const float nv = has(d, n) ? noteDefaultValue(g, n) : 99.f;
-            const bool bad = !has(d, n) || noteType(n) == kNoteSupportThrone || noteType(n) == kNoteAlliance;
+            bool bad = !has(d, n) || noteType(n) == kNoteSupportThrone || noteType(n) == kNoteAlliance;
+            // (the Naalu review, checkpoint 2 - test knob sievekeep, default off) the bots gave a note ~12 times a game, mostly
+            // their own Trade Agreement (it costs their commodities at the next refresh) or Political Secret: keep their own
+            // notes unless the strategy pool is empty. Tested (sievekeep=1): uses 12.1 -> 10.2 a game; 25 wins / 7.81 VP against
+            // 22 / 7.46, fresh seeds 20 / 7.21 against 21 / 7.51 - no gain. OFF
+            if (aiTune("sievekeep", 0.f) > 0.f && has(d, n) && noteOwner(n) == p && me.strategy > 0) bad = true;
             const bool give = !bad && (nv <= 1.f || (me.strategy <= 0 && nv <= 2.f));
             out = one(give ? n : -1);
             return true;
@@ -415,21 +469,99 @@ bool aiTeAnswer(const Game& g, const Decision& d, Answer& out) {
                     }
                 return v;
             };
+            auto tetherV = [&](size_t i) { return std::max(sideV(g.tethers[i].first), sideV(g.tethers[i].second)); };
+            // (fixes 26, the Empyrean review) "let them cross / fire across your tether?" - bots never allow it (as before)
+            if (d.prompt.find("Void Tether: let ") == 0) {
+                out = one(0);
+                return true;
+            }
+            // (fixes 26) which token: a new one while one is left, else the one on the poorer border
+            if (d.prompt.find("place a new tether or move one") != std::string::npos) {
+                int pickId = -1;
+                float lo = 1e9f;
+                for (const Option& o : d.options) {
+                    if (o.id == 999) {
+                        pickId = 999;
+                        break;
+                    }
+                    const size_t i = size_t(o.id - 1000);
+                    if (o.id >= 1000 && i < g.tethers.size() && tetherV(i) < lo) lo = tetherV(i), pickId = o.id;
+                }
+                out = one(pickId >= 0 ? pickId : firstReal(d));
+                return true;
+            }
             int best = -1;
             float bv = 0.5f;
-            if (g.tethers.size() >= 2)  // 0.44.4: moving the older tether - only for a better border
-                bv = std::max(bv, std::max(sideV(g.tethers[0].first), sideV(g.tethers[0].second)) + 0.5f);
+            if (g.tethers.size() >= 2) {  // 0.44.4: moving the older tether - only for a better border
+                float lo = tetherV(0);    // (fixes 26: the Empyrean choose which - the poorer one)
+                if (g.fixes >= 26) lo = std::min(lo, tetherV(1));
+                bv = std::max(bv, lo + 0.5f);
+            }
+            // (the Empyrean review, checkpoint 2 - knob tetherhome, ON - owner 2026-11-12 23:50) the guide: "Tether borders that lead into
+            // your home or your scoring systems" - a border with our home (or our planets) on one side counts more.
+            // Tested (90 TE games each, wins / VP): 18 / 7.07 -> 22 / 7.30, fresh seeds 11 / 7.11 -> 11 / 7.18 (with
+            // bloodpact: 13 / 7.36); tethers placed 5.4 -> 7.8 a game
+            const float home = aiTune("tetherhome", 1.f);
+            auto ours = [&](int s) {
+                if (s == g.players[size_t(p)].homeSystem) return 2.f;
+                for (int16_t x : g.systems[size_t(s)].planets)
+                    if (g.planets[size_t(x)].owner == p) return 0.8f;
+                return 0.f;
+            };
             for (const Option& o : d.options) {
                 if (!o.enabled || o.id < 0) continue;
-                const float v = sideV(o.id);
+                float v = sideV(o.id);
+                if (home > 0.f && g.activeSystem >= 0 && v > 0.f) v += home * std::max(ours(g.activeSystem), ours(o.id));
                 if (v > bv) bv = v, best = o.id;
             }
             out = one(best);
             return true;
         }
         case Ab::CrimsonAgent: {  // Ahk Ravin: we swap our own ships (see ravinPair)
+            // (0.59.0) cargo: take along only what would be stranded (removed) once the ship has left - except a ship
+            // leaving the home beside the board (ravinExpand): it takes every ground force it can
+            if (d.prompt.find("take along") != std::string::npos || d.prompt.find("go along") != std::string::npos) {
+                const int sys = d.value / 16, type = d.value % 16;
+                if (isFaction(g, p, "crimson") && sys == g.players[size_t(p)].homeSystem && aiTune("ravinexp", 1.f) > 0.f) {
+                    if (d.prompt.find("take along") != std::string::npos) {
+                        int pickId = -1;
+                        for (const Option& o : d.options)  // ground forces: from space first, then the planets
+                            if (o.enabled && o.id >= 0 && (o.id % 16 == int(UnitType::Infantry) || o.id % 16 == int(UnitType::Mech)) &&
+                                (pickId < 0 || (o.id < 16 && pickId >= 16)))
+                                pickId = o.id;
+                        out = one(pickId);
+                    } else {
+                        int most = 0;
+                        for (const Option& o : d.options) most = std::max(most, o.id);
+                        out = one(most);
+                    }
+                    return true;
+                }
+                int over = 0;
+                if (sys >= 0 && sys < int(g.systems.size())) {
+                    Force f = g.systems[size_t(sys)].space[size_t(p)];
+                    f.remove(UnitType(type), 1, false);
+                    over = overflowOf(g, p, sys, f);
+                }
+                if (d.prompt.find("take along") != std::string::npos) {
+                    int pickId = -1;
+                    for (int t : {int(UnitType::Infantry), int(UnitType::Mech), int(UnitType::Fighter)})
+                        if (pickId < 0 && over > 0 && has(d, t)) pickId = t;  // (from the space area: ids below 16)
+                    out = one(pickId);
+                } else {
+                    int k = -1, most = -1;
+                    for (const Option& o : d.options) {
+                        most = std::max(most, o.id);
+                        if (o.id >= over && (k < 0 || o.id < k)) k = o.id;
+                    }
+                    out = one(k >= 0 ? k : most);
+                }
+                return true;
+            }
             int front = -1, back = -1;
-            ravinPair(g, p, &front, &back);
+            const float war = ravinPair(g, p, &front, &back);
+            int ef = -1, eb = -1;  // (0.59.0) or the ferry, when it is worth more
+            if (ravinExpand(g, p, &ef, &eb) > (war >= 5.f ? 0.7f : 0.f)) front = ef, back = eb;
             if (d.prompt.find("which player") != std::string::npos) out = one(has(d, p) ? p : firstReal(d));
             else if (d.prompt.find("first ship") != std::string::npos) out = one(has(d, front) ? front : firstReal(d));
             else out = one(has(d, back) ? back : firstReal(d));
@@ -496,8 +628,10 @@ bool aiTeAnswer(const Game& g, const Decision& d, Answer& out) {
             (void)kRank;
             out = one(bestBy(d, [&](int id) {
                 const int t = id % 16;
-                const int combat = unitDef(g, d.targetPlayer >= 0 ? d.targetPlayer : p, UnitType(t)).combat;
-                return float(11 - std::max(1, combat)) + (UnitType(t) == UnitType::Fighter ? -3.f : 0.f);
+                const UnitDef& u = unitDef(g, d.targetPlayer >= 0 ? d.targetPlayer : p, UnitType(t));
+                // (fixes 27, the Last Bastion review: Dame Briar may galvanize a PDS - its space cannon die, a little less)
+                if (isStructure(UnitType(t))) return u.cannon > 0 ? float(11 - u.cannon) - 2.f : -20.f;
+                return float(11 - std::max(1, int(u.combat))) + (UnitType(t) == UnitType::Fighter ? -3.f : 0.f);
             }));
             return true;
         }
@@ -596,6 +730,24 @@ bool aiTeAnswer(const Game& g, const Decision& d, Answer& out) {
             out = one(bestBy(d, [&](int t) { return float(unitDef(g, p, UnitType(t)).cost2); }));
             return true;
         case Ab::RalNelCommander:
+            // (the Ral Nel review, checkpoint 2 - switch rnojz, test: never used, 1.5 retreats announced a game): the 2 dearest
+            // ships leave at once (fixes 27: before the round's rolls), to the quietest neighbour. ON - owner 2026-11-14 ("Yea
+            // let's turn watchful ojz"; 180 games 35 vs 32 wins); rnojz=0 turns it off
+            if (aiTune("rnojz", 1.f) > 0.f) {
+                if (d.prompt.find("which ship") != std::string::npos) {
+                    out = one(bestBy(d, [&](int t) { return t < 0 ? -1.f : float(unitDef(g, p, UnitType(t)).cost2); }));
+                    return true;
+                }
+                out = one(bestBy(d, [&](int s) {
+                    if (s < 0 || s >= int(g.systems.size())) return -1e9f;
+                    float v = hasUnits(g, p, s) ? 1.f : 0.f;
+                    for (int16_t a : g.systems[size_t(s)].adj)
+                        for (int q = 0; q < g.numPlayers; ++q)
+                            if (q != p) v -= 0.5f * float(g.systems[size_t(a)].space[size_t(q)].nonFighterShips());
+                    return v;
+                }));
+                return true;
+            }
             out = one(-1);
             return true;
         case Ab::RalNelHero:
@@ -628,7 +780,13 @@ bool aiTeAnswer(const Game& g, const Decision& d, Answer& out) {
                 theirs = groundForcesOn(g, other, x);
             }
             if (fquirkIs(g, p, "deepwrought", 0)) out = one(mine >= theirs * 3 + 3 ? 0 : 1);  // Visiting Scholar
-            else out = one(mine >= theirs * 2 + 2 ? 0 : 1);
+            else if (Ab(d.ability) == Ab::FirmamentMech && p == g.activePlayer && aiTune("viperinv", 1.f) > 0.f) {
+                // (0.59.1, owner's faction debug pass) the Firmament invading came to take the planet: fight with the
+                // odds on our side - coexist when we'd likely lose, or when the coup is near (Viper Hollow takes it then)
+                const Player& me2 = g.players[size_t(p)];
+                const bool coupSoon = isFaction(g, p, "firmament") && (plotCount(me2) >= 2 || (plotCount(me2) >= 1 && g.round >= 3));
+                out = one(coupSoon ? (mine >= theirs * 2 + 2 ? 0 : 1) : (mine >= theirs + 1 ? 0 : 1));
+            } else out = one(mine >= theirs * 2 + 2 ? 0 : 1);
             return true;
         }
         case Ab::DeepwroughtAgent: {
@@ -636,9 +794,21 @@ bool aiTeAnswer(const Game& g, const Decision& d, Answer& out) {
                 out = one(bestBy(d, [&](int x) { return float(planetResources(g, x) + planetInfluence(g, x)); }));
                 return true;
             }
+            if (d.prompt.find("Doctor Carrina: ignore") == 0) {  // (fixes 27) we research: keep the planet unless they lead by 2
+                const int dw = d.targetPlayer;
+                out = one(dw >= 0 && g.players[size_t(dw)].vp >= me.vp + 2 ? 0 : 1);
+                return true;
+            }
             const int q = d.targetPlayer;  // help anyone but the leader
             int lead = 0;
             for (int r = 0; r < g.numPlayers; ++r) lead = std::max<int>(lead, g.players[size_t(r)].vp);
+            // (the Deepwrought review, checkpoint 2 - switch dwcarrina, test: with tied scores nobody is "below the leader", so
+            // she was never lent in the first rounds - helping gives us an infantry, coexisting, and an ocean card): help
+            // anyone who isn't ahead of us
+            if (aiTune("dwcarrina", 0.f) > 0.f) {
+                out = one(q >= 0 && g.players[size_t(q)].vp <= me.vp ? 1 : 0);
+                return true;
+            }
             out = one(q >= 0 && g.players[size_t(q)].vp < lead ? 1 : 0);
             return true;
         }
@@ -689,16 +859,57 @@ bool aiTeAnswer(const Game& g, const Decision& d, Answer& out) {
             if (fquirkIs(g, p, "crimson", 1)) out = one(has(d, 1) ? 1 : 0);  // Quiet Breaches: inactive
             else out = one(has(d, 2) ? 2 : has(d, 1) ? 1 : 0);
             return true;
-        case Ab::RemoveBreach:  // the Crimson keep theirs (Quiet Breaches: closed); everyone else closes them
-            out = one(isFaction(g, p, "crimson") && !fquirkIs(g, p, "crimson", 1) ? 0 : 1);
+        case Ab::MoveBreach: {  // (0.59.0) the inactive breach we need least: not the Sorrow's, away from our ships
+            out = one(bestBy(d, [&](int s) {
+                if (s < 0 || s >= int(g.systems.size())) return -1e9f;
+                const SystemState& ss = g.systems[size_t(s)];
+                float v = 0.f;
+                if (!std::strcmp(ss.d().key, "94")) v -= 100.f;  // the Sorrow - the way home
+                if (hasUnits(g, p, s)) v -= 20.f;
+                int near = 99;
+                for (size_t t = 0; t < g.systems.size(); ++t)
+                    if (g.systems[t].space[size_t(p)].ships() > 0 && !g.systems[t].offBoard && !ss.offBoard)
+                        near = std::min(near, hexDistance(ss.pos, g.systems[t].pos));
+                return v + float(near);
+            }));
             return true;
-        case Ab::Subatomic:
-            out = one(aiFreeSpend(g, p, false) >= 4 ? 1 : 0);
+        }
+        case Ab::RemoveBreach: {  // the Crimson keep theirs (Quiet Breaches: closed); everyone else closes them
+            if (!isFaction(g, p, "crimson")) {
+                out = one(1);
+                return true;
+            }
+            bool keep = !fquirkIs(g, p, "crimson", 1);
+            // (0.59.0, owner: tune Quiet Breaches) it still closes its breaches - but keeps the Sorrow's (the way home),
+            // the one its Quietus sits in, and one where a Revenant can take a planet on its next turn
+            const int s = d.value;
+            if (!keep && s >= 0 && s < int(g.systems.size())) {
+                const SystemState& sy = g.systems[size_t(s)];
+                if (!std::strcmp(sy.d().key, "94")) keep = true;
+                if (sy.space[size_t(p)].count(UnitType::Flagship)) keep = true;
+                if (mechAbilities(g) && unitsAvailable(g, p, UnitType::Mech) > 0)
+                    for (int16_t x : sy.planets)
+                        if (g.planets[size_t(x)].owner != p) keep = true;
+            }
+            out = one(keep ? 0 : 1);
             return true;
+        }
+        case Ab::Subatomic: {  // (0.59.0: fighters ask how many - as before, all of them or none)
+            int most = 0;
+            for (const Option& o : d.options) most = std::max(most, o.id);
+            out = one(aiFreeSpend(g, p, false) >= 4 ? most : 0);
+            return true;
+        }
         case Ab::CrimsonHero: {  // spring the phantom fleet in a fight; (0.55.0: never used before) hide new ships on the
             // card from round 3 while home is calm - a reserve that joins any space combat of ours at once
             if (d.prompt.find("purge") != std::string::npos) {
                 out = one(1);
+                return true;
+            }
+            if (d.prompt.find("how many") != std::string::npos) {  // (0.59.0: "Some of them" - bots answer all or none)
+                int most = 0;
+                for (const Option& o : d.options) most = std::max(most, o.id);
+                out = one(most);
                 return true;
             }
             const int home = g.players[size_t(p)].homeSystem;
@@ -709,9 +920,14 @@ bool aiTeAnswer(const Game& g, const Decision& d, Answer& out) {
             out = one(g.round >= 3 && calm && aiTune("phantom", 1.f) > 0.f && g.players[size_t(p)].phantom.nonFighterShips() < 6 ? 1 : 0);
             return true;
         }
-        case Ab::Revenant:
-            out = one(1);
+        case Ab::Revenant: {  // (fixes 24: offered for our own planets too - bots still only come to take one)
+            bool take = g.fixes < 24;
+            if (!take && g.activeSystem >= 0)
+                for (int16_t x : g.systems[size_t(g.activeSystem)].planets)
+                    if (g.planets[size_t(x)].owner != p) take = true;
+            out = one(take ? 1 : 0);
             return true;
+        }
         case Ab::BtCrimson: {  // open an inactive breach, else a new active one next to enemies
             out = one(bestBy(d, [&](int c) {
                 if (c < 1000) return g.systems[size_t(c)].breach == 1 ? 2.f : -5.f;
@@ -757,6 +973,10 @@ bool aiTeAnswer(const Game& g, const Decision& d, Answer& out) {
             return true;
         }
         case Ab::FirmamentAgent:  // Myru Vos: our own fleet under space cannon, or as promised (0.43.0: not just for the way through)
+            if (g.fixes >= 25 && g.activePlayer != p) {  // (fixes 25: another player's move - only as promised; a seat a person
+                out = one(g.agentFor[size_t(p)] == g.activePlayer ? 1 : 0);  // plays, answered by a bot in tests: no)
+                return true;
+            }
             out = one(d.value == 1 || g.fixes < 2 || g.activePlayer != p ? 1 : 0);
             return true;
         case Ab::FirmamentHero: {  // the leader (the neighbour leader first)
@@ -774,9 +994,12 @@ bool aiTeAnswer(const Game& g, const Decision& d, Answer& out) {
         case Ab::Parasite2:
             out = one(bestBy(d, [&](int c) {
                 if (Ab(d.ability) == Ab::NeuralParasite) return 1.f;
-                const int q = c % 8, planet = c / 1024 - 1;
+                const int pm = g.fixes >= 25 ? 16 : 8, sm = g.fixes >= 25 ? 4096 : 1024;  // (fixes 25: room for the neutral side)
+                const int q = c % pm, planet = c / sm - 1;
                 if (planet < 0) return 0.5f;
-                return (groundForcesOn(g, q, planet) == 1 ? 3.f : 1.f) + aiPlanetValue(g, p, planet) * 0.1f;
+                // (a neutral guard: a planet opened up for us - worth it when it is the last one there)
+                const float who = q == kNeutral ? 0.8f : 1.f;
+                return ((groundForcesOn(g, q, planet) == 1 ? 3.f : 1.f) + aiPlanetValue(g, p, planet) * 0.1f) * who;
             }));
             return true;
         case Ab::Sowing: {  // bank when a coup is coming (2 for 1 on The Reaping); keep 2 to spend
@@ -814,6 +1037,10 @@ bool aiTeAnswer(const Game& g, const Decision& d, Answer& out) {
             return true;
         }
         case Ab::Malevolency: {  // pass it on - the Obsidian to whoever leads, the others to the Obsidian's best foe
+            if (aiTune("malevrival", 0.f) > 0.f && !isFaction(g, p, "obsidian")) {  // (test knob: a rival, not back to the Obsidian)
+                out = one(bestBy(d, [&](int q) { return float(g.players[size_t(q)].vp) - (isFaction(g, q, "obsidian") ? 3.f : 0.f); }));
+                return true;
+            }
             out = one(bestBy(d, [&](int q) { return float(g.players[size_t(q)].vp) + (isFaction(g, q, "obsidian") ? 0.5f : 0.f); }));
             return true;
         }
@@ -892,6 +1119,15 @@ bool aiTeAnswer(const Game& g, const Decision& d, Answer& out) {
             }
             if (has(d, 1) && has(d, 0) && (d.options.size() == 2 || has(d, 3))) {  // the Yssaril: share with anyone not ahead of us
                 const int q = d.targetPlayer;
+                // (the Yssaril review, checkpoint 2 - test knob gloomshare, OFF) 1: only players 2+ VP behind or Friendly; 2:
+                // nobody (the shared Scheming came up 1662 times in 90 games - the other players' card filter). Tested (90
+                // games): gloomshare=1 11 wins / 7.01 VP against 18 / 7.07 (shared 1351 times); gloomshare=2 15 / 7.31 - no gain
+                const float gs = aiTune("gloomshare", 0.f);
+                if (gs > 0.f && q >= 0 && q < g.numPlayers) {
+                    const bool share = gs < 1.5f && (g.players[size_t(q)].vp + 2 <= me.vp || attitudeOf(g, p, q) == Attitude::Friendly);
+                    out = one(share ? 1 : 0);
+                    return true;
+                }
                 out = one(q >= 0 && q < g.numPlayers && g.players[size_t(q)].vp <= me.vp ? 1 : 0);
                 return true;
             }
@@ -904,6 +1140,28 @@ bool aiTeAnswer(const Game& g, const Decision& d, Answer& out) {
 }
 
 // Breakthrough component actions (6000 + Ab): about what the plan would gain.
+// resources + influence of p's EXHAUSTED home planets - what The Blade's Orchestra would ready (the Firmament's coup timing)
+int aiHomeSpentValue(const Game& g, int p) {
+    const int home = g.players[size_t(p)].homeSystem;
+    if (home < 0) return 0;
+    int v = 0;
+    for (int16_t x : g.systems[size_t(home)].planets) {
+        const PlanetState& ps = g.planets[size_t(x)];
+        if (ps.owner == p && ps.exhausted) v += planetResources(g, int(x)) + planetInfluence(g, int(x));
+    }
+    return v;
+}
+
+// (the Firmament bot review, owner 2026-11-11) the coup now: it's due, a home planet has been spent this round and a
+// tactic token is left for the Hollows that The Blade's Orchestra readies
+bool aiCoupNow(const Game& g, int p) {
+    if (aiTune("couptiming", 1.f) <= 0.f || !isFaction(g, p, "firmament")) return false;
+    const Player& me = g.players[size_t(p)];
+    if (me.tactic < 1 || aiHomeSpentValue(g, p) < 2) return false;
+    float v = 0.f;
+    return aiTeComponentValue(g, p, int(Ab::Puppets), v) && v >= 1.0f;
+}
+
 bool aiTeComponentValue(const Game& g, int p, int ab, float& v) {
     const Player& me = g.players[size_t(p)];
     switch (Ab(ab)) {
@@ -962,7 +1220,7 @@ bool aiTeComponentValue(const Game& g, int p, int ab, float& v) {
             v = closed ? 0.5f : 0.3f;
             return true;
         }
-        case Ab::CrimsonAgent: v = ravinPair(g, p, nullptr, nullptr) >= 5.f ? 0.7f : 0.f; return true;
+        case Ab::CrimsonAgent: v = std::max(ravinPair(g, p, nullptr, nullptr) >= 5.f ? 0.7f : 0.f, ravinExpand(g, p, nullptr, nullptr)); return true;
         case Ab::Sever: {  // a wormhole we stand in that an enemy fleet could come through
             v = 0.f;
             for (size_t s = 0; s < g.systems.size(); ++s) {
@@ -980,13 +1238,22 @@ bool aiTeComponentValue(const Game& g, int p, int ab, float& v) {
             const int n = plotCount(me);
             int lead = 0;
             for (const Player& q : g.players) lead = std::max<int>(lead, q.vp);
-            if (n == 0 || lead >= g.vpGoal - 1) {
+            const float coup = aiTune("firmcoup", 0.f);  // (test only: 1 = later, 2 = never)
+            if (n == 0 || lead >= g.vpGoal - 1 || coup >= 2.f) {
                 v = 0.f;
-            } else if (firmQuirk(g, p, 1)) {  // Coup Clock: at 2 plots, as soon as the readied Hollows can be spent
+            } else if (coup >= 1.f) {
+                v = (n >= 2 && g.round >= 4) || (n >= 1 && g.round >= 6) ? 1.6f : 0.f;
+            } else if (firmQuirk(g, p, 1) && aiTune("coupclock", 1.f) <= 0.f) {  // (test only: the old Coup Clock, 2 plots)
                 v = n >= 2 ? 1.8f : 0.f;
+            } else if (firmQuirk(g, p, 1)) {  // Coup Clock (owner 2026-11-11): the moment it holds 2 plots, round 3 at the latest
+                v = n >= 2 ? 1.8f : g.round >= 3 ? 1.6f : 0.f;
             } else {
                 v = n >= 2 ? 1.6f : g.round >= 5 ? 1.5f : g.round >= 3 ? 1.1f : 0.f;
             }
+            // (the Firmament bot review, owner 2026-11-11) The Blade's Orchestra readies Cronos Hollow and Tallin Hollow
+            // at the coup: while neither home planet has been spent and a tactic token is left, spend them first (the
+            // coup then only comes before passing - aiCoupNow takes it once one is spent)
+            if (v > 0.f && aiTune("couptiming", 1.f) > 0.f && me.tactic >= 1 && aiHomeSpentValue(g, p) < 2) v = 0.35f;
             return true;
         }
         case Ab::FirmamentHero: v = 1.9f; return true;  // a plot (before the coup)
@@ -1023,6 +1290,8 @@ bool aiTeComponentValue(const Game& g, int p, int ab, float& v) {
             for (int x : controlledPlanets(g, p))
                 if (g.planets[size_t(x)].exhausted) tired += std::max(planetResources(g, x), planetInfluence(g, x));
             v = tired >= 7 ? 1.2f : 0.f;
+            // (the Firmament bot review, owner 2026-11-11) only when there's still a tactical action to spend them on
+            if (aiTune("obshero", 1.f) > 0.f && me.tactic < 1) v = 0.f;
             return true;
         }
         default: return false;

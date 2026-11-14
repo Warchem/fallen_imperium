@@ -92,7 +92,8 @@ void App::mouseAndPan(const KeyEvent& e, uint32_t now) {
                 m.left = true;
                 m.leftPress = true;
                 if (!stack_.empty() && !stack_.back()->wantsAllButtons()) {
-                    const Btn b = hits::press(e.x, e.y);
+                    const bool bare = !hits::any(e.x, e.y) && !stack_.back()->bareClickIsA(e.x, e.y);
+                    const Btn b = bare ? Btn::None : hits::press(e.x, e.y);
                     if (b != Btn::None) {
                         input_.handle(b, true, now);  // held while the button is (hold A: faster)
                         leftBtn_ = b;

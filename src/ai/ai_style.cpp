@@ -305,27 +305,52 @@ void factionQuirk(Style& st, const Game& g, int p) {
     const int w = g.players[p].pers.fquirk;
     auto is = [&](const char* k, int which) { return w == which && fac(g, p, k); };
     if (is("naalu", 0)) {
+        // REVISIT (the Naalu review, checkpoint 2, 90 forced games each; base 22 wins / 7.46 VP): Crystal Swarm 24 / 7.72 -
+        // fighters built 13.9 a game against 14.0 with Slithering Tongue, Hybrid Crystal Fighter II in 61% either way (the
+        // Strategy Core already favours fighters). Slithering Tongue 26 / 7.52 - deals 9.6 a game either way
         st.unit[int(UnitType::Fighter)] = 2.f;
         st.techPref[0] = "ff2";
     } else if (is("naalu", 1)) {
         st.notePay = 1.3f;
         st.sweetener = 1.f;
     } else if (is("muaat", 0)) {
+        // REVISIT (the Muaat review, 2026-11-12; owner: "leave them as is, note why"): Terrorist makes ~50% more threats
+        // (679 vs 439 in 90 games), but "its hero hits a valuable system of whoever refuses" isn't built: Ba'al is used
+        // only where the war sun happens to move (ai_faction Ab::MuaatHero) - the planner has no Ba'al plan (a bigger
+        // job: odds 1, the value of the units / planets it deletes, x for refusers). Left as is: the Muaat already win
+        // about their share (13-19% in 6-player games). Notes in CLAUDE.md, EMBERS OF MUAAT.
         st.threat += 1.f;
     } else if (is("muaat", 1)) {
+        // REVISIT (the Muaat review, 2026-11-12; owner: "leave them as is, note why"): on Competitive the flagship liking
+        // (2) is damped to 1.35, under the 1.4 bar, and "ws" never matched Prototype War Sun II - test knobs
+        // emperorfirm / emperortech made the trait do what it says (flagship in 55 games vs 48, a round sooner) but
+        // didn't help (90 games: 14 -> 13 / 11 wins), so both are OFF. Notes in CLAUDE.md, EMBERS OF MUAAT.
         st.unit[int(UnitType::WarSun)] = 2.5f;
         st.unit[int(UnitType::Flagship)] = 2.f;
-        st.techPref[0] = "ws";
+        // (the Muaat review, checkpoint 2 - test knob emperortech) the Muaat's war sun upgrade is Prototype War Sun II:
+        // "ws" never matched it (they can't research the generic War Sun)
+        st.techPref[0] = aiTune("emperortech", 0.f) > 0.f ? "pws2" : "ws";
         st.threat += 0.5f;
     } else if (is("arborec", 0)) {
         st.unit[int(UnitType::Infantry)] = 2.f;
         st.unit[int(UnitType::Mech)] = 2.f;
-        st.techPref[0] = "inf2";
+        // (the Arborec review, checkpoint 2 - test knob arbtech) the Arborec's infantry upgrade is Letani Warrior II:
+        // "inf2" never matched it (they can't research the generic Infantry II). Tested OFF: with Overgrowth forced,
+        // Letani Warrior II in 63 games of 90 (43 without) but 12 wins / 7.12 VP against 15 / 7.28. REVISIT with the
+        // trait texts (the description promises the upgrade first), as New Emperor's emperortech above
+        st.techPref[0] = aiTune("arbtech", 0.f) > 0.f ? "lw2" : "inf2";
         st.expansion *= 0.9f;
     } else if (is("arborec", 1)) {
+        // REVISIT (owner 2026-11-12, "down the road we will have to revisit faction modifiers"): Best Friend says it
+        // fortifies its legendary planets and Mecatol Rex; this PDS liking is general and Competitive tones it to 35%
+        // (see the bestfriend test knob in ai.cpp). Left as is with this note, as Overgrowth's tech above
         st.pdsPref += 1.f;
         st.mecatol *= 1.2f;
     } else if (is("hacan", 0)) {
+        // REVISIT (the Hacan review, checkpoint 2, 90 forced games each; base 17 wins / 7.30 VP): Wheel and Deal 14 / 7.26,
+        // threats 0.71 a game vs 3.47 with Scarface; Scarface 17 / 7.31 sells no action card at all (0 offers in 90
+        // games: 1 card for 2 trade goods nets 0 at its acValue 2, and buyers value a card below 2) - the "leans on players"
+        // part works (threats). Bots never trade action cards with the Hacan (Arbiters unused).
         st.tgKeep += 2;
         st.acValue = 3.f;
     } else if (is("hacan", 1)) {
@@ -333,12 +358,20 @@ void factionQuirk(Style& st, const Game& g, int p) {
         st.sellCards = 1.f;
         st.threat += 0.5f;
     } else if (is("mahact", 0)) {
+        // REVISIT (the Mahact review, checkpoint 2, 90 forced games each): Subjugation's small-fight liking is damped to
+        // ~1.1 on Competitive - small fights 334 vs 318 with Annihilation, Edict tokens the same (220 vs 217). Annihilation
+        // works (fleet pool 4.3 vs 3.4, threats 6.1 vs 3.3 a game) but never asks for notes: threat deals ask for trade goods.
         st.smallFights = 1.3f;
     } else if (is("mahact", 1)) {
         st.fleetTokens = 5;
         st.bigFights = 1.3f;
         st.threat += 0.5f;
     } else if (is("l1z1x", 0)) {
+        // REVISIT (the L1Z1X review, checkpoint 2, 90 forced games each; base 17 wins / 7.04 VP): Maximum Impact 17 / 7.09 -
+        // threats work (6.08 a game vs 2.28 with Assimilation Protocol), but the dreadnought liking is damped to ~1.35 on
+        // Competitive (under the 1.4 bar: 3.28 built a game vs 3.16), and "dn2" never matched Super-Dreadnought II (sdn2;
+        // knob prefresolve in techWant - no effect, the prerequisites decide: 19 games either way). Assimilation Protocol
+        // 14 / 6.77: Assimilate 28 vs 20, planets taken 754 vs 757 - near-cosmetic.
         st.unit[int(UnitType::Dreadnought)] = 2.f;
         st.techPref[0] = "dn2";
         st.threat += 0.5f;
@@ -346,6 +379,10 @@ void factionQuirk(Style& st, const Game& g, int p) {
         st.explore += 0.f;  // handled in planet values: enemy structures
         st.aggression *= 1.1f;
     } else if (is("sol", 0)) {
+        // REVISIT (the Sol review, checkpoint 2, 90 forced games each; base 27 wins / 7.84 VP): Imperium 27 / 7.92 - Support
+        // for the Throne given 85 vs 77 (Helldivers), but no more ceasefires (218 vs 226) and fewer planets taken (840 vs
+        // 912): "spreads infantry wide" doesn't show. Helldivers 27 / 7.99 does what it says: 18.3 infantry built a game vs
+        // 9.6, invasions 188 vs 163, ground combats won 229 vs 175.
         st.sup += 1.f;
         st.cea += 1.f;
         st.expansion *= 1.1f;
@@ -373,6 +410,13 @@ void factionQuirk(Style& st, const Game& g, int p) {
             if (best >= 0 && best < 8) st.vs[best] *= 1.6f;
         }
     } else if (is("sardakk", 1)) {
+        // REVISIT (Sardakk review, owner 2026-11-12: "leave it off, but note it"): on Competitive this trait does nothing -
+        // competitiveDamp pulls these likings to 1.175, under aiProduce's 1.4 bar for favourite units, and no bot ever
+        // strikes another player's home, so the home target below never comes into play. Tried and left OFF (none
+        // helped the Sardakk, 90 games each): hivefirm (the likings kept after the damp - built twice the ground
+        // forces, 18 -> 15 wins), hivepush (ai_ops: the target home as a campaign - no change), unstrand (ai.cpp
+        // aiUnstrand - no change). Details in CLAUDE.md, SARDAKK "FACTION MODIFIERS". Every trait that sets unit
+        // likings is blunted the same way on Competitive - check it in each faction's review.
         st.unit[int(UnitType::Infantry)] = 1.5f;
         st.unit[int(UnitType::Mech)] = 1.5f;
         if (g.round >= 5) {
@@ -383,18 +427,30 @@ void factionQuirk(Style& st, const Game& g, int p) {
             }
         }
     } else if (is("empyrean", 0)) {
+        // REVISIT (the Empyrean review, checkpoint 2, 90 forced games each; base 18 wins / 7.07 VP): Void Wardens 12 / 7.03 -
+        // it does what it says (frontier tokens explored 3.9 a game vs 3.3, moves into empty systems 4.7 vs 4.2) but it
+        // doesn't pay; Dark Bargainers 18 / 6.98 hands out Dark Pact a little more (0.59 a game vs 0.53) and never Blood
+        // Pact (no bot deal offers it - knob bloodpact)
         st.pres *= 1.4f;
         st.explore += 1.f;
     } else if (is("empyrean", 1)) {
         st.noteMult *= 0.7f;  // its Dark Pact / Blood Pact go out cheaply
         st.dealRate *= 1.2f;
     } else if (is("yssaril", 0)) {
+        // REVISIT (the Yssaril review, checkpoint 2, 90 forced games each; base 18 wins / 7.07 VP): Card Sharks 18 / 7.14 plays
+        // 11.7 action cards a game vs 11.5 with Ghost Fleet - no hoarding to see; Ghost Fleet 16 / 7.02 builds the flagship
+        // as often (0.92 a game vs 0.90: the 1.8 liking is damped under the 1.4 bar on Competitive) and attacks a little more
+        // (3.33 a game vs 3.20).
         st.card[2] += 1.f;
         st.acValue = 3.f;
     } else if (is("yssaril", 1)) {
         st.smallFights = 1.3f;
         st.unit[int(UnitType::Flagship)] = 1.8f;
     } else if (is("nekro", 0)) {
+        // REVISIT (the Nekro review, checkpoint 2, 90 forced games each; base 13 wins / 6.54 VP): Tech Parasite 10 / 6.40 - a
+        // little more fighting (3.99 space attacks a game vs 3.90, Singularity gains 5.09 vs 4.86): the x1.5 grudge is damped to
+        // x1.3 on Competitive. Plague Spreader 12 / 6.48 - no spreading to see (moves 16.0 a game vs 16.1, 1-2 unit moves 860 vs
+        // 851): its presence / expansion likings are damped to ~1.1 / 1.05
         int best = -1;
         size_t most = 0;
         for (int q = 0; q < g.numPlayers; ++q)
@@ -407,26 +463,43 @@ void factionQuirk(Style& st, const Game& g, int p) {
         st.pres *= 1.3f;
         st.expansion *= 1.15f;
     } else if (is("cabal", 0)) {
+        // REVISIT (the Vuil'raith review, checkpoint 2, 90 forced games each): both traits play like the plain faction on
+        // Competitive - Hungry Void's guard is cut to 1 by competitiveDamp, Soul Collector's big-fight liking is damped to
+        // ~1.1 (attacks on 5+ ship fleets 8 vs 8, captures 1471 vs 1457, 11 vs 10 wins).
         st.homeGuard += 1;
     } else if (is("cabal", 1)) {
         st.bigFights = 1.3f;
     } else if (is("titans", 0)) {
+        // REVISIT (the Titans review, checkpoint 2, 90 forced games each; base 11 wins / 6.94 VP): Sleeping Giant 14 / 6.86 -
+        // space attacks 3.22 a game against 3.20 (the early / late split isn't measured). Iron Shepherd 9 / 7.07 - PDS built
+        // 0.78 a game against 0.66 with Sleeping Giant (small; Hecatoncheires takes most awakened sleepers as mechs)
         st.aggression *= g.round <= 3 ? 0.7f : 1.4f;
     } else if (is("titans", 1)) {
         st.pdsPref += 1.5f;
         st.homeGuard += 1;
     } else if (is("mentak", 0)) {
+        // REVISIT (the Mentak review, checkpoint 2, 90 forced games each; base 16 wins / 7.04 VP): Cheapskates 20 / 7.28 -
+        // deals 14.0 a game either way (the price changes don't show in the counts). Corsairs 16 / 7.02 - space attacks 4.0 a
+        // game vs 3.7 with Cheapskates; "pillages whenever it can" is what every Mentak bot does (37.5 vs 38.1 a game).
         st.noteAdj = -1.f;
         st.acValue = 3.f;
     } else if (is("mentak", 1)) {
         st.smallFights = 1.35f;
     } else if (is("saar", 0)) {
+        // REVISIT (the Saar review, checkpoint 2, 90 forced games each; base 13 wins / 6.76 VP): Wanderers 13 / 6.77 - factory
+        // moves 1.51 a game (1.38), planets taken 8.13 (8.20): the home guard was already low, the expansion x1.2 changes
+        // little; Junk Barons 11 / 6.79 - planets 8.10, deals 14.7 (14.4): "grabs many cheap planets" doesn't show
         st.homeGuard = std::max(0, st.homeGuard - 1);
         st.expansion *= 1.2f;
     } else if (is("saar", 1)) {
         st.expansion *= 1.2f;
         st.dealRate *= 1.3f;
     } else if (is("argent", 0)) {
+        // REVISIT (the Argent review, checkpoint 2, 90 forced games each; base 21 wins / 7.71 VP): Wingmen 18 / 7.77 - more
+        // deals (15.8 a game vs 13.6 with Strike Doctrine), but nothing proposes joint attacks or guards a partner's
+        // systems. Strike Doctrine 18 / 7.62 - more space attacks (3.0 vs 2.7), but the destroyer liking is damped on
+        // Competitive (4.0 built a game either way) and "dd2" never matched Strike Wing Alpha II (swa2; knob argpref in
+        // techWant - no effect: it is the first tech of the Argent's core path already) - nothing hunts fighter-heavy fleets.
         st.peaceDeals += 0.5f;
         st.dealRate *= 1.2f;
     } else if (is("argent", 1)) {
@@ -434,11 +507,18 @@ void factionQuirk(Style& st, const Game& g, int p) {
         st.techPref[0] = "dd2";
         st.aggression *= 1.1f;
     } else if (is("naaz", 0)) {
+        // REVISIT (the Naaz-Rokha review, checkpoint 2, 90 forced games each; base 9 wins / 7.19 VP): Scrap Divers 8 / 7.18 -
+        // explores 13.3 a game against 13.5, relics 1.80 against 1.81 (Garv and Gunn and Distant Suns explore everything
+        // already). Odd Couple 7 / 7.06 - mechs built 2.38 against 2.37 (the mech limit caps it; mechs kept with the fleet
+        // not measured)
         st.explore += 1.5f;
         st.fragment = 2.f;
     } else if (is("naaz", 1)) {
         st.unit[int(UnitType::Mech)] = 1.6f;
     } else if (is("xxcha", 0)) {
+        // REVISIT (the Xxcha review, checkpoint 2, 90 forced games each; base 11 wins / 6.98 VP): Diplomatic Corps 9 / 6.79 -
+        // deals 17.3 a game vs 15.2 with Shell Defense; "votes to stop wars" isn't measured. Shell Defense 15 / 7.13 - PDS
+        // placed 268 vs 251, space attacks 1.9 vs 2.1 a game - small (Competitive damps unit likings).
         st.aggression *= 0.8f;
         st.peaceDeals += 1.f;
         st.dealRate *= 1.3f;
@@ -446,12 +526,20 @@ void factionQuirk(Style& st, const Game& g, int p) {
         st.pdsPref += 1.5f;
         st.farPenalty += 0.3f;
     } else if (is("letnev", 0)) {
+        // REVISIT (the Letnev review, checkpoint 2, 90 forced games each): Iron Barons research Dreadnought II more (57 games
+        // vs 45, round 3.7 vs 4.0) but build as many dreadnoughts (3.1 a game vs 3.0) - the liking is damped to 1.35 on
+        // Competitive, under the 1.4 bar. War Bankers lend almost never (3 loans in 90 games) and hoard no visible extra
+        // trade goods (Munitions Reserves rerolls 246 vs 242).
         st.unit[int(UnitType::Dreadnought)] = 2.f;
         st.techPref[0] = "dn2";
     } else if (is("letnev", 1)) {
         st.tgKeep += 2;
         st.lend += 1.f;
     } else if (is("jolnar", 0)) {
+        // REVISIT (the Jol-Nar review, checkpoint 2, 90 forced games each; base 12 wins / 6.93 VP): Ivory Tower 12 / 6.92 -
+        // 7.3 technologies a game (7.4), space attacks 2.6 (2.7): "research first" doesn't research more (the bots already
+        // take every research they can afford); Arms Dealers 13 / 6.92 - deals 13.5 a game either way, no technology-for-
+        // goods deals exist to make
         st.research *= 1.4f;
         st.aggression *= 0.7f;
     } else if (is("jolnar", 1)) {
@@ -459,15 +547,22 @@ void factionQuirk(Style& st, const Game& g, int p) {
         st.noteMult *= 0.8f;
     } else if (is("ghost", 0)) {
         st.aggression *= 1.1f;
+        if (aiTune("weavetech", 1.f) > 0.f) st.techPref[0] = "wg";  // (0.59.0: Wormhole Generator early - the doors it strikes through)
     } else if (is("ghost", 1)) {
         st.aggression *= 1.2f;
         st.retreatOdds = std::max(st.retreatOdds, 0.4f);
     } else if (is("winnu", 0)) {
+        // REVISIT (the Winnu review, checkpoint 2, 90 forced games each; base 4 wins / 6.10 VP): Heirs of Lazax 5 / 6.07 takes
+        // Mecatol Rex in 20 games (Old Diplomats 19) - the doubled liking doesn't show; Old Diplomats 3 / 6.17 gives
+        // Acquiescence away 3 times (Heirs 5) and makes as many vote deals (2 / 2) - neither trait does what it says.
         st.mecatol *= 2.f;
     } else if (is("winnu", 1)) {
         st.noteMult *= 0.7f;
         st.dealRate *= 1.2f;
     } else if (is("nomad", 0)) {
+        // REVISIT (the Nomad review, checkpoint 2, 90 forced games each; base 10 wins / 7.12 VP): Drifters 12 / 7.11 - moves
+        // 19.6 a game vs 19.5, space attacks 3.9 vs 4.0: near-cosmetic; Mercenaries 8 / 7.03 - deals 15.8 vs 15.6, notes or
+        // other items given 1.19 vs 1.18: near-cosmetic (it never sold The Cavalry - knob cavalrysell)
         st.homeGuard = std::max(0, st.homeGuard - 1);
         st.aggression *= 1.1f;
     } else if (is("nomad", 1)) {
@@ -488,15 +583,36 @@ void factionQuirk(Style& st, const Game& g, int p) {
         st.mecatol *= 1.3f;
         st.card[2] += 1.f;  // Politics
         st.techPref[0] = "executiveorder";
+    }
+    // (the Ral Nel review, checkpoint 2 - switch rnmech, test: 0.07 mechs a game - Alarum 0.23)
+    if (isFaction(g, p, "ralnel") && aiTune("rnmech", 0.f) > 0.f)
+        st.unit[int(UnitType::Mech)] = std::max(st.unit[int(UnitType::Mech)], aiTune("rnmech", 0.f));
+    // (the Deepwrought review, checkpoint 2 - switch dwmech, test: 0.11 mechs a game - Eanautic 3 times in 180 games; with it
+    // 3.4 a game and 70 of 180 wins vs 53. ON - owner 2026-11-14: "if something is working for the Deepwrought to win more,
+    // we should look into why" at the balancing pass; dwmech=0 turns it off)
+    if (isFaction(g, p, "deepwrought") && aiTune("dwmech", 1.6f) > 0.f)
+        st.unit[int(UnitType::Mech)] = std::max(st.unit[int(UnitType::Mech)], aiTune("dwmech", 1.6f));
+    // (the Last Bastion review, checkpoint 2 - switch bastionmech, test: 0.14 mechs a game - A3 Valiance once in 90 games)
+    if (isFaction(g, p, "bastion") && aiTune("bastionmech", 0.f) > 0.f)
+        st.unit[int(UnitType::Mech)] = std::max(st.unit[int(UnitType::Mech)], aiTune("bastionmech", 0.f));
+    if (false) {
     } else if (is("bastion", 0)) {  // Phoenix Banner: small sure fights for galvanize tokens
         st.smallFights *= 1.4f;
         st.minOdds -= 0.05f;
     } else if (is("bastion", 1)) {  // Liberator: infantry for Liberate; protection for neighbours
+        // REVISIT (the Last Bastion review, checkpoint 2, 90 forced games each; base 16 wins / 7.33 VP): Liberator 12 / 7.12 -
+        // Liberate readies 4.2 a game (4.3), infantry placed 3.5 (3.6): the landings don't grow to the planet's resources (the
+        // planner lands what the fight needs); Phoenix Banner 18 / 7.57 - space attacks 3.9 a game (3.5), Phoenix Standard 4.1
+        // (3.6): it does what it says
         st.unit[int(UnitType::Infantry)] = std::max(st.unit[int(UnitType::Infantry)], 1.5f);
         st.peaceDeals += 0.4f;
     } else if (is("ralnel", 0)) {  // Last Gecko Out (passing late: ai.cpp)
+        // REVISIT (the Ral Nel review, checkpoint 2 - 90 games forced): Data Skimmer 5.43 a game vs 5.39, Director Nel 0.96 vs
+        // 0.94 - every Ral Nel bot is already last to pass most rounds, so the trait barely shows; 18 wins / 7.57 VP vs 19 / 7.40
         st.tgKeep += 1;
     } else if (is("ralnel", 1)) {  // Skittering Ring: small groups everywhere
+        // REVISIT (the Ral Nel review, checkpoint 2 - 90 games forced): Survival Instinct 1.64 ships a game vs 1.92 - the small
+        // groups don't sit next to the fights it should rush into; 17 wins / 7.30 VP vs 19 / 7.40
         st.pres *= 1.3f;
         st.bigFights *= 0.85f;
         st.unit[int(UnitType::Destroyer)] = std::max(st.unit[int(UnitType::Destroyer)], 1.3f);
@@ -510,12 +626,17 @@ void factionQuirk(Style& st, const Game& g, int p) {
         st.aggression *= 0.9f;
         st.unit[int(UnitType::Infantry)] = std::max(st.unit[int(UnitType::Infantry)], 1.3f);
     } else if (is("deepwrought", 1)) {  // Library Card (ai_te: Visionaria Select, Radical Advancement)
+        // REVISIT (the Deepwrought review, checkpoint 2 - 90 games forced): Radical Advancement 3.71 a game vs 3.60, Visionaria
+        // Select 3.58 vs 3.58 - every Deepwrought bot already climbs and opens the library at each chance, so the trait barely
+        // shows; 30 wins / 7.98 VP vs 32 / 8.17
         st.research *= 1.2f;
-    } else if (is("firmament", 0) || is("obsidian", 0)) {  // Puppet Master: deals with every neighbour (Black Ops)
-        st.dealRate *= 1.3f;
-        st.pres *= 1.15f;
-    } else if (is("firmament", 1) || is("obsidian", 1)) {  // Coup Clock (ai_te: The Sowing, the coup at 2 plots)
-        st.tgKeep += 1;
+    } else if (is("firmament", 0) || is("obsidian", 0)) {  // Puppet Master: courts its neighbours (ai_deals bestProposal)
+        if (aiTune("puppetold", 0.f) > 0.f) {  // (test only: the trait before the owner's 2026-11-11 review)
+            st.dealRate *= 1.3f;
+            st.pres *= 1.15f;
+        }
+    } else if (is("firmament", 1) || is("obsidian", 1)) {  // Coup Clock (ai_te: The Sowing, the coup at 2 plots / round 3)
+        if (aiTune("coupclock", 1.f) <= 0.f) st.tgKeep += 1;  // (test only: the old trait kept a trade good more)
     } else if (is("kortali", 0)) {  // Exhausted Prey (Ruthless)
         st.aggression *= 1.15f;
         st.unit[int(UnitType::Dreadnought)] = std::max(st.unit[int(UnitType::Dreadnought)], 1.4f);
@@ -733,6 +854,19 @@ Style compute(const Game& g, int p) {
     if (pe.evo >= 0) evolution(st, g, p, Evo(pe.evo));
     if (pe.quirk >= 0) quirk(st, g, p, Quirk(pe.quirk));
     if (pe.fquirk >= 0) factionQuirk(st, g, p);
+    // (Sardakk review, owner 2026-11-11 - test B) "pick a target early and hit it before it can develop": in rounds 2-3
+    // every Sardakk bot leans on its weakest neighbour (the least fleet strength)
+    if (aiTune("sardearly", 0.f) > 0.f && isFaction(g, p, "sardakk") && g.round >= 2 && g.round <= 3) {
+        int best = -1, bs = 1 << 20;
+        for (int q = 0; q < g.numPlayers; ++q) {
+            if (q == p || g.players[q].eliminated || !areNeighbours(g, p, q)) continue;
+            int str = 0;
+            for (size_t s2 = 0; s2 < g.systems.size(); ++s2) str += combatStrength(g, q, int(s2), true);
+            if (str < bs) bs = str, best = q;
+        }
+        if (best >= 0 && best < 8) st.vs[best] *= aiTune("sardearlyvs", 1.5f);
+        st.aggression *= aiTune("sardearlyagg", 1.15f);
+    }
     // the hidden betrayal objective
     if (pe.target >= 0) {
         st.betrayTarget = pe.target;
@@ -888,6 +1022,38 @@ const Style& aiStyle(const Game& g, int p) {
         cache[p] = compute(g, p);
         if (aiCompetitiveSeat(g, p)) competitiveDamp(cache[p]);
         if (cache[p].on) aiCoreApply(cache[p], g, p);  // the Strategy Core: not damped, it is how the faction plays well
+        // (0.59.1, owner: the Creuss almost never take the custodians - 0.07 a game, Sol 0.47) Mecatol Rex counts more for them
+        if (cache[p].on && isFaction(g, p, "ghost") && g.round >= 2 && g.round <= 5) cache[p].mecatol *= aiTune("creussmec", 1.3f);
+        // (test knobs, the Firmament bot review) an earlier, wider slice; Construction early (a second dock)
+        if (cache[p].on && isFaction(g, p, "firmament") && g.round <= 3) {
+            cache[p].expansion *= aiTune("firmexp", 1.f);
+            if (g.round <= 2) cache[p].card[3] += aiTune("firmcon", 0.f);
+        }
+        // (test knob, the Firmament bot review) the Obsidian lean on their puppets: Assail, The Reaping, Seethe
+        if (cache[p].on && isFaction(g, p, "obsidian"))
+            if (const float pv = aiTune("obspuppet", 0.f); pv > 0.f)
+                for (int q = 0; q < g.numPlayers && q < 8; ++q)
+                    if (anyPuppet(g, p, q)) cache[p].vs[q] *= 1.f + pv;
+        // (test knob, the Sardakk review 2026-11-12) Hive Command: "masses ground forces" - on Competitive the damp above
+        // pulled its infantry / mech liking (1.5) under the bar where production adds favourite units (1.4), so the
+        // trait built nothing extra
+        if (cache[p].on && aiTune("hivefirm", 0.f) > 0.f && fquirkIs(g, p, "sardakk", 1)) {
+            cache[p].unit[int(UnitType::Infantry)] = std::max(cache[p].unit[int(UnitType::Infantry)], 1.5f);
+            cache[p].unit[int(UnitType::Mech)] = std::max(cache[p].unit[int(UnitType::Mech)], 1.5f);
+        }
+        // (test knob, the Muaat review 2026-11-12) New Emperor: "war suns ... and its flagship first" - the damp pulled
+        // the flagship liking (2) to 1.35, under the 1.4 bar, so the flagship came no sooner
+        if (cache[p].on && aiTune("emperorfirm", 0.f) > 0.f && fquirkIs(g, p, "muaat", 1)) {
+            cache[p].unit[int(UnitType::WarSun)] = std::max(cache[p].unit[int(UnitType::WarSun)], 2.5f);
+            cache[p].unit[int(UnitType::Flagship)] = std::max(cache[p].unit[int(UnitType::Flagship)], 2.f);
+        }
+        // (the Nekro review, checkpoint 2 - switch nekromech, ON - owner 2026-11-14: "Keep those switches on ... these switches
+        // may help us with how to define a more concrete and effective modifier or strategy for the future") Mordred (+2) once a
+        // Valefar token is on another player's technology; after the damp (as Hive Command above - under the 1.4 bar nothing
+        // extra is built). Test, 90 games: mechs 0.61 -> 1.78 a game, 10 wins / 6.39 VP vs 13 / 6.54. nekromech=0 turns it off
+        if (cache[p].on && aiTune("nekromech", 1.6f) > 0.f && isFaction(g, p, "nekro") &&
+            (g.players[size_t(p)].assimX >= 0 || g.players[size_t(p)].assimY >= 0))
+            cache[p].unit[int(UnitType::Mech)] = std::max(cache[p].unit[int(UnitType::Mech)], aiTune("nekromech", 1.6f));
         applyHabits(cache[p], g, p);                       // (0.54.0) the people's habits from earlier games
         if (cache[p].on) applyPersona(cache[p], g, p);     // (test only: TI4_PERSONA)
         cache[p].unit[int(UnitType::Flagship2)] = cache[p].unit[int(UnitType::Flagship)];  // (0.52.0: the Ghemina's Lady too)

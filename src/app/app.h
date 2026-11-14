@@ -12,8 +12,12 @@
 #include "gfx/canvas.h"
 #include "platform/platform.h"
 
-#define TI4_VERSION "0.57.2"
+#define TI4_VERSION "0.59.30"
+#if defined(_WIN32) || defined(TI4_SDL2)
 #define TI4_STAGE "Stage 12: PC edition \xC2\xB7 Pre-Beta"
+#else
+#define TI4_STAGE "Pre-Beta"  // (0.58.0: the Miyoo build again - same game as the PC edition)
+#endif
 
 class App;
 
@@ -25,6 +29,9 @@ public:
     virtual bool animating() const { return false; }  // redraw every frame?
     // By default B and MENU leave a screen; the button test needs every key.
     virtual bool wantsAllButtons() const { return false; }
+    // 0.58.4 (owner: clicking a tile under the production window built units he didn't want): does a left click on
+    // nothing clickable count as A? (Rows, lists and buttons are always clicked as themselves.)
+    virtual bool bareClickIsA(float x, float y) const { (void)x; (void)y; return true; }
     // Holding SELECT for 3 s swaps the screen method (rescue for a black screen).
     virtual bool allowsScreenRescue() const { return true; }
     // Keyboard & mouse (0.27.0): WASD moves this screen's map camera (Input::panX/Y);

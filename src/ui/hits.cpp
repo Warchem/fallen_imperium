@@ -62,6 +62,8 @@ bool hover(float x, float y) {
     return true;
 }
 
+bool any(float x, float y) { return at(x, y) != nullptr; }
+
 Btn press(float x, float y) {
     const Hit* h = at(x, y);
     if (!h) return Btn::A;

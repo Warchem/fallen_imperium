@@ -3,7 +3,9 @@
 // strtol / strtoul to C23 versions (glibc 2.38+) and libstdc++ uses
 // arc4random (2.36+); these local stand-ins call the long-standing versions,
 // so the program needs glibc 2.35 at most (SteamOS 3.5 and later have more).
-// (0.27.0: fmodf too - glibc 2.38 gave it a new version.)
+// (0.27.0: fmodf too - glibc 2.38 gave it a new version. 0.58.3: sscanf too - the test code's sscanf had made the
+// program need glibc 2.38 since 0.54.0.)
+#include <cstdarg>
 #include <cstdint>
 #include <cstdio>
 #include <ctime>
@@ -15,6 +17,16 @@ unsigned long ti4_strtoul_old(const char* s, char** end, int base) __asm__("strt
 
 long __isoc23_strtol(const char* s, char** end, int base) { return ti4_strtol_old(s, end, base); }
 unsigned long __isoc23_strtoul(const char* s, char** end, int base) { return ti4_strtoul_old(s, end, base); }
+
+int ti4_vsscanf_old(const char* s, const char* fmt, va_list ap) __asm__("vsscanf");
+int __isoc23_sscanf(const char* s, const char* fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    const int r = ti4_vsscanf_old(s, fmt, ap);
+    va_end(ap);
+    return r;
+}
+int __isoc23_vsscanf(const char* s, const char* fmt, va_list ap) { return ti4_vsscanf_old(s, fmt, ap); }
 
 // glibc 2.38 has a new fmodf; the game only needs it for animation phases
 float fmodf(float x, float y) {

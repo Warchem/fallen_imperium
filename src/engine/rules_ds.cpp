@@ -286,7 +286,7 @@ void Rules::dsCombatRoundStart(int att, int def, int sys, int planet, bool space
         }
         // Clan's Favor (the Vaylerian's note): the holder's fleet slips away, the combat is a draw
         const int v = playerOfFaction(G, "vaylerian");
-        if (v >= 0 && v != p && holdsNote(G, p, v, kNoteFaction) && hasShips(G, p, sys) && !combatDraw_) {
+        if (v >= 0 && v != p && holdsNote(G, p, v, kNoteFaction) && hasShips(G, p, sys) && !combatDraw_ && !(G.fixes >= 26 && noRetreat_)) {
             std::vector<Option> opts;
             for (int a : routeNeighbors(G, p, sys)) {
                 if (G.systems[size_t(a)].isHyperlane() || otherShipsIn(G, p, a)) continue;
@@ -872,7 +872,7 @@ void Rules::dsActivated(int p, int sys) {
     }
     // Henry Storcher (Celdauri commander): a commodity when activating a system with their dock
     if (commanderUsable(G, p, "celdauri") && docksIn(G, p, sys) && pl.commodities < commodityCap(G, pl)) {
-        pl.commodities = int8_t(pl.commodities + 1);
+        { const int cb_ = pl.commodities; pl.commodities = int8_t(pl.commodities + 1); commodityGained(p, cb_); }
         say(p, pn(p) + " gains 1 commodity (Henry Storcher).", sys);
     }
 }

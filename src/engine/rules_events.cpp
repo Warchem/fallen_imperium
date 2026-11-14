@@ -59,7 +59,7 @@ void Rules::setupEvents() {
                     if (kLeaders[ls.leader].type == kCommander) ls.status = kReady;
                 if (pl.homeSystem >= 0) addUnits(p, UnitType::WarSun, 1, pl.homeSystem, -1);
             } else {
-                researchTech(p, findTech("ws"));
+                researchTech(p, warSunUpgradeFor(G, p));  // (fixes 26: their own war sun upgrade - the Roh'Dhna's)
             }
         }
     if (eventOn(G, kEvFighters))  // Age of Fighters: Fighter II (the Naalu: theirs)
@@ -73,7 +73,12 @@ void Rules::setupEvents() {
             if (kFactions[f].source == Source::Discordant && (!(G.modules & kModDiscordant) || !factionInPool(f, G.dsLevel))) continue;
             bool inPlay = false;
             for (const Player& pl : G.players) inPlay = inPlay || pl.faction == f;
-            if (!inPlay && findLeader((std::string(kFactions[f].key) + "commander").c_str()) >= 0) G.mercDeck.push_back(int8_t(f));
+            if (!inPlay && findLeader((std::string(kFactions[f].key) + "commander").c_str()) >= 0) {
+                // (fixes 25, owner's faction debug pass - Nocturne) the Firmament / the Obsidian are one faction: one
+                // alliance card, its side picked at random (as the TE rulebook does for Minor Factions)
+                if (G.fixes >= 25 && !std::strcmp(kFactions[f].key, "firmament") && E.rng().below(2)) G.mercDeck.push_back(int8_t(findFaction("obsidian")));
+                else G.mercDeck.push_back(int8_t(f));
+            }
         }
         E.rng().shuffle(G.mercDeck);
     }

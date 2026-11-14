@@ -1,0 +1,29 @@
+# Stray clicks (0.58.4, owner: clicking a tile under the production window built units he didn't want): while
+# your question's list or row editor is open, a left click on the map or a gap does nothing (it used to be A).
+wait 5
+press A
+wait 5
+press UP
+wait 3
+press RIGHT
+wait 3
+press RIGHT
+wait 3
+# (0.58.0: up past Mecatol Rex (0.54.0) and Hyperlanes to Galaxy; left = Random)
+press UP
+wait 2
+press UP
+wait 2
+press UP
+wait 3
+press LEFT
+wait 3
+press START
+wait 30
+shot q_before
+click 200 240
+wait 12
+click 150 300
+wait 12
+shot q_after_clicks
+quit

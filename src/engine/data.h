@@ -180,12 +180,18 @@ struct RelicDef {
 
 struct LayoutCell {
     int16_t pos;   // ring*100 + index
-    int8_t kind;   // 0 fixed tile, 1 home, 2 slice tile
-    int16_t a;     // tile index / player
-    int8_t b;      // rotation / slice slot
+    int8_t kind;   // 0 fixed tile, 1 home, 2 slice tile, 3 (0.58.0, standard layouts) an extra tile next to Mecatol Rex
+    int16_t a;     // tile index / player / extra: 0 blue, 1 red, 2 either
+    int8_t b;      // rotation / slice slot / home: trade goods at the start (standard layouts)
 };
 struct LayoutDef {
     int8_t players;
+    int16_t first, count;
+};
+// 0.58.0 (owner: a standard map without hyperlanes at any player count): the printed galaxies of the Living Rules
+// Reference's board setups (tools/gen_std_layouts.py) - blue and red tiles per player (LRR setup step 6)
+struct StdLayoutDef {
+    int8_t players, blue, red;
     int16_t first, count;
 };
 
@@ -211,6 +217,9 @@ extern const RelicDef kRelics[];
 extern LeaderDef kLeaders[];
 extern const LayoutCell kLayoutCells[];
 extern const LayoutDef kLayouts[];
+extern const LayoutCell kStdLayoutCells[];
+extern const StdLayoutDef kStdLayouts[];
+extern const int kStdLayoutCount;
 extern const int kPlanetCount, kSystemCount, kUnitCount, kTechCount, kFactionCount, kObjectiveCount, kLayoutCount;
 extern const int kActionCardCount, kAgendaCount, kExploreCardCount, kRelicCount, kLeaderCount;
 
@@ -267,9 +276,11 @@ const char* unitAbilityText(int unit);        // flagship / mech / special unit 
 void setCodexTexts(bool on, bool latest = true);
 // (0.57.1) Thunder's Edge's own Xxekir Grom (teXxchaHero): its name without the Omega sign and its own text. Call after
 // setCodexTexts.
-void setThundersEdgeTexts(bool xxchaHero);
+void setThundersEdgeTexts(bool xxchaHero, bool naalu = false);
 bool teXxchaHeroTexts();
+bool teNaaluTexts();  // (fixes 27) Thunder's Edge's Z'eu and Iconoclast
 void setWormholeGeneratorOriginal(bool on);  // 0.44.9: the original card's wording (games without the Codex)
+void setMagmusReactorOriginal(bool on);      // (fixes 26) the original Magmus Reactor's wording (no Codex / Thunder's Edge)
 std::string plainName(const char* name);  // a card's name without the Omega sign
 bool codexTexts();
 const char* factionNoteName(int faction, int type);  // kNoteAlliance / kNoteFaction / kNoteFaction2

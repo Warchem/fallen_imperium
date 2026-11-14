@@ -19,6 +19,7 @@
 #include "ui/icons.h"
 #include "ui/info_screens.h"
 #include "ui/theme.h"
+#include "ui/tile_view.h"
 #include "ui/widgets.h"
 
 using namespace ti;
@@ -84,6 +85,7 @@ class ListUI : public DecisionUI {
     bool confirmPass_ = false;  // 0.30.0: asking "are you sure" about Pass
 
 public:
+    bool bareClickConfirms() const override { return false; }  // (0.58.4)
     ListUI(const Game& g, const Decision& d) : DecisionUI(g, d) {
         multi_ = d.maxPick > 1 || d.minPick != 1;
         for (size_t i = 0; i < d_.options.size(); ++i)
@@ -261,6 +263,7 @@ public:
     ~MapPickUI() override { map_.clearHighlights(); }
 
     bool mapMode() const override { return !listMode_; }
+    bool bareClickConfirms() const override { return mapMode(); }  // (0.58.4: tiles on the map, not the list)
 
     std::vector<std::pair<std::string, std::string>> hints() const override {
         if (listMode_) return {{"A", "Choose"}, {"Y", "Map"}, {"B", "Map"}};
@@ -374,6 +377,7 @@ struct Row {
 
 class RowsUI : public DecisionUI {
 public:
+    bool bareClickConfirms() const override { return mapMode(); }  // (0.58.4: Waypoint Mode picks stops on the map)
     using DecisionUI::DecisionUI;
 
     // 0.28.0 (owner, keyboard): moving ships - Space moves, Q / E fewer / more
@@ -965,9 +969,323 @@ protected:
     }
     std::string confirmLabel() const override { return "Produce"; }
 
-private:
+protected:
     std::vector<int> destIds_;
     Rng rng_{11};
+};
+
+// ------------------------------------------------------------------- radial menus (0.58.4)
+// Shared drawing for the owner's wheel menus: angles in radians, 0 = right, growing clockwise on screen.
+namespace radial {
+constexpr float kPi = 3.14159265f;
+// a ring slice from r0 to r1 between angles a0 and a1
+void slice(Canvas& c, float cx, float cy, float r0, float r1, float a0, float a1, uint32_t col, int alpha) {
+    const int steps = std::max(2, int((a1 - a0) / (kPi / 36.f)) + 1);
+    float xs[160], ys[160];
+    int n = 0;
+    for (int i = 0; i <= steps && n < 78; ++i) {
+        const float a = a0 + (a1 - a0) * float(i) / float(steps);
+        xs[n] = cx + std::cos(a) * r1;
+        ys[n++] = cy + std::sin(a) * r1;
+    }
+    for (int i = steps; i >= 0 && n < 158; --i) {
+        const float a = a0 + (a1 - a0) * float(i) / float(steps);
+        xs[n] = cx + std::cos(a) * r0;
+        ys[n++] = cy + std::sin(a) * r0;
+    }
+    c.fillPolygon(xs, ys, n, col, alpha);
+}
+void spoke(Canvas& c, float cx, float cy, float r0, float r1, float a, uint32_t col, int alpha) {
+    c.line(cx + std::cos(a) * r0, cy + std::sin(a) * r0, cx + std::cos(a) * r1, cy + std::sin(a) * r1, col, 1.5f, alpha);
+}
+// a small solid triangle pointing up or down, centred on (x, y)
+void arrow(Canvas& c, float x, float y, bool up, uint32_t col, int alpha = 255) {
+    const float w = 6.f, h = 4.5f;
+    const float xs[3] = {x - w, x + w, x}, ys[3] = {up ? y + h : y - h, up ? y + h : y - h, up ? y - h : y + h};
+    c.fillPolygon(xs, ys, 3, col, alpha);
+}
+// the centre button: always lit (yellow) or grey until there is something to confirm
+void centre(Canvas& c, float cx, float cy, float r, const std::string& label, const std::string& sub, bool lit, uint32_t now) {
+    const uint32_t fill = lit ? rgb(234, 190, 64) : rgb(70, 74, 88);
+    const uint32_t ink = lit ? rgb(36, 26, 6) : rgb(150, 154, 168);
+    if (lit) {  // a slow glow round it
+        const int pulse = 40 + int(30.f * (0.5f + 0.5f * std::sin(float(now % 100000u) / 300.f)));
+        c.ring(cx, cy, r + 4.f, 4.f, rgb(255, 210, 90), pulse);
+    }
+    c.fillCircle(cx, cy, r, fill);
+    c.ring(cx, cy, r, 2.f, lit ? rgb(255, 236, 160) : rgb(110, 114, 130));
+    drawTextAligned(c, FONT_MDB, int(cx - r), int(cy) - (sub.empty() ? 9 : 14), int(2.f * r), Align::Center, label, ink);
+    if (!sub.empty()) drawTextAligned(c, FONT_XS, int(cx - r), int(cy) + 5, int(2.f * r), Align::Center, fitText(FONT_XS, sub, int(2.f * r) - 6), ink);
+}
+}  // namespace radial
+
+// 0.58.4 (owner: "Whenever the human player is producing a ship, a pop-up radial wheel menu appears. Between each
+// spoke of the wheel, the ship type in that player's color shows. Next to the ship, inside the wheel menu, is the
+// number window and some arrows ... The center of the wheel is a button that says Confirm. It is always yellow as
+// players can choose whether or not they want to produce a unit."). Every unit type the faction can produce has a
+// place (the ones it can't produce here are dimmed and say why), clockwise from the top; the ground forces'
+// destination is a stop of its own under the wheel. Left / right turn, up / down (the arrows, the mouse wheel) change
+// the number; the values live in ProduceUI's rows, so the answer, the suggestion and the checks are unchanged.
+class ProduceWheelUI : public ProduceUI {
+public:
+    ProduceWheelUI(const Game& g, const Decision& d) : ProduceUI(g, d) {
+        const int p = d.player;
+        const bool enemyShips = blockaded(g, p, d.system);
+        static const UnitType kOrder[] = {UnitType::Carrier, UnitType::Cruiser,  UnitType::Destroyer, UnitType::Dreadnought,
+                                          UnitType::Flagship, UnitType::Flagship2, UnitType::WarSun,    UnitType::Fighter,
+                                          UnitType::Infantry, UnitType::Mech};
+        for (UnitType ut : kOrder) {
+            const int t = int(ut);
+            if (t >= kUnitTypes) continue;
+            const UnitDef& u = unitDef(g, p, ut);
+            if (u.cost2 <= 0) continue;  // (Flagship2, the Lady, is only the Ghemina's)
+            Item it;
+            it.type = ut;
+            it.name = u.name;
+            for (size_t i = 0; i < rows_.size(); ++i)
+                if (rows_[i].a == t) it.row = int(i);
+            if (it.row >= 0) {
+                const int c2 = unitCost2(g, p, ut);
+                it.why = c2 == 1 ? "1 res for 2" : std::to_string((c2 + 1) / 2) + " res";
+            } else if (d.hitMask && !((d.hitMask >> t) & 1)) it.why = "not here";
+            else if (enemyShips && isShip(ut)) it.why = "blockaded";
+            else if (ut == UnitType::WarSun && !ownsWarSunTech(g, p)) it.why = "needs the tech";
+            else it.why = "none left";
+            items_.push_back(it);
+        }
+        for (size_t i = 0; i < rows_.size(); ++i)
+            if (rows_[i].a < 0) destRow_ = int(i);
+        for (size_t k = 0; k < items_.size(); ++k)
+            if (items_[k].row >= 0) {
+                sel_ = int(k);
+                break;
+            }
+        if (sel_ < 0 && destRow_ >= 0) sel_ = int(items_.size());
+    }
+
+    bool update(const Input& in, uint32_t) override {
+        if (!warn_.empty()) {
+            if (in.pressed(Btn::A) || in.pressed(Btn::Start)) {
+                warn_.clear();
+                return true;
+            }
+            if (in.pressed(Btn::B)) warn_.clear();
+            return false;
+        }
+        const int stops = int(items_.size()) + (destRow_ >= 0 ? 1 : 0);
+        auto turn = [&](int dir) {
+            for (int k = 1; k <= stops; ++k) {
+                const int s = ((sel_ + dir * k) % stops + stops) % stops;
+                if (rowOf(s) >= 0) {
+                    sel_ = s;
+                    return;
+                }
+            }
+        };
+        if (stops > 0) {
+            if (in.pressed(Btn::Right)) turn(1);
+            if (in.pressed(Btn::Left)) turn(-1);
+        }
+        const bool kb = kbConfirm();
+        const int row = rowOf(sel_);
+        if (row >= 0) {
+            int step = 0;
+            if (in.pressed(Btn::Up) || in.pressed(Btn::R1) || (!kb && in.pressed(Btn::A))) step = 1;
+            if (in.pressed(Btn::Down) || in.pressed(Btn::L1)) step = -1;
+            if (step) stepRow(row, step, !kb && in.pressed(Btn::A));
+        }
+        if (in.pressed(Btn::Y)) {
+            suggest();
+            changed();
+        }
+        if (in.pressed(Btn::B)) {
+            for (Row& x : rows_)
+                if (!x.header && x.choices.empty()) x.value = x.min;
+            changed();
+        }
+        if (in.pressed(Btn::Start) || (kb && in.pressed(Btn::A))) {
+            buildAnswer();
+            const std::string e = d_.validate ? d_.validate(answer_) : "";
+            if (e.empty()) {
+                warn_ = confirmWarning();
+                return warn_.empty();
+            }
+            setError(e);
+        }
+        return false;
+    }
+
+    std::vector<std::pair<std::string, std::string>> hints() const override {
+        std::vector<std::pair<std::string, std::string>> h = {{"\xE2\x97\x80\xE2\x96\xB6", "Unit"}, {"\xE2\x96\xB2\xE2\x96\xBC", "How many"}};
+        h.push_back({kbConfirm() ? "A" : "START", "Confirm"});
+        h.push_back({"Y", "Suggest"});
+        if (backAvailable()) h.push_back({"B", "Clear"});
+        return h;
+    }
+    Rect area() const override { return Rect{6, 26, 410, 420}; }
+
+    void draw(Canvas& c, uint32_t now) override {
+        const Rect a = area();
+        const int p = d_.player;
+        const uint32_t pc = p >= 0 && p < g_.numPlayers ? theme::player[g_.players[size_t(p)].color % 8] : theme::gold;
+        c.fillRoundRect(a.x, a.y, a.w, a.h, 10, rgb(8, 11, 22), 214);
+        c.frameRoundRect(a.x, a.y, a.w, a.h, 10, theme::border);
+        hits::addAction(a, [] {});  // (a click inside the window is not for the map)
+        drawText(c, FONT_MDB, a.x + 12, a.y + 6, fitText(FONT_MDB, d_.prompt, a.w - 24), theme::text);
+        int ty = a.y + 26;
+        for (const std::string& l : wrapText(FONT_XS, d_.context, a.w - 24)) {
+            if (ty > a.y + 40) break;
+            drawText(c, FONT_XS, a.x + 12, ty, l, theme::dim);
+            ty += 12;
+        }
+        const float cx = float(a.x + a.w / 2), cy = float(a.y + 214);
+        const float R0 = 48.f, R1 = 158.f;
+        const int n = std::max(1, int(items_.size()));
+        const float span = 2.f * radial::kPi / float(n);
+        c.fillCircle(cx, cy, R1 + 3.f, rgb(4, 6, 14), 200);
+        for (int k = 0; k < int(items_.size()); ++k) {  // the slices
+            const Item& it = items_[size_t(k)];
+            const float mid = -radial::kPi / 2.f + span * float(k);
+            const bool on = k == sel_, avail = it.row >= 0;
+            const int v = avail ? rows_[size_t(it.row)].value : 0;
+            const uint32_t fill = on ? mix(theme::panelHi, pc, 70) : v > 0 ? mix(rgb(16, 20, 36), pc, 40) : rgb(14, 18, 32);
+            radial::slice(c, cx, cy, R0, R1, mid - span / 2.f, mid + span / 2.f, fill, avail ? 240 : 170);
+        }
+        for (int k = 0; k < n && items_.size() > 1; ++k)
+            radial::spoke(c, cx, cy, R0, R1, -radial::kPi / 2.f + span * (float(k) - 0.5f), theme::border, 255);
+        c.ring(cx, cy, R1, 2.f, theme::border);
+        if (sel_ >= 0 && sel_ < int(items_.size())) {  // the chosen slice's rim in gold
+            const float mid = -radial::kPi / 2.f + span * float(sel_);
+            for (float t = -span / 2.f; t < span / 2.f; t += 0.02f)
+                c.fillCircle(cx + std::cos(mid + t) * R1, cy + std::sin(mid + t) * R1, 1.6f, theme::gold);
+        }
+        const bool kb = kbConfirm();
+        for (int k = 0; k < int(items_.size()); ++k) {
+            const Item& it = items_[size_t(k)];
+            const float mid = -radial::kPi / 2.f + span * float(k);
+            const float ux = std::cos(mid), uy = std::sin(mid);
+            const bool avail = it.row >= 0, on = k == sel_;
+            // the unit, in the player's colour
+            const float ax = cx + ux * 110.f, ay = cy + uy * 110.f;
+            const float len = it.type == UnitType::WarSun || it.type == UnitType::Flagship || it.type == UnitType::Flagship2 ? 46.f
+                              : it.type == UnitType::Fighter || isGroundForce(it.type)                             ? 26.f
+                                                                                                                    : 38.f;
+            tileview::drawUnit(c, it.type, ax, ay, len, pc, false, avail ? 255 : 70, false, now, isGroundForce(it.type));
+            // its name and price on the picture's outer side (above it in the top half, below it in the bottom half)
+            const float halfH = it.type == UnitType::WarSun ? 22.f : isGroundForce(it.type) ? 14.f : it.type == UnitType::Fighter ? 8.f : 13.f;
+            const int ty = uy < 0.f ? int(ay - halfH) - 25 : int(ay + halfH) + 2;
+            drawTextAligned(c, FONT_XS, int(ax) - 50, ty, 100, Align::Center, fitText(FONT_XS, it.name, 96),
+                            avail ? (on ? theme::text : rgb(196, 202, 218)) : theme::faint);
+            drawTextAligned(c, FONT_XS, int(ax) - 50, ty + 11, 100, Align::Center, it.why, avail ? theme::faint : rgb(150, 110, 110));
+            // the number window and its arrows, toward the centre
+            const float bx = cx + ux * 70.f, by = cy + uy * 70.f;
+            const int k2 = k;
+            if (avail) {
+                const int v = rows_[size_t(it.row)].value;
+                c.fillRoundRect(int(bx) - 14, int(by) - 10, 28, 20, 5, rgb(5, 7, 14), 245);
+                c.frameRoundRect(int(bx) - 14, int(by) - 10, 28, 20, 5, on ? theme::gold : theme::border, on ? 2 : 1);
+                drawTextAligned(c, FONT_MDB, int(bx) - 14, int(by) - 9, 28, Align::Center, std::to_string(v), v > 0 ? theme::gold : theme::faint);
+                const bool canUp = v < rows_[size_t(it.row)].max, canDown = v > rows_[size_t(it.row)].min;
+                radial::arrow(c, bx, by - 16.f, true, canUp ? (on ? theme::text : theme::dim) : theme::faint, canUp ? 255 : 90);
+                radial::arrow(c, bx, by + 16.f, false, canDown ? (on ? theme::text : theme::dim) : theme::faint, canDown ? 255 : 90);
+                // the mouse: point at the unit to pick it; a click on it adds one (with keyboard & mouse), the arrows step
+                if (kb)
+                    hits::addAction(Rect{int(ax) - 28, int(ay) - 22, 56, 54}, [this, k2]() {
+                        if (sel_ == k2) stepRow(rowOf(k2), 1, true);
+                        else sel_ = k2;
+                    });
+                else hits::add(Rect{int(ax) - 28, int(ay) - 22, 56, 54}, [this, k2]() { sel_ = k2; });
+                hits::addAction(Rect{int(bx) - 12, int(by) - 23, 24, 12}, [this, k2]() {
+                    sel_ = k2;
+                    stepRow(rowOf(k2), 1, false);
+                });
+                hits::addAction(Rect{int(bx) - 12, int(by) + 11, 24, 12}, [this, k2]() {
+                    sel_ = k2;
+                    stepRow(rowOf(k2), -1, false);
+                });
+                hits::addAction(Rect{int(bx) - 14, int(by) - 10, 28, 20}, [this, k2]() { sel_ = k2; });
+            } else {
+                drawTextAligned(c, FONT_MDB, int(bx) - 14, int(by) - 9, 28, Align::Center, "-", theme::faint);
+            }
+        }
+        // the centre: Confirm, always lit (producing nothing is allowed)
+        int counts[kUnitTypes] = {};
+        int units = 0;
+        for (const Row& r : rows_)
+            if (r.a >= 0) {
+                counts[r.a] = r.value;
+                units += r.value;
+            }
+        const int cost = std::max(0, productionCost(g_, d_.player, counts) - d_.value) + terrafactoryExtra(g_, d_.player, d_.system, counts);
+        radial::centre(c, cx, cy, 42.f, "Confirm", units ? std::to_string(units) + (units == 1 ? " unit, " : " units, ") + std::to_string(cost) + " res" : "nothing",
+                       true, now);
+        hits::addButton(Rect{int(cx) - 40, int(cy) - 40, 80, 80}, Btn::Start);
+        // under the wheel: where the ground forces go, the totals, the checks
+        int y = int(cy + R1) + 8;
+        if (destRow_ >= 0) {
+            const Row& r = rows_[size_t(destRow_)];
+            const bool on = sel_ == int(items_.size());
+            const std::string label = "Ground forces go to:";
+            const std::string val = r.choices.empty() ? "" : r.choices[size_t(r.value)];
+            const int lw = textWidth(FONT_SM, label), vw = std::min(170, textWidth(FONT_SMB, val));
+            const int x0 = a.x + (a.w - (lw + vw + 46)) / 2;
+            if (on) c.fillRoundRect(x0 - 8, y - 2, lw + vw + 62, 18, 5, theme::panelHi, 245);
+            drawText(c, FONT_SM, x0, y, label, on ? theme::text : theme::dim);
+            const int vx = x0 + lw + 22;
+            drawText(c, FONT_SM, vx - 14, y, "\xE2\x97\x80", on ? theme::text : theme::faint);
+            drawText(c, FONT_SMB, vx, y, fitText(FONT_SMB, val, 170), theme::gold);
+            drawText(c, FONT_SM, vx + vw + 6, y, "\xE2\x96\xB6", on ? theme::text : theme::faint);
+            const int dsel = int(items_.size());
+            hits::add(Rect{x0 - 8, y - 2, lw + 14, 18}, [this, dsel]() { sel_ = dsel; });
+            hits::addAction(Rect{vx - 18, y - 2, 18, 18}, [this, dsel]() {
+                sel_ = dsel;
+                stepRow(destRow_, -1, false);
+            });
+            hits::addAction(Rect{vx, y - 2, vw + 20, 18}, [this, dsel]() {
+                sel_ = dsel;
+                stepRow(destRow_, 1, false);
+            });
+            y += 18;
+        }
+        const std::vector<std::string> sum = summary();
+        for (const std::string& l : sum) {
+            drawTextAligned(c, FONT_SM, a.x, y, a.w, Align::Center, fitText(FONT_SM, l, a.w - 20), theme::text);
+            y += 14;
+        }
+        const std::string& msg = !error_.empty() ? error_ : live_;
+        if (!msg.empty())
+            drawTextAligned(c, FONT_XS, a.x, y + 1, a.w, Align::Center, fitText(FONT_XS, msg, a.w - 20), !error_.empty() ? theme::red : rgb(232, 170, 60));
+        if (!warn_.empty()) {
+            const std::vector<std::string> lines = wrapText(FONT_SM, warn_, a.w - 60);
+            const int bh = 54 + int(lines.size()) * 15;
+            const Rect b{a.x + 20, int(cy) - bh / 2, a.w - 40, bh};
+            c.fillRoundRect(b.x, b.y, b.w, b.h, 10, rgb(14, 18, 32), 245);
+            c.frameRoundRect(b.x, b.y, b.w, b.h, 10, rgb(232, 170, 60), 2);
+            int ly = b.y + 10;
+            for (const std::string& l : lines) {
+                drawTextAligned(c, FONT_SM, b.x, ly, b.w, Align::Center, l, rgb(255, 225, 150));
+                ly += 15;
+            }
+            hits::addButton(Rect{b.x, b.y, b.w / 2, b.h}, Btn::A);
+            hits::addButton(Rect{b.x + b.w / 2, b.y, b.w / 2, b.h}, Btn::B);
+            drawTextAligned(c, FONT_SMB, b.x, b.y + b.h - 24, b.w, Align::Center, keyText("A: Go ahead     B: Back"), theme::text);
+        }
+    }
+
+private:
+    struct Item {
+        UnitType type = UnitType::Carrier;
+        std::string name, why;
+        int row = -1;  // its row in ProduceUI (-1: can't be produced here)
+    };
+    int rowOf(int s) const {
+        if (s >= 0 && s < int(items_.size())) return items_[size_t(s)].row;
+        if (s == int(items_.size())) return destRow_;
+        return -1;
+    }
+    std::vector<Item> items_;
+    int destRow_ = -1;
+    int sel_ = -1;
 };
 
 // ------------------------------------------------------------------- move
@@ -1108,7 +1426,7 @@ public:
             for (int x : st) rolls += riftRollsLeaving(g_, d_.player, x) ? 1 : 0;
             if (rolls > 0)
                 warn = "Leaving a gravity rift: each ship rolls " + std::to_string(rolls) + (rolls == 1 ? " die" : " dice") +
-                       " - on 1-3 it is lost with what it carries.";
+                       " - on 1-3 it is removed from the board with what it carries.";
         }
         std::vector<std::string> body, warnLines = warn.empty() ? std::vector<std::string>() : wrapText(FONT_SM, warn, r.w - 20);
         for (const std::string& l : lines)
@@ -1494,7 +1812,10 @@ protected:
         }
     }
     std::string confirmLabel() const override { return "Move"; }
-    std::string confirmWarning() const override { return strandWarning(g_, d_.player, d_.system, answer_.data); }
+    std::string confirmWarning() const override {
+        const std::string w = strandWarning(g_, d_.player, d_.system, answer_.data);
+        return w.empty() ? fleetOverWarning(g_, d_.player, d_.system, answer_.data) : w;  // (0.58.5)
+    }
     std::string clearLabel() const override { return "Clear"; }
     std::string emptyText() const override { return keyText("None of your ships can reach this system. Press START."); }
 
@@ -1547,6 +1868,147 @@ public:
 private:
     std::unique_ptr<ResearchPick> pick_;
     bool skip_ = false;
+};
+
+// 0.58.4 (owner: "Whenever the human player is choosing an available strategy card, a pop-up radial wheel menu
+// appears. Between each spoke of the wheel holds the strategy cards. Dimmed cards are unavailable. When the player
+// chooses an available card, the slice where the card resides is highlighted. The center of the wheel, which holds
+// the button Confirm goes from grayed out to yellow."). The eight cards clockwise from the top (1 to 8 like a clock);
+// left / right point at a card (its text in the right-hand panel), A chooses it, A again or the centre confirms.
+class StrategyWheelUI : public DecisionUI {
+public:
+    StrategyWheelUI(const Game& g, const Decision& d) : DecisionUI(g, d) {
+        for (const Option& o : d.options)
+            if (o.id >= 0 && o.id < kStrategyCards && o.enabled) open_[o.id] = true;
+        for (int k = 0; k < kStrategyCards; ++k)
+            if (open_[k]) {
+                cursor_ = k;
+                break;
+            }
+    }
+    bool bareClickConfirms() const override { return false; }
+    bool stepsWithKeys() const override { return true; }
+    int highlightedValue() const override { return cursor_; }
+    bool backAvailable() const override { return chosen_ >= 0; }
+    Rect area() const override { return Rect{6, 26, 410, 420}; }
+
+    bool update(const Input& in, uint32_t) override {
+        auto turn = [&](int dir) {
+            for (int i = 1; i <= kStrategyCards; ++i) {
+                const int k = ((cursor_ + dir * i) % kStrategyCards + kStrategyCards) % kStrategyCards;
+                if (open_[k]) {
+                    cursor_ = k;
+                    return;
+                }
+            }
+        };
+        if (in.pressed(Btn::Right) || in.pressed(Btn::Down)) turn(1);
+        if (in.pressed(Btn::Left) || in.pressed(Btn::Up)) turn(-1);
+        if (in.pressed(Btn::B) && chosen_ >= 0) chosen_ = -1;
+        if (in.pressed(Btn::A) && cursor_ >= 0 && open_[cursor_]) {
+            if (chosen_ == cursor_) return confirm();
+            chosen_ = cursor_;
+            error_.clear();
+        }
+        if (in.pressed(Btn::Start)) {
+            if (chosen_ >= 0) return confirm();
+            setError(keyText("Choose a card first (A), then confirm."));
+        }
+        return false;
+    }
+
+    std::vector<std::pair<std::string, std::string>> hints() const override {
+        std::vector<std::pair<std::string, std::string>> h = {{"\xE2\x97\x80\xE2\x96\xB6", "Card"}};
+        if (chosen_ >= 0 && chosen_ == cursor_) h.push_back({"A", "Confirm"});
+        else h.push_back({"A", "Choose"});
+        if (chosen_ >= 0) {
+            if (chosen_ != cursor_) h.push_back({"START", "Confirm"});
+            h.push_back({"B", "Unchoose"});
+        }
+        return h;
+    }
+
+    void draw(Canvas& c, uint32_t now) override {
+        const Rect a = area();
+        c.fillRoundRect(a.x, a.y, a.w, a.h, 10, rgb(8, 11, 22), 214);
+        c.frameRoundRect(a.x, a.y, a.w, a.h, 10, theme::border);
+        hits::addAction(a, [] {});  // (a click inside the window is not for the map)
+        drawText(c, FONT_MDB, a.x + 12, a.y + 6, fitText(FONT_MDB, d_.prompt, a.w - 24), theme::text);
+        int ty = a.y + 26;
+        for (const std::string& l : wrapText(FONT_XS, d_.context, a.w - 24)) {
+            if (ty > a.y + 40) break;
+            drawText(c, FONT_XS, a.x + 12, ty, l, theme::dim);
+            ty += 12;
+        }
+        const float cx = float(a.x + a.w / 2), cy = float(a.y + 214);
+        const float R0 = 48.f, R1 = 158.f;
+        const float span = 2.f * radial::kPi / float(kStrategyCards);
+        c.fillCircle(cx, cy, R1 + 3.f, rgb(4, 6, 14), 200);
+        for (int k = 0; k < kStrategyCards; ++k) {
+            const float mid = -radial::kPi / 2.f + span * float(k);
+            const uint32_t sc = strategyCardColor(k);
+            uint32_t fill = rgb(14, 18, 32);
+            int al = 240;
+            if (!open_[k]) fill = rgb(10, 12, 20), al = 200;
+            else if (k == chosen_) fill = mix(theme::panelHi, sc, 110);
+            else if (k == cursor_) fill = mix(rgb(22, 28, 48), sc, 45);
+            radial::slice(c, cx, cy, R0, R1, mid - span / 2.f, mid + span / 2.f, fill, al);
+        }
+        for (int k = 0; k < kStrategyCards; ++k) radial::spoke(c, cx, cy, R0, R1, -radial::kPi / 2.f + span * (float(k) - 0.5f), theme::border, 255);
+        c.ring(cx, cy, R1, 2.f, theme::border);
+        auto rim = [&](int k, uint32_t col, float rad) {
+            const float mid = -radial::kPi / 2.f + span * float(k);
+            for (float t = -span / 2.f; t < span / 2.f; t += 0.02f) c.fillCircle(cx + std::cos(mid + t) * R1, cy + std::sin(mid + t) * R1, rad, col);
+        };
+        if (cursor_ >= 0 && cursor_ != chosen_) rim(cursor_, theme::dim, 1.2f);
+        if (chosen_ >= 0) rim(chosen_, theme::gold, 2.f);
+        for (int k = 0; k < kStrategyCards; ++k) {
+            const float mid = -radial::kPi / 2.f + span * float(k);
+            const float ux = std::cos(mid), uy = std::sin(mid);
+            const float ax = cx + ux * 104.f, ay = cy + uy * 104.f;
+            const int w = 64, h = cards::strategyHeight(w);
+            const bool open = open_[k];
+            cards::strategy(c, k, int(ax) - w / 2, int(ay) - h / 2, w, open ? 255 : 70);
+            // the card's name on its outer side; a taken card says by whom
+            const int ty2 = uy < -0.2f ? int(ay) - h / 2 - 14 : uy > 0.2f ? int(ay) + h / 2 + 2 : int(ay) - h / 2 - 14;
+            drawTextAligned(c, FONT_XS, int(ax) - 50, ty2, 100, Align::Center, strategyName(k),
+                            open ? (k == cursor_ || k == chosen_ ? theme::text : rgb(196, 202, 218)) : theme::faint);
+            const int owner = g_.cardOwner[k];
+            if (!open && owner >= 0 && owner < g_.numPlayers) {
+                const Player& op = g_.players[size_t(owner)];
+                c.fillCircle(ax + float(w) / 2.f - 4.f, ay - float(h) / 2.f + 4.f, 10.f, rgb(10, 14, 26));
+                c.ring(ax + float(w) / 2.f - 4.f, ay - float(h) / 2.f + 4.f, 10.f, 2.f, theme::player[op.color % 8]);
+                drawFactionIcon(c, op.faction, int(ax) + w / 2 - 12, int(ay) - h / 2 - 4, 16);
+            } else if (open && g_.cardTradeGoods[k] > 0) {  // trade goods waiting on it
+                const float gx = ax + float(w) / 2.f - 2.f, gy = ay - float(h) / 2.f + 2.f;
+                c.fillCircle(gx, gy, 10.f, rgb(232, 190, 60));
+                drawTextAligned(c, FONT_XS, int(gx) - 10, int(gy) - 6, 20, Align::Center, "+" + std::to_string(g_.cardTradeGoods[k]), rgb(36, 26, 6));
+            }
+            if (open) {  // the mouse: point at a card; a click chooses it (and on the chosen one confirms)
+                const int kk = k;
+                hits::add(Rect{int(ax) - w / 2 - 4, int(ay) - h / 2 - 16, w + 8, h + 32}, [this, kk]() { cursor_ = kk; });
+            }
+        }
+        radial::centre(c, cx, cy, 42.f, "Confirm", chosen_ >= 0 ? strategyName(chosen_) : "choose a card", chosen_ >= 0, now);
+        hits::addButton(Rect{int(cx) - 40, int(cy) - 40, 80, 80}, Btn::Start);
+        int y = int(cy + R1) + 10;
+        if (cursor_ >= 0) {
+            drawTextAligned(c, FONT_SM, a.x, y, a.w, Align::Center,
+                            fitText(FONT_SM, std::to_string(cursor_ + 1) + " " + strategyName(cursor_) + (open_[cursor_] ? "" : " (taken)"), a.w - 20),
+                            theme::text);
+            y += 15;
+        }
+        if (!error_.empty()) drawTextAligned(c, FONT_XS, a.x, y, a.w, Align::Center, fitText(FONT_XS, error_, a.w - 20), theme::red);
+    }
+
+private:
+    bool confirm() {
+        answer_ = Answer();
+        answer_.picks = {chosen_};
+        return true;
+    }
+    bool open_[kStrategyCards] = {};
+    int cursor_ = -1, chosen_ = -1;
 };
 
 // 0.43.0 (owner): joining the Thunder's Edge expedition as a rotary menu - the shrouded tile large, its six winglets
@@ -1638,6 +2100,8 @@ private:
 };
 
 std::unique_ptr<DecisionUI> makeDecisionUI(const Game& g, const Decision& d, MapView& map) {
+    if (d.tag == Tag::StrategyPick && d.kind == DecisionKind::Pick && !d.options.empty())  // 0.58.4: the wheel
+        return std::unique_ptr<DecisionUI>(new StrategyWheelUI(g, d));
     if (d.tag == Tag::Research && d.kind == DecisionKind::Pick && !d.onMap && !d.options.empty())
         return std::unique_ptr<DecisionUI>(new ResearchUI(g, d));
     if (d.tag == Tag::Faction && d.ability == int(Ab::Expedition) && d.kind == DecisionKind::Pick)  // 0.43.0: the winglet menu
@@ -1654,7 +2118,7 @@ std::unique_ptr<DecisionUI> makeDecisionUI(const Game& g, const Decision& d, Map
         case DecisionKind::Tokens: return std::unique_ptr<DecisionUI>(new TokensUI(g, d));
         case DecisionKind::Hits: return std::unique_ptr<DecisionUI>(new HitsUI(g, d));
         case DecisionKind::Land: return std::unique_ptr<DecisionUI>(new LandUI(g, d));
-        case DecisionKind::Produce: return std::unique_ptr<DecisionUI>(new ProduceUI(g, d));
+        case DecisionKind::Produce: return std::unique_ptr<DecisionUI>(new ProduceWheelUI(g, d));  // 0.58.4: the wheel
         case DecisionKind::Move: return std::unique_ptr<DecisionUI>(new MoveUI(g, d, map));
     }
     return std::unique_ptr<DecisionUI>(new ListUI(g, d));

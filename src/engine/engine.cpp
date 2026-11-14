@@ -294,6 +294,7 @@ std::string Engine::saveText() const {
     o << "trade " << setup_.trade << "\n";
     o << "draft " << setup_.draft << "\n";
     if (setup_.mapSeed) o << "mapseed " << setup_.mapSeed << "\n";
+    if (setup_.layout) o << "layout " << setup_.layout << "\n";
     o << "extras " << setup_.extras << "\n";
     if (setup_.modules) o << "modules " << setup_.modules << "\n";
     if (setup_.events) o << "events " << setup_.events << "\n";
@@ -364,6 +365,7 @@ bool Engine::loadText(const std::string& text, std::string* err) {
         else if (word == "trade") in >> s.trade;
         else if (word == "draft") in >> s.draft;
         else if (word == "mapseed") in >> s.mapSeed;
+        else if (word == "layout") in >> s.layout;
         else if (word == "extras") in >> s.extras;
         else if (word == "modules") in >> s.modules;
         else if (word == "events") in >> s.events;

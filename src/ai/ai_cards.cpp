@@ -98,6 +98,53 @@ TdPlan transitPlan(const Game& g, int p) {
             plan.to = x;
         }
     }
+    // (the shared technologies review, checkpoint 2 - switch tdfwd, default off) nothing to defend: spare infantry from home
+    // go forward, to the planet of ours beside the most we could take, with a carrier of ours within 2 to pick them up.
+    // Tested 2026-11-14 (everyone given Transit Diodes, 98 Competitive games x 2, seats 024 / 135 switched): 930 uses vs
+    // 762, but the switched seats won 98 of 196 against 98 of 196 off - no gain, left off.
+    if (plan.to < 0 && aiTune("tdfwd", 0.f) > 0.f) {
+        const int H = g.players[size_t(p)].homeSystem;
+        float bestF = 2.f;
+        for (int x : mine) {
+            const PlanetState& ps = g.planets[size_t(x)];
+            if (ps.system == H || g.systems[size_t(ps.system)].home >= 0) continue;
+            float worth = 0.f;
+            for (int z : systemsWithin(g, ps.system, 1)) {
+                if (g.systems[size_t(z)].home >= 0 || z == g.mecatol()) continue;
+                for (int16_t y : g.systems[size_t(z)].planets) {
+                    const PlanetState& py = g.planets[size_t(y)];
+                    if (py.owner == p) continue;
+                    int theirs = 0;
+                    for (int q = 0; q < kSides; ++q)
+                        if (q != p) theirs += py.units[size_t(q)].groundForces();
+                    if (theirs <= 2) worth += float(planetResources(g, y) + planetInfluence(g, y));
+                }
+            }
+            bool carrier = false;
+            for (int z : systemsWithin(g, ps.system, 2))
+                if (g.systems[size_t(z)].space[size_t(p)].count(UnitType::Carrier) > 0) carrier = true;
+            if (!carrier) continue;
+            worth -= float(ps.units[size_t(p)].groundForces());  // (already stocked)
+            if (worth > bestF) {
+                bestF = worth;
+                plan.to = x;
+            }
+        }
+        if (plan.to < 0) return plan;
+        for (int16_t x : g.systems[size_t(H)].planets) {
+            const PlanetState& ps = g.planets[size_t(x)];
+            if (ps.owner != p || plan.total >= 4) continue;
+            const int k = std::min({ps.units[size_t(p)].count(UnitType::Infantry), ps.units[size_t(p)].groundForces() - 2, 4 - plan.total});
+            if (k <= 0) continue;
+            plan.take[x * 16 + int(UnitType::Infantry)] = k;
+            plan.total += k;
+        }
+        if (plan.total < 2) {
+            plan = TdPlan();
+            plan.to = -1;
+        }
+        return plan;
+    }
     if (plan.to < 0) return plan;
     for (int x : mine) {
         if (x == plan.to || plan.total >= 4) continue;
@@ -604,7 +651,7 @@ float playValue(const Game& g, const Decision& d, int card) {
     if (is("master_plan")) return 2.f;
     if (is("experimental")) return 3.f;
     if (is("mjets")) return 2.f;
-    if (is("scramble")) return 1.5f;
+    if (is("scramble")) return d.value == p ? 1.5f : 0.f;  // (fixes 27: offered to third parties too - only when it's at us)
     if (is("reveal_prototype")) return spendable(g, p, false) >= 6 ? 2.f : 0.5f;
     if (is("mb") || is("f_prototype")) {
         if (sys < 0 || opp < 0) return 0.f;
@@ -764,6 +811,26 @@ Answer cardTarget(const Game& g, const Decision& d) {
         }
         return best;
     };
+    // (fixes 27, the action cards review) Manipulate Investments one trade good at a time: the first 3 cards 2 / 2 / 1 as
+    // before; Ghost Squad a move at a time: everything from the other planets onto the invaded one (d.value), as before
+    if (is("investments") && d.prompt.find("Manipulate Investments: trade good") == 0) {
+        std::vector<int> en;
+        for (const Option& o : d.options)
+            if (o.enabled) en.push_back(o.id);
+        if (en.empty()) return one(first(d));
+        return one(en[size_t(d.value) % std::min<size_t>(3, en.size())]);
+    }
+    if (is("ghost_squad") && d.prompt.find("Ghost Squad: move from") == 0) {
+        int best = -1, most = 0;
+        for (const Option& o : d.options)
+            if (o.enabled && o.id >= 0 && o.id != d.value && g.planets[size_t(o.id)].units[size_t(p)].groundForces() > most) {
+                most = g.planets[size_t(o.id)].units[size_t(p)].groundForces();
+                best = o.id;
+            }
+        return one(best);
+    }
+    if (is("ghost_squad") && d.prompt.find("Ghost Squad: move to") == 0) return one(has(d, d.value) ? d.value : first(d));
+    if (is("ghost_squad") && d.prompt.find("Ghost Squad: how many") == 0) return one(d.options.back().id);
     // ---- Thunder's Edge (0.34.0)
     if (teCard(c)) {
         if (isYesNoOptions(d)) {  // Exchange Program, asked of us: agree unless they're an enemy (or we've fleet to spare)
@@ -1196,6 +1263,9 @@ bool aiCardsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
                 for (int q = 0; q < g.numPlayers; ++q)
                     if (q != p && !g.players[q].eliminated && (leader < 0 || g.players[q].vp > g.players[leader].vp)) leader = q;
             if (S.voteAgainst >= 0) bv = -1e9f;  // must vote (a betrayal objective or Kingslayer)
+            // (the Keleres review, checkpoint 2 - switch kelodlynn, test: Odlynn Myrr used, then the bot abstained in 20 of 50
+            // agendas - its 6 free votes unused): with Odlynn's votes it always votes for the outcome it values most
+            if (aiTune("kelodlynn", 0.f) > 0.f && d.context.find("Odlynn Myrr: 6 more.") != std::string::npos) bv = -1e9f;
             // 0.44.6 (Radiance / Unity Algorithm): our prediction comes true more often with our votes - a point with
             // Unity still unused this round and an objective we could score, a token in a Sigil otherwise
             float predictBonus = 0.f;

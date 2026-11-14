@@ -59,6 +59,7 @@ void Rules::plotsWithinPlots(int p, const char* actionKey) {
     Player& pl = G.players[size_t(p)];
     for (int q = 0; q < G.numPlayers; ++q) {
         if (q == p) continue;
+        if (G.fixes >= 25 && G.players[size_t(q)].eliminated) continue;  // (owner's faction debug pass: out of the game - no puppet)
         for (int16_t o : std::vector<int16_t>(G.players[size_t(q)].scored)) {
             if (kObjectives[o].kind != 3 || plotCount(pl) >= kPlotCount) continue;
             if (std::find(pl.plotted.begin(), pl.plotted.end(), o) != pl.plotted.end()) continue;
@@ -83,7 +84,8 @@ void Rules::blackOps(int r, int note) {
     say(r, pn(r) + " receives Black Ops from " + pn(f) + ".");
     if (fac(f, "firmament") && plotCount(G.players[size_t(f)]) < kPlotCount) {
         curFor_ = r;
-        const bool put = fyes(f, Ab::BlackOps, "Black Ops: place a facedown plot card with " + pn(r) + "'s control token?", "");
+        const bool put = fyes(f, Ab::BlackOps, "Black Ops: place a facedown plot card with " + pn(r) + "'s control token?",
+                              pn(r) + " receives Black Ops: they gain 2 command tokens and 2 trade goods; the note is purged.");
         curFor_ = -1;
         if (put) placePlot(f, r, "Black Ops");
     }
@@ -98,7 +100,8 @@ void Rules::becomeObsidian(int p) {
     if (obs < 0 || !fac(p, "firmament")) return;
     Player& pl = G.players[size_t(p)];
     const std::string was = pn(p);
-    // the note: Black Ops (in our hand, or purged) turns over into Malevolency, in our hand
+    // the note: Black Ops is purged (Puppets of the Blade - in our hand, or already purged when given) and Malevolency is
+    // gained, in our hand (one note slot: its name follows the owner's faction)
     const int16_t note = makeNote(p, kNoteFaction);
     bool somewhere = false;
     for (const Player& q : G.players)
@@ -136,6 +139,19 @@ void Rules::becomeObsidian(int p) {
         if (kLeaders[i].faction == obs) pl.leaders.push_back({int16_t(i), uint8_t(kLeaders[i].type == kAgent ? kReady : kLocked)});
     refreshUnits(p);  // Heaven's Hollow, Viper Hollow
     abilityEvent7(E, p, "Puppets of the Blade", "The " + was + " cast off their mask: they are the Obsidian now, and their plots are revealed!", home);
+    // (fixes 25, owner's faction debug pass) the Cronos / Tallin cards are purged and the Hollows' cards are ours (LRR
+    // 25.1, 64.6: the card is the control) - another player who held one loses it; their units there coexist with ours
+    if (G.fixes >= 25 && home >= 0)
+        for (int16_t x : G.systems[size_t(home)].planets) {
+            PlanetState& ps = G.planets[size_t(x)];
+            const int was = ps.owner;
+            if (was == p) continue;
+            for (int q = 0; q < kSides; ++q)
+                if (q != p && ps.units[size_t(q)].total() > 0) ps.coexist = uint16_t(ps.coexist | (1u << q));
+            setControl(int(x), p);
+            abilityEvent7(E, p, "Puppets of the Blade", pn(p) + " take " + planetName(int(x)) +
+                                                             (was >= 0 ? " back from " + pn(was) + " - their units there coexist with " + pn(p) + "'s" : std::string()) + ".", home);
+        }
     // The Blade's Orchestra: Cronos Hollow and Tallin Hollow ready
     if (home >= 0)
         for (int16_t x : G.systems[size_t(home)].planets)
@@ -154,6 +170,7 @@ void Rules::becomeObsidian(int p) {
             std::vector<Option> opts;
             for (int x : controlledPlanets(G, q)) {
                 if (isHomePlanet(G, x) || G.planets[size_t(x)].destroyed) continue;
+                if (G.fixes >= 25 && isStation(G, x)) continue;  // (owner's faction debug pass: no units stand on a station)
                 int n = 0;
                 for (const Force& f : G.planets[size_t(x)].units) n += f.total();
                 opts.push_back({x, planetName(x), std::to_string(n) + " units"});
@@ -194,8 +211,10 @@ void Rules::becomeObsidian(int p) {
             // (0.43.0 debug passes: the old owner coexists before the control changes hands - setControl can ask
             // questions (Integrated Economy) and the planet must not hold two armies meanwhile; fixes >= 2)
             if (G.fixes >= 2 && was >= 0 && was != p) ps.coexist = uint16_t(ps.coexist | (1u << was));
+            if (G.fixes >= 25 && !ps.units[kNeutral].empty()) ps.coexist = uint16_t(ps.coexist | (1u << kNeutral));  // (the neutral guards stay)
             setControl(int(x), p);
             if (was >= 0 && was != p) ps.coexist = uint16_t(ps.coexist | (1u << was));
+            if (G.fixes >= 25 && neutralGroundOn(G, int(x)) > 0) ps.coexist = uint16_t(ps.coexist | (1u << kNeutral));  // (the neutral guards)
             abilityEvent7(E, p, "Viper Hollow", pn(p) + "'s Viper takes " + planetName(int(x)) + (was >= 0 ? " from " + pn(was) : std::string()) + ".", ps.system);
         }
 }
@@ -207,6 +226,13 @@ void Rules::siphon(int q, int gained) {
     if (!plotPuppet(G, o, kPlotSiphon, q)) return;
     gainTG(o, gained);
     say(o, pn(o) + " gains " + std::to_string(gained) + " trade good(s) as " + pn(q) + " gains commodities (Siphon).");
+}
+
+// (fixes 25, owner's faction debug pass) Siphon for every commodity gain that doesn't go through replenished() or the
+// exploration hooks: faction abilities, leaders, Uncharted Space cards, Discordant Stars.
+void Rules::commodityGained(int p, int before) {
+    if (G.fixes < 25 || !(G.modules & kModThundersEdge) || p < 0 || p >= G.numPlayers) return;
+    siphon(p, G.players[size_t(p)].commodities - before);
 }
 
 // Extract: the puppet gained a non-faction technology - the Obsidian may pay 4 resources for it too.
@@ -247,7 +273,91 @@ void Rules::heavensEye(int att, int def, int sys) {
 
 // Myru Vos (Firmament agent): when a player moves ships - no space cannon against them during this movement.
 // (0.43.0, T30: and ships carrying nothing move through other players' ships - G.fx.myruThrough)
+// fixes 25 (owner's faction debug pass - the card: "When a player moves ships: You may exhaust this card; if you do,
+// SPACE CANNON cannot be used against those ships. If they are not transporting units, they can also move through other
+// players' ships."): offered when the player has ships that can move in and either someone's space cannon (the same gun
+// list as the space cannon step, neutral units too) could fire at them or the way through opens a route; a person
+// playing the Firmament is asked on other players' moves too (with "don't ask again this round"), a bot only when it
+// promised that player its agent. Experimental Battlestation and the Seidr Project can't fire at those ships either
+// (G.fx.myruThrough marks the protected player for the rest of the tactical action).
+void Rules::myruVos25(int p, int sys) {
+    if (G.fx.myruThrough >= 0 || playerOfFaction(G, "firmament") < 0) return;
+    // the ships that could move in, without and with the way through
+    bool canMove = false, opens = false;
+    {
+        const int8_t was = G.fx.myruThrough;
+        G.fx.myruThrough = int8_t(p);
+        const int bonus = moveBonusMax(G, p);
+        for (size_t s = 0; s < G.systems.size() && !canMove; ++s) {
+            if (int(s) == sys || (G.systems[s].hasToken(p) && !G.fx.dominusOrb && !(heroActive(G, p, "nomad") && flagshipIn(G, p, int(s))))) continue;
+            const Force& f = G.systems[s].space[size_t(p)];
+            auto check = [&](UnitType t) {
+                if (shipReachNoMyru(G, p, int(s), sys, t, bonus).ok) canMove = true;
+                else if (!opens && shipReach(G, p, int(s), sys, t, bonus).ok) opens = true;
+            };
+            for (int t : kShipIdx)
+                if (f.n[t]) check(UnitType(t));
+            if (f.count(UnitType::SpaceDock) && movesAsShip(G, p, UnitType::SpaceDock)) check(UnitType::SpaceDock);  // floating factories
+        }
+        G.fx.myruThrough = was;
+    }
+    if (!canMove && !opens) return;
+    // someone's space cannon could fire at them (Solar Flare played already covers the space cannon step)
+    bool threat = false;
+    if (!G.fx.solarFlare) {
+        for (int q = 0; q < G.numPlayers && !threat; ++q)
+            if (q != p && !G.players[size_t(q)].eliminated && !cannonGuns(q, p, sys).empty()) threat = true;
+        const SystemState& ss = G.systems[size_t(sys)];
+        for (int t = 0; t < kUnitTypes && !threat; ++t) {
+            if (ss.space[kNeutral].n[t] && unitDef(G, kNeutral, UnitType(t)).cannon > 0) threat = true;
+            for (int16_t x : ss.planets)
+                if (G.planets[size_t(x)].units[kNeutral].n[t] && unitDef(G, kNeutral, UnitType(t)).cannon > 0) threat = true;
+        }
+    }
+    if (!threat && !opens) return;
+    auto ctxFor = [&](const std::string& whose) {
+        return std::string(threat ? "Space cannon could fire at " + whose + " ships. " : "") + "Myru Vos: no space cannon can be used against " +
+               whose + " moving ships this tactical action, and ships transporting nothing may move through other players' ships.";
+    };
+    auto apply = [&](int user) {
+        spendAgent(user, "firmament");
+        agentDone(user, p);
+        G.fx.solarFlare = true;
+        G.fx.myruThrough = int8_t(p);
+        say(user, "Space cannon can't fire at " + pn(p) + "'s moving ships (" + (user == p ? std::string("Myru Vos") : pn(user) + "'s Myru Vos") + ").", sys);
+    };
+    if (canUseAgent(p, "firmament")) {
+        curValue_ = threat ? 1 : 0;  // (for the AI)
+        const bool use = fyes(p, Ab::FirmamentAgent, "Exhaust Myru Vos?", ctxFor("your"));
+        curValue_ = 0;
+        if (use) apply(p);
+        return;
+    }
+    for (int o : initiativeOrder(G)) {
+        if (o == p || !canUseAgent(o, "firmament")) continue;
+        const bool promised = G.agentFor[o] == p;
+        const bool human = G.players[size_t(o)].human;
+        if (!promised && !(human && myruQuiet_[o] != G.round)) continue;
+        agentFor(o, p);
+        curValue_ = threat ? 1 : 0;
+        std::vector<Option> opts = {{1, "Yes", ""}, {0, "No", ""}};
+        if (human && !promised) opts.push_back({3, "No, and don't ask again this round", "You'll be asked again next round."});
+        const int c = fpick(o, Ab::FirmamentAgent, "Exhaust Myru Vos for " + pn(p) + "?", opts,
+                            pn(p) + " activated " + sysName(sys) + ". " + ctxFor(pn(p) + "'s"));
+        curValue_ = 0;
+        curFor_ = -1;
+        if (c == 3) myruQuiet_[o] = int16_t(G.round);
+        if (c != 1) continue;
+        apply(o);
+        return;
+    }
+}
+
 void Rules::myruVos(int p, int sys) {
+    if (G.fixes >= 25) {
+        myruVos25(p, sys);
+        return;
+    }
     if (G.fx.solarFlare || playerOfFaction(G, "firmament") < 0) return;
     const int user = agentUser(p, "firmament");
     if (user < 0) return;
@@ -298,16 +408,27 @@ void Rules::vosHollow(int att, int def, int sys, const Force& beforeA, const For
         const int opp = side == att ? def : att;
         const Force& before = side == att ? beforeA : beforeD;
         int user = agentUser(side, "obsidian");
-        if (user < 0 && o != att && o != def && canUseAgent(o, "obsidian")) user = o;  // (a bystander)
+        bool bystander = false;
+        if (user < 0 && o != att && o != def && canUseAgent(o, "obsidian")) user = o, bystander = true;  // (a bystander)
         if (user < 0) continue;
+        // (fixes 25, owner's faction debug pass) a person watching as a bystander may say "don't ask again this round"
+        const bool quietOk = G.fixes >= 25 && bystander && G.players[size_t(user)].human;
+        if (quietOk && vosQuiet_[user] == G.round) continue;
         for (int t : kShipIdx) {
             if (G.systems[size_t(sys)].space[size_t(side)].n[t] >= before.n[t] || !G.systems[size_t(sys)].space[size_t(opp)].n[t]) continue;
             agentFor(user, side);
             curFor_ = opp;
-            const bool use = fyes(user, Ab::ObsidianAgent,
-                                  "Exhaust Vos Hollow: " + pn(opp) + " must destroy one of their " + unitTypeName(UnitType(t), true) + " here too?",
-                                  leaderText(findLeader("obsidianagent")));
+            std::vector<Option> opts = {{1, "Yes", ""}, {0, "No", ""}};
+            if (quietOk) opts.push_back({3, "No, and don't ask again this round", "You'll be asked again next round."});
+            const int c = fpick(user, Ab::ObsidianAgent,
+                                "Exhaust Vos Hollow: " + pn(opp) + " must destroy one of their " + unitTypeName(UnitType(t), true) + " here too?", opts,
+                                leaderText(findLeader("obsidianagent")));
             curFor_ = -1;
+            if (c == 3) {
+                vosQuiet_[user] = int16_t(G.round);
+                return;
+            }
+            const bool use = c == 1;
             if (!use) continue;
             spendAgent(user, "obsidian");
             agentDone(user, side);
@@ -319,6 +440,7 @@ void Rules::vosHollow(int att, int def, int sys, const Force& beforeA, const For
 
 // The Reaping: a trade good on the card for each combat won against a puppet.
 void Rules::reapingWon(int att, int def, int sys, int planet) {
+    if (G.fixes >= 25) return;  // (fixes 25: reapingWin - the combat's own winner, from combatWon)
     for (int w : {att, def}) {
         const int l = w == att ? def : att;
         if (w < 0 || w >= G.numPlayers || l < 0 || l >= G.numPlayers || !breakthroughIs(G, w, "obsidian") || !anyPuppet(G, w, l)) continue;
@@ -328,6 +450,14 @@ void Rules::reapingWon(int att, int def, int sys, int planet) {
         ++G.players[size_t(w)].sowing;
         say(w, pn(w) + " puts a trade good on The Reaping (" + std::to_string(G.players[size_t(w)].sowing) + " there).", sys);
     }
+}
+
+// (fixes 25, owner's faction debug pass) The Reaping counts the combats the game declares won (combatWon) - not a draw
+// after Skilled Retreat, and units that fight without being ships count as the combat does.
+void Rules::reapingWin(int w, int l, int sys) {
+    if (G.fixes < 25 || w < 0 || w >= G.numPlayers || l < 0 || l >= G.numPlayers || !breakthroughIs(G, w, "obsidian") || !anyPuppet(G, w, l)) return;
+    ++G.players[size_t(w)].sowing;
+    say(w, pn(w) + " puts a trade good on The Reaping (" + std::to_string(G.players[size_t(w)].sowing) + " there).", sys);
 }
 
 // The Sowing: up to 3 of our trade goods onto the card (when gained, and at the start of each status phase).
@@ -368,7 +498,12 @@ void Rules::firmamentStatusStart() {
         if (breakthroughIs(G, p, "obsidian") && pl.sowing > 0) {  // The Reaping
             const int k = pl.sowing;
             pl.sowing = 0;
-            gainTG(p, 2 * k);
+            if (G.fixes >= 25) {  // (owner's faction debug pass: two gains - the card's, then as many from the supply)
+                gainTG(p, k);
+                gainTG(p, k);
+            } else {
+                gainTG(p, 2 * k);
+            }
             abilityEvent7(E, p, "The Reaping", pn(p) + " reaps " + std::to_string(2 * k) + " trade goods (" + std::to_string(k) + " on the card, as many again).");
         }
         for (int q = 0; q < G.numPlayers; ++q) {  // Seethe: 1 of the puppet's infantry
@@ -387,6 +522,7 @@ void Rules::firmamentStatusStart() {
             destroyUnits(q, UnitType::Infantry, 1, sys, planet, p, "Seethe");
         }
     }
+    coexistStructures();  // (fixes 25: LRR 63.4 / 79.4 - Seethe can take a coexisting player's last infantry)
 }
 
 // End of the status phase: Malevolency costs its holder (anyone but the Obsidian) a fleet token.
@@ -414,20 +550,25 @@ void Rules::obsidianTurnStart(int p) {
         near[s] = 1;
         for (int16_t a : G.systems[s].adj) near[size_t(a)] = 1;
     }
-    std::vector<Option> opts;  // id = (planet + 1, or 0 for space) * 1024 + system * 8 + player
+    // id = (planet + 1, or 0 for space) * 1024 + system * 8 + player; (fixes 25, owner's faction debug pass: neutral
+    // infantry too - neutral units count as another player's for abilities, TE rulebook) * 4096 + system * 16 + side
+    const bool v25 = G.fixes >= 25;
+    const int pm = v25 ? 16 : 8, sm = v25 ? 4096 : 1024;
+    std::vector<Option> opts;
     for (size_t s = 0; s < G.systems.size(); ++s) {
         if (!near[s]) continue;
-        for (int q = 0; q < G.numPlayers; ++q) {
-            if (q == p) continue;
-            if (G.systems[s].space[size_t(q)].count(UnitType::Infantry)) opts.push_back({int(s) * 8 + q, pn(q) + "'s infantry in " + sysName(int(s)), ""});
+        for (int q = 0; q < (v25 ? kSides : G.numPlayers); ++q) {
+            if (q == p || (q >= G.numPlayers && q != kNeutral)) continue;
+            const std::string who = q == kNeutral ? std::string("Neutral") : pn(q) + "'s";
+            if (G.systems[s].space[size_t(q)].count(UnitType::Infantry)) opts.push_back({int(s) * pm + q, who + " infantry in " + sysName(int(s)), ""});
             for (int16_t x : G.systems[s].planets)
                 if (G.planets[size_t(x)].units[size_t(q)].count(UnitType::Infantry))
-                    opts.push_back({(x + 1) * 1024 + int(s) * 8 + q, pn(q) + "'s infantry on " + planetName(x), ""});
+                    opts.push_back({(x + 1) * sm + int(s) * pm + q, who + " infantry on " + planetName(x), ""});
         }
     }
     if (opts.empty()) return;
     const int c = opts.size() == 1 ? opts[0].id : fpick(p, Ab::Parasite2, "Neural Parasite: destroy which infantry?", opts);
-    const int q = c % 8, sys = (c % 1024) / 8, planet = c / 1024 - 1;
+    const int q = c % pm, sys = (c % sm) / pm, planet = c / sm - 1;
     destroyUnits(q, UnitType::Infantry, 1, sys, planet, p, "Neural Parasite");
 }
 
@@ -439,6 +580,9 @@ void Rules::planesplitter(int p) {
         const SystemState& sy = G.systems[s];
         if (sy.ingress) from.push_back({int(s), sysName(int(s)), ""});
         if (sy.ingress || sy.fracture || sy.isHyperlane()) continue;
+        // (fixes 25, owner's faction debug pass: ingress tokens go on the game board - not the Creuss home, Ahk Creuxx
+        // or a closed Wormhole Nexus beside it)
+        if (G.fixes >= 25 && sy.offBoard && !(int(s) == G.nexus && sy.nexusActive)) continue;
         bool near = hasUnits(G, p, int(s));
         for (int16_t a : sy.adj) near = near || hasUnits(G, p, a);
         if (near) to.push_back({int(s), sysName(int(s)), ""});
@@ -472,12 +616,19 @@ void Rules::malevolency(int p) {
 }
 
 // Enervate: the Obsidian use the secondary of their puppet's strategy card for free (Leadership: the primary).
-bool Rules::enervateFree(int q) const {
+bool Rules::enervateFree(int q, int card) const {
     const int w = strategicPlayer_;
-    return w >= 0 && w != q && plotPuppet(G, q, kPlotEnervate, w);
+    if (w < 0 || w == q || !plotPuppet(G, q, kPlotEnervate, w)) return false;
+    // (fixes 25, owner's faction debug pass) "the puppeted player's strategy cards": not another card resolved through
+    // Mathis Mathinus
+    if (G.fixes >= 25) {
+        const std::vector<int8_t>& c = G.players[size_t(w)].cards;
+        return std::find(c.begin(), c.end(), int8_t(card)) != c.end();
+    }
+    return true;
 }
 bool Rules::enervate(int q, int card) {
-    if (card != 0 || !enervateFree(q)) return false;
+    if (card != 0 || !enervateFree(q, card)) return false;
     if (!fyes(q, Ab::Enervate, "Enervate: resolve Leadership's primary ability (not the secondary)?", plotText(kPlotEnervate))) return false;
     say(q, pn(q) + " uses Leadership's primary ability (Enervate).");
     leadership(q, true);
@@ -510,7 +661,7 @@ bool Rules::factionAction9(int p, Ab ab) {
                 if (q != p && !G.players[size_t(q)].eliminated) who.push_back({q, pn(q), ""});
             if (who.empty() || plotCount(pl) >= kPlotCount) return false;
             const int q = fpick(p, Ab::FirmamentHero, "Sharsiss: a plot card with whose control token?", who);
-            purgeHero(p);
+            if (G.fixes < 25) purgeHero(p);  // (fixes 25, owner's faction debug pass: last, as the card says)
             placePlot(p, q, "Sharsiss");
             std::vector<Option> tok;  // id = plot * 8 + player
             for (int k = 0; k < kPlotCount; ++k) {
@@ -519,16 +670,17 @@ bool Rules::factionAction9(int p, Ab ab) {
                     if (x != p && !G.players[size_t(x)].eliminated && !((pl.plotTok[size_t(k)] >> x) & 1))
                         tok.push_back({k * 8 + x, pn(x) + "'s token on " + plotName(k), ""});
             }
-            if (tok.empty()) return true;
-            tok.push_back({-1, "No more tokens", ""});
-            const int c = fpick(p, Ab::PlotToken, "Sharsiss: put another player's token on one of your plots?", tok);
-            if (c < 0) return true;
-            pl.plotTok[size_t(c / 8)] = uint8_t(pl.plotTok[size_t(c / 8)] | (1u << (c % 8)));
-            say(p, pn(p) + " puts " + pn(c % 8) + "'s control token on a plot card (Sharsiss).");
+            const int c = tok.empty() ? -1 : (tok.push_back({-1, "Don't place a token", ""}),
+                                              fpick(p, Ab::PlotToken, "Sharsiss: put another player's token on one of your plots?", tok));
+            if (c >= 0) {
+                pl.plotTok[size_t(c / 8)] = uint8_t(pl.plotTok[size_t(c / 8)] | (1u << (c % 8)));
+                say(p, pn(p) + " puts " + pn(c % 8) + "'s control token on a plot card (Sharsiss).");
+            }
+            if (G.fixes >= 25) purgeHero(p);
             return true;
         }
         case Ab::ObsidianHero: {
-            purgeHero(p);
+            if (G.fixes < 25) purgeHero(p);  // (fixes 25, owner's faction debug pass: last, as the card says)
             int n = 0;
             for (int x : controlledPlanets(G, p))
                 if (G.planets[size_t(x)].exhausted) {
@@ -536,6 +688,7 @@ bool Rules::factionAction9(int p, Ab ab) {
                     ++n;
                 }
             abilityEvent7(E, p, "Sharsiss Hollow", pn(p) + " readies " + std::to_string(n) + " planet(s) (Sharsiss Hollow).");
+            if (G.fixes >= 25) purgeHero(p);
             return true;
         }
         default:
