@@ -92,7 +92,9 @@ float sliceCost(const Game& g, int p, int s) {
     switch (s) {
         case 0: return aiFreeSpend(g, p, false) >= 5 ? 4.5f : 99.f;
         case 1: return aiFreeSpend(g, p, true) >= 5 ? (g.round <= 2 ? 3.5f : 4.5f) : 99.f;
-        case 2: return me.actionCards.size() >= 2 ? 1.2f + cheapestCards(g, p, 2) : 99.f;
+        case 2:  // (test switch cymexp, the Cymiae review checkpoint 2: off - the guide: "pay by discarding 2 action cards; you
+                 // recover cards from the discard anyway")
+            return me.actionCards.size() >= 2 ? 1.2f + cheapestCards(g, p, 2) - (isFaction(g, p, "cymiae") ? aiTune("cymexp", 0.f) : 0.f) : 99.f;
         case 3: {
             if (me.secrets.empty()) return 99.f;
             int worst = 0;  // the secret furthest from done
@@ -562,7 +564,10 @@ bool aiTeAnswer(const Game& g, const Decision& d, Answer& out) {
             const float war = ravinPair(g, p, &front, &back);
             int ef = -1, eb = -1;  // (0.59.0) or the ferry, when it is worth more
             if (ravinExpand(g, p, &ef, &eb) > (war >= 5.f ? 0.7f : 0.f)) front = ef, back = eb;
-            if (d.prompt.find("which player") != std::string::npos) out = one(has(d, p) ? p : firstReal(d));
+            if (d.prompt.find("which player") != std::string::npos) {
+                const int prom = aiAgentPromisedTo(g, p);  // (rules 28) the promised player
+                out = one(prom >= 0 && has(d, prom) ? prom : has(d, p) ? p : firstReal(d));
+            }
             else if (d.prompt.find("first ship") != std::string::npos) out = one(has(d, front) ? front : firstReal(d));
             else out = one(has(d, back) ? back : firstReal(d));
             return true;
@@ -757,8 +762,9 @@ bool aiTeAnswer(const Game& g, const Decision& d, Answer& out) {
             out = one(bestBy(d, [&](int c) { return aiCardKeepValue(c); }));
             return true;
         case Ab::RalNelAgent: {
-            if (d.prompt.find("to whom") != std::string::npos) {  // the player furthest behind
-                out = one(bestBy(d, [&](int q) { return -float(g.players[size_t(q)].vp) + (q == p ? -99.f : 0.f); }));
+            if (d.prompt.find("to whom") != std::string::npos) {  // the player furthest behind (rules 28: the promised player)
+                const int prom = aiAgentPromisedTo(g, p);
+                out = one(bestBy(d, [&](int q) { return -float(g.players[size_t(q)].vp) + (q == p ? -99.f : 0.f) + (q == prom ? 99.f : 0.f); }));
                 return true;
             }
             out = one(bestBy(d, [&](int c) { return -aiCardKeepValue(c); }));  // give the weaker card
@@ -856,7 +862,10 @@ bool aiTeAnswer(const Game& g, const Decision& d, Answer& out) {
             out = one(d.prompt.find(": open") != std::string::npos ? 1 : 0);
             return true;
         case Ab::Exile:
-            if (fquirkIs(g, p, "crimson", 1)) out = one(has(d, 1) ? 1 : 0);  // Quiet Breaches: inactive
+            // (the Crimson checkpoint 2 - test switch cmquiet, OFF: every Crimson bot plays its breaches the Quiet Breaches way - that
+            // trait forced won 15 games of 90 against 11. REVISIT: with the owner's starting-breakthrough ruling the trait forced won 8 / 6.64
+            // against 10 / 6.88, and the switch 7 / 6.67 and 13 / 7.10 against 10 / 6.88 and 16 / 7.10 - worse)
+            if (fquirkIs(g, p, "crimson", 1) || aiTune("cmquiet", 0.f) > 0.f) out = one(has(d, 1) ? 1 : 0);  // Quiet Breaches: inactive
             else out = one(has(d, 2) ? 2 : has(d, 1) ? 1 : 0);
             return true;
         case Ab::MoveBreach: {  // (0.59.0) the inactive breach we need least: not the Sorrow's, away from our ships
@@ -879,7 +888,7 @@ bool aiTeAnswer(const Game& g, const Decision& d, Answer& out) {
                 out = one(1);
                 return true;
             }
-            bool keep = !fquirkIs(g, p, "crimson", 1);
+            bool keep = !fquirkIs(g, p, "crimson", 1) && aiTune("cmquiet", 0.f) <= 0.f;  // (cmquiet: the checkpoint 2 test switch)
             // (0.59.0, owner: tune Quiet Breaches) it still closes its breaches - but keeps the Sorrow's (the way home),
             // the one its Quietus sits in, and one where a Revenant can take a planet on its next turn
             const int s = d.value;
@@ -957,7 +966,10 @@ bool aiTeAnswer(const Game& g, const Decision& d, Answer& out) {
                         int lack = 0;
                         for (int16_t t : v.techs)
                             if (kTechs[t].faction < 0 && !me.hasTech(t)) ++lack;
-                        return 0.5f + float(lack) * 0.5f;
+                        // (the Firmament checkpoint 2 - test switch fmextract, OFF: a technology per puppet at the flip is worth more -
+                        // Extract never came up in 90 games. REVISIT (90 forced games each, 1.5): Extract revealed 5 / 13 times - 6 / 6.54
+                        // against 6 / 6.52, second sample 6 / 6.54 against 5 / 6.46: not clear)
+                        return 0.5f + float(lack) * (aiTune("fmextract", 0.f) > 0.f ? aiTune("fmextract", 0.f) : 0.5f);
                     }
                     case kPlotEnervate: return 2.0f;
                     case kPlotSeethe: {
@@ -1183,7 +1195,7 @@ bool aiTeComponentValue(const Game& g, int p, int ab, float& v) {
         case Ab::BtSaar: v = aiFreeSpend(g, p, false) >= 3 ? 0.7f : 0.f; return true;
         case Ab::BtMuaat: v = 0.8f; return true;   // The Nucleus: Star Forge for free
         case Ab::BtYssaril: v = me.actionCards.size() >= 7 ? 0.3f : 0.f; return true;  // a stall instead of passing
-        case Ab::RalNelAgent: v = 0.7f; return true;   // a card for us, one to make a friend
+        case Ab::RalNelAgent: v = aiAgentPromisedTo(g, p) >= 0 ? 2.5f : 0.7f; return true;  // a card for us, one to make a friend (promised)
         case Ab::Nano1: v = g.round >= 2 ? 0.6f : 0.3f; return true;
         case Ab::Nano2: {
             int dmg = 0;
@@ -1220,7 +1232,13 @@ bool aiTeComponentValue(const Game& g, int p, int ab, float& v) {
             v = closed ? 0.5f : 0.3f;
             return true;
         }
-        case Ab::CrimsonAgent: v = std::max(ravinPair(g, p, nullptr, nullptr) >= 5.f ? 0.7f : 0.f, ravinExpand(g, p, nullptr, nullptr)); return true;
+        case Ab::CrimsonAgent:
+            if (aiAgentPromisedTo(g, p) >= 0) {  // (rules 28) a promised Ahk Ravin
+                v = 2.5f;
+                return true;
+            }
+            v = std::max(ravinPair(g, p, nullptr, nullptr) >= 5.f ? 0.7f : 0.f, ravinExpand(g, p, nullptr, nullptr));
+            return true;
         case Ab::Sever: {  // a wormhole we stand in that an enemy fleet could come through
             v = 0.f;
             for (size_t s = 0; s < g.systems.size(); ++s) {

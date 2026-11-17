@@ -201,8 +201,11 @@ void Rules::neuraloop(int obj) {
             continue;
         }
         std::vector<Option> decks;
-        if (!G.stage1Deck.empty() || !G.stage1Rest.empty()) decks.push_back({1, "Stage I objectives", ""});
-        if (!G.stage2Deck.empty() || !G.stage2Rest.empty()) decks.push_back({2, "Stage II objectives", ""});
+        // ((fixes 30, the relic pass) from the objectives not in this game - as Incentive Program; the face-down ones still to be
+        // revealed stay, or the game would run out of objectives a round early)
+        const bool rest = G.fixes >= 30;
+        if (rest ? !G.stage1Rest.empty() : (!G.stage1Deck.empty() || !G.stage1Rest.empty())) decks.push_back({1, "Stage I objectives", ""});
+        if (rest ? !G.stage2Rest.empty() : (!G.stage2Deck.empty() || !G.stage2Rest.empty())) decks.push_back({2, "Stage II objectives", ""});
         if (!G.secretDeck.empty()) decks.push_back({3, "Secret objectives", ""});
         if (decks.empty()) {
             curRelic_ = prev;
@@ -211,8 +214,8 @@ void Rules::neuraloop(int obj) {
         const int which = pick(q, Tag::RelicChoice, "Neuraloop: draw the new objective from which deck?", decks);
         curRelic_ = prev;
         loseRelic(q, r, true);
-        std::vector<int16_t>& deck = which == 1 ? (!G.stage1Deck.empty() ? G.stage1Deck : G.stage1Rest)
-                                    : which == 2 ? (!G.stage2Deck.empty() ? G.stage2Deck : G.stage2Rest)
+        std::vector<int16_t>& deck = which == 1 ? (!rest && !G.stage1Deck.empty() ? G.stage1Deck : G.stage1Rest)
+                                    : which == 2 ? (!rest && !G.stage2Deck.empty() ? G.stage2Deck : G.stage2Rest)
                                                  : G.secretDeck;
         const int k = E.rng().below(int(deck.size()));
         const int16_t o = deck[size_t(k)];

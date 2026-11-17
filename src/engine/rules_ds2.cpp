@@ -64,7 +64,7 @@ int factionTechsOf(const Game& G, int q) {
 }
 int asteroidsNear(const Game& G, int sys) {
     int n = 0;
-    for (int16_t a : G.systems[size_t(sys)].adj) n += (G.systems[size_t(a)].d().anomalies & kAsteroid) ? 1 : 0;
+    for (int16_t a : G.systems[size_t(sys)].adj) n += (tileAnomalies(G, a) & kAsteroid) ? 1 : 0;  // (fixes 29: the Zelian home too)
     return n;
 }
 }  // namespace
@@ -102,17 +102,55 @@ void Rules::dsBombardDice(int p, int sys, RollResult& r, int mod, const Force& s
     addDice(r, std::max<int>(1, u.afbDice), u.afb - mod, int(t));
 }
 
+// (fixes 29, the Zelian review) World-Cracker (Zelian flagship): "When this unit makes a combat or unit ability roll, it rolls 1 additional
+// die for each asteroid field adjacent to this unit" - its BOMBARDMENT and ANTI-FIGHTER BARRAGE too (AsyncTI4 gives it the dice on both)
+int Rules::worldCrackerDice(int side, int sys) const {
+    if (G.fixes < 29 || !(G.modules & kModDiscordant) || side < 0 || side >= G.numPlayers || sys < 0 || !flagshipAbility(G, side, "zelian") ||
+        !flagshipIn(G, side, sys))
+        return 0;
+    return asteroidsNear(G, sys);
+}
+
+// (fixes 29, the Zelian review) Hyperkinetic Ordnance (the Zelian's note): "When 1 or more of your units would make a BOMBARDMENT roll: If
+// you produce 1 or more hits during this BOMBARDMENT roll, produce 1 additional hit for that roll. Then, return this card" - played before
+// the dice (it goes back to the Zelian whatever they show); asked before each planet's roll while the note is held
+void Rules::dsBombardBefore(int p, int sys, int pl, const Force& shooters) {
+    hyperPending_ = false;
+    if (G.fixes < 29 || p < 0 || p >= G.numPlayers) return;
+    const int z = playerOfFaction(G, "zelian");
+    if (z < 0 || z == p || !holdsNote(G, p, z, kNoteFaction)) return;
+    int dice = 0;
+    for (int t = 0; t < kUnitTypes; ++t)
+        if (shooters.n[t]) dice += shooters.n[t] * std::max<int>(1, unitDef(G, p, UnitType(t)).bombardDice);
+    curValue_ = dice;  // (for the AI: how many dice)
+    const bool use = fyes(p, Ab::DsHyperkinetic, "Play " + pn(z) + "'s Hyperkinetic Ordnance on the bombardment of " + planetName(pl) + "?",
+                          "If the roll makes 1 or more hits, it makes 1 more. The note goes back to " + pn(z) + " either way.");
+    curValue_ = 0;
+    if (!use) return;
+    returnNote(p, makeNote(z, kNoteFaction));
+    hyperPending_ = true;
+    ds2Event(E, p, "Hyperkinetic Ordnance", pn(p) + " plays Hyperkinetic Ordnance on the bombardment of " + planetName(pl) + ".", sys);
+}
+
 // Hits of one bombardment roll against a planet (q's ground forces there): Shard Volley, Hyperkinetic Ordnance, Meteor
 // Slings / Stone Speakers (hits turned into infantry landing on the planet).
 void Rules::dsBombardHits(int p, int q, int sys, int pl, RollResult& r) {
-    if (r.hits <= 0) return;
+    const bool hyper = hyperPending_;  // (fixes 29: played before the roll - dsBombardBefore)
+    hyperPending_ = false;
+    if (r.hits <= 0) {
+        if (hyper) say(p, pn(p) + "'s bombardment misses: Hyperkinetic Ordnance adds nothing.", sys);
+        return;
+    }
     if (owns(p, "dszelir")) {  // Shard Volley
         ++r.hits;
         say(p, pn(p) + " makes 1 more hit (Shard Volley).", sys);
     }
     const int z = playerOfFaction(G, "zelian");
-    if (z >= 0 && z != p && holdsNote(G, p, z, kNoteFaction) &&
-        fyes(p, Ab::DsHyperkinetic, "Play " + pn(z) + "'s Hyperkinetic Ordnance: 1 more bombardment hit?", "")) {
+    if (hyper) {
+        ++r.hits;
+        say(p, pn(p) + " makes 1 more hit (Hyperkinetic Ordnance).", sys);
+    } else if (G.fixes < 29 && z >= 0 && z != p && holdsNote(G, p, z, kNoteFaction) &&
+               fyes(p, Ab::DsHyperkinetic, "Play " + pn(z) + "'s Hyperkinetic Ordnance: 1 more bombardment hit?", "")) {
         ++r.hits;
         returnNote(p, makeNote(z, kNoteFaction));
         ds2Event(E, p, "Hyperkinetic Ordnance", pn(p) + " makes 1 more hit.", sys);
@@ -139,6 +177,42 @@ void Rules::dsBombardHits(int p, int q, int sys, int pl, RollResult& r) {
             ds2Event(E, p, slings ? "Meteor Slings" : "Stone Speakers", pn(p) + " hurls " + std::to_string(n) + " infantry down onto " + planetName(pl) + ".", sys);
         }
     }
+}
+
+// (fixes 28, the Khrask review - owner 2026-11-15 "allow bombardment to non-infantry planets") Meteor Slings "When your units use
+// BOMBARDMENT against a planet another player controls" / Stone Speakers: such a planet may be bombarded with none of its owner's
+// ground forces on it, to put infantry there (bombardment() targets)
+bool Rules::dsSlingsAt(int p) const {
+    if (G.fixes < 28 || !(G.modules & kModDiscordant) || p < 0 || p >= G.numPlayers) return false;
+    if (fac(p, "khrask")) return true;
+    const int k = playerOfFaction(G, "khrask");
+    return k >= 0 && k != p && holdsNote(G, p, k, kNoteFaction) && p == G.activePlayer && unitsAvailable(G, p, UnitType::Infantry) > 0;
+}
+
+// (fixes 28, the Khrask review - owner 2026-11-15 "Splintering Gale should follow the card") "At the start of a space combat in this
+// system, choose up to 2 non-fighter ships to gain SUSTAIN DAMAGE until the end of combat" - chosen now, kept until the combat ends
+// (Game::dsGaleShips, query galeLeft); only the player's own ships without Sustain Damage are offered (any other choice does nothing)
+void Rules::dsGaleChoose(int p, int sys) {
+    for (int8_t& x : G.dsGaleShips) x = 0;
+    G.dsGaleOwner = int8_t(p);
+    const Force& f = G.systems[size_t(sys)].space[size_t(p)];
+    std::vector<Option> opts;
+    for (int t : kShipIdx) {
+        if (UnitType(t) == UnitType::Fighter || unitSustains(G, p, UnitType(t))) continue;
+        for (int i = 0; i < std::min<int>(2, f.n[t]); ++i)
+            opts.push_back({t * 16 + i, std::string(unitTypeName(UnitType(t))) + (i ? " (a second one)" : ""), i ? "Both of them" : ""});
+    }
+    if (opts.empty()) return;  // (every ship here has Sustain Damage already)
+    const std::vector<int> picks = fpickMany(p, Ab::DsSplinteringGale, "Splintering Gale: up to 2 of your ships gain Sustain Damage in this combat", opts, 0,
+                                             std::min<int>(2, int(opts.size())), kUnits[size_t(unitByKey("khrask_flagship"))].name);
+    for (int id : picks) ++G.dsGaleShips[id / 16];
+    std::string names;
+    for (int t : kShipIdx) {
+        if (!G.dsGaleShips[t]) continue;
+        names += (names.empty() ? "" : " and ") + (G.dsGaleShips[t] > 1 ? "2 " + std::string(unitTypeName(UnitType(t), true)) : "1 " + std::string(unitTypeName(UnitType(t))));
+    }
+    if (!picks.empty())
+        ds2Event(E, p, "Splintering Gale", pn(p) + "'s " + names + (picks.size() > 1 ? " gain" : " gains") + " Sustain Damage for this combat.", sys);
 }
 
 // Start of an invasion (p active, before the bombardment): Hkot Tokal, Zelian A, Collider, Davish S'Norri,
@@ -168,7 +242,36 @@ void Rules::dsInvasionStart(int p, int sys) {
         }
     }
     // Zelian A (Zelian agent): an infantry in space becomes a mech
-    if (s.space[size_t(p)].count(UnitType::Infantry) && unitsAvailable(G, p, UnitType::Mech) > 0) {
+    // (fixes 29, the Zelian review - the Reference: "At the start of invasion: You may exhaust this card to allow the active player to
+    // replace 1 of their infantry in the space area of the active system with 1 mech from their reinforcements") any player's invasion;
+    // whoever can use the agent is asked in initiative order (a person may say "not again this round"; a promised agent kept for its
+    // beneficiary)
+    if (G.fixes >= 29 && s.space[size_t(p)].count(UnitType::Infantry) && unitsAvailable(G, p, UnitType::Mech) > 0 && playerOfFaction(G, "zelian") >= 0) {
+        for (int o : initiativeOrder(G)) {
+            if (!canUseAgent(o, "zelian")) continue;
+            const bool human = G.players[size_t(o)].human;
+            if (human && zelianAQuiet_[size_t(o)] == G.round) continue;
+            std::vector<Option> yn{{1, "Yes", ""}, {0, "No", ""}};
+            if (human) yn.push_back({99999, "No, and don't ask again this round", "You'll be asked again next round."});
+            const int b = G.agentFor[size_t(o)];
+            const bool forB = b >= 0 && b != o && b < G.numPlayers && b == p;
+            curFor_ = forB ? b : -1;
+            curValue_ = 1000 + p;  // (for the AI: whose invasion)
+            const int c = fpick(o, Ab::DsZelianAgent, o == p ? "Exhaust Zelian A: swap 1 infantry in space for a mech?"
+                                                             : "Exhaust Zelian A so " + pn(p) + " swaps 1 infantry in space for a mech?",
+                                yn, leaderText(findLeader("zelianagent")));
+            curFor_ = -1;
+            curValue_ = 0;
+            if (c == 99999) zelianAQuiet_[size_t(o)] = int16_t(G.round);
+            if (c != 1) continue;
+            spendAgent(o, "zelian");
+            if (forB) agentUsedFor(o, b);
+            s.space[size_t(p)].remove(UnitType::Infantry, 1);
+            s.space[size_t(p)].add(UnitType::Mech, 1);
+            ds2Event(E, o, "Zelian A", pn(p) + "'s infantry becomes a mech.", sys);
+            break;
+        }
+    } else if (G.fixes < 29 && s.space[size_t(p)].count(UnitType::Infantry) && unitsAvailable(G, p, UnitType::Mech) > 0) {
         const int user = agentUser(p, "zelian");
         if (user >= 0) {
             agentFor(user, p);
@@ -185,6 +288,9 @@ void Rules::dsInvasionStart(int p, int sys) {
         }
     }
     // Collider (Zelian mech in space): remove it to destroy 1 unit on a planet here
+    // (fixes 29, the Zelian review) each mech has the ability (LRR 1): one question per mech in the space area, until a "No"
+    const int colliders = G.fixes >= 29 ? s.space[size_t(p)].count(UnitType::Mech) : 1;
+    for (int k = 0; k < colliders; ++k)
     if (fac(p, "zelian") && mechAbilities(G) && s.space[size_t(p)].count(UnitType::Mech)) {
         std::vector<Option> opts;  // id = planet * 16 + type (+ player in the label)
         for (int16_t x : s.planets)
@@ -196,6 +302,7 @@ void Rules::dsInvasionStart(int p, int sys) {
         if (!opts.empty()) {
             opts.push_back({-1, "No", ""});
             const int c = fpick(p, Ab::DsCollider, "Collider: sacrifice a mech to destroy a unit on a planet here?", opts);
+            if (c < 0) break;  // (fixes 29: no more questions for the other mechs)
             if (c >= 0) {
                 const int q = c % 8, x = (c / 8) / 16, t = (c / 8) % 16;
                 removing_ = true;
@@ -207,6 +314,45 @@ void Rules::dsInvasionStart(int p, int sys) {
         }
     }
     // Davish S'Norri (Tnelis agent): one ship's anti-fighter barrage counts as bombardment
+    // (fixes 29, the Tnelis review - the Reference: "At the start of invasion: You may exhaust this card to choose 1 ship in the active
+    // system") any player's invasion; whoever can use the agent is asked in initiative order (a person may say "not again this round"; a
+    // promised agent kept for its beneficiary)
+    if (G.fixes >= 29) {
+        std::vector<Option> opts;
+        for (int t : kShipIdx)
+            if (s.space[size_t(p)].n[t] && unitDef(G, p, UnitType(t)).afb > 0)
+                opts.push_back({t, pn(p) + "'s " + unitTypeName(UnitType(t)), "Anti-Fighter Barrage " + std::to_string(unitDef(G, p, UnitType(t)).afb) + " (x" +
+                                                                    std::to_string(std::max<int>(1, unitDef(G, p, UnitType(t)).afbDice)) + ")"});
+        bool enemies = false;
+        for (int16_t x : s.planets)
+            for (int q = 0; q < G.numPlayers; ++q)
+                if (q != p && groundForcesOn(G, q, x)) enemies = true;
+        if (opts.empty() || !enemies || playerOfFaction(G, "tnelis") < 0) return;
+        opts.push_back({-1, "No", ""});
+        for (int o : initiativeOrder(G)) {
+            if (!canUseAgent(o, "tnelis")) continue;
+            const bool human = G.players[size_t(o)].human;
+            if (human && davishQuiet_[size_t(o)] == G.round) continue;
+            std::vector<Option> mine = opts;
+            if (human) mine.push_back({99999, "No, and don't ask again this round", "You'll be asked again next round."});
+            const int b = G.agentFor[size_t(o)];
+            const bool forB = b >= 0 && b != o && b < G.numPlayers && b == p;
+            curFor_ = forB ? b : -1;
+            curValue_ = p;  // (for the AI: whose invasion)
+            const int t = fpick(o, Ab::DsDavish, o == p ? "Exhaust Davish S'Norri: one ship's anti-fighter barrage bombards this time?"
+                                                         : "Exhaust Davish S'Norri: one of " + pn(p) + "'s ships' anti-fighter barrage bombards this time?",
+                                mine, leaderText(findLeader("tnelisagent")));
+            curFor_ = -1;
+            curValue_ = 0;
+            if (t == 99999) davishQuiet_[size_t(o)] = int16_t(G.round);
+            if (t < 0 || t == 99999) continue;
+            spendAgent(o, "tnelis");
+            if (forB) agentUsedFor(o, b);
+            dsAfbBombard_ = t;
+            return;
+        }
+        return;
+    }
     const int user = agentUser(p, "tnelis");
     if (user >= 0) {
         std::vector<Option> opts;
@@ -342,6 +488,47 @@ void Rules::dsResearched(int p, int t) {
             dsDiscount_ = 0;
         }
     }
+    // (fixes 29, the Zealots review - the Reference: "After a player researches a technology: You may exhaust this card to allow that player
+    // to produce 1 ship in their home system or a system that contains a planet they control that has a technology specialty") any
+    // player's research; whoever can use the agent is asked in initiative order (a person may say "not again this round"; a promised agent
+    // kept for its beneficiary); then THAT player picks the system
+    if (G.fixes >= 29) {
+        if (playerOfFaction(G, "zealots") < 0) return;
+        std::vector<Option> opts;
+        auto add = [&](int s) {
+            if (s < 0 || otherShipsIn(G, p, s)) return;
+            for (const Option& o : opts)
+                if (o.id == s) return;
+            opts.push_back({s, sysName(s), ""});
+        };
+        add(pl.homeSystem);
+        for (int x : controlledPlanets(G, p))
+            if (planetHasSkip(G, x)) add(G.planets[size_t(x)].system);
+        if (opts.empty()) return;
+        for (int o : initiativeOrder(G)) {
+            if (!canUseAgent(o, "zealots")) continue;
+            const bool human = G.players[size_t(o)].human;
+            if (human && priestessQuiet_[size_t(o)] == G.round) continue;
+            std::vector<Option> yn{{1, "Yes", ""}, {0, "No", ""}};
+            if (human) yn.push_back({99999, "No, and don't ask again this round", "You'll be asked again next round."});
+            const int b = G.agentFor[size_t(o)];
+            const bool forB = b >= 0 && b != o && b < G.numPlayers && b == p;
+            curFor_ = forB ? b : -1;
+            curValue_ = 1000 + p;  // (for the AI: whose research)
+            const int c = fpick(o, Ab::DsPriestess, o == p ? "Exhaust Priestess Tuh: produce 1 ship?" : "Exhaust Priestess Tuh so " + pn(p) + " produces 1 ship?", yn,
+                                leaderText(findLeader("zealotsagent")));
+            curFor_ = -1;
+            curValue_ = 0;
+            if (c == 99999) priestessQuiet_[size_t(o)] = int16_t(G.round);
+            if (c != 1) continue;
+            spendAgent(o, "zealots");
+            if (forB) agentUsedFor(o, b);
+            const int s = opts.size() == 1 ? opts[0].id : fpick(p, Ab::DsPriestess, "Priestess Tuh: produce 1 ship in which system?", opts);
+            dsProduceOne(p, s, 0, "Priestess Tuh");
+            return;
+        }
+        return;
+    }
     const int user = agentUser(p, "zealots");
     if (user >= 0) {
         std::vector<Option> opts;
@@ -434,7 +621,7 @@ void Rules::pilgrimage(int p) {
 int Rules::dsWaivers(int p, int t, bool use) {
     int n = 0;
     const int z = playerOfFaction(G, "zealots");
-    if (z >= 0 && z != p && holdsNote(G, p, z, kNoteFaction) && t >= 0) {
+    if (z >= 0 && z != p && holdsNote(G, p, z, kNoteFaction) && t >= 0 && !noFavor_) {
         if (use) {
             returnNote(p, makeNote(z, kNoteFaction));
             ds2Event(E, p, "Favor of Rhodun", pn(p) + " ignores another prerequisite of " + kTechs[t].name + ".");
@@ -456,7 +643,8 @@ int Rules::dsWaivers(int p, int t, bool use) {
         }
         ++n;
     }
-    if (commanderUsable(G, p, "zealots") && fac(p, "zealots") && t >= 0) {
+    // (fixes 29, the Zealots review) Bishop Ulin through the Alliance too ("When researching a technology, you may use ...")
+    if (commanderUsable(G, p, "zealots") && (fac(p, "zealots") || G.fixes >= 29) && t >= 0) {
         int spare = -1;
         for (int x : ti::readyPlanets(G, p))
             if (planetHasSkip(G, x)) spare = x;
@@ -500,7 +688,7 @@ void Rules::dsSecretDrawn(int p) {
 // A secret objective scored by another player: Turra Sveyar (Tnelis hero) may attach to it.
 void Rules::dsSecretScored(int scorer, int obj) {
     for (int p = 0; p < G.numPlayers; ++p) {
-        if (p == scorer || !fac(p, "tnelis") || leaderStatus(G, p, kHero) != kReady || G.players[size_t(p)].eliminated) continue;
+        if (p == scorer || !(fac(p, "tnelis") || caged(p, "tnelishero")) || leaderStatus(G, p, kHero) != kReady || G.players[size_t(p)].eliminated) continue;
         if (hasScored(G, p, obj)) continue;
         curValue_ = meetsObjective(G, p, obj) ? 2 : G.players[size_t(p)].dsPubSecret < 0 ? 1 : 0;
         const bool use = fyes(p, Ab::DsTurra, std::string("Turra Sveyar: attach to ") + kObjectives[obj].name + " and score it like a public objective?",
@@ -586,16 +774,18 @@ void Rules::dsDockPlaced(int p, int planet) {
 
 // After p moved ships into the active system: Cataclysm (Zelian hero), Daedalon (Tnelis mech), Primespace
 // Actualization (Roh'Dhna hero).
-void Rules::dsAfterMovement(int p, int sys, bool destroyerMoved) {
+void Rules::dsAfterMovement(int p, int sys, bool destroyerMoved, const Force* moved) {
     if (p < 0 || p >= G.numPlayers || sys < 0) return;
     if (breakthroughsOn(G)) dsbtAfterMovement(p, sys);  // Gravitic Disruption (0.43.0)
     SystemState& s = G.systems[size_t(sys)];
     const bool home = s.home >= 0;
     // Cataclysm: a unit with bombardment moved into a non-home system other than Mecatol Rex
-    if (fac(p, "zelian") && heroUnlocked(G, p) && !home && sys != G.mecatol() && !s.planets.empty()) {
+    if ((fac(p, "zelian") || caged(p, "zelianhero")) && heroUnlocked(G, p) && !home && sys != G.mecatol() && !s.planets.empty()) {  // (28: Soul Cage)
         bool bomb = false;
+        // (fixes 29, the Zelian review) "After you move a unit with BOMBARDMENT into" - one that moved in (not one already there)
+        const Force& in = G.fixes >= 29 && moved ? *moved : s.space[size_t(p)];
         for (int t = 0; t < kUnitTypes; ++t)
-            if (s.space[size_t(p)].n[t] && unitDef(G, p, UnitType(t)).bombard > 0) bomb = true;
+            if (in.n[t] && unitDef(G, p, UnitType(t)).bombard > 0) bomb = true;
         int res = 0;
         for (int16_t x : s.planets) res += planetResources(G, x);
         if (bomb && res > 0) {
@@ -650,7 +840,7 @@ void Rules::dsAfterMovement(int p, int sys, bool destroyerMoved) {
         }
     }
     // Primespace Actualization: produce with every unit's Production here, blockade or not
-    if (fac(p, "rohdhna") && heroUnlocked(G, p)) {
+    if ((fac(p, "rohdhna") || caged(p, "rohdhnahero")) && heroUnlocked(G, p)) {  // (fixes 28: the Soul Cage too)
         int cap = 0;
         for (int q = 0; q < G.numPlayers; ++q) cap += productionCapacity(G, q, sys);
         if (cap > 0) {
@@ -671,6 +861,35 @@ void Rules::dsAfterMovement(int p, int sys, bool destroyerMoved) {
 
 // After p's units used Production: Rond Bri'ay (Roh'Dhna agent).
 void Rules::dsAfterProduction(int p, int sys) {
+    // (fixes 29, the Roh'Dhna review - the Reference: "After 1 or more of a player's units use PRODUCTION: You may exhaust this card to
+    // allow that player to gain 1 command token") any player's production; whoever can use the agent is asked in initiative order (a
+    // person may say "not again this round"; a promised agent kept for its beneficiary)
+    if (G.fixes >= 29) {
+        if (p < 0 || p >= G.numPlayers || reinforcementTokens(p) <= 0 || playerOfFaction(G, "rohdhna") < 0) return;
+        for (int o : initiativeOrder(G)) {
+            if (!canUseAgent(o, "rohdhna")) continue;
+            const bool human = G.players[size_t(o)].human;
+            if (human && rondQuiet_[size_t(o)] == G.round) continue;
+            std::vector<Option> opts{{1, "Yes", ""}, {0, "No", ""}};
+            if (human) opts.push_back({99999, "No, and don't ask again this round", "You'll be asked again next round."});
+            const int b = G.agentFor[size_t(o)];
+            const bool forB = b >= 0 && b != o && b < G.numPlayers && b == p;
+            curFor_ = forB ? b : -1;
+            curValue_ = p;  // (for the AI: whose production)
+            const int c = fpick(o, Ab::DsRondBriay, o == p ? "Exhaust Rond Bri'ay: gain 1 command token?" : "Exhaust Rond Bri'ay so " + pn(p) + " gains 1 command token?",
+                                opts, leaderText(findLeader("rohdhnaagent")));
+            curFor_ = -1;
+            curValue_ = 0;
+            if (c == 99999) rondQuiet_[size_t(o)] = int16_t(G.round);
+            if (c != 1) continue;
+            spendAgent(o, "rohdhna");
+            if (forB) agentUsedFor(o, b);
+            gainTokens(p, 1, false, "Rond Bri'ay: 1 command token.");
+            return;
+        }
+        (void)sys;
+        return;
+    }
     const int user = agentUser(p, "rohdhna");
     if (user < 0 || reinforcementTokens(p) <= 0) return;
     agentFor(user, p);
@@ -857,6 +1076,7 @@ bool Rules::ds2Action(int p, Ab ab) {
                 if (!G.players[size_t(q)].eliminated) who.push_back({q, pn(q), ""});
             const int q = fpick(p, Ab::DsFran, "Disciple Fran: who moves a command token between pools?", who);
             spendAgent(p, "kolume");
+            agentUsedFor(p, q);
             redistributeOne(q, Tag::TokenRedistribute, "Disciple Fran: move 1 command token to another pool.");
             return true;
         }
@@ -874,11 +1094,19 @@ bool Rules::ds2Action(int p, Ab ab) {
 // ships in or next to its system.
 void Rules::dsAfterComponent(int p) {
     if (!fac(p, "kolume") || G.players[size_t(p)].heroRound != G.round) return;
+    // (fixes 28, the Kolume review) "During each of your actions, up to 3 of your non-fighter ships gain SPACE CANNON 8" (Starfall
+    // Gunnery): after their component action a non-fighter ship without a space cannon of its own may fire too, on 8
+    const bool starfall28 = G.fixes >= 28;
+    auto cannonOf = [&](int t, bool inSpace) {
+        const int own = unitDef(G, p, UnitType(t)).cannon;
+        if (own > 0) return own;
+        return starfall28 && inSpace && isShip(UnitType(t)) && UnitType(t) != UnitType::Fighter ? 8 : 0;
+    };
     std::vector<Option> opts;  // id = (shooter system * 100 + target system) * 16 + unit type
     for (size_t s = 0; s < G.systems.size(); ++s) {
-        auto consider = [&](const Force& f, int sys) {
+        auto consider = [&](const Force& f, int sys, bool inSpace) {
             for (int t = 0; t < kUnitTypes; ++t) {
-                if (!f.n[t] || unitDef(G, p, UnitType(t)).cannon <= 0) continue;
+                if (!f.n[t] || cannonOf(t, inSpace) <= 0) continue;
                 std::vector<int> zone{sys};
                 for (int16_t a : G.systems[size_t(sys)].adj) zone.push_back(a);
                 for (int z : zone)
@@ -887,8 +1115,8 @@ void Rules::dsAfterComponent(int p) {
                             opts.push_back({(sys * 100 + z) * 16 + t, std::string(unitTypeName(UnitType(t))) + " in " + sysName(sys) + " -> " + sysName(z), ""});
             }
         };
-        consider(G.systems[s].space[size_t(p)], int(s));
-        for (int16_t x : G.systems[s].planets) consider(G.planets[size_t(x)].units[size_t(p)], int(s));
+        consider(G.systems[s].space[size_t(p)], int(s), true);
+        for (int16_t x : G.systems[s].planets) consider(G.planets[size_t(x)].units[size_t(p)], int(s), false);
     }
     if (opts.empty()) return;
     std::sort(opts.begin(), opts.end(), [](const Option& a, const Option& b) { return a.id < b.id; });
@@ -905,8 +1133,21 @@ void Rules::dsAfterComponent(int p) {
     one.add(UnitType(t), 1);
     // 0.44.5 (fixes 9): Graviton Laser System and Antimass Deflectors apply to this space cannon shot
     const bool gls = G.fixes >= 9 && askGraviton(p, target, z);
-    RollResult r = rollUnits(p, one, RollKind::Cannon, dsAbilityMod(p) - (G.fixes >= 9 ? antimass(p, target) : 0),
-                             G.fixes >= 12 ? abilityDice(p, z) : 0, 0, nullptr);  // (0.44.8: Plasma Scoring etc.)
+    const int mod = dsAbilityMod(p) - (G.fixes >= 9 ? antimass(p, target) : 0);
+    if (G.fixes >= 29) {  // (fixes 29: Suldhan Wraeg, Nivyn agent)
+        wraegRoll29(p, target, z, one, RollKind::Cannon, nullptr);
+        if (one.empty()) return;
+    }
+    RollResult r;
+    if (G.fixes >= 28) {
+        // (fixes 28, the Kolume review) "use 1 of your unit's SPACE CANNON ... without rolling additional dice" - no Plasma Scoring
+        // die (0.44.8 added it); a Starfall Gunnery ship rolls 1 die on 8
+        if (unitDef(G, p, UnitType(t)).cannon > 0) r = rollUnits(p, one, RollKind::Cannon, mod, 0, 0, nullptr);
+        else addDice(r, 1, 8 - mod, t);
+        recount(r);
+    } else {
+        r = rollUnits(p, one, RollKind::Cannon, mod, G.fixes >= 12 ? abilityDice(p, z) : 0, 0, nullptr);  // (0.44.8: Plasma Scoring etc.)
+    }
     reportRoll(p, z, "Coil Overcharge at " + pn(target), r);
     if (r.hits) cannonHits(target, z, r.hits, kShipMaskAll, gls, "Coil Overcharge", p);
 }
@@ -921,7 +1162,9 @@ void Rules::ds2Activated(int p, int sys) {
         std::vector<Option> opts;  // id = player * 1000 + technology
         for (int q = 0; q < G.numPlayers; ++q) {
             if (q == z) continue;
-            if (q != p && !hasUnits(G, q, sys)) continue;  // (the players involved here)
+            // (fixes 29, the Zealots review) "1 technology ... another player controls" - any other player's (a neighbour's PDS II
+            // reaches in from next door)
+            if (G.fixes < 29 && q != p && !hasUnits(G, q, sys)) continue;  // (the players involved here)
             for (int16_t t : G.players[size_t(q)].techs) {
                 const TechDef& d = kTechs[t];
                 if (d.unitUpgrade) {  // 0.43.0 (D38): non-fighter, non-structure unit upgrades too (their abilities go silent)
@@ -943,10 +1186,13 @@ void Rules::ds2Activated(int p, int sys) {
         ds2Event(E, z, "Sanctification Field", pn(c / 1000) + "'s " + kTechs[c % 1000].name + " goes silent.", sys);
     }
     // Omniscience Field (Kolume): +1 / -1 to one player's rolls this tactical action
+    // (fixes 28, the Kolume review) "After a system is activated, you may exhaust this card" - any activation: a person is asked when
+    // they aren't involved too (Yes / No / not again this round - omniQuiet_); a bot as before, only where its units are or it acts
     for (int k = 0; k < G.numPlayers; ++k) {
         if (!techReady(k, "dskolur") || G.fx.omniPlayer >= 0) continue;
-        bool involved = k == p || hasUnits(G, k, sys);
-        if (!involved) continue;
+        const bool involved = k == p || hasUnits(G, k, sys);
+        const bool human = G.players[size_t(k)].human;
+        if (!involved && !(G.fixes >= 28 && human && omniQuiet_[k] != G.round)) continue;
         std::vector<Option> opts;
         for (int q = 0; q < G.numPlayers; ++q)
             if (!G.players[size_t(q)].eliminated) {
@@ -954,9 +1200,11 @@ void Rules::ds2Activated(int p, int sys) {
                 opts.push_back({q * 2, pn(q) + ": -1", ""});
             }
         opts.push_back({-1, "No", ""});
+        if (!involved) opts.push_back({-2, "No, and don't ask again this round", "You'll be asked again next round."});
         curValue_ = p;
         const int c = fpick(k, Ab::DsOmniscience, "Omniscience Field: +1 or -1 to one player's rolls this tactical action?", opts);
         curValue_ = 0;
+        if (c == -2) omniQuiet_[k] = int16_t(G.round);
         if (c < 0) continue;
         exhaustTech(k, "dskolur");
         G.fx.omniPlayer = int8_t(c / 2);
@@ -1017,6 +1265,41 @@ void Rules::ds2Activated(int p, int sys) {
 // influence together. Returns the influence it gave (the planet is exhausted), 0 if not used.
 int Rules::dsUdosh(int payer, int amount) {
     if (payer < 0 || payer >= G.numPlayers) return 0;
+    if (G.fixes >= 28 && !canUseAgent(payer, "khrask")) {
+        // (fixes 28, the Khrask review - owner's go) Udosh B'rtul: "When a player would spend influence: You may exhaust this card to
+        // allow that player to spend the resources of 1 non-home planet they control as influence, in addition to its influence" - any
+        // player: the Khrask decide (a person is asked - udoshQuiet_ -, a bot when it promised the agent, as Durran / Becece); the
+        // paying player picks the planet. (The Khrask's own payments: as before, below.)
+        std::vector<Option> planets;
+        for (int x : ti::readyPlanets(G, payer))
+            if (G.planets[size_t(x)].system != G.players[size_t(payer)].homeSystem && planetResources(G, x) > 0)
+                planets.push_back({x, planetName(x), std::to_string(planetResources(G, x)) + " resources + " + std::to_string(planetInfluence(G, x)) + " influence"});
+        if (planets.empty()) return 0;
+        const std::string text = leaderText(findLeader("khraskagent"));
+        for (int o : initiativeOrder(G)) {
+            if (o == payer || !canUseAgent(o, "khrask")) continue;
+            const bool promised = G.agentFor[o] == payer;
+            const bool human = G.players[size_t(o)].human;
+            if (!promised && !(human && udoshQuiet_[o] != G.round)) continue;
+            agentFor(o, payer);
+            std::vector<Option> yn = {{1, "Yes", ""}, {0, "No", ""}};
+            if (human && !promised) yn.push_back({3, "No, and don't ask again this round", "You'll be asked again next round."});
+            const int c = fpick(o, Ab::DsUdosh, "Exhaust Udosh B'rtul so " + pn(payer) + " can spend a planet's resources as influence (" +
+                                                    std::to_string(amount) + " influence to pay)?", yn, text);
+            curFor_ = -1;
+            if (c == 3) udoshQuiet_[o] = int16_t(G.round);
+            if (c != 1) continue;
+            spendAgent(o, "khrask");
+            agentDone(o, payer);
+            const int x = fpick(payer, Ab::DsUdosh, "Udosh B'rtul: which planet's resources count as influence too?", planets, text, false, true);
+            G.planets[size_t(x)].exhausted = true;
+            planetsExhausted(payer, {x});
+            const int got = planetResources(G, x) + planetInfluence(G, x);
+            ds2Event(E, o, "Udosh B'rtul", pn(payer) + " spends " + planetName(x) + "'s resources as influence (" + std::to_string(got) + ").");
+            return got;
+        }
+        return 0;
+    }
     const int user = agentUser(payer, "khrask");
     if (user < 0) return 0;
     const int have = spendable(G, payer, true);
@@ -1072,8 +1355,9 @@ int Rules::dsUdosh(int payer, int amount) {
 }
 
 // Zelian B (Zelian commander): their dreadnoughts and war suns without a barrage have Anti-Fighter Barrage 5.
+// (fixes 29, the Zelian review - the Reference: "Each of your Dreadnoughts and War Suns") an Alliance holder's too
 int Rules::dsAfbDice5(int side, int sys) const {
-    if (side < 0 || side >= G.numPlayers || !commanderUsable(G, side, "zelian") || !fac(side, "zelian")) return 0;
+    if (side < 0 || side >= G.numPlayers || !commanderUsable(G, side, "zelian") || (!fac(side, "zelian") && G.fixes < 29)) return 0;
     int n = 0;
     for (UnitType t : {UnitType::Dreadnought, UnitType::WarSun})
         if (unitDef(G, side, t).afb <= 0) n += G.systems[size_t(sys)].space[size_t(side)].count(t);

@@ -29,6 +29,7 @@ FONTS = [
     ("FONT_LG", BOLD, 21),
     ("FONT_XL", BOLD, 34),
     ("FONT_LAZ", LAZAXIAN, 15),
+    ("FONT_LAZXL", LAZAXIAN, 34),  # 0.59.70: the title's Lazaxian reveal (the size of FONT_XL)
 ]
 
 EXTRA = [

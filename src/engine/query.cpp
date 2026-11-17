@@ -29,6 +29,11 @@ bool owns(const Game& g, int p, const char* techKeyName) { return ownsTechKey(g,
 }  // namespace
 
 bool codexOn(const Game& g) { return (g.modules & kModCodex) || ((g.modules & kModThundersEdge) && g.fixes >= 5); }
+bool codex2Relic(int r) {
+    if (r < 0 || r >= kRelicCount) return false;
+    const char* k = kRelics[r].key;
+    return !std::strcmp(k, "dynamiscore") || !std::strcmp(k, "titanprototype") || !std::strcmp(k, "nanoforge");
+}
 bool teXxchaHero(const Game& g) { return (g.modules & kModThundersEdge) && g.fixes >= 20; }
 // (fixes 27, the Naalu review - owner 2026-11-13) Thunder's Edge's own Z'eu and Iconoclast replace the Codex Omegas
 bool teNaalu(const Game& g) { return (g.modules & kModThundersEdge) && g.fixes >= 27; }
@@ -209,6 +214,7 @@ void attachBonus(const Game& g, int planet, int& res, int& inf, int& skips) {
         else if (exKey(a, "rw")) res += 1;
     }
     if (ps.terraform) res += 1, inf += 1;  // Terraform (Titans note)
+    if (ps.nanoForge) res += 2, inf += 2;  // Nano-Forge (Codex II relic, 0.60.0)
     if (g.modules & kModDiscordant) {
         if (planet == g.dsBasePlanet) res += 2;                                         // Gledge Base (the Gledge's note)
         if (planet == g.dsKeyPlanet && g.dsKeyColor >= 0) skips |= 1 << g.dsKeyColor;  // Encryption Key (the Bentor's note)
@@ -228,7 +234,10 @@ void attachBonus(const Game& g, int planet, int& res, int& inf, int& skips) {
         ps.units[size_t(ps.owner)].count(UnitType::Mech) == 1) {
         const uint8_t pol = g.players[size_t(ps.owner)].dsPolicy;
         const int minus = (pol & 1) + ((pol >> 1) & 1) + ((pol >> 2) & 1);
-        if (minus >= 2) inf += 1;
+        // (fixes 29, the Olradin review - the Reference's two sides and AsyncTI4's Exemplar Bonum / Malus agree) 2+ "+" policies: the Bonum
+        // side, +1 influence; 2+ "-" policies: the Malus side, +1 resource (it was the other way round)
+        if (g.fixes >= 29) (minus >= 2 ? res : inf) += 1;
+        else if (minus >= 2) inf += 1;
         else res += 1;
     }
     // Garden Worlds (L'tokk Khrask, Discordant Stars): +1 resource while no ground forces are on it
@@ -297,11 +306,45 @@ int stationsOf(const Game& g, int p) {
 }
 bool dhonrazStation(const Game& g, int p, int planet) {
     if (!(g.modules & kModDiscordant) || p < 0 || p >= g.numPlayers || planet < 0 || planet >= int(g.planets.size())) return false;
+    if (g.fixes >= 28) return false;  // (the Gledge review - owner 2026-11-15: the Reference card - no stations, an action; dhonrazTargets)
     if (g.planets[size_t(planet)].owner != p || g.planets[size_t(planet)].destroyed) return false;
     if (std::find(g.dsCores.begin(), g.dsCores.end(), int16_t(planet)) == g.dsCores.end()) return false;
     return breakthroughIs(g, p, "gledge");
 }
 bool stationFor(const Game& g, int p, int planet) { return isStation(g, planet) || dhonrazStation(g, p, planet); }
+// (fixes 28, the Gledge review - owner 2026-11-15: "for this specific instance we should go with the reference card") Dhonraz
+// Installations: "ACTION: Exhaust this card to resolve BOMBARDMENT 5(xY) against each player's units on a planet in a system adjacent to
+// a system that contains a Core token, where Y is the number of structures you control" - planets in a system next to a Core token's
+// system (a system isn't adjacent to itself) with another player's ground forces not behind a Planetary Shield
+int dhonrazDice(const Game& g, int p) {
+    if (p < 0 || p >= g.numPlayers) return 0;
+    return unitsOnBoard(g, p, UnitType::PDS) + unitsOnBoard(g, p, UnitType::SpaceDock);
+}
+std::vector<int> dhonrazTargets(const Game& g, int p) {
+    std::vector<int> out;
+    if (!(g.modules & kModDiscordant) || g.fixes < 28 || p < 0 || p >= g.numPlayers || g.dsCores.empty() || dhonrazDice(g, p) <= 0) return out;
+    std::vector<char> near(g.systems.size(), 0);
+    for (int16_t c : g.dsCores) {
+        if (c < 0 || c >= int16_t(g.planets.size()) || g.planets[size_t(c)].system < 0) continue;
+        const int cs = g.planets[size_t(c)].system;
+        for (int16_t a : g.systems[size_t(cs)].adj)
+            if (a != cs && a >= 0 && size_t(a) < near.size()) near[size_t(a)] = 1;
+    }
+    for (size_t x = 0; x < g.planets.size(); ++x) {
+        const PlanetState& ps = g.planets[x];
+        if (ps.destroyed || ps.system < 0 || !near[size_t(ps.system)]) continue;
+        bool target = false;
+        for (int q = 0; q < g.numPlayers && !target; ++q) {
+            if (q == p || groundForcesOn(g, q, int(x)) <= 0) continue;
+            bool shield = false;
+            for (int t = 0; t < kUnitTypes; ++t)
+                if (ps.units[size_t(q)].n[t] && unitDef(g, q, UnitType(t)).shield) shield = true;
+            if (!shield) target = true;
+        }
+        if (target) out.push_back(int(x));
+    }
+    return out;
+}
 int commodityValue(const Game& g, int p) {
     if (p < 0 || p >= g.numPlayers) return 0;
     // C.M.O. Ranc (Bentor commander, Discordant Stars): +1
@@ -311,13 +354,18 @@ int commodityValue(const Game& g, int p) {
                          ? 2 : kFactions[g.players[size_t(p)].faction].commodities;
     // Necrophage (Myko-Mentori): +1 for each space dock they control
     const int necro = (g.modules & kModDiscordant) && isFaction(g, p, "mykomentori") ? unitsOnBoard(g, p, UnitType::SpaceDock) : 0;
-    return base + stationsOf(g, p) + ranc + necro;
+    // Dynamis Core (Codex II relic, 0.60.0): +2 while it is in the play area
+    const int dynamis = relicHeld(g, p, "dynamiscore") ? 2 : 0;
+    return base + stationsOf(g, p) + ranc + necro + dynamis;
 }
 int commodityValue(const Game& g, const Player& pl) {
     const Player* b = g.players.data();
     if (&pl >= b && &pl < b + g.players.size()) return commodityValue(g, int(&pl - b));
     return kFactions[pl.faction].commodities;
 }
+// (fixes 29, the Vaden review) Binding Debts / Fine Print / High Security Vault: control tokens are not limited (LRR 23.2: "Tokens are
+// limited to those included in the game, except for ... Control Tokens") - the old cap of 6 per player goes (99 keeps the int8 safe)
+int vadenDebtCap(const Game& g) { return g.fixes >= 29 ? 99 : 6; }
 bool moveBoost(const Game& g, int p) { return boostShips(g, p) > 0 || lightningDrives(g, p); }
 int moveBonusMax(const Game& g, int p) {
     if (g.fixes < 13) return moveBoost(g, p) ? 1 : 0;
@@ -336,7 +384,7 @@ int boostShips(const Game& g, int p) {
 }
 bool isLegendaryPlanet(const Game& g, int planet) {
     const PlanetDef& d = kPlanets[g.planets[size_t(planet)].def];
-    return d.legendary || ((g.modules & kModThundersEdge) && !std::strcmp(d.key, "mr"));
+    return d.legendary || ((g.modules & kModThundersEdge) && !std::strcmp(d.key, "mr")) || g.planets[size_t(planet)].nanoForge;  // (Nano-Forge)
 }
 bool scarAt(const Game& g, int sys) {
     if (sys < 0 || sys >= int(g.systems.size())) return false;
@@ -392,7 +440,7 @@ uint8_t wormholesOf(const Game& g, int sys) {
     uint8_t w = s.d().wormholes;
     if (sys == g.nexus) {
         w = s.nexusActive ? w : uint8_t(w & kGamma);
-        if (lawInPlay(g, "nexus")) w &= uint8_t(~(kAlpha | kBeta));  // Nexus Sovereignty (movement)
+        if (lawInPlay(g, "nexus") && g.fixes < 30) w &= uint8_t(~(kAlpha | kBeta));  // Nexus Sovereignty (fixes 30: movement only - adjNoMove)
     }
     w = uint8_t(w | s.tokenWormholes);
     // Creuss wormhole tokens, and the delta wormhole that travels with Hil Colish (Creuss flagship)
@@ -467,7 +515,20 @@ int spendable(const Game& g, int p, bool influence, bool withTradeGoods) {
     for (int pl : readyPlanets(g, p)) total += planetPayValue(g, pl, influence, false);
     int ghoti = (g.modules & kModDiscordant) && isFaction(g, p, "ghoti") && !g.players[size_t(p)].dsGhotiExhausted ? 3 : 0;  // (their planet card)
     if (!influence && (g.modules & kModDiscordant) && !g.players[size_t(p)].dsGhotiExhausted && breakthroughIs(g, p, "khrask")) ghoti = 2;  // (The Grove)
+    // (fixes 28, the Khrask review) the Reference's Grove is 2/X: "This card's influence value is equal to the number of planets that
+    // contain your coexisting units"
+    if (influence && g.fixes >= 28 && (g.modules & kModDiscordant) && !g.players[size_t(p)].dsGhotiExhausted && breakthroughIs(g, p, "khrask"))
+        ghoti = groveInfluence(g, p);
     return total + triadValue(g, p) + custodiaValue(g, p, influence) + oceansReady(g, p) + ghoti;
+}
+
+// The Grove (the Khrask's Mended Grove, the Reference card - fixes 28): its influence = planets with p's coexisting units
+int groveInfluence(const Game& g, int p) {
+    if (p < 0 || p >= g.numPlayers) return 0;
+    int n = 0;
+    for (const PlanetState& ps : g.planets)
+        if (((ps.coexist >> p) & 1) && !ps.units[size_t(p)].empty()) ++n;
+    return n;
 }
 
 int oceansReady(const Game& g, int p) {  // Oceanbound (Deepwrought): ready ocean cards, 1 resource or 1 influence each
@@ -732,7 +793,9 @@ int unitsAvailable(const Game& g, int p, UnitType t) {
         !g.players[p].hasTech(unitDef(g, p, t).tech))
         return 0;
     // (0.55.0, fixes 19: the ships waiting on the Crimson hero's card are not in the reinforcements either)
-    const int onCard = g.fixes >= 19 ? g.players[size_t(p)].phantom.count(t) : 0;
+    int onCard = g.fixes >= 19 ? g.players[size_t(p)].phantom.count(t) : 0;
+    // (fixes 28, the Myko-Mentori review) Amandia Pholdis: a mech waiting on its card isn't in the reinforcements
+    if (t == UnitType::Mech && g.fixes >= 28 && (g.modules & kModDiscordant) && isFaction(g, p, "mykomentori")) onCard += g.players[size_t(p)].dsMykoMechs;
     return std::max(0, unitLimitOf(g, p, t) - unitsOnBoard(g, p, t) - onCard - capturedFrom(g, p, t) - g.players[size_t(p)].purgedUnits[int(t)]);
 }
 
@@ -753,9 +816,35 @@ int capturedFrom(const Game& g, int owner, UnitType t) {
     return n;
 }
 
+// (fixes 28, the Mortheus review) the Glimmer of Mortheus home system (tile d17) is a nebula: the owner's Reference ("Nebula") and
+// AsyncTI4 ("isNebula") - the generated data has no anomaly on it, so older games keep it plain
+bool mortheusNebula(const Game& g, int s) {
+    return g.fixes >= 28 && (g.modules & kModDiscordant) && s >= 0 && s < int(g.systems.size()) && !std::strcmp(g.systems[size_t(s)].d().key, "d17");
+}
+
+// (fixes 29, the Nivyn review) the Nivyn Star Kings' home system (tile d25) is a gravity rift: the owner's Reference ("Home System: 3/3
+// Ellas, Gravity Rift") and AsyncTI4 ("isGravityRift") - the generated data has no anomaly on it, so older games keep it plain
+bool nivynRift(const Game& g, int s) {
+    return g.fixes >= 29 && (g.modules & kModDiscordant) && s >= 0 && s < int(g.systems.size()) && !std::strcmp(g.systems[size_t(s)].d().key, "d25");
+}
+
+// (fixes 29, the Zelian review) the Zelian Purifier's home system (tile d12) is an asteroid field: the owner's Reference ("Home System:
+// Gen 2/0, Zelian 3/3, Asteroid Field") and AsyncTI4 ("isAsteroidField") - the generated data has no anomaly on it, so older games keep it
+// plain. Other players need Antimass Deflectors to move in (the Zelian start with it; Paranoia lets them in anyway)
+bool zelianAsteroids(const Game& g, int s) {
+    return g.fixes >= 29 && (g.modules & kModDiscordant) && s >= 0 && s < int(g.systems.size()) && !std::strcmp(g.systems[size_t(s)].d().key, "d12");
+}
+uint8_t tileAnomalies(const Game& g, int s) {
+    if (s < 0 || s >= int(g.systems.size())) return 0;
+    return uint8_t(g.systems[size_t(s)].d().anomalies | (zelianAsteroids(g, s) ? kAsteroid : 0));
+}
+
 bool isAnomaly(const Game& g, int s) {
     if (s < 0 || s >= int(g.systems.size())) return false;
     if (g.systems[size_t(s)].d().anomalies) return true;
+    if (mortheusNebula(g, s)) return true;
+    if (nivynRift(g, s)) return true;
+    if (zelianAsteroids(g, s)) return true;
     if (g.fixes < 2) return false;
     // 0.43.0 (debug passes): systems that the rules make anomalies count for objectives too - a Dimensional Tear
     // (gravity rift), the Nivyn Wound (nebula and gravity rift), the Veldyr home with Aurora Research Base (nebula)
@@ -764,6 +853,15 @@ bool isAnomaly(const Game& g, int s) {
         if (s == g.dsWound) return true;
         const int h = g.systems[size_t(s)].home;
         if (h >= 0 && h < g.numPlayers && breakthroughsOn(g) && breakthroughIs(g, h, "veldyr")) return true;
+        // (fixes 28, the Edyn review - owner 2026-11-15) Rune Bearer (Edyn mech): "This system is a Sigil anomaly" - and "game
+        // effects cannot prevent" it
+        if (g.fixes >= 28)
+            for (int q = 0; q < g.numPlayers; ++q) {
+                if (!isFaction(g, q, "edyn")) continue;
+                if (g.systems[size_t(s)].space[size_t(q)].count(UnitType::Mech)) return true;
+                for (int16_t x : g.systems[size_t(s)].planets)
+                    if (g.planets[size_t(x)].units[size_t(q)].count(UnitType::Mech)) return true;
+            }
     }
     return false;
 }
@@ -1079,9 +1177,15 @@ int productionCapacity(const Game& g, int p, int sys) {
             if (g.planets[pl].units[p].structures()) cap += 1;
     cap += particleSynthesis(g, p, sys);
     if (custodiaMecatol(g, p) && sys == g.mecatol()) cap += 3;  // Custodian's Favour (Keleres breakthrough)
-    // Supremacy (Celdauri flagship, Discordant Stars): other players' space docks here produce for the Celdauri
+    cap += supremacyCapacity(g, p, sys);
+    return cap;
+}
+
+// Supremacy (Celdauri flagship, Discordant Stars): other players' space docks here produce (ships) for the Celdauri
+int supremacyCapacity(const Game& g, int p, int sys) {
+    int cap = 0;
     if ((g.modules & kModDiscordant) && flagshipAbility(g, p, "celdauri") && flagshipIn(g, p, sys))
-        for (int16_t pl : s.planets)
+        for (int16_t pl : g.systems[size_t(sys)].planets)
             for (int q = 0; q < g.numPlayers; ++q)
                 if (q != p && g.planets[pl].units[q].count(UnitType::SpaceDock)) {
                     const UnitDef& d = unitDef(g, q, UnitType::SpaceDock);
@@ -1442,6 +1546,9 @@ uint8_t anomaliesFor(const Game& g, int p, int s) {
         if (s == g.dsWound) an |= kNebula | kRift;  // Singularity Point (Nivyn): the Wound is a nebula and a gravity rift
         // Aurora Research Base (Veldyr breakthrough, 0.43.0): their home system is also a nebula
         if (g.systems[size_t(s)].home >= 0 && breakthroughsOn(g) && breakthroughIs(g, g.systems[size_t(s)].home, "veldyr")) an |= kNebula;
+        if (mortheusNebula(g, s)) an |= kNebula;  // (fixes 28) the Mortheus home
+        if (nivynRift(g, s)) an |= kRift;          // (fixes 29) the Nivyn home
+        if (zelianAsteroids(g, s)) an |= kAsteroid;  // (fixes 29) the Zelian home
         // Celestial Guides (Nivyn): anomalies in or next to a system with their structures don't slow them (rifts still help)
         if (an && p >= 0 && p < g.numPlayers && isFaction(g, p, "nivyn")) {
             auto structureIn = [&](int x) {
@@ -1465,6 +1572,7 @@ bool riftRolls(const Game& g, int p, int s) {
     if ((g.modules & kModThundersEdge) && relicHeld(g, p, "circletofthevoid")) return false;  // Circlet of the Void
     if ((g.modules & kModDiscordant) && p >= 0 && p < g.numPlayers && isFaction(g, p, "nivyn")) return false;  // Celestial Guides (Nivyn)
     if ((g.modules & kModDiscordant) && s == g.dsWound) return true;  // the Wound is a gravity rift
+    if (nivynRift(g, s)) return true;                                  // (fixes 29) the Nivyn home
     if (g.systems[s].d().anomalies & kRift) return true;
     return !isFaction(g, p, "cabal");
 }
@@ -1525,10 +1633,17 @@ int moveValue(const Game& g, int p, int sys, UnitType t) {
     if (mv > 0 && p == g.activePlayer && (g.modules & kModDiscordant)) {
         mv += g.fx.dsMove;  // Geosympathic Impeller (Olradin)
         // Rallypoint (Olradin flagship): the other ships move 1 further when it can come along this action
+        // (fixes 29, the Olradin review: "When you move this ship" - while a move plan is checked, only when the plan moves it)
         if (t != UnitType::Flagship && g.activeSystem >= 0 && flagshipAbility(g, p, "olradin"))
             for (size_t fs = 0; fs < g.systems.size(); ++fs)
                 if (g.systems[fs].space[size_t(p)].count(UnitType::Flagship)) {
-                    if (int(fs) != g.activeSystem && !g.systems[fs].hasToken(p) && shipReach(g, p, int(fs), g.activeSystem, UnitType::Flagship, 0).ok) ++mv;
+                    bool moving = true;
+                    if (g.fixes >= 29 && g_movingShips) {
+                        const auto it = g_movingShips->find(int(fs));
+                        moving = it != g_movingShips->end() && it->second.count(UnitType::Flagship) > 0;
+                    }
+                    if (moving && int(fs) != g.activeSystem && !g.systems[fs].hasToken(p) && shipReach(g, p, int(fs), g.activeSystem, UnitType::Flagship, 0).ok)
+                        ++mv;
                     break;
                 }
     }
@@ -1604,7 +1719,7 @@ bool canPassThrough(const Game& g, int p, int s, int from = -1, bool ignoreShips
             if (q == p || !isFaction(g, q, "edyn")) continue;
             int gf = g.systems[s].space[size_t(q)].groundForces();
             for (int16_t x : g.systems[s].planets) gf += g.planets[x].units[size_t(q)].groundForces();
-            const bool sigil = mechAbilities(g) && gf > 0 && [&]() {
+            const bool sigil = (mechAbilities(g) || g.fixes >= 28) && gf > 0 && [&]() {  // (fixes 28: not prevented - Rune Bearer)
                 if (g.systems[s].space[size_t(q)].count(UnitType::Mech)) return true;
                 for (int16_t x : g.systems[s].planets)
                     if (g.planets[x].units[size_t(q)].count(UnitType::Mech)) return true;
@@ -1723,6 +1838,8 @@ bool passableFor(const Game& g, int p, int sys) { return canPassThrough(g, p, sy
 
 std::vector<int> routeNeighbors(const Game& g, int p, int u) {
     std::vector<int> out(g.systems[u].adj.begin(), g.systems[u].adj.end());
+    // (fixes 30) Enforced Travel Ban / Nexus Sovereignty: links movement can't use (adjacent for everything else)
+    for (int16_t v : g.systems[u].adjNoMove) out.erase(std::remove(out.begin(), out.end(), int(v)), out.end());
     const int n = int(g.systems.size());
     auto add = [&](int v) {
         if (v != u && v >= 0 && std::find(out.begin(), out.end(), v) == out.end()) out.push_back(v);
@@ -2206,7 +2323,7 @@ bool canActivate(const Game& g, int p, int sys) {
     if (s.hasToken(p) && !(commanderUsable(g, p, "mahact") && (g.fixes >= 26 || isFaction(g, p, "mahact")))) return false;
     if (paranoiaHome(g, p, sys)) return true;  // Paranoia (Zelian): only their own tokens (checked above)
     // Chaos Mapping (Saar): other players can't activate asteroid fields with their ships
-    if (s.d().anomalies & kAsteroid)
+    if (tileAnomalies(g, sys) & kAsteroid)  // (fixes 29: the Zelian home too)
         for (int q = 0; q < g.numPlayers; ++q)
             if (q != p && hasShips(g, q, sys) && owns(g, q, "cm")) return false;
     // Artemiris (Keleres flagship): other players pay 2 influence to activate its system
@@ -2490,12 +2607,26 @@ int upgradeWaivers(const Game& g, int p, int tech) {
     return upgradeWaiversApply(g, p, tech, missing);
 }
 
+// (fixes 29, the Zealots review) Favor of Rhodun: "When you ignore a prerequisite on a technology card you are researching: You may ignore 1
+// additional prerequisite of the same color" - a colour with a prerequisite still missing that one of the player's technology specialties
+// ignores (-1: none)
+int favorColour(const Game& g, int p, int tech) {
+    if (tech < 0) return -1;
+    int missing[4];
+    missingPrereqs(g, p, tech, missing);
+    for (int c = 0; c < 4; ++c) {
+        const int sk = int(skipPlanets(g, p, TechColor(c)).size());
+        if (sk >= 1 && missing[c] > sk) return c;
+    }
+    return -1;
+}
+
 int analyticalWaiver(const Game& g, int p, int tech) {
     int extra = 0;
     if ((g.modules & kModDiscordant) && tech >= 0) {
         const int z = playerOfFaction(g, "zealots");
-        if (z >= 0 && z != p && holdsNote(g, p, z, kNoteFaction)) ++extra;  // Favor of Rhodun
-        if (isFaction(g, p, "zealots") && commanderUsable(g, p, "zealots"))   // Bishop Ulin
+        if (z >= 0 && z != p && holdsNote(g, p, z, kNoteFaction) && (g.fixes < 29 || favorColour(g, p, tech) >= 0)) ++extra;  // Favor of Rhodun
+        if ((isFaction(g, p, "zealots") || g.fixes >= 29) && commanderUsable(g, p, "zealots"))  // Bishop Ulin (fixes 29: the Alliance too)
             for (int x : readyPlanets(g, p))
                 if (planetHasSkip(g, x)) {
                     ++extra;
@@ -2523,6 +2654,20 @@ SpendNeed objectiveSpend(int obj) {
     else if (!std::strcmp(k, "manipulate_law")) s.influence = 16;
     else if (!std::strcmp(k, "vast_reserves")) s.resources = s.influence = s.tradeGoods = 6;
     return s;
+}
+
+bool scoredAsSecret(const Game& g, int p, int obj) {
+    if (obj < 0 || kObjectives[obj].kind != 3) return false;
+    // (fixes 30, FAQ) once leaked it doesn't count toward its scorer's secret objectives - not even after the law is gone
+    if (g.fixes >= 30 && std::find(g.leaked.begin(), g.leaked.end(), int16_t(obj)) != g.leaked.end()) return false;
+    const auto& v = g.players[size_t(p)].scoredAsPublic;
+    return std::find(v.begin(), v.end(), int16_t(obj)) == v.end();
+}
+
+bool leakedSecret(const Game& g, int obj) {
+    for (const Law& l : g.laws)
+        if (l.target == obj && !std::strcmp(kAgendas[l.agenda].key, "classified")) return true;
+    return false;
 }
 
 bool hasScored(const Game& g, int p, int obj) {
@@ -2675,13 +2820,22 @@ int systemsWithUnits(const Game& g, int p, bool (*pred)(const Game&, int)) {
         if (hasUnits(g, p, int(s)) && pred(g, int(s))) ++n;
     return n;
 }
-bool noPlanets(const Game& g, int s) { return g.systems[s].planets.empty() && !g.systems[s].isHyperlane(); }
+bool noPlanets(const Game& g, int s) {
+    const SystemState& sy = g.systems[s];
+    if (sy.isHyperlane()) return false;
+    if (g.fixes < 28) return sy.planets.empty();
+    // (fixes 28 - owner 2026-11-15: "Objectives like Patrol Vast Territories treat stations as planets") Thunder's Edge: space stations
+    // "do not count as planets for the purpose voting, objectives, or controlling a home system" - a system with only a station has no planets
+    for (int16_t x : sy.planets)
+        if (!isStation(g, x)) return false;
+    return true;
+}
 bool isLegendaryOrAnomaly(const Game& g, int s) {
     const SystemState& sy = g.systems[s];
     if (isAnomaly(g, s)) return true;
     if (!std::strcmp(sy.d().key, "18")) return true;
     for (int16_t pl : sy.planets)
-        if (kPlanets[g.planets[pl].def].legendary) return true;
+        if (kPlanets[g.planets[pl].def].legendary || g.planets[size_t(pl)].nanoForge) return true;  // (a Nano-Forge planet is legendary)
     return false;
 }
 int edgeSystemsWithUnits(const Game& g, int p) {
@@ -2703,11 +2857,28 @@ int maxNonFighterShips(const Game& g, int p) {
 }
 
 int planetsWithStructuresOutsideHome(const Game& g, int p) {
-    int n = 0;
-    for (const PlanetState& pl : g.planets)
+    int n = 0, bare = 0;
+    for (const PlanetState& pl : g.planets) {
         if (pl.units[p].structures() > 0 && g.systems[pl.system].home != p) ++n;
+        else if (pl.owner == p && g.systems[pl.system].home != p && !pl.destroyed && !isStation(g, int(&pl - &g.planets[0]))) ++bare;
+    }
+    // (fixes 28, the Mirveda review) Privileged Citizenry: "For the purpose of scoring objectives, you may treat each of your PDS units
+    // as though it is a structure on any planet you control" - their Gauss Cannons (in space areas) on planets without one
+    if (g.fixes >= 28 && mirvedaPdsCap(g, p) >= 0) {
+        int gauss = 0;
+        for (const SystemState& s : g.systems) gauss += s.space[size_t(p)].count(UnitType::PDS);
+        n += std::min(gauss, bare);
+    }
     return n;
 }
+
+}  // namespace
+// Privileged Citizenry (Mirveda, Discordant Stars): the PDS a system can hold - their fleet tokens; -1 = no such limit
+int mirvedaPdsCap(const Game& g, int p) {
+    if (!(g.modules & kModDiscordant) || p < 0 || p >= g.numPlayers || !isFaction(g, p, "mirveda")) return -1;
+    return g.players[size_t(p)].fleet;
+}
+namespace {
 
 int controlledOutsideHomeSum(const Game& g, int p, bool influence) {
     int sum = 0;
@@ -3178,11 +3349,30 @@ bool unitSustains(const Game& g, int p, UnitType t) {
 // How many of p's non-fighter ships without Sustain Damage may use it against this set of hits in space: Metali Void
 // Shielding (Thunder's Edge relic, 1) and the Splintering Gale (Khrask flagship, Discordant Stars: 2 ships in the combat
 // it fights - those already damaged that way count).
+// (fixes 28, the Khrask review - owner 2026-11-15 "Splintering Gale should follow the card": "At the start of a space combat in this
+// system, choose up to 2 non-fighter ships to gain SUSTAIN DAMAGE until the end of combat") the chosen ships of type t that can still
+// sustain damage in this combat - per type, not a pool (0 below rules 28: the pool in extraSustainsPooled)
+int galeLeft(const Game& g, int p, int sys, UnitType t) {
+    if (g.fixes < 28 || !(g.modules & kModDiscordant) || p < 0 || p >= g.numPlayers || sys < 0 || g.dsGale != sys || g.dsGaleOwner != p) return 0;
+    if (t == UnitType::Fighter || int(t) > int(UnitType::WarSun) || unitSustains(g, p, t) || (scarAt(g, sys) && !ignoresScars(g, p))) return 0;
+    const Force& f = g.systems[size_t(sys)].space[size_t(p)];
+    return std::max(0, std::min<int>(g.dsGaleShips[int(t)], f.n[int(t)]) - int(f.dmg[int(t)]));
+}
+
 int extraSustains(const Game& g, int p, int sys, int planet) {
+    int n = extraSustainsPooled(g, p, sys, planet);
+    if (planet < 0 && g.fixes >= 28)
+        for (int t : kShipIdx) n += galeLeft(g, p, sys, UnitType(t));
+    return n;
+}
+
+// The ships without Sustain Damage of any type that may use it against this set of hits: Metali Void Shielding, Komat (and, below
+// rules 28, the Splintering Gale's 2 ships)
+int extraSustainsPooled(const Game& g, int p, int sys, int planet) {
     if (planet >= 0 || p < 0 || p >= g.numPlayers || sys < 0 || (scarAt(g, sys) && !ignoresScars(g, p))) return 0;
     int n = 0;
     if ((g.modules & kModThundersEdge) && relicHeld(g, p, "metalivoidshielding")) n += 1;
-    if ((g.modules & kModDiscordant) && g.dsGale == sys && flagshipAbility(g, p, "khrask") && flagshipIn(g, p, sys)) {
+    if (g.fixes < 28 && (g.modules & kModDiscordant) && g.dsGale == sys && flagshipAbility(g, p, "khrask") && flagshipIn(g, p, sys)) {
         const Force& f = g.systems[size_t(sys)].space[size_t(p)];
         int used = 0;
         for (int t : kShipIdx)
@@ -3200,7 +3390,7 @@ int extraSustains(const Game& g, int p, int sys, int planet) {
 }
 bool metaliSustain(const Game& g, int p, UnitType t, int sys, int planet) {
     if (t == UnitType::Fighter || int(t) > int(UnitType::WarSun) || unitSustains(g, p, t)) return false;
-    return extraSustains(g, p, sys, planet) > 0;
+    return extraSustainsPooled(g, p, sys, planet) > 0 || (planet < 0 && galeLeft(g, p, sys, t) > 0);
 }
 
 // Where p's unit of type t can't use Sustain Damage (whether or not it has it): an entropic scar (the Quietus), another

@@ -239,14 +239,17 @@ bool Rules::executeDeal(const Deal& d) {
     }
     // Encrypted Trade Hub (0.44.5): a relic other than The Silver Flame without Black Market Dealings - its owner
     // exhausts it
-    if (!blackMarketPair(G, a, b)) {
-        bool relic = false;
-        for (const DealSide* x : {&d.give, &d.get})
-            for (int y : x->relics) relic = relic || (y >= 0 && y < kRelicCount && std::strcmp(kRelics[y].key, "thesilverflame"));
-        const int hub = relic ? encryptedHubOf(G, a, b) : -1;
+    // (fixes 28: or an agenda - a law the giver holds)
+    {
+        bool relic = false, law = false;
+        if (!blackMarketPair(G, a, b))
+            for (const DealSide* x : {&d.give, &d.get})
+                for (int y : x->relics) relic = relic || (y >= 0 && y < kRelicCount && std::strcmp(kRelics[y].key, "thesilverflame"));
+        for (const DealSide* x : {&d.give, &d.get}) law = law || !x->laws.empty();
+        const int hub = relic || law ? encryptedHubOf(G, a, b) : -1;
         if (hub >= 0) {
             exhaustTech(hub, "dsedyny");
-            say(hub, pn(hub) + " exhausts Encrypted Trade Hub: a relic changes hands.");
+            say(hub, pn(hub) + " exhausts Encrypted Trade Hub: " + (law ? "an agenda" : "a relic") + " changes hands.");
         }
     }
     dealInProgress_ = true;
@@ -301,6 +304,15 @@ bool Rules::executeDeal(const Deal& d) {
             if (ex) G.players[to].exhaustedRelics.push_back(int16_t(r));
             say(to, pn(to) + " receives " + kRelics[r].name + " from " + pn(from) + ".");
         }
+        for (int ag : s.laws)  // Encrypted Trade Hub (fixes 28): the law's card goes to the receiver - its effects follow it
+            for (Law& l : G.laws)
+                if (l.agenda == ag && l.owner == from) {
+                    l.owner = int8_t(to);
+                    say(to, pn(to) + " receives the agenda " + kAgendas[ag].name + " from " + pn(from) + ".");
+                    // Political Censure: "If the owner of this card loses this card, they lose 1 victory point"
+                    if (!std::strcmp(kAgendas[ag].key, "censure")) loseVP(from, 1, "lost Political Censure");
+                    break;
+                }
         for (int o : s.orders)  // Arms Dealers (Discordant Stars): the Axis Order changes hands
             if (o >= 0 && o < 8 && G.dsOrders[o] == from) G.dsOrders[o] = int8_t(to);
         if (s.debt > 0) {  // Binding Debts (Discordant Stars): control tokens onto the Vaden's sheet
@@ -367,7 +379,7 @@ bool Rules::executeDeal(const Deal& d) {
         G.promises.push_back(p);
     }
     if (d.contract()) {
-        clearHostile(a, b);  // a contract ends the red line
+        if (d.threat < 0 || G.fixes < 28) clearHostile(a, b);  // a contract ends the red line (owner 2026-11-15, fixes 28: not tribute paid under a threat)
         ++G.transactions[a][b];
         // Pillage (Mentak): after a neighbour resolves a transaction
         pillageCheck(a);
@@ -376,6 +388,10 @@ bool Rules::executeDeal(const Deal& d) {
     }
     dealEvent(E, kDealMade, a, b, pn(a) + " and " + pn(b) + " make a deal. " + dealText(G, d));
     persDealMade(d);
+    if (!d.give.fragments.empty() || !d.get.fragments.empty()) {  // (fixes 28) Ancient Blueprints (Bentor)
+        fragmentGained(a);
+        fragmentGained(b);
+    }
     return true;
 }
 
@@ -447,6 +463,13 @@ int Rules::agentUser(int b, const char* key) const {
     return -1;
 }
 
+// (fixes 28 - owner 2026-11-16) an agent whose ACTION (or reaction) the owner used on another player keeps a "use your agent for me"
+// promise to that player (the 13 agents added to agentLendable at rules 28)
+void Rules::agentUsedFor(int owner, int q) {
+    if (G.fixes >= 28 && owner >= 0 && owner < G.numPlayers && q >= 0 && q < G.numPlayers && q != owner && G.agentFor[size_t(owner)] == q)
+        agentDone(owner, q);
+}
+
 void Rules::agentDone(int user, int b) {
     curFor_ = -1;
     if (user >= 0 && b >= 0 && user != b) {
@@ -492,10 +515,11 @@ void Rules::promiseRoundEnd() {
 //  - binding: the holder first buys their Trade Agreement for X-1; the refresh
 //    then sends the commodities over by itself (and the note goes back).
 //  - "debt meta": a player the holder can't trade with now refreshes for a
-//    promise of 1 trade good, paid back in the status phase like a loan.
+//    promise of 1 trade good, paid back like a loan (loansDue: the start of the agenda phase with extras bit 16, else the
+//    status phase).
 //  - the refreshed player may instead pay 1 trade good at once and keep the
 //    commodities (binding, but no wash with the holder this turn).
-void Rules::tradeX1(int p, std::vector<int>& done) {
+bool Rules::tradeX1(int p, std::vector<int>& done) {
     // (0.45.0, fixes 14 - the tester: the commodity value with its modifiers - space stations, relics, abilities)
     auto maxOf = [&](int q) { return G.fixes >= 14 ? commodityValue(G, q) : int(kFactions[G.players[q].faction].commodities); };
     auto tgs = [](int n) { return std::to_string(n) + (n == 1 ? " trade good" : " trade goods"); };
@@ -518,15 +542,16 @@ void Rules::tradeX1(int p, std::vector<int>& done) {
                               "Pay " + tgs(x - 1) + " now; their refresh then sends you the " + xs + " commodities. Binding."});
         } else {
             xo.push_back({q, pn(q) + ": refresh for 1 owed",
-                          "You can't trade with them now: they refresh to " + xs + " and owe you 1 trade good (status phase)."});
+                          "You can't trade with them now: they refresh to " + xs + " and owe you 1 trade good (" +
+                              std::string(G.extras & 16 ? "paid at the first opportunity: the start of the agenda phase" : "status phase") + ")."});
         }
     }
-    if (xo.empty()) return;
+    if (xo.empty()) return false;
     Decision d;
     d.player = p;
     d.kind = DecisionKind::Pick;
     d.tag = Tag::TradeX1Offer;
-    d.prompt = "Trade: offer X-1 trades?";
+    d.prompt = "Trade (1 of 2): offer X-1 trades?";
     d.context = "Each player you pick refreshes for free and pays you back 1 trade good's worth.";
     d.options = xo;
     d.minPick = 0;
@@ -572,7 +597,10 @@ void Rules::tradeX1(int p, std::vector<int>& done) {
             r.options = {{1, "Sell it", "Get " + tgs(x - 1) + "."}, {0, "Decline", ""}};
         } else {
             r.prompt = pn(p) + " offers a refresh on credit";
-            r.context = "Refresh your commodities to " + xs + " for free and owe " + pn(p) + " 1 trade good, paid in the status phase.";
+            // (the tester's report: the debt is collected at the start of the agenda phase in games with extras bit 16 - the
+            // first time players who aren't neighbours can trade; the question's text isn't in the game log)
+            r.context = "Refresh your commodities to " + xs + " for free and owe " + pn(p) + " 1 trade good, paid " +
+                        std::string(G.extras & 16 ? "at the first opportunity (the start of the agenda phase)." : "in the status phase.");
             r.options = {{1, "Accept", "Owe 1 trade good."}, {0, "Decline", ""}};
         }
         std::vector<Option> ropts = r.options;
@@ -664,6 +692,7 @@ void Rules::tradeX1(int p, std::vector<int>& done) {
             }
         }
     }
+    return true;
 }
 
 void Rules::loansDue() {

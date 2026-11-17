@@ -4,7 +4,7 @@ An unofficial fan-made digital version of **Twilight Imperium 4th Edition** for 
 (Linux) and the Miyoo Mini Plus handheld, played against computer opponents (3 to 8 players, or hot-seat with
 friends).
 
-**Current version: 0.59.30 (Pre-Beta).** Downloads are on the [Releases](../../releases) page.
+**Current version: 0.60.0 (Pre-Beta).** Downloads are on the [Releases](../../releases) page.
 
 > Unofficial fan project. Twilight Imperium is a trademark of Fantasy Flight Games; this project is not
 > affiliated with or endorsed by Fantasy Flight Games or Asmodee. It is free and not for sale.
@@ -21,32 +21,41 @@ friends).
 - Three tilesets: **Retrowave** (animated pixel art, the default), **Voidfall** (painted, high definition) and
   **Simplistic** (clean drawn shapes); animated space and ground battles; galaxy drafting; mouse, keyboard and
   controller support.
+- An animated opening: the name written in the Lazaxian alphabet, then a living world behind the title
+  (Retrowave) or a battlefield at twilight (Voidfall).
 
-## What's new since 0.57.2
-The full list, version by version, is in `GUIDE.txt` (in the download, and `package/README.txt` here).
+## What's new since 0.59.30
+The full list, version by version, is in `GUIDE.txt` (in the download, and `package/README.txt` here). Games
+started with an older version keep their own rules, so old saves replay exactly as before.
 
-- **0.59.0 - 0.59.30: the faction debug pass.** Thirty factions - all 24 of the base game and Prophecy of
-  Kings, the Council Keleres and the Thunder's Edge factions - were checked card by card against the cards'
-  exact wording: abilities, faction technologies, flagships and mechs, agents, commanders and heroes,
-  promissory notes and breakthroughs. Then the 24 shared technologies and unit upgrades, and the 93 action cards
-  of the base game and Prophecy of Kings. The game's texts now follow the cards, many timing and rules
-  details were fixed, and the computer players were tuned faction by faction. Games started with an older
-  version keep their own rules, so old saves replay exactly as before.
-- **New in 0.59.30:** the Mentak Coalition, the Xxcha Kingdom, the Naaz-Rokha Alliance, the Titans of Ul, the
-  Naalu Collective, the Clan of Saar, the Universities of Jol-Nar, the Last Bastion, the Council Keleres, the
-  Deepwrought Scholarate, the Ral Nel Consortium and the Nekro Virus, plus the shared technologies and the
-  action cards. A few examples:
-  - The Nekro's flagship, The Alastor, lets you choose any of your infantry and mechs in the system to fight
-    in the space combat, including those on the system's planets.
-  - Nekro Malleon can be used on any player.
-  - Dreadnought II can't be destroyed by Direct Hit.
-  - Manipulate Investments takes any split of its 5 trade goods.
-  - Ghost Squad moves any number of ground forces to any of your planets in the system.
-  - The entropic scar can be paid for with the Scepter of Emelpar.
-- **0.58.x:** "Hyperlanes: On / Off" (the rulebook's printed boards for every player count), production and
-  strategy-card wheels, planet values shown on the map, the fleet pool as the rules say (extra ships are
-  removed right after the move), the Miyoo Mini Plus version built from the same code again, and fixes from
-  the testers' reports.
+- **0.60.0: the Voidfall title, the agenda and relic passes.**
+  - With the Voidfall tileset the opening ends on a battlefield: troopers fighting from cover across a
+    cratered plain, walkers trading Gatling lasers and beams and blowing up, warships overhead and a
+    dreadnought's bombardment landing anywhere on the field. The opening's last swell blends into the start of
+    the title song.
+  - All 50 agendas were checked outcome by outcome against their cards (99 checks), and their texts are now
+    the cards' wording. Fixed: Enforced Travel Ban and Nexus Sovereignty only stop movement through those
+    wormholes (space cannon still fires through them and players joined by them are still neighbours);
+    Miscount Disclosed keeps its law in play during the revote; Representative Government allows no extra
+    votes; Wormhole Research and Ixthian Artifact let you decline to research; Committee Formation is used
+    after the riders, just before the vote; space stations can't be elected as planets; and more.
+  - All the relics were checked the same way. Fixed: The Codex, Neuraloop (the game no longer runs out of
+    objectives a round early), Maw of Worlds, the Crown of Thalnos and the Stellar Converter. New: the three
+    Codex II relics - **Dynamis Core**, **JR-XS455-O** and **Nano-Forge** - in games with the Codex or
+    Thunder's Edge.
+- **0.59.70: a new title screen and the last ten Discordant Stars factions.** The opening writes "Fallen
+  Imperium" letter by letter in the Lazaxian alphabet, each letter shifting into English, then pans down to a
+  nuclear-battered city world (any button skips it). The faction debug pass finished with the Nivyn, Nokar,
+  Olradin, Roh'Dhna, Tnelis, Vaden, Vaylerian, Veldyr, Zealots of Rhodun and Zelian: all 64 factions have now
+  been checked card by card.
+- **0.59.40: twenty-four Discordant Stars factions** checked against the Discordant Stars Reference, one card
+  at a time, from the Augurs of Ilyxum to the Myko-Mentori. Agents and abilities that work "for any player"
+  now ask a person each time (with "don't ask again this round"); the two-step strategy cards say which step
+  you are on.
+
+Before that, 0.59.0 - 0.59.30 checked the 30 factions of the base game, Prophecy of Kings, the Council Keleres
+and Thunder's Edge, the shared technologies and the 93 action cards against the cards' exact wording, and
+0.58.x added "Hyperlanes: On / Off" (the rulebook's printed boards for every player count).
 
 ## Playing
 - **Windows:** unzip `TI4-Windows-<version>.zip` and run `TwilightImperium.exe`.

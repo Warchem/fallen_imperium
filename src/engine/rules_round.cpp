@@ -202,6 +202,14 @@ void Rules::setupGame() {
     for (int p = 0; p < n; ++p) factionSetup(p);  // leaders, Alliance, faction notes
     for (int p = 0; p < n; ++p) keleresStartingTechs(p);  // after everyone else has theirs (and their leaders, notes)
     setupExploration();
+    // (fixes 29, owner 2026-11-17: "the crimson rebellion starts the game with their breakthrough ... they also roll for the fracture
+    // before the round starts") the faction sheet's starting breakthrough, gained with the other starting components (LRR setup step 11:
+    // after the board and the decks are made, before the objectives) - and gainBreakthrough rolls for the Fracture (TE rulebook: "When a
+    // player gains their breakthrough, regardless of the source, if The Fracture is not already in play, they roll one die")
+    // (Rapid Mobilization: the Fracture is in play from the start and every player gains their breakthrough - setupEvents, no roll)
+    if (G.fixes >= 29 && breakthroughsOn(G) && !eventOn(G, kEvMobilization))
+        for (int p = 0; p < n; ++p)
+            if (isFaction(G, p, "crimson")) gainBreakthrough(p, "they start the game with it");
     E.log(-1, "The galaxy is set. " + pn(G.speaker) + " is the speaker.", EventKind::Phase);
     revealObjective();
     revealObjective();
@@ -702,6 +710,9 @@ bool Rules::takeTurn(int p, bool second, bool mayPass) {
                 any = any || (!G.planets[size_t(x)].destroyed && kPlanets[G.planets[size_t(x)].def].trait != Trait::None);
             if (any) opts.push_back({643, "Breakthrough: Erasure Corps", "Exhaust it to explore one of your planets. Doesn't use your action."});
         }
+        if (ds6FeintAvailable(p))  // (fixes 28, the Li-Zho review) Feint: "you may reveal this card at any time"
+            opts.push_back({646, "Reveal Feint", "Your Feint on " + planetName(G.dsTrap[4]) + ": reveal it and it returns to your reinforcements. "
+                                                 "Doesn't use your action."});
         if (G.fixes >= 2 && techReady(p, "dsnokay") && (reinforcementTokens(p) > 0 || G.fixes >= 9)) {
             bool any = false;  // (0.44.5, fixes 9: a token from a pool when reinforcements are empty; systems with our token too)
             for (size_t s = 0; s < G.systems.size() && !any; ++s)
@@ -753,6 +764,10 @@ bool Rules::takeTurn(int p, bool second, bool mayPass) {
         }
         if (choice == 643) {
             if (!dsbtLanefirExplore(p) && !pl.human) cancelled.push_back(choice);
+            continue;
+        }
+        if (choice == 646) {  // Feint (fixes 28)
+            if (!ds6RevealFeint(p) && !pl.human) cancelled.push_back(choice);
             continue;
         }
         if (choice == 645) {  // Absolute Synergy (fixes 27)

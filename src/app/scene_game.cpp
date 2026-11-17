@@ -411,6 +411,7 @@ public:
     // that nothing on screen shows (e.g. a combat whose tile isn't drawn) is let go after a moment.
     bool heldVisible_ = false;
     uint32_t heldHiddenSince_ = 0;
+    uint32_t waitSince_ = 0;  // (owner 2026-11-16) when the game started waiting on a held screen in the agenda phase
     bool intro_ = false, introSound_ = false;
     uint32_t introStart_ = 0;
     void drawGame(App& app, Canvas& c, uint32_t now) {
@@ -420,7 +421,7 @@ public:
         map_.setActiveSystem(g.activeSystem);
         map_.setViewer(session_->seat());
         map_.draw(c, g, now);
-        drawTopBar(c, g);
+        drawTopBar(c, g, now);
         const bool combatHold = session_->holding() && session_->heldKind() == EventKind::CombatEnd;
         if (combat_.open && combat_.ended && !combatHold && int32_t(now - combat_.closeAt) >= 0) {
             combat_.open = false;
@@ -477,7 +478,7 @@ public:
         } else if (ui_) {
             hints = ui_->hints();
             if (!ui_->mapMode()) hints.push_back({"R2", "Map"});
-            if (!ui_->backAvailable() && session_->canUndo()) hints.push_back({"B", "Go back"});
+            if (!ui_->backAvailable() && session_->canUndo()) hints.push_back({"B", "Undo"});  // (owner 2026-11-15: it undoes your last step)
             hints.push_back({"MENU", "Menu"});
         } else if (combat_.open && !combat_.fireOnly && !combat_.ended) {
             hints = {{"START", "Skip combat"}, {"A", "Hold: faster"}, {"D-PAD", "Look"}, {"L2", "Panel"}, {"MENU", "Menu"}};
@@ -494,6 +495,7 @@ public:
         if (expanded_ >= 0 && overlay_ == Overlay::None && !info_) {
             CentredView v(c);
             drawExpandedTile(c, g, now);
+            drawWaitPrompt(c, g, now);
             return;
         }
         const char* openWhat = map_.playPlayer() >= 0 ? "Cards in play" : map_.infoPlayer() >= 0 ? "Faction sheet" : "Open the tile";
@@ -521,6 +523,46 @@ public:
         CentredView v(c);  // (widescreen: the menus and screens over the map are laid out for 640, centred)
         if (overlay_ != Overlay::None) drawOverlay(app, c, g);
         if (info_) info_->draw(c, now);
+        drawWaitPrompt(c, g, now);
+    }
+
+    // (owner 2026-11-16 21:16, the tester's "the bots stopped responding" and his own agenda-phase hang: a promise to vote for him broken,
+    // nothing moved until Space) In the agenda phase, while the game waits for A on a held screen (a ruling, a broken promise, a card),
+    // a bar on top of everything - menus, the expanded tile, other screens - says so; after 4 seconds without a press it flashes.
+    // (owner 21:39: "make the banner smaller and more subtle") a small dark tag in the top bar, where "... is deciding" would
+    // be (the game is waiting for you, not for them); after 4 s its rim and text glow softly up and down. Only a full-screen
+    // info screen covers the top bar - then the tag sits on that screen's top edge.
+    bool waitingInAgenda(const Game& g) const {
+        return session_->holding() && (g.phase == Phase::Agenda || g.currentAgenda >= 0) && session_->passTo() < 0;
+    }
+    void drawWaitTag(Canvas& c, int left, int right, uint32_t now) {
+        if (!waitSince_) waitSince_ = now;
+        const uint32_t age = now - waitSince_;
+        const bool covered = info_ || overlay_ != Overlay::None || expanded_ >= 0 || pop_.on;
+        const std::string text = covered ? keyText("Waiting for you: B to close, then A") : keyText("Waiting for you: press A");
+        const int bw = std::min(std::max(40, right - left), textWidth(FONT_XS, text) + 16), bh = 15;
+        const int bx = left + (right - left - bw) / 2, by = (kTopH - bh) / 2 - 1;
+        float glow = 0.f;  // 0 .. 1, a 1.6 s rise and fall
+        if (age > 4000) {
+            const uint32_t t = (age - 4000) % 1600U;
+            glow = float(t < 800U ? t : 1600U - t) / 800.f;
+        }
+        auto mixc = [](uint32_t a, uint32_t b, float f) {
+            auto ch = [&](int s) { return int(float((a >> s) & 255U) * (1.f - f) + float((b >> s) & 255U) * f); };
+            return rgb(ch(16), ch(8), ch(0));
+        };
+        c.fillRoundRect(bx, by, bw, bh, 5, rgb(14, 16, 26), 230);
+        c.frameRoundRect(bx, by, bw, bh, 5, mixc(rgb(80, 86, 110), rgb(235, 200, 120), glow), 1, 230);
+        drawTextAligned(c, FONT_XS, bx, by + 2, bw, Align::Center, fitText(FONT_XS, text, bw - 8), mixc(rgb(165, 172, 192), rgb(250, 228, 170), glow), 240);
+        if (!covered) hits::addButton(Rect{bx, by, bw, bh}, Btn::A);
+    }
+    // (drawn last: only when a full-screen info screen covers the top bar)
+    void drawWaitPrompt(Canvas& c, const Game& g, uint32_t now) {
+        if (!waitingInAgenda(g)) {
+            waitSince_ = 0;
+            return;
+        }
+        if (info_) drawWaitTag(c, 200, 440, now);
     }
 
     // A space combat played out on the system's tile, over the map (0.20.0, owner).
@@ -564,11 +606,29 @@ public:
             decor::paint(c, *t, float(area.x + area.w / 2), float(area.y + area.h / 2), R, now, true);
             if (t->kind == decor::ThundersEdge) {  // 0.43.0 (owner, P14): the six expedition slices as winglets
                 uint32_t claim[6] = {};
+                int fac[6] = {-1, -1, -1, -1, -1, -1};  // (the tester, 2026-11-14: the faction icons, as when joining)
+                int per[kMaxPlayers] = {}, open = 0;
                 for (int k = 0; k < 6; ++k) {
                     const int q = g.expedition[size_t(k)];
-                    if (q >= 0 && q < g.numPlayers) claim[k] = pcolor(g, q);
+                    if (q >= 0 && q < g.numPlayers) {
+                        claim[k] = pcolor(g, q);
+                        fac[k] = g.players[size_t(q)].faction;
+                        ++per[q];
+                    } else {
+                        ++open;
+                    }
                 }
-                decor::drawWinglets(c, float(area.x + area.w / 2), float(area.y + area.h / 2), R, claim, now);
+                decor::drawWinglets(c, float(area.x + area.w / 2), float(area.y + area.h / 2), R, claim, now, -1, fac);
+                // who joined, on the right (the tester: "which expeditions are already done, by whom and how many remaining")
+                int y = kTopH + 8;
+                for (int q = 0; q < g.numPlayers; ++q) {
+                    if (!per[q]) continue;
+                    drawTextAligned(c, FONT_XS, 400, y, 232, Align::Right,
+                                    fitText(FONT_XS, playerName(g, q) + ": " + std::to_string(per[q]) + (per[q] == 1 ? " slice" : " slices"), 232),
+                                    pcolor(g, q));
+                    y += 13;
+                }
+                drawTextAligned(c, FONT_XS, 400, y, 232, Align::Right, std::to_string(open) + (open == 1 ? " slice left" : " slices left"), theme::dim);
             }
             drawHintBar(c, {{"D-PAD", "Next tile"}, {"B", "Back to the map"}});
             return;
@@ -1020,19 +1080,24 @@ private:
                 // 0.58.4 (owner, L4): between computer players too
                 const bool mineBroken = e.card == kDealBroken && (session_->isHumanSeat(e.player) || session_->isHumanSeat(e.other));
                 const bool brokenMine = e.card == kDealBroken && session_->speed() != 3;  // (Instant: the old banner)
-                cardBanner(brokenMine ? 21 : 9, e.card, e.player, "", "", now, std::max<uint32_t>(fx, brokenMine ? 4500 : 1500));
+                // (owner 2026-11-15) a demand paid under a threat ("If not, X attacks ..." in the terms): the one who
+                // gave in speaks a grudging line, under "DEMAND PAID" (kHead 6)
+                const bool yielded = e.card == kDealMade && e.text.find("If not, ") != std::string::npos;
+                cardBanner(brokenMine ? 21 : 9, yielded ? 6 : e.card, e.player, "", "", now, std::max<uint32_t>(fx, brokenMine ? 4500 : 1500));
                 card_.other = e.other;
                 std::string t = e.text;
                 size_t k = t.find(" make a deal. ");
                 if (k != std::string::npos) t = t.substr(k + 14);
                 else if ((k = t.find(": ")) != std::string::npos && e.card != kDealBroken) t = t.substr(k + 2);
+                if (yielded && e.other >= 0 && e.other < g.numPlayers && e.player >= 0 && e.player < g.numPlayers)
+                    t = playerName(g, e.other) + " gives in to " + playerName(g, e.player) + "'s demand. " + t;
                 card_.text = t;
                 // the comms strip (0.57.0): who speaks and what they say - display only, chosen by a hash
                 int spk = -1, lis = -1;
                 speech::Cat cat = speech::Cat::Offer;
                 switch (e.card) {
                     case kDealOffered: spk = e.player, lis = e.other, cat = speech::Cat::Offer; break;
-                    case kDealMade: spk = e.other, lis = e.player, cat = speech::Cat::Accept; break;  // (the one who said yes)
+                    case kDealMade: spk = e.other, lis = e.player, cat = yielded ? speech::Cat::Yield : speech::Cat::Accept; break;  // (the one who said yes)
                     case kDealDeclined: spk = e.player, lis = e.other, cat = speech::Cat::Decline; break;
                     case kDealCountered: spk = e.player, lis = e.other, cat = speech::Cat::Counter; break;
                     case kDealBroken: spk = e.player, lis = e.other, cat = speech::Cat::Betray; break;
@@ -1187,6 +1252,10 @@ private:
 
     void drawCardBanner(Canvas& c, const Game& g, uint32_t now) {
         if (card_.until == 0 || int32_t(now - card_.until) >= 0) return;
+        // (0.60.0) the cards shown large until A (12-18: a scored objective, a relic used, a ruling, a component action, a leader, a
+        // drawn card, a revealed objective) have no small banner - once A let them go, the leftover time showed a ruling as a
+        // "TECHNOLOGY" card with the agenda's name
+        if (card_.kind >= 12 && card_.kind <= 18) return;
         int a = fadeAlpha(now, card_.start, card_.until, 120, 300);
         if (a <= 0) return;
         int age = int(now - card_.start);
@@ -1289,8 +1358,8 @@ private:
                 y += 12;
             }
         } else if (card_.kind == 9) {
-            static const char* kHead[6] = {"OFFER", "DEAL MADE", "DECLINED", "PROMISE BROKEN", "NO DEAL", "COUNTER-OFFER"};
-            int type = std::max(0, std::min(5, card_.card));
+            static const char* kHead[7] = {"OFFER", "DEAL MADE", "DECLINED", "PROMISE BROKEN", "NO DEAL", "COUNTER-OFFER", "DEMAND PAID"};
+            int type = std::max(0, std::min(6, card_.card));
             c.fillRoundRect(r.x + 4, r.y + 4, r.w - 8, 26, 8, shade(base, 0.7f), a);
             drawTextAligned(c, FONT_SMB, r.x, r.y + 9, r.w, Align::Center, kHead[type], theme::text, a);
             headerIcons(c, r, "promissory", a, 18);
@@ -1693,6 +1762,7 @@ private:
         switch (type) {
             case kDealMade: return rgb(60, 165, 95);
             case kDealBroken: return rgb(200, 60, 60);
+            case 6: return rgb(196, 120, 50);  // a demand paid under a threat (owner 2026-11-15)
             case kDealDeclined:
             case kDealFailed: return rgb(105, 110, 128);
             default: return rgb(50, 140, 195);
@@ -1889,7 +1959,7 @@ private:
     }
 
     // ------------------------------------------------------------- panels
-    void drawTopBar(Canvas& c, const Game& g) {
+    void drawTopBar(Canvas& c, const Game& g, uint32_t now) {
         c.fillRect(0, 0, W(), kTopH, rgb(5, 8, 16), 235);
         c.hline(0, W() - 1, kTopH - 1, theme::border);
         std::string left = g.draft.active ? "Galaxy setup \xC2\xB7 tile " + std::to_string(std::min<int>(g.draft.placed + 1, g.draft.total)) + " of " +
@@ -1908,11 +1978,16 @@ private:
             mid = playerName(g, session_->engine().decision().player) + " is deciding";
             midCol = pcolor(g, session_->engine().decision().player);
         }
+        const bool waiting = waitingInAgenda(g);  // (owner 2026-11-16: the tag below takes this place)
+        if (!waiting) waitSince_ = 0;
         int mx = 8 + lw + 16;
-        int mw = drawText(c, FONT_SM, mx, 4, fitText(FONT_SM, mid, 150), midCol);
-        std::string next = nextPlayerName();
-        int leftEnd = mx + mw;
-        if (!next.empty()) leftEnd = mx + mw + 8 + drawText(c, FONT_XS, mx + mw + 8, 6, fitText(FONT_XS, "next: " + next, 100), theme::faint);
+        int leftEnd = mx;
+        if (!waiting) {
+            int mw = drawText(c, FONT_SM, mx, 4, fitText(FONT_SM, mid, 150), midCol);
+            std::string next = nextPlayerName();
+            leftEnd = mx + mw;
+            if (!next.empty()) leftEnd = mx + mw + 8 + drawText(c, FONT_XS, mx + mw + 8, 6, fitText(FONT_XS, "next: " + next, 100), theme::faint);
+        }
         int rightStart = W();
         int h = session_->seat();
         if (h >= 0 && h < g.numPlayers) {
@@ -1933,7 +2008,9 @@ private:
         }
         // Galactic Events (0.46.2, owner): a button in the free part of the bar while events are in play
         eventsBtn_ = Rect{};
-        if (g.events) {
+        if (waiting) {
+            if (!info_) drawWaitTag(c, leftEnd, rightStart - 10, now);
+        } else if (g.events) {
             const std::string label = "Galactic Events";
             const int bw = textWidth(FONT_SM, label) + 18, gap = rightStart - leftEnd;
             if (gap >= bw + 24) {
@@ -2521,12 +2598,13 @@ private:
             bool branch = false, trap = false;  // Branch Offices (Veldyr), Traps (Li-Zho) - Discordant Stars 0.42.0
             for (int16_t b : g.dsBranch) branch = branch || b == pl;
             for (int16_t t : g.dsTrap) trap = trap || t == pl;
-            if (!ps.attachments.empty() || pl == g.dsBasePlanet || pl == g.dsKeyPlanet || branch || trap || ps.terraform || ps.ulHero ||
+            if (!ps.attachments.empty() || pl == g.dsBasePlanet || pl == g.dsKeyPlanet || branch || trap || ps.terraform || ps.ulHero || ps.nanoForge ||
                 std::find(g.dsCores.begin(), g.dsCores.end(), pl) != g.dsCores.end()) {
                 std::string at;
                 for (int16_t a : ps.attachments) at += (at.empty() ? "" : ", ") + std::string(kExploreCards[a].name);
                 if (ps.terraform) at += std::string(at.empty() ? "" : ", ") + "Terraform (+1/+1, all three traits)";  // (Titans note)
                 if (ps.ulHero) at += std::string(at.empty() ? "" : ", ") + "Ul the Progenitor (+3/+3, Space Cannon 5 x3)";
+                if (ps.nanoForge) at += std::string(at.empty() ? "" : ", ") + "Nano-Forge (+2/+2, a legendary planet)";  // (Codex II relic)
                 for (int k = 0; k < 4; ++k)
                     if (g.dsBranch[k] == pl) {
                         const int vd = playerOfFaction(g, "veldyr");
@@ -3190,7 +3268,7 @@ private:
         for (int q = 0; q < g.numPlayers; ++q) {
             if (q == session_->seat()) continue;
             for (int16_t o : g.players[size_t(q)].scored)
-                if (kObjectives[o].kind == 3) v.push_back({o, q});
+                if (scoredAsSecret(g, q, o)) v.push_back({o, q});
         }
         return v;
     }

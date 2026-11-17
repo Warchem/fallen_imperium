@@ -14,6 +14,7 @@
 #include <string>
 #include <vector>
 
+#include "engine/personality.h"
 #include "engine/query.h"
 
 namespace ti {
@@ -193,6 +194,20 @@ const Goals& aiGoals(const Game& g, int p) {
         }
     }
     G.focus = focus;
+    // (the Augurs review, checkpoint 2 - knob foresight) Oracle AI / Probability Algorithms: the objective on the Augurs'
+    // faction sheet is the next public one - plan for it a round ahead (1: the Foresight trait, 2: every Augurs bot;
+    // foreweight its share); spend objectives left out (nothing to build towards). 90 games: 19 wins / 7.07 VP against 13 /
+    // 6.99 (publics scored the round after their reveal 124 vs 110), fresh seeds 12 / 6.93 against 10 / 6.76 (130 vs 99).
+    // ON for every Augurs bot (2) since the owner's go (2026-11-14: "Keep the objectives on for them as that improvement is
+    // significant"); foresight=0 is the old behaviour
+    int sheet = -1;
+    if (const float fs = aiTune("foresight", 2.f); fs > 0.f && (g.modules & kModDiscordant) && me.dsSheet >= 0 &&
+                                                     isFaction(g, p, "augers") && (fs >= 2.f || fquirkIs(g, p, "augers", 0)) &&
+                                                     !hasScored(g, p, me.dsSheet) && !objectiveSpend(me.dsSheet).any() &&
+                                                     std::find(objs.begin(), objs.end(), int(me.dsSheet)) == objs.end()) {
+        sheet = me.dsSheet;
+        objs.push_back(sheet);
+    }
     for (int o : objs) {
         const float pts = float(kObjectives[o].points);
         const bool secret = kObjectives[o].kind == 3;
@@ -200,6 +215,7 @@ const Goals& aiGoals(const Game& g, int p) {
         ObjProgress pr = objectiveProgress(g, p, o);
         const int miss = pr.missing();
         float step = stepValue(pts, miss, level * urgency(g, p));
+        if (o == sheet) step *= aiTune("foreweight", 0.6f);  // (not public until the status phase: next round's)
         if (tempo > 0.f) {
             auto part = [&](float m) { return 1.f + (m - 1.f) * tempo; };
             step *= part(miss == 1 ? aiTune("near1", 1.7f) : miss == 2 ? aiTune("near2", 1.25f) : 1.f);  // finish what's nearly done

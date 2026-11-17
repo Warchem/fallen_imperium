@@ -17,6 +17,8 @@ decline: That offer flies crooked. Refused.
 counter: Close, but not true. Here - these terms fly straighter, and the Flight will take them.
 betray: Hunters change their quarry, {them}. Today the Flight has chosen you.
 betrayed: You struck the Flight from behind, {them}? Then run. We never lose a scent once we have it.
+yield: The Flight lets this go - once. A hunter's memory is long, {them}, and our talons are patient.
+yield: Take it. Wounded prey is still prey to someone. Watch the sky.
 
 [empyrean]
 name: Empyrean
@@ -34,6 +36,8 @@ decline: Your offer is a question we do not wish to answer.
 counter: Close... but not yet true. Turn it once more in the dark, and see the shape we prefer.
 betray: Did you think the mist was your friend, {them}? It only kept you where we could see you.
 betrayed: So you have chosen, {them}. We are patient, and patience is a blade that never dulls.
+yield: Take it... it was never ours to keep. Nor will it be yours, {them}, for very long.
+yield: As you wish. The dark has learned your name today. It does not forget names.
 
 [mahact]
 name: Mahact
@@ -51,6 +55,8 @@ decline: No. A king does not haggle with its subjects.
 counter: Your offer is an insult, but we are generous. These are our terms - accept them, and kneel.
 betray: Did you think we were equals, {them}? Kings keep their word only to other kings.
 betrayed: You raise your hand against your betters, {them}? We will take your will and wear it like a crown.
+yield: You dare? Take it, then. Kings have bent our will before, {them}, and none of them still wear crowns.
+yield: We yield this - a trifle. We do not yield our memory. Your will shall be ours in the end.
 
 [naaz]
 name: Naaz-Rokha
@@ -68,6 +74,8 @@ decline: Dug through it twice. Nothing in there for us.
 counter: Close, but a few parts don't fit. We've retooled it - try this version.
 betray: Sorry, {them} - found a richer seam. The Alliance is moving on, and you're the rock we're breaking.
 betrayed: You sold us out, {them}? Fine. We know how to dig, and we always find what's buried.
+yield: Alright, alright, take it. But we've got a long memory and a longer drill, {them}.
+yield: Not how we like to do business. Fine - it's yours. We'll just be over here, tuning our mechs.
 
 [nomad]
 name: Nomad
@@ -85,6 +93,8 @@ decline: I cannot. That path leads where I am trying not to go.
 counter: Not like this. I have watched that version fail - try it my way instead.
 betray: Forgive me, {them}. I have seen what you become, and I cannot let that future stand.
 betrayed: So it comes, {them}. I saw this and hoped I was wrong. Now you are part of what I must stop.
+yield: Take it. I have seen this moment, {them}. I have also seen what comes after it, for you.
+yield: I yield - the future is bigger than this. But remember: I am everywhere, and I do not forget.
 
 [titans]
 name: Titans
@@ -102,6 +112,8 @@ decline: Hmm... too heavy. We refuse.
 counter: Not so... Shift the weight. Like this. Then it is fair... and we agree.
 betray: It grieves us, {them}... You stood in the way of our freedom. The sleepers wake now... for you.
 betrayed: You broke faith, {them}... The giants were sleeping. Not anymore.
+yield: Take it... We are slow to anger... but you have woken something, {them}.
+yield: Very well... This is noted... in stone. Giants remember... for a very long time.
 
 [cabal]
 name: Cabal
@@ -119,6 +131,8 @@ decline: We have tasted better. Refused.
 counter: Not quite to our taste. Season it like this... and perhaps we will take a bite.
 betray: Oh, {them}... did you really think you were a guest? You were always the main course.
 betrayed: Betrayal, {them}? How wonderful. Betrayers always taste the sweetest.
+yield: Take it, then. We are patient diners, {them}. A meal that threatens us only tastes sweeter later.
+yield: Mm. Yours, for now. Everything we give away comes back to us eventually... usually with company.
 
 [keleres]
 name: Keleres
@@ -136,6 +150,8 @@ decline: That's a no-go. Offer rejected, over.
 counter: Can't approve those terms as written. Stand by for our revised offer and respond, over.
 betray: Attention, {them}. This agreement is void, effective immediately. Do not resist.
 betrayed: You just made yourself a hostile, {them}. All units, weapons free - self-defense authorized.
+yield: Copy, {them}. Complying under duress. Incident report filed - this is not over.
+yield: Affirmative, terms accepted. Be advised: your callsign is now on the watch list. All units, take note.
 
 [bastion]
 name: Bastion
@@ -153,6 +169,8 @@ decline: Not a chance. We didn't survive this long by taking bad deals.
 counter: Weak offer. Here's a real one - take it or leave it, soldier.
 betray: Nothing personal, {them}. Survivors survive. Today, that means going through you.
 betrayed: You turned on us, {them}? Big mistake. We lost a whole world once - losing a friend won't slow us down.
+yield: Fine, take it. We've been robbed by the end of a world, {them} - you're just the next name on the list.
+yield: Take it and run. Last people who pushed us around? Ask them how that went. Oh, wait.
 
 [ralnel]
 name: Ral Nel
@@ -170,6 +188,8 @@ decline: Not worth the risk. The Consortium passes.
 counter: Almost. Shave a little risk off - like so - and we'll sign.
 betray: Contingency plan, {them}. Nothing personal - we always have one, and today you're it.
 betrayed: We saw the exits, {them}, and already took one. You'll find us everywhere you didn't look.
+yield: Fine, fine - take it. Logged, filed, cross-referenced. We never forget an invoice, {them}.
+yield: Deal. Under protest. We're already planning three ways out of this, and one of them goes through you.
 
 [deepwrought]
 name: Deepwrought
@@ -187,6 +207,8 @@ decline: Alas, the equilibrium does not hold. We must decline - with sincere apo
 counter: A promising hypothesis! We have refined it slightly - in your favor, naturally. Please review.
 betray: Our deepest apologies, {them}. The data demanded a revision of our partnership. We do hope it was educational.
 betrayed: We gave you everything, {them}, and you return it as treachery? A most disheartening empirical result.
+yield: Oh! We would have given it gladly, {them} - there was no need for such an entropic display. We are... rather hurt.
+yield: Accepted, with regret and a measurable decrease in our estimation of you. We had hoped for a gentler equilibrium.
 
 [crimson]
 name: Crimson
@@ -204,6 +226,8 @@ decline: Keep your scraps. We will take what we want another way.
 counter: ...not that. This. You can spare it... you can always spare it.
 betray: Everything, {them}... you had everything. Now you will know what it is to have nothing.
 betrayed: ...of course, {them}. Your kind always betray us. We will not forget... we never forget.
+yield: Take it... We will simply take it back... along with something you love more, {them}.
+yield: Yours, then... enjoy it. We know every crack in your walls now.
 
 [firmament]
 name: Firmament
@@ -221,6 +245,8 @@ decline: As one, the Five have spoken. We decline.
 counter: Your heart is willing, but your path strays. Walk this one instead - it is better for all.
 betray: Forgive us, {them}. The galaxy's peace asks a sacrifice, and the Five have chosen you.
 betrayed: You turned from the light, {them}. We will pray for you... and we will watch you very closely now.
+yield: We yield this, for the sake of peace. But the guardians are watching you now, {them}... very closely.
+yield: Take it, and go with our blessing... and with our eyes upon you.
 
 [obsidian]
 name: Obsidian
@@ -238,3 +264,5 @@ decline: Your offer is ash in our mouths. Refused.
 counter: Wrong. All wrong (burn it). Here is what the Five demand instead.
 betray: Once we watched over you, {them}. Now we only watch (and wait, and feast).
 betrayed: Betray US, {them}? The Five see you... ALL of us see you... and we never close our eyes.
+yield: Take it... TAKE IT... we will remember how it tasted, {them}.
+yield: Yours (for now) ... for now ... the void keeps every debt and it always collects.

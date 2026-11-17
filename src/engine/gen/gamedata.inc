@@ -955,7 +955,7 @@ const FactionInfo kFactionInfo[65] = {
   {{"Zealous", "Ruthless", nullptr}, {"Queen Lucreia", "Queen Lorena", "Queen Nadalia", nullptr, nullptr}, {0, 1, 2, -1, -1}, {"Blessing of the Queens", nullptr}},
   {{"Contagion", "Plague Reservoir", "Subversive"}, {"Tox", "Silas Deriga", "Speygh", nullptr, nullptr}, {0, 1, 2, -1, -1}, {"Kyro Rider", nullptr}},
   {{"A New Edifice", "Iconoclasm", "War Stories"}, {"Vassa Hagi", "Master Halbert", "The Venerable", nullptr, nullptr}, {0, 1, 2, -1, -1}, {"Spoils of War", nullptr}},
-  {{"Cunning", "Subterfuge", nullptr}, {"Vasra Ivo", "Dhume Tathu", "Khaz-Rin Li-Zho", nullptr, nullptr}, {0, 1, 2, -1, -1}, {"Trusted Counselor", nullptr}},
+  {{"Cunning", "Subterfuge", nullptr}, {"Vasra Ivo", "Dume Tathu", "Khaz-Rin Li-Zho", nullptr, nullptr}, {0, 1, 2, -1, -1}, {"Trusted Counselor", nullptr}},
   {{"Privileged Citizenry", "Combat Drones", nullptr}, {"Logic Machina", "Assault Machina", "Wrath Machina", nullptr, nullptr}, {0, 1, 2, -1, -1}, {"Rapid Excavation", nullptr}},
   {{"Facsimile", "Illusory Presence", nullptr}, {"Walik", "Komat", "Bayan", nullptr, nullptr}, {0, 1, 2, -1, -1}, {"Secrets of the Weave", nullptr}},
   {{"Prescient Memories", "Divination", "Necrophage"}, {"Lactarius Indigo", "Amanita Muscaria", "Coprinus Comatus", nullptr, nullptr}, {0, 1, 2, -1, -1}, {"Gift of Insight", nullptr}},
@@ -1130,7 +1130,7 @@ LeaderDef kLeaders[] = {
   {"lanefircommander", "Master Halbert", 50, 1},
   {"lanefirhero", "The Venerable", 50, 2},
   {"lizhoagent", "Vasra Ivo", 51, 0},
-  {"lizhocommander", "Dhume Tathu", 51, 1},
+  {"lizhocommander", "Dume Tathu", 51, 1},
   {"lizhohero", "Khaz-Rin Li-Zho", 51, 2},
   {"mirvedaagent", "Logic Machina", 52, 0},
   {"mirvedacommander", "Assault Machina", 52, 1},
@@ -1500,7 +1500,7 @@ const ExploreCardDef kExploreCards[49] = {
   {"arcaneshieldemitter", "Arcane Shield Emitter", ExploreType::Hazardous, 1, ExploreKind::Attach, Source::Uncharted},
 };
 // Relics: key, name, source
-const RelicDef kRelics[27] = {
+const RelicDef kRelics[30] = {
   {"dominusorb", "Dominus Orb", Source::PoK},
   {"mawofworlds", "Maw of Worlds", Source::PoK},
   {"emelpar", "Scepter of Emelpar", Source::PoK},
@@ -1528,6 +1528,9 @@ const RelicDef kRelics[27] = {
   {"quantumcore", "The Quantumcore", Source::ThundersEdge},
   {"thesilverflame", "The Silver Flame", Source::ThundersEdge},
   {"thetriad", "The Triad", Source::ThundersEdge},
+  {"dynamiscore", "Dynamis Core", Source::PoK},
+  {"titanprototype", "JR-XS455-O", Source::PoK},
+  {"nanoforge", "Nano-Forge", Source::PoK},
 };
 // Map layouts. pos = ring*100 + index (index 1 = north, clockwise).
 // kind: 0 = fixed tile (tile, rotation), 1 = home of player, 2 = slice tile (player, slot)

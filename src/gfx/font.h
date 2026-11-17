@@ -26,6 +26,7 @@ struct FontData {
 extern const FontData FONT_XS, FONT_SM, FONT_SMB, FONT_MD, FONT_MDB, FONT_LG, FONT_XL;
 // The Lazaxian alphabet (0.57.0, the owner's font): only ! " ' ( ) , - . 0-9 ? A-Z a-z and the space.
 extern const FontData FONT_LAZ;
+extern const FontData FONT_LAZXL;  // 0.59.70: the same alphabet at FONT_XL's size (the title screen's reveal)
 
 enum class Align { Left, Center, Right };
 

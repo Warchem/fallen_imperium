@@ -467,13 +467,40 @@ void Rules::persControl(int planet, int old, int p) {
     }
 }
 
+// (owner 2026-11-15: "does the AI see threats as a negative?") how much a threat stings, by archetype: Warlords and
+// Betrayers remember it, Peacekeepers and Merchants let more of it go (bfEvent then scales by the archetype's gain)
+namespace {
+float threatSting(const Game& g, int bot) {
+    if (!isBot(g, bot)) return 1.f;
+    switch (Arch(g.players[size_t(bot)].pers.arch)) {
+        case Arch::Warlord:
+        case Arch::Betrayer: return 1.5f;
+        case Arch::Peacekeeper: return 0.7f;
+        case Arch::Merchant: return 0.8f;
+        default: return 1.f;
+    }
+}
+}  // namespace
+
 void Rules::persDealRefused(const Deal& d) {
     if (isBot(G, d.from)) G.players[d.from].pers.refused[d.to] = int8_t(std::min(100, G.players[d.from].pers.refused[d.to] + 1));
     bfEvent(d.from, d.to, 1.f);
-    bfEvent(d.to, d.from, 1.f);
+    // (owner 2026-11-15, fixes 28 - B-Factors drive the betrayals the engine hands out, so old games keep the old ones) a
+    // refused threat still leaves the threatened player a bigger grudge than a refused offer
+    bfEvent(d.to, d.from, d.threat >= 0 && G.fixes >= 28 ? 2.5f * threatSting(G, d.to) : 1.f);
 }
 
 void Rules::persDealMade(const Deal& d) {
+    // (owner 2026-11-15) a demand paid under a threat is not a fair deal: the bot that gave in holds a grudge (and
+    // remembers it - attitudeScore), no trust gained; the one who threatened gets no credit either (fixes 28: see above)
+    if (d.threat >= 0 && G.fixes >= 28) {
+        if (isBot(G, d.to) && d.from >= 0 && d.from < 8) {
+            Personality& pe = G.players[size_t(d.to)].pers;
+            pe.threats[size_t(d.from)] = int8_t(std::min(100, pe.threats[size_t(d.from)] + 1));
+            bfEvent(d.to, d.from, 4.f * threatSting(G, d.to));
+        }
+        return;
+    }
     const float give = sideWorth(G, d.give), get = sideWorth(G, d.get);
     for (int side = 0; side < 2; ++side) {
         const int b = side ? d.to : d.from, o = side ? d.from : d.to;

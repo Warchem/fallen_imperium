@@ -399,6 +399,8 @@ void MapView::setCursor(const Game& g, int sys, bool keepCamera) {
 const std::vector<MapView::InfoCells>& MapView::infoCells(const Game& g) const {
     size_t key = size_t(g.numPlayers) * 7919u + g.systems.size() * 31u + (g.draft.active ? g.draft.cells.size() : 0u);
     for (const Player& pl : g.players) key = key * 131u + size_t(pl.homeSystem + 1);
+    const bool te = (g.modules & kModThundersEdge) != 0;
+    if (te) key = key * 977u + size_t(g.fracturePos[3].q + 64) * 3u + size_t(g.tePos.r + 64) * 5u + size_t(g.tePos.q + 64);
     if (key == infoKey_ && info_.size() == size_t(g.numPlayers)) return info_;
     infoKey_ = key;
     info_.assign(size_t(g.numPlayers), InfoCells());
@@ -406,6 +408,12 @@ const std::vector<MapView::InfoCells>& MapView::infoCells(const Game& g) const {
     for (const SystemState& s : g.systems) used.push_back(s.pos);
     if (g.draft.active)
         for (const DraftCell& d : g.draft.cells) used.push_back(d.pos);
+    // (the tester's report, 2026-11-14: a click on Thunder's Edge opened a player's play area) where Thunder's Edge and the
+    // Fracture wait beside the board (the engine places them) - always kept clear, so no tile moves once they are in play
+    if (te) {
+        for (const Hex& h : g.fracturePos) used.push_back(h);
+        used.push_back(g.tePos);
+    }
     auto taken = [&](Hex h) { return std::find(used.begin(), used.end(), h) != used.end(); };
     auto freeAround = [&](Hex h) {
         int n = 0;
@@ -1719,7 +1727,7 @@ void MapView::drawSystem(Canvas& c, const Game& g, int sys, float cx, float cy, 
             c.fillCircle(kx, ky, kr, rgb(230, 110, 30));
             c.ring(kx, ky, kr, std::max(1.f, size * 0.02f), rgb(60, 20, 10));
         }
-        if (!ps.attachments.empty() || ps.terraform || ps.ulHero || pl == g.dsBasePlanet || pl == g.dsKeyPlanet) {  // attachment: a small gold diamond
+        if (!ps.attachments.empty() || ps.terraform || ps.ulHero || ps.nanoForge || pl == g.dsBasePlanet || pl == g.dsKeyPlanet) {  // attachment: a small gold diamond
             float ax = px - dir * pr * 0.85f, ay = py - pr * 0.85f, ar = std::max(2.5f, size * 0.07f);
             float dx[4] = {ax, ax + ar, ax, ax - ar}, dy[4] = {ay - ar, ay, ay + ar, ay};
             c.fillPolygon(dx, dy, 4, hasAttachment(g, pl, "dmz") ? rgb(230, 230, 230) : theme::gold);

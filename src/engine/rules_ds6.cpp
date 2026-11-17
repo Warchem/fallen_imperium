@@ -45,11 +45,15 @@ const char* kTrapName[5] = {"Interference Grid", "Minefields", "Account Siphon",
 const char* trapName(int k) { return k >= 0 && k < 5 ? kTrapName[k] : ""; }
 const char* trapText(int k) {
     static const char* t[5] = {
-        "Revealed at the start of a space combat in its system: one player rolls 1 lower this combat.",
-        "Revealed after a player lands infantry on its planet: destroy up to 2 of them.",
-        "Revealed after a player takes its planet: take up to 2 of their trade goods or 3 of their commodities.",
-        "Revealed after a player activates its system: they move in at most 1 ship fewer than their fleet pool.",
-        "A bluff - it does nothing."};
+        "You may reveal it at the start of a space combat in this system: choose 1 player - apply -1 to each of their combat rolls during "
+        "this space combat. At the end of this tactical action, it returns to your reinforcements.",
+        "You may reveal it after a player commits 1 or more infantry to this planet: destroy up to 2 of that player's infantry on this "
+        "planet. At the end of this tactical action, it returns to your reinforcements.",
+        "You may reveal it after a player gains control of this planet: take up to 2 trade goods or 3 commodities from that player. At the "
+        "end of this tactical action, it returns to your reinforcements.",
+        "You may reveal it after a player activates this system: until the end of this tactical action, that player cannot move more ships "
+        "into this system than 1 fewer than their fleet supply limit. At the end of this tactical action, it returns to your reinforcements.",
+        "You may reveal it at any time (on your turn: \"Reveal Feint\" in the action list). Then it returns to your reinforcements."};
     return k >= 0 && k < 5 ? t[k] : "";
 }
 
@@ -82,6 +86,46 @@ void Rules::dsBranchReceived(int p, int note) {
 // Solis Morden (Veldyr agent): research paid partly with a planet's influence. Returns the value used.
 int Rules::dsSolis(int p, int amount, int& planet) {
     planet = -1;
+    // (fixes 29, the Veldyr review - the Reference: "When a player spends resources to research: You may exhaust this card to allow that
+    // player to spend the influence of 1 planet they control as resources") any player's research; whoever can use the agent is asked in
+    // initiative order (a person may say "not again this round"; a promised agent kept for its beneficiary); then THAT player picks the
+    // planet
+    if (G.fixes >= 29) {
+        if (amount <= 0 || playerOfFaction(G, "veldyr") < 0) return 0;
+        std::vector<Option> ps;
+        for (int x : ti::readyPlanets(G, p))
+            if (planetInfluence(G, x) > 0) ps.push_back({x, planetName(x), std::to_string(planetInfluence(G, x)) + " influence as resources"});
+        if (ps.empty()) return 0;
+        for (int o : initiativeOrder(G)) {
+            if (!canUseAgent(o, "veldyr")) continue;
+            const bool human = G.players[size_t(o)].human;
+            if (human && solisQuiet_[size_t(o)] == G.round) continue;
+            std::vector<Option> opts{{1, "Yes", ""}, {0, "No", ""}};
+            if (human) opts.push_back({99999, "No, and don't ask again this round", "You'll be asked again next round."});
+            const int b = G.agentFor[size_t(o)];
+            const bool forB = b >= 0 && b != o && b < G.numPlayers && b == p;
+            curFor_ = forB ? b : -1;
+            curValue_ = 1000 + p;  // (for the AI: whose research)
+            const int c = fpick(o, Ab::DsSolis, o == p ? "Exhaust Solis Morden: one planet's influence pays for this research?"
+                                                       : "Exhaust Solis Morden so " + pn(p) + " pays for this research with a planet's influence?",
+                                opts, leaderText(findLeader("veldyragent")));
+            curFor_ = -1;
+            curValue_ = 0;
+            if (c == 99999) solisQuiet_[size_t(o)] = int16_t(G.round);
+            if (c != 1) continue;
+            spendAgent(o, "veldyr");
+            if (forB) agentUsedFor(o, b);
+            curValue_ = amount;
+            const int x = ps.size() == 1 ? ps[0].id : fpick(p, Ab::DsSolis, "Solis Morden: which planet's influence pays for this research?", ps);
+            curValue_ = 0;
+            planet = x;
+            G.planets[size_t(x)].exhausted = true;
+            planetsExhausted(p, {x});
+            ds6Event(E, p, "Solis Morden", pn(p) + " pays for research with " + planetName(x) + "'s influence.");
+            return planetInfluence(G, x);
+        }
+        return 0;
+    }
     const int user = agentUser(p, "veldyr");
     if (user < 0 || amount <= 0) return 0;
     std::vector<Option> opts;
@@ -123,6 +167,9 @@ void Rules::ds6CombatMods(int p, int opp, int sys, int planet, bool space, RollM
                     m.extraDice[t] += 1;
                     break;
                 }
+        } else if (space && G.fixes >= 28 && f.nonFighterShips() == 0 && f.count(UnitType::Fighter) > 0) {
+            // (fixes 28, the Li-Zho review) "no more than 1 of your non-fighter ships": only fighters fighting - one of them rolls it
+            m.extraDice[int(UnitType::Fighter)] += 1;
         } else if (!space && f.count(UnitType::Infantry) <= 1 && f.groundForces() > 0) {
             m.extraDice[f.count(UnitType::Mech) ? int(UnitType::Mech) : int(UnitType::Infantry)] += 1;
         }
@@ -185,7 +232,8 @@ void Rules::ds6SpaceRoundEnd(int att, int def, int sys) {
         // 0.44.5 (fixes 9): Graviton Laser System and Antimass Deflectors apply to this space cannon shot
         const bool gls = G.fixes >= 9 && askGraviton(side, other, sys);
         RollResult r;
-        addDice(r, dice + (G.fixes >= 12 ? abilityDice(side, sys) : 0), bestV + (G.fixes >= 9 ? antimass(side, other) : 0), best);
+        // (fixes 29, the Veldyr review) "without rolling additional dice": no Plasma Scoring / Starfall Array die
+        addDice(r, dice + (G.fixes >= 12 && G.fixes < 29 ? abilityDice(side, sys) : 0), bestV + (G.fixes >= 9 ? antimass(side, other) : 0), best);
         reportRoll(side, sys, "SEIDR Project", r);
         if (r.hits > 0) cannonHits(other, sys, r.hits, kShipMask6, gls, "SEIDR Project", side);
     }
@@ -228,15 +276,18 @@ void Rules::ds6Activated(int p, int sys) {
     const int vd = playerOfFaction(G, "veldyr");
     if (vd >= 0 && mechAbilities(G))
         for (int16_t x : G.systems[size_t(sys)].planets) {
-            Force& f = G.planets[size_t(x)].units[size_t(vd)];
-            if (!f.count(UnitType::Mech) || unitsAvailable(G, vd, UnitType::PDS) <= 0 || f.count(UnitType::PDS) >= 2) continue;
-            curValue_ = p == vd ? 0 : 1;
-            const bool use = fyes(vd, Ab::DsAurora, "Aurora Stormcaller: your mech on " + planetName(x) + " becomes a PDS?", "");
-            curValue_ = 0;
-            if (!use) continue;
-            f.remove(UnitType::Mech, 1, false);
-            addUnits(vd, UnitType::PDS, 1, sys, x);
-            ds6Event(E, vd, "Aurora Stormcaller", pn(vd) + "'s stormcaller raises a PDS on " + planetName(x) + ".", sys);
+            // (fixes 29, the Veldyr review) each mech has the ability (LRR 1): one question per Aurora Stormcaller (2 PDS a planet at most)
+            for (int k = 0; k < (G.fixes >= 29 ? 2 : 1); ++k) {
+                Force& f = G.planets[size_t(x)].units[size_t(vd)];
+                if (!f.count(UnitType::Mech) || unitsAvailable(G, vd, UnitType::PDS) <= 0 || f.count(UnitType::PDS) >= 2) break;
+                curValue_ = p == vd ? 0 : 1;
+                const bool use = fyes(vd, Ab::DsAurora, "Aurora Stormcaller: your mech on " + planetName(x) + " becomes a PDS?", "");
+                curValue_ = 0;
+                if (!use) break;
+                f.remove(UnitType::Mech, 1, false);
+                addUnits(vd, UnitType::PDS, 1, sys, x);
+                ds6Event(E, vd, "Aurora Stormcaller", pn(vd) + "'s stormcaller raises a PDS on " + planetName(x) + ".", sys);
+            }
         }
 }
 
@@ -295,11 +346,11 @@ void Rules::ds6Control(int planet, int p, int old) {
     if (c == 0) {
         const int n = std::min<int>(2, pl.tradeGoods);
         pl.tradeGoods = int8_t(pl.tradeGoods - n);
-        gainTG(lz, n);
+        gainTGNotSupply(lz, n); // (fixes 28: not from the supply - no Artuno)
     } else {
         const int n = std::min<int>(3, pl.commodities);
         pl.commodities = int8_t(pl.commodities - n);
-        gainTG(lz, n);
+        gainTGNotSupply(lz, n);
     }
     ds6Event(E, lz, "Account Siphon", pn(lz) + " springs a trap: " + pn(p) + "'s accounts are drained.", G.planets[size_t(planet)].system);
 }
@@ -316,16 +367,77 @@ void Rules::ds6TurnStart(int p) {
         if (G.dsTrap[k] >= 0)
             for (int x : mechPlanets)
                 if (G.dsTrap[k] != x) opts.push_back({k * 1000 + x, std::string(kTrapName[k]) + " to " + planetName(x), "From " + planetName(G.dsTrap[k]) + "."});
+    // (fixes 28, the Li-Zho review) "or swap any trap attachment with 1 on this planet" - id 200000 + a * 10 + b: Traps a (on the mech's
+    // planet) and b (elsewhere) change places
+    if (G.fixes >= 28)
+        for (int a = 0; a < 5; ++a) {
+            if (G.dsTrap[a] < 0 || std::find(mechPlanets.begin(), mechPlanets.end(), int(G.dsTrap[a])) == mechPlanets.end()) continue;
+            for (int b = 0; b < 5; ++b)
+                if (b != a && G.dsTrap[b] >= 0 && G.dsTrap[b] != G.dsTrap[a])
+                    opts.push_back({200000 + a * 10 + b, std::string("Swap ") + kTrapName[a] + " (" + planetName(G.dsTrap[a]) + ") with " + kTrapName[b] + " (" + planetName(G.dsTrap[b]) + ")", ""});
+        }
     if (opts.empty()) return;
     opts.push_back({-1, "Leave the Traps", ""});
     const int c = fpick(p, Ab::DsOroZhin, "Oro-Zhin Elite: move a Trap onto your mech's planet?", opts);
     if (c < 0) return;
+    if (c >= 200000) {
+        const int a = (c - 200000) / 10, b = (c - 200000) % 10;
+        std::swap(G.dsTrap[a], G.dsTrap[b]);
+        ds6Event(E, p, "Oro-Zhin Elite", pn(p) + " shifts a trap.");
+        return;
+    }
     G.dsTrap[c / 1000] = int16_t(c % 1000);
     ds6Event(E, p, "Oro-Zhin Elite", pn(p) + " shifts a trap.");
 }
 
 // Vasra Ivo (Li-Zho agent): at the end of a player's turn, 2 fighters with their ships.
+// Feint (Li-Zho trap; fixes 28, the Li-Zho review): "you may reveal this card at any time. Then, return this card to your
+// reinforcements" - offered on the Li-Zho player's turn as a free option (646, doesn't use the action).
+bool Rules::ds6FeintAvailable(int p) const {
+    return G.fixes >= 28 && (G.modules & kModDiscordant) && p >= 0 && p < G.numPlayers && fac(p, "lizho") && G.dsTrap[4] >= 0;
+}
+bool Rules::ds6RevealFeint(int p) {
+    if (!ds6FeintAvailable(p)) return false;
+    const int x = G.dsTrap[4];
+    G.dsTrap[4] = -1;
+    G.dsTrapShown &= uint8_t(~(1u << 4));
+    ds6Event(E, p, "Feint", pn(p) + " reveals a trap on " + planetName(x) + ": only a Feint.", G.planets[size_t(x)].system);
+    return true;
+}
+
 void Rules::ds6TurnEnd(int p) {
+    if (G.fixes >= 28) {
+        // (fixes 28, the Li-Zho review) "At the end of a player's turn" - any player's: a person holding the agent is asked (vasraQuiet_:
+        // "don't ask again this round"), a bot for itself or the player it promised the agent to
+        if (p < 0 || p >= G.numPlayers || unitsAvailable(G, p, UnitType::Fighter) <= 0) return;
+        std::vector<Option> where;
+        for (size_t s = 0; s < G.systems.size(); ++s)
+            if (hasShips(G, p, int(s))) where.push_back({int(s), sysName(int(s)), ""});
+        if (where.empty()) return;
+        for (int o : initiativeOrder(G)) {
+            if (!canUseAgent(o, "lizho")) continue;
+            const bool own = o == p;
+            const bool promised = G.agentFor[size_t(o)] == p;
+            const bool human = G.players[size_t(o)].human;
+            if (!own && !promised && !(human && vasraQuiet_[o] != G.round)) continue;
+            std::vector<Option> opts = where;
+            opts.push_back({-1, "Don't", ""});
+            if (!own && human && !promised) opts.push_back({99999, "No, and don't ask again this round", "You'll be asked again next round."});
+            agentFor(o, p);
+            const int s = fpick(o, Ab::DsVasra, own ? "Exhaust Vasra Ivo: 2 fighters with your ships - where?" : "Exhaust Vasra Ivo: 2 fighters for " + pn(p) + " - where?",
+                                opts, leaderText(findLeader("lizhoagent")), true);
+            curFor_ = -1;
+            if (s == 99999) vasraQuiet_[o] = int16_t(G.round);
+            if (s < 0 || s == 99999) continue;
+            spendAgent(o, "lizho");
+            agentUsedFor(o, p);
+            addUnits(p, UnitType::Fighter, 2, s, -1);
+            removeExcessCapacity(p, s);
+            ds6Event(E, p, "Vasra Ivo", pn(p) + " receives 2 fighters from Vasra Ivo.", s);
+            return;
+        }
+        return;
+    }
     const int user = agentUser(p, "lizho");
     if (user < 0 || unitsAvailable(G, p, UnitType::Fighter) <= 0) return;
     std::vector<Option> opts;
@@ -361,7 +473,7 @@ void Rules::ds6StatusStart() {
         if (c == 0) { const int cb_ = pl.commodities; pl.commodities = int8_t(pl.commodities + 1); commodityGained(vd, cb_); }
         else {
             pl.commodities = int8_t(pl.commodities - 1);
-            gainTG(vd, 1);
+            gainTGNotSupply(vd, 1); // (fixes 28: not from the supply - no Artuno)
         }
     }
     int n = 0;
@@ -444,7 +556,9 @@ bool Rules::ds6Action(int p, Ab ab) {
             for (int k = 0; k < 5; ++k) {
                 std::vector<Option> opts{{-1, G.dsTrap[k] >= 0 ? "Leave it on " + planetName(G.dsTrap[k]) : std::string("Leave it in reserve"), ""}};
                 for (size_t x = 0; x < G.planets.size(); ++x)
-                    if (!G.planets[x].destroyed && int(x) != G.dsTrap[k] && G.systems[size_t(G.planets[x].system)].home < 0)
+                    // (fixes 28, the Li-Zho review) "to a planet on the game board" - home planets too
+                    if (!G.planets[x].destroyed && int(x) != G.dsTrap[k] && G.planets[x].system >= 0 &&
+                        (G.fixes >= 28 ? !isStation(G, int(x)) : G.systems[size_t(G.planets[x].system)].home < 0))
                         opts.push_back({int(x), planetName(int(x)), G.planets[x].owner >= 0 ? pn(G.planets[x].owner) : std::string("nobody's")});
                 const int x = fpick(p, Ab::DsKhazRin, std::string("Khaz-Rin Li-Zho: where does ") + kTrapName[k] + " go?", opts, trapText(k), false, true);
                 if (x >= 0) G.dsTrap[k] = int16_t(x);

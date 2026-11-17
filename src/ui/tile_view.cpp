@@ -853,7 +853,7 @@ void draw(Canvas& c, const Game& g, int sys, Rect area, uint32_t now, const Comb
             c.ring(px - pr * 0.95f, py - pr * 0.7f, 8.f, 1.5f, theme::gold);
             icons::draw(c, "legendary_white", int(px - pr * 0.95f) - 6, int(py - pr * 0.7f) - 6, 12, 255, theme::gold);
         }
-        if (!ps.attachments.empty() || ps.terraform || ps.ulHero) {
+        if (!ps.attachments.empty() || ps.terraform || ps.ulHero || ps.nanoForge) {
             float ax = px - pr * 0.95f, ay = py + pr * 0.7f, ar = 6.f;
             float dx[4] = {ax, ax + ar, ax, ax - ar}, dy[4] = {ay - ar, ay, ay + ar, ay};
             c.fillPolygon(dx, dy, 4, theme::gold);

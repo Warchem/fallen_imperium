@@ -56,12 +56,13 @@ std::vector<int> encodeDeal(const Deal& d) {
     // version 2 (Thunder's Edge) only when relics or secrets change hands, version 3 when technologies are shared
     // (Age of Commerce), version 4 when control tokens go on the Vaden's sheet (Discordant Stars): older deals encode
     // as before
-    const bool v6 = d.give.hire || d.get.hire;                                   // version 6: Hired Guns (0.43.0)
+    const bool v7 = !d.give.laws.empty() || !d.get.laws.empty();  // version 7: agendas (Encrypted Trade Hub, fixes 28)
+    const bool v6 = v7 || d.give.hire || d.get.hire;                // version 6: Hired Guns (0.43.0)
     const bool v5 = v6 || !d.give.orders.empty() || !d.get.orders.empty();  // version 5: Axis Order cards (Discordant Stars)
     const bool v4 = v5 || d.give.debt || d.get.debt;
     const bool v3 = v4 || !d.give.techs.empty() || !d.get.techs.empty();
     const bool v2 = v3 || !d.give.relics.empty() || !d.give.secrets.empty() || !d.get.relics.empty() || !d.get.secrets.empty();
-    std::vector<int> v = {v6 ? 6 : v5 ? 5 : v4 ? 4 : v3 ? 3 : v2 ? 2 : 1, d.from, d.to, d.threat};
+    std::vector<int> v = {v7 ? 7 : v6 ? 6 : v5 ? 5 : v4 ? 4 : v3 ? 3 : v2 ? 2 : 1, d.from, d.to, d.threat};
     putSide(v, d.give);
     putSide(v, d.get);
     if (v2) {
@@ -80,6 +81,11 @@ std::vector<int> encodeDeal(const Deal& d) {
             v.insert(v.end(), s->orders.begin(), s->orders.end());
         }
     if (v6) v.insert(v.end(), {d.give.hire, d.get.hire});
+    if (v7)
+        for (const DealSide* s : {&d.give, &d.get}) {
+            v.push_back(int(s->laws.size()));
+            v.insert(v.end(), s->laws.begin(), s->laws.end());
+        }
     v.push_back(int(d.promises.size()));
     for (const Promise& p : d.promises) v.insert(v.end(), {int(p.kind), p.by, p.target, p.amount, p.rounds, p.agenda});
     return v;
@@ -87,7 +93,7 @@ std::vector<int> encodeDeal(const Deal& d) {
 
 bool decodeDeal(const std::vector<int>& v, Deal& d) {
     d = Deal();
-    if (v.size() < 4 || v[0] < 1 || v[0] > 6) return false;
+    if (v.size() < 4 || v[0] < 1 || v[0] > 7) return false;
     size_t i = 1;
     d.from = v[i++];
     d.to = v[i++];
@@ -121,6 +127,14 @@ bool decodeDeal(const std::vector<int>& v, Deal& d) {
         d.get.hire = v[i++];
         if (d.give.hire < 0 || d.give.hire > 3 || d.get.hire < 0 || d.get.hire > 3) return false;
     }
+    if (v[0] >= 7)
+        for (DealSide* s : {&d.give, &d.get}) {
+            if (i >= v.size()) return false;
+            const int n = v[i++];
+            if (n < 0 || n > 8 || i + size_t(n) > v.size()) return false;
+            s->laws.assign(v.begin() + long(i), v.begin() + long(i) + n);
+            i += size_t(n);
+        }
     if (i >= v.size()) return false;
     int n = v[i++];
     if (n < 0 || n > 8 || i + size_t(n) * 6 > v.size()) return false;
@@ -157,6 +171,8 @@ std::string sideText(const Game& g, const DealSide& s) {
     if (s.debt) parts.push_back(plural(s.debt, "control token on the Vaden's sheet", "control tokens on the Vaden's sheet"));
     for (int o : s.orders) parts.push_back(axisOrderName(o));
     if (s.hire) parts.push_back("up to " + plural(s.hire, "hired ship", "hired ships") + " (Hired Guns)");
+    for (int a : s.laws)
+        if (a >= 0 && a < kAgendaCount) parts.push_back(std::string("the agenda ") + kAgendas[a].name);
     if (parts.empty()) return "nothing";
     std::string out;
     for (size_t i = 0; i < parts.size(); ++i) out += (i ? (i + 1 == parts.size() ? " and " : ", ") : "") + parts[i];
@@ -240,6 +256,10 @@ bool transactionAllowed(const Game& g, int a, int b) {
     if (a < 0 || b < 0 || a == b || a >= g.numPlayers || b >= g.numPlayers) return false;
     if (g.players[a].eliminated || g.players[b].eliminated) return false;
     if (g.transactions[a][b] + g.transactions[b][a] > 0) return false;  // one per pair per turn / agenda
+    // (fixes 29, the Olradin review) Control ("-" side of The People): "You cannot perform transactions during the agenda phase"
+    if (g.phase == Phase::Agenda && g.fixes >= 29 && (g.modules & kModDiscordant))
+        for (int x : {a, b})
+            if (isFaction(g, x, "olradin") && (g.players[size_t(x)].dsPolicy & 1)) return false;
     if ((g.tradeAnyway >> (a * 8 + b)) & 1) return true;               // Temporal Command Suite
     if (g.phase == Phase::Agenda) return !eventOn(g, kEvHidden);       // LRR 94.6: with anyone (Hidden Agenda: no one)
     if (g.phase != Phase::Action) return false;
@@ -337,6 +357,15 @@ bool agentLendable(const Game& g, int p) {
     if (g.fixes >= 27 && isFaction(g, p, "naaz")) return agentReady(g, p) || leaderIndex(g, p, kAgent) >= 0;
     // (fixes 27, the Saar review - owner 2026-11-13) Captain Mendosa: "When a player activates a system"
     if (g.fixes >= 27 && isFaction(g, p, "saar")) return agentReady(g, p) || leaderIndex(g, p, kAgent) >= 0;
+    // (fixes 28 - owner 2026-11-16, his Nekro report: "I can't offer a player to use my agent") the agents whose ACTION picks a player
+    // (or whose reaction helps another player) - using it on the promised player keeps the promise (Rules::agentUsedFor); not the Mahact
+    // (only against the other player), the Mentak (only when pillaging them), the Vuil'raith (captures their unit) or the Kjalengard
+    static const char* const kLend28[] = {"nekro", "hacan", "xxcha", "arborec", "l1z1x", "muaat", "ralnel",
+                                          "deepwrought", "crimson", "kolume", "bentor", "edyn", "axis",
+                                          "kjalengard"};  // (the Kjalengard review: Merkismathr Asvand at any combat)
+    if (g.fixes >= 28)
+        for (const char* k : kLend28)
+            if (isFaction(g, p, k)) return agentReady(g, p) || leaderIndex(g, p, kAgent) >= 0;
     static const char* const kLend[] = {"letnev",   "sol",     "jolnar",   "sardakk", "winnu",     "titans",      "yssaril", "naalu",
                                         "yin",      "keleres", "bastion",  "firmament", "obsidian", "augers",     "celdauri", "cheiran",
                                         "cymiae",   "dihmohn", "florzen",  "freesystems", "ghemina", "ghoti",     "gledge",  "khrask",
@@ -461,7 +490,7 @@ std::vector<std::pair<int, std::string>> voteOutcomes(const Game& g, int a) {
         case Elect::ScoredSecret:
             for (int q = 0; q < g.numPlayers; ++q)
                 for (int16_t o : g.players[q].scored)
-                    if (kObjectives[o].kind == 3) v.push_back({o, kObjectives[o].name});
+                    if (scoredAsSecret(g, q, o)) v.push_back({o, kObjectives[o].name});
             break;
         case Elect::StrategyCard:
             for (int c = 0; c < kStrategyCards; ++c) v.push_back({c, std::to_string(c + 1) + " " + strategyName(c)});
@@ -472,13 +501,20 @@ std::vector<std::pair<int, std::string>> voteOutcomes(const Game& g, int a) {
 }
 
 // Encrypted Trade Hub (Edyn, 0.44.5 with fixes 9): its owner, a party to the deal, may exhaust it to let 1 relic be
-// exchanged (the agenda part isn't implemented - laws don't change hands in this game)
+// exchanged - or (fixes 28, owner 2026-11-15) 1 agenda: a law the giver holds (DealSide::laws)
 int encryptedHubOf(const Game& g, int a, int b) {
     if (g.fixes < 9 || !(g.modules & kModDiscordant)) return -1;
     const int t = findTech("dsedyny");
     for (int q : {a, b})
         if (q >= 0 && q < g.numPlayers && ownsTechKey(g, q, "dsedyny") && !g.players[size_t(q)].techExhausted(t)) return q;
     return -1;
+}
+
+std::vector<int> lawsHeldBy(const Game& g, int p) {
+    std::vector<int> v;
+    for (const Law& l : g.laws)
+        if (p >= 0 && l.owner == p && l.agenda >= 0 && l.agenda < kAgendaCount) v.push_back(l.agenda);
+    return v;
 }
 
 std::string checkDeal(const Game& g, const Deal& d, bool counter) {
@@ -514,10 +550,28 @@ std::string checkDeal(const Game& g, const Deal& d, bool counter) {
             if (r < 0 || r >= kRelicCount || !pl.hasRelic(r)) return playerName(g, who) + " doesn't hold that relic.";
             if (std::strcmp(kRelics[r].key, "thesilverflame") && !blackMarketPair(g, a, b)) {
                 if (encryptedHubOf(g, a, b) < 0) return "Relics can only be traded with Black Market Dealings (or The Silver Flame).";
-                int n = 0;  // Encrypted Trade Hub: one relic
-                for (const DealSide* x : {&d.give, &d.get})
+                int n = 0;  // Encrypted Trade Hub: one relic (or agenda)
+                for (const DealSide* x : {&d.give, &d.get}) {
                     for (int y : x->relics) n += y >= 0 && y < kRelicCount && std::strcmp(kRelics[y].key, "thesilverflame") ? 1 : 0;
-                if (n > 1) return "Encrypted Trade Hub lets only 1 relic change hands.";
+                    n += int(x->laws.size());
+                }
+                if (n > 1) return d.give.laws.empty() && d.get.laws.empty() ? "Encrypted Trade Hub lets only 1 relic change hands."
+                                                                            : "Encrypted Trade Hub lets only 1 relic or agenda change hands.";
+            }
+        }
+        if (!s.laws.empty()) {  // Encrypted Trade Hub (fixes 28): 1 agenda - a law the giver holds
+            if (g.fixes < 28 || encryptedHubOf(g, a, b) < 0) return "Agendas can only change hands with Encrypted Trade Hub.";
+            int n = 0;
+            for (const DealSide* x : {&d.give, &d.get}) {
+                n += int(x->laws.size());
+                if (!blackMarketPair(g, a, b))
+                    for (int y : x->relics) n += y >= 0 && y < kRelicCount && std::strcmp(kRelics[y].key, "thesilverflame") ? 1 : 0;
+            }
+            if (n > 1) return "Encrypted Trade Hub lets only 1 relic or agenda change hands.";
+            for (int ag : s.laws) {
+                bool held = false;
+                for (const Law& l : g.laws) held = held || (l.agenda == ag && l.owner == who);
+                if (!held) return playerName(g, who) + " doesn't hold that agenda.";
             }
         }
         for (int t : s.techs) {  // Age of Commerce: a non-faction technology the giver owns and the receiver doesn't
@@ -554,7 +608,8 @@ std::string checkDeal(const Game& g, const Deal& d, bool counter) {
             const int rcv = who == a ? b : a;
             if (s.debt < 0 || !(g.modules & kModDiscordant) || !isFaction(g, rcv, "vaden"))
                 return "Control tokens only go on the Vaden Banking Clans' sheet.";
-            if (g.dsDebt[who] + s.debt > 6) return "The Vaden's sheet holds at most 6 of " + playerName(g, who) + "'s tokens.";
+            if (g.dsDebt[who] + s.debt > vadenDebtCap(g))
+                return "The Vaden's sheet holds at most " + std::to_string(vadenDebtCap(g)) + " of " + playerName(g, who) + "'s tokens.";
         }
         if (!s.captured.empty()) {
             // (0.44.8, fixes 12: anyone holding captured units may give them back - a Nekro with a copied Vortex)

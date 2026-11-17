@@ -59,6 +59,8 @@ decline: ...
 counter: <1 line - it refuses as offered but sends its own terms back>
 betray: <1 line - it breaks a promise to / turns on {them}; spoken TO the victim>
 betrayed: <1 line - its answer when {them} betrays it; spoken TO the betrayer>
+yield: <2 lines (owner 2026-11-15) - it gives in to {them}'s threat and pays: grudging, never pleased; it will remember>
+yield: ...
 ```
 - `{them}` is replaced by the OTHER faction's `name:` (the listener). Use it in at least one offer line and in
   both betray / betrayed lines (they must name the other side). Elsewhere optional, at most once per line.

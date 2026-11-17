@@ -12,6 +12,7 @@
 //   Tokens:  [tactic, fleet, strategy] totals after the change
 //   Pay:     picks = planets to exhaust, number = trade goods
 #pragma once
+#include <functional>
 #include <map>
 #include <string>
 #include <vector>
@@ -181,6 +182,8 @@ private:
     uint8_t cannotVote_ = 0;     // Assassinate Representative / riders: can't vote on this agenda
     int lastVoter_ = -1;         // Hack Election
     bool readyOnly3_ = false;    // Checks and Balances (Against)
+    int miscountLaw_ = -1;       // (fixes 30) Miscount Disclosed: the law voted on again, still in play until the revote resolves
+    bool optionalResearch_ = false;  // (fixes 30) "may research" (Wormhole Research, Ixthian Artifact): Don't research is offered
     bool piUsed_[kMaxPlayers] = {};  // Predictive Intelligence votes this agenda
     bool freeSecondary_ = false; // Galactic Crisis Pact
     std::vector<int> retreatedFrom_;  // players who retreated out of the current combat
@@ -192,7 +195,7 @@ private:
         std::vector<int8_t> bonus9; // extra hits when this die shows a natural 9 or 10 (J.N.S. Hylarim)
         bool valor = false;         // Valor (Kjalengard): each natural 10 makes 1 more hit
     };
-    enum class RollKind { Combat, AFB, Bombard, Cannon };
+    enum class RollKind { Combat, AFB, Bombard, Cannon, Rift, Ability };  // (Rift / Ability: fixes 28, the Myko-Mentori review - Omen dice only)
     void recount(RollResult& r) const;
 
     // ---- action cards (rules_actions.cpp) ----
@@ -242,6 +245,8 @@ private:
     void resolveOutcome(int a, int outcome, const std::vector<int>& votedFor, const std::vector<int>& votes);
     void addLaw(int a, int owner, int target);
     void discardLaw(int lawIndex, const std::string& why);
+    void liftLaw(int agenda);  // a law taken out of play without going to the discard pile (Miscount Disclosed)
+    bool gainableTech(int p, int t) const;  // "gain any technology" lists (Research Grant Reallocation, Maw of Worlds)
     void politicsPeek(int p);
     void applyPendingEffects();
     void agendaSecrets(int p);
@@ -265,6 +270,13 @@ private:
     void exhaustRelic(int p, const char* key);
     void checkNexus(int sys);
     void legendaryAbilities(int p);
+    std::vector<Option> legendaryChoices(int p, int x);  // (the Free Systems review) what planet x's end-of-turn ability offers p
+    bool legendaryResolve(int p, int x, int c);          // ... resolves choice c for p; false = backed out (nothing spent)
+    void cordoEndOfTurn(int p);                          // (fixes 28) Cordo Haved at the end of a turn
+    int cordoUser(int p, const std::string& what);       // ... who lends it to p now (p itself, a person asked, a promise), -1
+    bool cordoLegendary(int x, int p);                   // ... planet x's legendary card can be copied for p (anyone's; p's only if exhausted)
+    void cordoSpend(int user, int p);                    // ... exhausted (and a promise kept)
+    bool passAbility(int p, int x, bool cordo, const std::function<void()>& spend);  // Faunus / Ordinian / Garbozia / Industrex
     // Uncharted Space legendary planets (0.33.0)
     std::vector<int> echoSystems(int p) const;
     std::vector<int> prismPurgeable(int p) const;
@@ -404,7 +416,7 @@ private:
     void plotsWithinPlots(int p, const char* actionKey);         // score other players' secrets (nullptr: status phase)
     void blackOps(int receiver, int note);                       // Black Ops received: purged
     void becomeObsidian(int p);                                  // Puppets of the Blade
-    void siphon(int q, int gained);                              // the puppet gained commodities
+    void siphon(int q, int gained, bool mic = true);             // the puppet gained commodities (+ fixes 28: micGained)
     void extractCopy(int q, int tech);                           // the puppet gained a technology
     void firmamentGained(int p, int tech);                       // Planesplitter: the Fracture comes
     int assail(int p, int opp) const;                            // +1 to rolls against the puppet
@@ -437,6 +449,8 @@ private:
     int dsUncancellable(int shooter, int victim, int sys, const RollResult& r) const;
     void dsShipsLost(int victim, int opp, int sys, const Force& before);
     int dsCancelHits(int victim, int opp, int sys, int planet, int hits);
+    int dsLorena(int victim, int sys, int hits, bool barrage);  // (fixes 28) Queen Lorena - also the anti-fighter barrage's hits
+    void cannonDefense(int p, int sys, int pl, bool matriarch);  // space cannon defense against p's ground forces committed to pl
     void dsWonCombat(int winner, int loser, int sys, bool space);
     void dsGroundCombatStart(int att, int def, int planet);
     void dsGroundCombatOver(int att, int def, int planet, int winner);
@@ -475,6 +489,8 @@ private:
     void ds2CombatMods(int p, int opp, int sys, int planet, bool space, RollMods& m);
     void dsBombardDice(int p, int sys, RollResult& r, int mod, const Force& shooters);
     void dsBombardHits(int p, int q, int sys, int pl, RollResult& r);
+    void dsBombardBefore(int p, int sys, int pl, const Force& shooters);  // (fixes 29) Hyperkinetic Ordnance before the roll
+    int worldCrackerDice(int side, int sys) const;  // (fixes 29) World-Cracker: its unit ability rolls too (bombardment, barrage)
     void dsInvasionStart(int p, int sys);
     void dsGroundRollers(int att, int def, int planet, Force& fa, Force& fd);
     int dsCannonDice(int q, int p, int sys) const;
@@ -491,7 +507,7 @@ private:
     void dsStrategySpent(int p);
     bool dsStoneEmbrace(int p);
     void dsDockPlaced(int p, int planet);
-    void dsAfterMovement(int p, int sys, bool destroyerMoved);
+    void dsAfterMovement(int p, int sys, bool destroyerMoved, const Force* moved = nullptr);
     void dsAfterProduction(int p, int sys);
     void ds2TurnEnd(int p);
     void dsAgendaPhaseStart();
@@ -542,6 +558,16 @@ private:
     void ds3AfterMovement(int p, int sys, bool flagshipMoved);
     void dsLanded(int p, int sys, const std::vector<int>& landed);
     void ds3Fragments(int p);
+    void fragmentGained(int p);  // (fixes 28, the Bentor review) Ancient Blueprints the moment a relic fragment is gained
+    void nobin28(int p, int sys);  // (fixes 28, the Celdauri review) George Nobin at the end of any player's tactical action
+    void kkavras28(int p);         // (fixes 28, the Cheiran review) Operator Kkavras at the end of any player's turn
+    bool thakt28(int p);           // (fixes 28, the Cheiran review) Thakt Clqua: a place for each unit
+    int lithodaxAfbDice(int side, int sys) const;  // (fixes 28) Lithodax: 1 more ANTI-FIGHTER BARRAGE die beside a structure
+    void autoneticAfter(int p);     // (fixes 28, the Cymiae review) Autonetic Memory's card from the discard pile after the draw
+    void cyberneticMadness(int p);  // (fixes 28) Cybernetic Madness: discard 1 after taking cards from the discard pile
+    void skhot28(int p);            // (fixes 28) Skhot Unit X-12 for any player's discard
+    void jgin28(int p, int sys, const std::vector<int>& landed);  // (fixes 28, the Dih-Mohn review) Jgin Faru for any player's invasion
+    void salGavda28(int p);  // (fixes 28, the Florzen review) Sal Gavda: same-system planets, any player's turn
     void ds3AttachNotes(int p, const char* only = nullptr);
     void dsGlory(int p, int sys, bool moveOnly, const std::string& why);
     std::vector<int> ds3Explored_;  // Secret Maps: planets the Bentor explored this tactical action
@@ -573,6 +599,7 @@ private:
     void ds4Landed(int p, int sys, const std::vector<int>& landed);
     void ds4AfterMovement(int p, int sys);
     void ds4Produced(int p, int sys, const Force& made);
+    void ds4Walik28(int p, int sys, const Force& made);  // (fixes 28) Walik for any player, any produced unit
     bool dsDiscarded(int p, int card, bool played);    // Cybernetic Madness (true = purged), Skhot Unit X-12
     int dsAutonetic(int p, int n);                     // Autonetic Memory: cards still to draw
     void dsSecondaryDone(int q, int card);             // Fine Print
@@ -581,16 +608,28 @@ private:
     bool dsRetreatCapture(int p, int sys);             // Nightingale V
     void ds4UnitRolled(int roller, int target, int sys, RollResult& r, const char* what);
     bool dsEradica(int p, int sys) const;              // Eradica: removed instead of destroyed
+    // (fixes 29, the Nivyn review) Voidwake Missiles (the unit's whole roll), the Voidflare Warden (which mech), Suldhan Wraeg before
+    // the unit ability is used (any player's unit; rolls, Sustain Damage, Planetary Shield)
+    void voidwake29(int side, int sys, int planet, RollResult& r);
+    void warden29(int nv, int p, int sys);
+    void salSparrow29(int p, int sys);  // (fixes 29, the Nokar review) Sal Sparrow after any player's movement
+    void baggil29(int p, const std::vector<int>& planets);  // (fixes 29, the Olradin review) Baggil Wildpaw for any player
+    int threatAt29(int p, int sys) const;
+    int wraeg29(int owner, int ben, int sys, std::vector<std::pair<int, int>> cands, int kind, const char* ability);
+    void wraegRoll29(int owner, int ben, int sys, Force& units, RollKind kind, RollMods* mods);
+    bool wraegShield29(int owner, int ben, int sys, int planet);
     void ds4Options(int p, std::vector<Option>& o);
     bool ds4Action(int p, Ab ab);
     void dsReturnCaptured(int p, UnitType t, int k, int sys, int planet);
     Force ds4StartForce_;                              // Shrouded Skirmishers: the Kollecc ships here at the activation
+    Force ds4StartAll_[kSides];                        // (fixes 28) every side's ships here at the activation (a defender's Skirmishers)
     bool acCancelled_ = false;  // playActionCard: the card being discarded was cancelled (Cybernetic Madness doesn't purge it)
     // Discordant Stars batch 5 (rules_ds5.cpp, 0.41.0)
     void ds5CombatMods(int p, int opp, int sys, int planet, bool space, RollMods& m);
     void ds5SpaceCombatStart(int att, int def, int sys);
     void ds5GroundCombatStart(int att, int def, int planet);
     void ds5AfterCombatRolls(int att, int def, int sys, int planet, RollResult& rA, RollResult& rD);
+    void skarvald28(int act, RollResult& r, int sys);  // (fixes 28) Skarvald & Torvar for any active player
     void ds5RoundEnd(int att, int def, int sys, bool space);
     void ds5UnitsDestroyed(int p, UnitType t, int k, int sys, int planet, int byPlayer);
     void ds5WonCombat(int winner, int loser, int sys, bool space);
@@ -612,11 +651,19 @@ private:
     int ds5VoteBonus(int p, const std::vector<int>& spent);  // Envoy Network
     int ds5CancelHits(int victim, int opp, int sys, int planet, int hits);
     void dsAfterPrimary(int p, int card);                 // Grace (Edyn)
-    void dsReplenished(int p, bool replenish = true);                         // Military Industrial Complex (Axis)
-    void dsOmen(int p, RollKind kind, RollResult& r);     // Divination, Lactarius Indigo (Myko-Mentori)
+    void dsReplenished(int p, bool replenish = true, int gained = 1);         // Military Industrial Complex (Axis)
+    void militaryIndustrial(int p);                                           // its Axis Orders bought with commodities
+    void micGained(int p, int gained);                                        // (fixes 28) after any other commodity gain
+    void dsOmen(int p, RollKind kind, RollResult& r, const char* what = nullptr);  // Divination, Lactarius Indigo (Myko-Mentori)
+    void omen28(int p, RollKind kind, RollResult& r, const char* what);  // (fixes 28) both before the roll, one die each
+    int amanita(int victim, int sys, int hits, bool barrage);  // Amanita Muscaria (Myko-Mentori commander)
+    int mykoRoll(int p, int sys, int dice, int need, int unit, const char* what);  // (fixes 28) a Myko-Mentori ability roll: hits
     void dsAfterRoll(int p, RollKind kind, RollResult& r);  // 0.43.0: Lactarius Indigo and Gift of Insight on any roll
     bool dsKadryn(int p, int scorable);                   // Kadryn (Edyn commander): a secret instead of a public
     void dsSoulCaged(int p, int leader);                  // Soul Cage: another player's hero attached instead of purged
+    int cageHolder(const char* heroKey) const;            // (fixes 28) the Myko-Mentori whose Soul Cage holds that hero (-1)
+    bool caged(int p, const char* heroKey) const { return p >= 0 && cageHolder(heroKey) == p; }
+    bool phantomGoing_ = false;                           // (fixes 28) the Phantom's ships are on their way out (Soul Cage)
     void dsRetreatExtra(int p, int sys, std::vector<int>& out) const;  // Nokar Navigator, Jack Hallard, Freelance Outfit
     int dsDiplomats(int p, int amount, bool influence, const std::string& why, int& planet);  // Diplomats (Free Systems)
     void ds5Options(int p, std::vector<Option>& o);
@@ -625,6 +672,7 @@ private:
     void ghemSync();                                      // The Lady & The Lord: keep track of the Lady
     void extraAction(int q);                              // Allant: 1 action out of turn
     int dsEdynGuess_ = -1;                                // Radiance / Unity Algorithm: the Edyn's prediction
+    bool dsUnityStaked_ = false;                          // (fixes 28) this agenda's Edyn prediction is the phase's Unity Algorithm one
     int dsUnityGuess_[kMaxPlayers] = {-1, -1, -1, -1, -1, -1, -1, -1};  // 0.44.6: Unity Algorithm copies' predictions
     int dsPredictionOf(int p) const;  // (the AI votes for it)
     int dsEdynRider_[kMaxPlayers] = {-1, -1, -1, -1, -1, -1, -1, -1};  // Edyn Rider predictions
@@ -647,6 +695,8 @@ private:
     void ds6Control(int planet, int p, int old);
     void ds6TurnStart(int p);
     void ds6TurnEnd(int p);
+    bool ds6FeintAvailable(int p) const;  // Feint (fixes 28): free option 646
+    bool ds6RevealFeint(int p);
     void ds6StatusStart();
     void ds6Options(int p, std::vector<Option>& o);
     bool ds6Action(int p, Ab ab);
@@ -659,7 +709,8 @@ private:
     void ds7InvasionStart(int p, int sys);
     void ds7Landed(int p, int sys, const std::vector<int>& landed);
     void ds7Activated(int p, int sys);
-    void ds7AfterMovement(int p, int sys);
+    void ds7AfterMovement(int p, int sys, int movedInfantry = 0);
+    bool wrathShielded(int q, int sys, int x) const;  // (fixes 28) Wrath Machina: no bombardment through Planetary Shield  // (fixes 28: Assault Machina - the infantry that moved)
     void ds7EndTactical(int p, int sys);
     void ds7Produced(int p, int sys, const Force& made);
     int ds7ProductionBonus(int p, int sys);
@@ -789,6 +840,7 @@ private:
     bool dsbtAction(int p, int ab);
     bool dsbtLanefirExplore(int p);
     void dsbtTribune(int p, RollResult& r);
+    void dsbtTribuneBombard(int p, int sys, const RollResult& r);  // (fixes 28) a damaged Tribune's bombardment hit repairs it
     // batch 2
     void exploreFrontierDeck(int p, int sys);         // the frontier deck there, token or not
     bool dsbtExploreInstead(int p, int planet);       // Historian Conclave: the frontier deck instead (true = done)
@@ -802,6 +854,9 @@ private:
     void dsbtSpaceCombatStart(int att, int def, int sys);  // Mirage Craft
     void dsbtInfantryDied(int owner, int planet, int k);   // Dreamwalkers: captured
     bool dsbtSlingsCoexist(int p, int planet, int n);  // Mended Grove
+    void dsGaleChoose(int p, int sys);                  // (fixes 28) Splintering Gale: the up to 2 ships, at the start of the combat
+    void ds3Merkismathr(int att, int def, int sys);     // (fixes 28) Merkismathr Asvand at the start of any combat
+    bool dsSlingsAt(int p) const;                       // (fixes 28) p's bombardment may target undefended planets (Meteor Slings)
     // batch 3
     void dsbtShipsLost(int victim, int opp, int sys, const Force& before);  // Exodus Engineering
     bool dsbtQuickRetreat(int who, int sys);           // Raiding Parties: the retreat at once (true = done)
@@ -868,6 +923,8 @@ private:
     int combatSys_ = -1;               // system of the current space combat
     int ipswitch_ = -1;                // player using Ipswitch, Loose Cannon in the current space combat
     void gainTG(int p, int n);         // every trade good gain goes through here (Pillage)
+    void gainTGNotSupply(int p, int n);  // (fixes 28) commodities turned into trade goods / another player's: no Artuno
+    bool convertTG_ = false;
     bool canUseAgent(int who, const char* factionKey) const;  // own agent ready, or Ssruu (Yssaril)
     void spendAgent(int who, const char* factionKey);
     void mitosis();                          // start of the status phase
@@ -1039,6 +1096,47 @@ private:
     int16_t mendosaQuiet_[kMaxPlayers] = {};    // Captain Mendosa for another player (fixes 27): the same
     int16_t sucabanQuiet_[kMaxPlayers] = {};    // Doctor Sucaban for another player's research (fixes 27): the same
     int16_t briarQuiet_[kMaxPlayers] = {};      // Dame Briar for another player's units (fixes 27): the same
+    int16_t clodhoQuiet_[kMaxPlayers] = {};     // Clodho for another player's exploration (fixes 28, the Augurs review): the same
+    int16_t nobinQuiet_[kMaxPlayers] = {};      // George Nobin for another player's tactical action (fixes 28, the Celdauri review): the same
+    int16_t kkavrasQuiet_[kMaxPlayers] = {};    // Operator Kkavras for another player's turn (fixes 28, the Cheiran review): the same
+    int16_t skhotQuiet_[kMaxPlayers] = {};      // Skhot Unit X-12 for another player's discard (fixes 28, the Cymiae review): the same
+    int16_t jginQuiet_[kMaxPlayers] = {};       // Jgin Faru for another player's invasion (fixes 28, the Dih-Mohn review): the same
+    int16_t salQuiet_[kMaxPlayers] = {};        // Sal Gavda for another player's turn (fixes 28, the Florzen review): the same
+    int16_t cordoQuiet_[kMaxPlayers] = {};      // Cordo Haved for another player's turn (fixes 28, the Free Systems review): the same
+    int16_t skarvaldQuiet_[kMaxPlayers] = {};   // Skarvald & Torvar for another player's hits (fixes 28, the Ghemina review): the same
+    int16_t bececeQuiet_[kMaxPlayers] = {};     // Becece for another player's production (fixes 28, the Ghoti review): the same
+    int16_t durranQuiet_[kMaxPlayers] = {};     // Durran for another player's production (fixes 28, the Gledge review): the same
+    int16_t udoshQuiet_[kMaxPlayers] = {};      // Udosh B'rtul for another player's influence (fixes 28, the Khrask review): the same
+    int16_t merkQuiet_[kMaxPlayers] = {};       // Merkismathr Asvand at other players' combats (fixes 28, the Kjalengard review): the same
+    int16_t dustQuiet_[kMaxPlayers] = {};       // Captain Dust at other players' turns (fixes 28, the Kollecc review): the same
+    int16_t omniQuiet_[kMaxPlayers] = {};       // Omniscience Field at others' activations (fixes 28, the Kolume review): the same
+    int16_t lucreiaQuiet_[kMaxPlayers] = {};    // Queen Lucreia at others' ground combats (fixes 28, the Kortali review): the same
+    int16_t toxQuiet_[kMaxPlayers] = {};        // Tox at others' lost / drawn ground combats (fixes 28, the Kyro review): the same
+    int16_t vassaQuiet_[kMaxPlayers] = {};      // Vassa Hagi at others' explorations (fixes 28, the Lanefir review): the same
+    int16_t vasraQuiet_[kMaxPlayers] = {};      // Vasra Ivo at the end of others' turns (fixes 28, the Li-Zho review): the same
+    int16_t logicQuiet_[kMaxPlayers] = {};      // Logic Machina after others' unit upgrades (fixes 28, the Mirveda review): the same
+    int16_t walikQuiet_[kMaxPlayers] = {};      // Walik at others' production (fixes 28, the Mortheus review): the same
+    int16_t lactQuiet_[kMaxPlayers] = {};       // Lactarius Indigo before others' rolls (fixes 28, the Myko-Mentori review): the same
+    int16_t omenQuiet_[kMaxPlayers] = {};       // Divination before a person's own rolls (fixes 28): "roll as usual" for the round
+    int16_t wraegQuiet_[kMaxPlayers] = {};      // Suldhan Wraeg before others' unit abilities (fixes 29, the Nivyn review): the same
+    int16_t wardenQuiet_[kMaxPlayers] = {};     // the Voidflare Warden at activations (fixes 29): the same
+    int16_t sparrowQuiet_[kMaxPlayers] = {};        // Sal Sparrow after others' movement (fixes 29, the Nokar review): the same
+    int16_t davishQuiet_[kMaxPlayers] = {};     // Davish S'Norri at others' invasions (fixes 29, the Tnelis review): the same
+    int16_t rondQuiet_[kMaxPlayers] = {};       // Rond Bri'ay after others' production (fixes 29, the Roh'Dhna review): the same
+    int16_t yudriQuiet_[kMaxPlayers] = {};      // Yudri Sukhov at others' turns (fixes 29, the Vaden review): the same
+    int16_t yvinQuiet_[kMaxPlayers] = {};       // Yvin Korduul when others gain planets (fixes 29, the Vaylerian review): the same
+    int16_t solisQuiet_[kMaxPlayers] = {};      // Solis Morden at others' research (fixes 29, the Veldyr review): the same
+    int16_t priestessQuiet_[kMaxPlayers] = {};  // Priestess Tuh after others' research (fixes 29, the Zealots review): the same
+    int16_t zelianAQuiet_[kMaxPlayers] = {};    // Zelian A at others' invasions (fixes 29, the Zelian review): the same
+    bool hyperPending_ = false;                 // (fixes 29) Hyperkinetic Ordnance played on the coming bombardment roll
+    std::vector<std::pair<int, int>> impactorCommit_;  // (fixes 29) Impactor I: planet, infantry that bombarded it (they must commit)
+    bool noFavor_ = false;                      // (fixes 29, the Zealots review) dsWaivers: Favor of Rhodun already weighed apart
+    int16_t baggilQuiet_[kMaxPlayers] = {};     // Baggil Wildpaw after others' planets are exhausted (fixes 29, the Olradin review): the same
+    int8_t insurgentTurn_ = -1;                 // (fixes 29) Insurrectionist Networking: the Olradin resolved a policy ability this turn
+    bool insurgentAsk_ = false;                 //   ... and it is asked now (the end of their turn)
+    bool captureAnyway_ = false;                // (fixes 28) Dreamwalkers: captures even while blockaded
+    uint32_t ds3Fought_[kMaxPlayers] = {};      // (fixes 28, the Kjalengard review) the unit types each side fought this combat with (Glory)
+    bool autoneticLater_[kMaxPlayers] = {};     // (fixes 28) Autonetic Memory chose the discard pile: after the draw
     int16_t tellurianQuiet_[kMaxPlayers] = {};  // Tellurian for another player's units (fixes 27): the same
     int16_t zeuQuiet_[kMaxPlayers] = {};        // Z'eu (Thunder's Edge) on another player's token (fixes 27): the same
     bool zeuBusy_ = false;
@@ -1110,6 +1208,7 @@ private:
     // and the promise as kept).
     void agentFor(int user, int b) { curFor_ = user != b ? b : -1; }
     void agentDone(int user, int b);
+    void agentUsedFor(int owner, int q);  // (fixes 28) an agent used on another player: a promise to them kept
     void promiseRoundEnd();
     void loansDue();
     void agendaNegotiations(const std::vector<int>& order);
@@ -1169,7 +1268,7 @@ private:
              int tradeGoodsToo = 0, bool mixed = false);
     void gainVP(int p, int n, const std::string& why);
     void loseVP(int p, int n, const std::string& why);
-    void gainTokens(int p, int n, bool redistribute, const std::string& why);
+    void gainTokens(int p, int n, bool redistribute, const std::string& why, const std::string& prompt = "");
     int tokensInPools(int p) const;
     int tokensOnBoard(int p) const;
     int reinforcementTokens(int p) const;
@@ -1246,7 +1345,7 @@ private:
     void politics(int p, bool primary);
     void construction(int p, bool primary);
     void trade(int p, bool primary);
-    void tradeX1(int p, std::vector<int>& done);  // 0.17.0: the community X-1 (Setup::trade bit 3)
+    bool tradeX1(int p, std::vector<int>& done);  // 0.17.0: the community X-1 (Setup::trade bit 3); true = the offer was asked
     void replenished(int p, int gained = 0);  // gained: how many commodities (Siphon)
     void warfare(int p, bool primary);
     void technology(int p, bool primary);
@@ -1259,7 +1358,7 @@ private:
     bool inCustodia_ = false;
     bool inOcean_ = false;                            // pay(): The Triad already offered                             // researchStep: only this colour (Specialist Compounds)
     void readyPlanets(int p, int n);
-    void placeStructure(int p, int sys, bool allowDock, bool allowPds, bool optional);
+    void placeStructure(int p, int sys, bool allowDock, bool allowPds, bool optional, const std::string& prompt = "");
 
     // ---- objectives (rules_objectives.cpp) ----
     void scoringStep();

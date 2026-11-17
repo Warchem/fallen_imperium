@@ -1,5 +1,321 @@
-RULES-CHECK - version 0.59.30
+RULES-CHECK - version 0.60.0
 =============================
+
+0.60.0 (the agenda and relic passes - your go-ahead of 2026-11-17 14:59 and
+15:32). Every fix below applies to games started with this version; older
+saves play as before.
+Settled with you (no answer needed):
+A1. Committee Formation is offered after the "after an agenda is revealed"
+    window (riders, Assassinate Representative, ...), just before the vote -
+    a rider can be played on an election the Committee decides.
+A2. Space stations (Thunder's Edge) can't be elected for "Elect Planet"
+    agendas.
+A3. Miscount Disclosed's revote: no "when an agenda is revealed" cards
+    (Veto, ...) - no card is drawn.
+A4. Heart of Ixth changes combat and unit-ability dice only (not the
+    Ixthian Artifact's roll, the Silver Flame's, gravity rifts...), and the
+    E6-G0 Network's draw is used on your own turn - kept as they were.
+Answered (owner 2026-11-17 15:54: "yes and it's fine" to A5-A8 - kept as described):
+A5. JR-XS455-O (Codex II): the card text we have (AsyncTI4) says the chosen
+    player "may spend 3 resources to place a structure"; if they don't, they
+    gain 1 trade good. It readies in the status phase like the other relics.
+    If your card reads differently, tell me.
+A6. Nano-Forge (Codex II): the planet becomes legendary for every rule
+    (Shard of the Throne, the Stellar Converter can't target it, objectives
+    that count legendary planets) but has no legendary ability card. The
+    attachment stays with the planet when it changes hands. OK?
+A7. Dynamis Core: the computer players keep it (2 more commodities each
+    refill) and cash it in from round 6 or in their last round. OK?
+A8. Bombardment on the Voidfall title now lands anywhere on the field,
+    including in the middle behind the menu (you see the flash, the pillar of
+    light and the shake). OK, or keep it off the middle?
+
+0.59.70 (the new title screen): no rules changed in this part - two
+questions about the opening:
+O1. The opening (black screen, the Lazaxian name turning into English, the
+    pan down to the planet) plays once each time the game starts, and any
+    button skips it. Would you like an Options setting to turn it off (or
+    to play it only the first time after an update)?
+O2. The title music now starts when the name's last sound has finished
+    (about 9 seconds in) and fades in over 2.5 seconds; skipping starts it
+    at once. OK, or should it come in sooner / later?
+The rest of this version is the work from your 0.59.50 go-ahead below
+(N1-N49, the last ten Discordant Stars factions and the Crimson ruling),
+released here for the first time, plus checkpoint 2: as you said, the
+Sardakk bots now research Valkyrie Particle Weave more often and the Creuss
+bots place their wormhole tokens to unlock Sai Seravus; the other six
+bot switches of that checkpoint stay off.
+
+0.59.50 (unattended faction reviews - your go-ahead of 2026-11-16 23:28:
+"Living References come first, then the DS reference second, and lastly the
+Async version. If you still feel unsure, go ahead and make the Rules check").
+The last ten Discordant Stars factions were reviewed while you were away; the
+fixes are in, and these are the calls I made on the way. They apply to games
+started with this version (older saves play as before).
+
+The Nivyn Star Kings
+N1. Home system: your Reference says "Gravity Rift" (AsyncTI4 agrees); our
+    tile had no anomaly. It is a gravity rift now: other players' ships roll
+    when they leave it and everyone gets the +1 move out of it; the Nivyn
+    still never roll. OK?
+N2. Suldhan Wraeg (agent) now works as its card says - BEFORE the ability is
+    used, for any player's unit, by whoever can use the agent (asked in
+    initiative order; a person may answer "don't ask again this round").
+    Covered: Space Cannon (offense, defense, Coil Overcharge), Anti-Fighter
+    Barrage, Bombardment (and the L1Z1X's Harrow), Sustain Damage (the hit
+    then destroys that unit) and Planetary Shield (only when a single unit
+    gives the planet its shield - with two PDS the other one still holds).
+    Not covered: DEPLOY (a unit placed by its own ability - tell me if you
+    want it), extra dice that don't come from a unit (Plasma Scoring's die moves to another
+    unit), and the automatic Sustain Damage when every unit is hit anyway.
+    "In a system that contains or is adjacent to an anomaly" is taken as
+    the system where the ability is used against (the active / combat
+    system). OK, or should the firing unit's own system count too?
+N3. Voidwake Missiles: the chosen unit's whole combat roll is rerolled
+    (hits too), not only its misses. The game doesn't track which die
+    belongs to which ship of a type, so the dice of that type with the
+    fewest hits are taken as that unit's (the ship a player would pick).
+N4. Eradica (flagship) says "you MAY remove it from the game board
+    instead". The game always removes other players' units (so nothing
+    "when destroyed" happens for them) and never the Nivyn's own, without a
+    question - a question for every unit destroyed in its system would come
+    up many times a combat. Keep it automatic, or ask a person each time?
+N5. Nivyn Guidance: we ignore every anomaly's MOVEMENT effects during that
+    activation (a gravity rift's +1 move goes with them; a nebula's combat
+    bonus stays). It is offered only when the active system has or is next
+    to an anomaly, and the card goes back at once (the effect still lasts
+    the activation). The computer players never play it (checked again in
+    the second checkpoint). OK?
+N6. Krill Drakkon (hero) now stays face up until the end of the round and
+    is purged then - so the Myko-Mentori's Soul Cage can take it at that
+    moment, as with Darktalon Treilla. If the Myko-Mentori resolve Krill
+    Drakkon through their Soul Cage, they damage the units but don't get the
+    "adjacent to the Wound" movement (that part is keyed to the Nivyn).
+
+The Nokar Sellships
+N7. Hired Guns stays as you designed it (D110: offered when another player
+    activates a system the Nokar's ships can reach, the price agreed in
+    Negotiations, the ships fly in and become the buyer's). The card text in
+    your Reference is now what the game shows, and it differs: no price, any
+    3 of the Nokar's ships, they are "also" the active player's for the
+    combat, and at the end the active player may replace those in the
+    active system with their own, the rest removed. Keep D110, or switch to
+    the card?
+N8. Sal Sparrow (agent) now comes after ANY player's movement (not only the
+    Nokar's own, or a player it was promised to), and the Nokar pick which
+    player with ships in the active system gets the destroyer - the active
+    player or a defender. A person may answer "don't ask again this round".
+    The transaction after it is offered when it's another player. OK?
+N9. Starsails (hero) stays face up until the end of the round and is purged
+    then (like Krill Drakkon and Darktalon Treilla - the Soul Cage can take
+    it then). Nokar Navigator goes back to the Nokar at once; its retreat
+    reach still lasts the whole combat.
+
+The Olradin League
+N10. Exemplar (mech) had its two sides the wrong way round: with 2 or more
+    "+" policies it is Exemplar Bonum, +1 INFLUENCE; with 2 or more "-"
+    policies Exemplar Malus, +1 RESOURCE (your Reference's two sides and
+    AsyncTI4 agree). Fixed.
+N11. The policies' "Once per action": every player's turn is a new action,
+    so an Olradin planet exhausted during another player's action (paying
+    for a secondary ability, say) can use a policy again - before, it was
+    once from one Olradin turn to the next. Outside the action phase: once
+    in the status phase and once for each agenda. OK?
+N12. Baggil Wildpaw (agent) now works for any player who exhausts a
+    cultural, hazardous or industrial planet (before: only the Olradin, or a
+    player it was promised to). That comes up a lot, so a person holding it
+    gets "don't ask again this round". The computer Olradin use it only for
+    themselves or a player they promised it to. OK?
+N13. Plunder: "remove 1 unit from that planet" - any of their units there
+    (infantry, mech, PDS or space dock), the player's choice; it was
+    infantry only.
+N14. Rallypoint (flagship): the +1 move now needs the flagship to move in
+    that same move (before, it was enough that it could). Control: no
+    transactions at all in the agenda phase (Temporal Command Suite doesn't
+    open one either - "cannot").
+N15. Insurrectionist Networking (breakthrough, Thunder's Edge): asked at the
+    end of the Olradin's own turn, when a policy ability was resolved in
+    that turn (it used to ask right after any policy ability, in anyone's
+    turn).
+
+The Roh'Dhna Mechatronics
+N16. Rond Bri'ay (agent) now comes after ANY player's units use PRODUCTION
+    (before: only the Roh'Dhna's own, or a player it was promised to); a
+    person holding it gets "don't ask again this round". The computer
+    Roh'Dhna use it only for themselves or a player they promised it to.
+N17. B-Unit 205643a (commander) now also works for a player holding the
+    Roh'Dhna's Alliance (it was the Roh'Dhna only).
+N18. Omni-Forgeworld (The Prodigy's Triumph): your Reference has two
+    versions - capacity 6 in the faction's breakthrough, capacity 8 and "a
+    station with a resource value of 2" in the list below it. The game has
+    capacity 8 and your earlier answer B9 (it is a station; exhausting its
+    planet card damages it) but no resource value. Which version?
+N19. Terrafactory II / Omni-Forgeworld: "Other player's units in this
+    system lose PLANETARY SHIELD" - the game lets the Roh'Dhna's own
+    bombardment ignore the shield there; another player bombarding the same
+    system still meets it. Should everyone's bombardment there ignore it?
+
+The Tnelis Syndicate
+N20. Davish S'Norri (agent) now comes at the start of ANY player's invasion
+    (the Tnelis pick one of the invader's ships with Anti-Fighter Barrage);
+    a person holding it gets "don't ask again this round"; the computer
+    Tnelis use it only for themselves or a player they promised it to.
+N21. Fillipo Rois (commander) also works for a player holding the Tnelis's
+    Alliance. Two simplifications stay: only an undamaged ship that can use
+    Sustain Damage is offered for the hit (a ship without it would simply
+    be destroyed), and the +1 move goes to any one of your moving ships,
+    not only one from the damaged ship's system. OK?
+N22. Principia Aneris (flagship): "choose 1 ship" - the game picks the
+    opponent's ship with the most combat dice for the Tnelis (no question).
+
+The Vaden Banking Clans
+N23. Control tokens on the Vaden's sheet: there was a limit of 6 per player.
+    The Living Rules (23.2) say control tokens are not limited, and the
+    Reference sets no limit, so Fine Print, deals and the High Security
+    Vault now keep adding them. OK?
+N24. Fine Print now goes by "1 of YOUR strategy cards": the Vaden holding
+    the card whose secondary was resolved (it used to look at whoever was
+    taking the strategic action - the same in nearly every game).
+N25. Yudri Sukhov (agent) now comes at the start of ANY player's turn (it
+    only came at the Vaden's own turn or a promised player's), and that
+    player chooses the planet, as the card says (the Vaden chose it).
+    A person holding it gets "don't ask again this round"; the computer
+    Vaden use it only for themselves or a player they promised it to.
+    AsyncTI4 offers it only at the start of the Vaden's own turn, for a
+    player of their choice - I went with your Reference. OK?
+N26. Collector (mech): each mech has the ability (the Living Rules: every
+    unit of a type has its card's abilities), so 2 Collectors on a planet
+    can cash in 2 tokens for 2 infantry at the end of a round (it was 1
+    a round, however many mechs). OK?
+N27. Putriv Sirvonsk (hero): "you MAY return that token" - the Vaden now
+    choose how many of each player's tokens go back (the rest stay on the
+    sheet for Collateralized Loans and the Collector); it returned all of
+    them, even those of players who couldn't pay. Any promissory note in
+    the payer's hand counts as a payment - the Vaden's own notes too (a
+    Vaden Handshake given back); the computer players give the cheapest.
+N28. Midas Turbine / Vaden Handshake: "any number of trade goods" - the
+    list goes up to all your trade goods (12 at most; it stopped at 6).
+
+The Vaylerian Scourge
+N29. Yvin Korduul (agent) now comes whenever ANY player gains control of a
+    planet (it only came for the Vaylerian or a promised player); a person
+    holding it gets "don't ask again this round"; the computer Vaylerian
+    use it only for themselves or a player they promised it to.
+N30. Clan's Favor (their note): "The Vaylerian player discards 1 action
+    card" - the Vaylerian now choose which (it was one at random). With no
+    action card in their hand the note still works (nothing to discard).
+    OK?
+N31. Dyln Harthuul (hero): "Remove 1 of your command tokens from the
+    board" - the token just placed in the active system can be the one
+    (it was left out). OK?
+N32. Gravitic Disruption (breakthrough): "move 1 of THOSE ships" - only a
+    ship that moved into the active system this action (a ship already
+    there was offered too). Fighters are not offered (one on its own would
+    have no capacity to stay in the new system). OK?
+N33. Cargo Raiders and the Raiders: a player in the first round with no
+    trade good to pay counts as one who "cannot declare a retreat", so
+    the Raiders' hits go to their non-fighter ships; a player who could
+    pay doesn't. Lost Cause picks the system for the Vaylerian when the
+    opponent has only one place to retreat to.
+
+The Veldyr Sovereignty
+N34. Solis Morden (agent) now comes when ANY player spends resources to
+    research (it only came for the Veldyr or a promised player), and that
+    player chooses the planet, as the card says (the Veldyr chose it). A
+    person holding it gets "don't ask again this round"; the computer
+    Veldyr use it only for themselves or a player they promised it to.
+N35. SEIDR Project: "without rolling additional dice" - Plasma Scoring and
+    the like no longer add a die to its shot. The game picks the unit
+    with the best SPACE CANNON in the active system for them. OK?
+N36. Aurora Stormcaller (mech): each mech has the ability, so 2 of them on
+    a planet can become 2 PDS when the system is activated (2 PDS a planet
+    at most) - it was 1 a planet. OK?
+N37. Corporate Entity: the Branch Offices are kept apart from the planet's
+    other attachments, so no objective counts them. Holding Company always
+    takes something for each Branch Office (a commodity, or a trade good
+    once the commodities are full).
+
+The Zealots of Rhodun
+N38. Priestess Tuh (agent) now comes after ANY player researches (it only
+    came for the Zealots or a promised player), and that player chooses
+    where the ship is produced (their home system or a system with one of
+    their technology-specialty planets). A person holding it gets "don't
+    ask again this round"; the computer Zealots use it only for themselves
+    or a player they promised it to.
+N39. Bishop Ulin (commander) also works for a player holding the Zealots'
+    Alliance (it only worked for the Zealots).
+N40. Favor of Rhodun (their note): "When you ignore a prerequisite ... you
+    may ignore 1 additional prerequisite of the same color" - it now adds
+    one only to a colour where one of the holder's technology specialties
+    ignores a prerequisite; it used to ignore 1 prerequisite of any colour,
+    even with no specialty used. Other ways of ignoring a prerequisite (AI
+    Development Algorithm, Bishop Ulin, ...) don't open it. OK?
+N41. Sanctification Field: "1 technology ... another player controls" -
+    any other player's now, not only the players with units in the system
+    (a technology like Graviton Laser System works from anywhere). OK?
+
+The Zelian Purifier
+N42. The Zelian home system is now an asteroid field (the Reference: "Home
+    System: Gen 2/0, Zelian 3/3, Asteroid Field"; AsyncTI4 too - the game's
+    tile data had no anomaly on it). Other players need Antimass Deflectors
+    to move in or retreat there (the Zelian start with it, and Paranoia
+    lets them in anyway); it counts as an anomaly for objectives, for Zelian
+    B's unlock (their home + 1 more asteroid field) and for the
+    World-Cracker next to it. The tile picture doesn't show rocks yet. OK?
+N43. World-Cracker (flagship): "When this unit makes a combat or unit
+    ability roll, it rolls 1 additional die for each asteroid field
+    adjacent" - its Bombardment and Anti-Fighter Barrage now get the dice
+    too (it was only its space combat dice; AsyncTI4 gives all three).
+N44. Impactor I (infantry): "During invasion, this unit must commit to a
+    planet it bombards" - the infantry that bombarded a planet and weren't
+    landed there are now landed on it after the landing question (a line
+    says why). Impactor II's card doesn't say it, so upgraded infantry are
+    free to stay in space. OK?
+N45. Hyperkinetic Ordnance (their note): "When 1 or more of your units
+    WOULD make a BOMBARDMENT roll" - the holder is now asked before the
+    dice (before each planet's roll, while they hold it) and the note goes
+    back to the Zelian even if the roll misses; it used to be asked only
+    after a roll that hit. The computer plays it with 2+ dice, or from
+    round 5. OK?
+N46. Zelian A (agent) now comes at ANY player's invasion (it only came for
+    the Zelian or a promised player); a person gets "don't ask again this
+    round", the computer Zelian use it only for themselves or a player they
+    promised it to. Zelian B (commander) also works for a player holding
+    their Alliance (Sol's dreadnoughts get Anti-Fighter Barrage 5).
+N47. Collider (mech): each mech in the space area may be used - one
+    question per mech until you say no (it was one a turn). It offers other
+    players' units (not neutral units). Zelian R (hero) is offered only when
+    a unit with Bombardment MOVED in (not one that was already there).
+
+The Crimson Rebellion (your answer of 2026-11-17)
+N49. Done as you said: the Crimson start the game with Resonance Generator
+    and roll for the Fracture right away (Thunder's Edge rulebook: "When a
+    player gains their breakthrough, regardless of the source, if The
+    Fracture is not already in play, they roll one die"). Timing: with the
+    starting components (Living Rules setup step 11) - after the board,
+    the tokens and the decks are made, before the objectives (step 12)
+    and before round 1. On a 1 or 10 the Fracture opens at the board's
+    edge and the Crimson place its ingress tokens (3 in blue-specialty
+    systems, 3 in red ones, if able) + 1 in Mecatol Rex. With the Rapid
+    Mobilization event the Fracture is already in play, so nobody rolls
+    (the event gives everyone their breakthrough). AsyncTI4 gives the
+    card at setup without the roll - your ruling and the rulebook win.
+
+Bot strategy (checkpoint 2, all ten factions)
+N48. Every faction's two traits and two bot switches were tested on the same
+    seeds, 90 games each, then again on a second set of 90 games. A switch
+    stayed on only when both sets clearly gained - none did, so all 20 are
+    off (the results are in the review doc). One is close: the Veldyr
+    researching SEIDR Project more won 21 against 21 and 24 against 22
+    (+0.1 VP both times). Turn it on, or leave it off?
+
+0.59.40 (the faction debug pass, part 5 - twenty-four Discordant Stars
+factions, from the Augurs of Ilyxum to the Myko-Mentori): every change was
+shown to you card by card and approved before it went in - nothing new to
+answer. Two older answers are replaced by your newer ones: Lactarius Indigo
+now works as its card says, before the roll with no dice in view (was D114:
+after a roll that missed), and the Soul Cage resolves the heroes that
+trigger on an event too, not only the actions (D116 extended).
 
 0.59.30 (the faction debug pass, part 4 - Mentak, Xxcha, Naaz-Rokha, Titans
 of Ul, Naalu, Saar, Jol-Nar, the Last Bastion, the Council Keleres, the

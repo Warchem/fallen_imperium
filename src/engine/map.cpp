@@ -697,9 +697,19 @@ void computeAdjacency(Game& g) {
     const int n = int(g.systems.size());
     const bool travelBan = lawInPlay(g, "travel_ban");
     const bool joinAB = lawInPlay(g, "wormhole_recon") || g.fx.lostStarChart;
+    // (fixes 30, the agenda pass - FAQ: "Enforced Travel Ban does not prevent Space Cannon usage") the two laws only stop
+    // movement: the wormhole links stay in adj, and the ones movement can't use are listed in adjNoMove
+    const bool moveOnly = g.fixes >= 30;
+    const bool nexusSov = moveOnly && lawInPlay(g, "nexus");
+    auto moveMask = [&](int s, uint8_t w) {
+        if (travelBan || (nexusSov && s == g.nexus)) w &= uint8_t(~(kAlpha | kBeta));
+        return w;
+    };
+    auto linksOf = [&](uint8_t w) { return joinAB && (w & (kAlpha | kBeta)) ? uint8_t(w | kAlpha | kBeta) : w; };
     for (int i = 0; i < n; ++i) {
         SystemState& s = g.systems[i];
         s.adj.clear();
+        s.adjNoMove.clear();
         s.edge = false;
         if (s.isHyperlane()) continue;
         std::set<int> adj;
@@ -740,37 +750,58 @@ void computeAdjacency(Game& g) {
         // wormholes (Enforced Travel Ban switches alpha / beta off; Wormhole
         // Reconstruction and Lost Star Chart join alpha and beta together)
         uint8_t wh = wormholesOf(g, i) & (kAlpha | kBeta | kGamma | kDelta | kEpsilon);  // (epsilon: the Crimson Rebellion's)
-        if (travelBan) wh &= uint8_t(~(kAlpha | kBeta));
-        uint8_t links = wh;
-        if (joinAB && (wh & (kAlpha | kBeta))) links |= kAlpha | kBeta;
-        if (links) {
-            for (int j = 0; j < n; ++j) {
-                uint8_t other = wormholesOf(g, j);
-                if (travelBan) other &= uint8_t(~(kAlpha | kBeta));
-                if (j != i && (other & links)) adj.insert(j);
+        if (moveOnly) {
+            const std::set<int> physical = adj;
+            const uint8_t links = linksOf(wh), linksMove = linksOf(moveMask(i, wh));
+            if (links)
+                for (int j = 0; j < n; ++j) {
+                    if (j == i) continue;
+                    const uint8_t other = wormholesOf(g, j);
+                    if (!(other & links)) continue;
+                    adj.insert(j);
+                    if (!(moveMask(j, other) & linksMove) && !physical.count(j)) s.adjNoMove.push_back(int16_t(j));
+                }
+        } else {
+            if (travelBan) wh &= uint8_t(~(kAlpha | kBeta));
+            uint8_t links = wh;
+            if (joinAB && (wh & (kAlpha | kBeta))) links |= kAlpha | kBeta;
+            if (links) {
+                for (int j = 0; j < n; ++j) {
+                    uint8_t other = wormholesOf(g, j);
+                    if (travelBan) other &= uint8_t(~(kAlpha | kBeta));
+                    if (j != i && (other & links)) adj.insert(j);
+                }
             }
         }
+        std::set<int> viaOther;  // (fixes 30: links that aren't wormholes - movement may use them under the bans)
+        auto link = [&](int j) {
+            adj.insert(j);
+            viaOther.insert(j);
+        };
         // Thunder's Edge: every ingress system and every egress of the Fracture are adjacent (not ingress to ingress,
         // nor egress to egress); the Fracture's systems are on the edge of the board
         if (g.fractureIn) {
             if (s.fracture) s.edge = true;
             if (s.ingress || s.egress)
                 for (int j = 0; j < n; ++j)
-                    if (j != i && ((s.ingress && g.systems[j].egress) || (s.egress && g.systems[j].ingress))) adj.insert(j);
+                    if (j != i && ((s.ingress && g.systems[j].egress) || (s.egress && g.systems[j].ingress))) link(j);
         }
         // Incursion (Crimson Rebellion, Thunder's Edge): systems with active breaches are adjacent to each other
         if (s.breach == 2)
             for (int j = 0; j < n; ++j)
-                if (j != i && g.systems[j].breach == 2) adj.insert(j);
+                if (j != i && g.systems[j].breach == 2) link(j);
         // Cosmic Phenomenae (galactic event): entropic scars are adjacent to each other
         if (eventOn(g, kEvCosmic) && (s.d().anomalies & kScar))
             for (int j = 0; j < n; ++j)
-                if (j != i && (g.systems[j].d().anomalies & kScar)) adj.insert(j);
+                if (j != i && (g.systems[j].d().anomalies & kScar)) link(j);
         // Abyssal Starpaths (Uncharted Space): two systems without planets joined for a tactical action
         if (g.fx.starA >= 0 && g.fx.starB >= 0) {
-            if (i == g.fx.starA) adj.insert(g.fx.starB);
-            if (i == g.fx.starB) adj.insert(g.fx.starA);
+            if (i == g.fx.starA) link(g.fx.starB);
+            if (i == g.fx.starB) link(g.fx.starA);
         }
+        if (!viaOther.empty())
+            s.adjNoMove.erase(std::remove_if(s.adjNoMove.begin(), s.adjNoMove.end(), [&](int16_t j) { return viaOther.count(j) > 0; }),
+                              s.adjNoMove.end());
         adj.erase(i);
         s.adj.assign(adj.begin(), adj.end());
         if (i == g.nexus) s.edge = true;  // LRR 100.1c

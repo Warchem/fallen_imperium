@@ -48,6 +48,16 @@ float expectedHits(const Game& g, int p, const Force& f, bool space) {
     // Paling mech excepted); J.N.S. Hylarim: each natural 9 or 10 makes 2 more hits (0.4 hits a die)
     const bool frag = seat && aiTune("fragodds", 0.f) > 0.f && isFaction(g, p, "jolnar");
     const bool paling = frag && !space && f.n[int(UnitType::Mech)] > 0 && mechAbilities(g);
+    // (the Ghemina review, checkpoint 2 - switch twoodds, ON - owner 2026-11-15) Rule of Two: exactly 2 non-fighter ships here, of one unit type (the
+    // Lady and the Lord count as one at rules 28) - +2 to their rolls. 270 games (3 seed sets): on 37 wins / 6.90 VP, off 31 / 6.79;
+    // space attacks 3.4 -> 3.7 a game
+    int two = -1, two2 = -1;
+    if (space && seat && aiTune("twoodds", 1.f) > 0.f && f.nonFighterShips() == 2 && isFaction(g, p, "ghemina")) {
+        for (int t : kShipIdx)
+            if (t != int(UnitType::Fighter) && f.n[t] == 2) two = t;
+        if (g.fixes >= 28 && f.n[int(UnitType::Flagship)] == 1 && f.n[int(UnitType::Flagship2)] == 1)
+            two = int(UnitType::Flagship), two2 = int(UnitType::Flagship2);
+    }
     if (frag && space && f.n[int(UnitType::Flagship)] > 0 && flagshipAbility(g, p, "jolnar"))
         e += 0.4f * float(f.n[int(UnitType::Flagship)] * std::max<int>(1, unitDef(g, p, UnitType::Flagship).combatDice));
     for (int t = 0; t < kUnitTypes; ++t) {
@@ -56,7 +66,8 @@ float expectedHits(const Game& g, int p, const Force& f, bool space) {
         if (space ? !isShip(ut) : !isGroundForce(ut)) continue;
         const UnitDef& u = unitDef(g, p, ut);
         if (u.combat <= 0) continue;
-        const int m = mod + (cmorran && ut != UnitType::Flagship ? 1 : 0) - (frag && !(paling && ut == UnitType::Infantry) ? 1 : 0);
+        const int m = mod + (cmorran && ut != UnitType::Flagship ? 1 : 0) - (frag && !(paling && ut == UnitType::Infantry) ? 1 : 0) +
+                      (t == two || t == two2 ? 2 : 0);
         float chance = std::max(0.f, std::min(1.f, (11.f - u.combat + m) / 10.f));
         e += f.n[t] * chance * std::max<int>(1, u.combatDice);
         for (int k = 0; k < f.n[t] * std::max<int>(1, u.combatDice); ++k) miss *= 1.f - chance;
@@ -762,7 +773,13 @@ Plan buildPlan(const Game& g, int p, int sys, bool forActivation) {
             enemyNear(g, p, int(s), 1) && aiTune("saarfort", 0.f) > 0.f)
             keep = std::max(keep, 2);
         // Mobile Command (Ghoti, Discordant Stars): their home goes wherever the flagship goes - nothing stands guard
-        if ((g.modules & kModDiscordant) && g.systems[s].home == p && isFaction(g, p, "ghoti")) keep = 0;
+        if ((g.modules & kModDiscordant) && g.systems[s].home == p && isFaction(g, p, "ghoti")) {
+            keep = 0;
+            // (the Ghoti review, checkpoint 2 - switch ghguard, test) she was mostly lost defending, alone or nearly (other players
+            // went for the Ghoti "home"): with an enemy within 2 systems her stack stays together where it is. OFF - it freezes them:
+            // 1 win / 3.98 VP of 90 (lost her in 2 games, 2.3 planets taken) against 14 / 6.72 (19, 8.1); fresh seeds 0 / 3.96 against 9 / 6.52
+            if (aiTune("ghguard", 0.f) > 0.f && level > 0.f && f.count(UnitType::Flagship) && enemyNear(g, p, int(s), 2)) keep = f.nonFighterShips();
+        }
         if (int(s) == g.mecatol() && S.on && S.mecatol >= 1.4f) keep = std::max(keep, 1);  // Rusher, Heirs of Lazax: hold Mecatol Rex
         if (int(s) == g.mecatol() && aiPersona(p) == 2 && controlsMecatol(g, p)) keep = f.nonFighterShips();  // (test: a camper)
         if (int(s) == g.mecatol() && aiCompetitive(g) && controlsMecatol(g, p))
@@ -912,6 +929,10 @@ Plan buildPlan(const Game& g, int p, int sys, bool forActivation) {
         // Mecatol Rex (0.54.0): only clear wins (0.53.0: fair fights there cost both fleets and a third player took the
         // prize); warlike natures go in a little sooner, cautious ones later; more when a third player is watching
         if (opStrike && op.kind == kOpFleet) need = std::max(need, aiTune("opfleetneed", 0.7f));  // (a big fight: only a clear win)
+        // (the Ghoti review, checkpoint 2 - switch ghsafe, test) the All Mother is the Ghoti's home, their dock and their public
+        // objectives (they won none of the 41 games of 180 that lost her): she fights only clear wins. OFF (with the cannon check below):
+        // 11 wins / 6.80 VP of 90 against 14 / 6.72, still lost in 20 games against 19 - most losses come defending, not attacking
+        if (flagshipJoined && aiTune("ghsafe", 0.f) > 0.f && isFaction(g, p, "ghoti")) need = std::max(need, aiTune("ghsafeneed", 0.85f));
         if (hill) {
             float hn = aiTune("opmecneed", 0.75f);
             if (S.on) hn -= 0.1f * std::max(-1.f, std::min(1.f, S.aggression - 1.f));
@@ -1600,10 +1621,45 @@ Plan buildPlan(const Game& g, int p, int sys, bool forActivation) {
                 if (guns <= 0) continue;
                 Reach r = shipReach(g, p, from, sys, UnitType::PDS, gd ? 1 : 0);
                 if (!r.ok || r.viaRift) continue;
-                const int k = std::min(guns, 2 - added);
+                int k = std::min(guns, 2 - added);
+                // (fixes 28) Privileged Citizenry: no more Gauss Cannons in the system than fleet tokens
+                if (g.fixes >= 28 && mirvedaPdsCap(g, p) >= 0) {
+                    int there = g.systems[size_t(sys)].space[size_t(p)].count(UnitType::PDS);
+                    for (size_t i = 0; i < move.size(); i += 4)
+                        if (move[i + 2] == int(UnitType::PDS) && move[i] != sys) there += move[i + 3];
+                    k = std::min(k, mirvedaPdsCap(g, p) - there);
+                }
+                if (k <= 0) continue;
                 move.insert(move.end(), {from, -1, int(UnitType::PDS), k});
                 added += k;
                 plan.value += 0.9f * float(k) * aiTune("gauss", 1.f);
+            }
+        }
+        // (the Mirveda review, checkpoint 2 - mvgauss ON, owner 2026-11-16 19:38 "keep both switches on") 1.3 Gauss Cannons a game
+        // were lost blockaded: the fleet left and an enemy came in - Gauss Cannons a move leaves without any ship, with an enemy within
+        // 2, come along when they can (46 wins in 180 games against 39)
+        if (aiTune("mvgauss", 1.f) > 0.f) {
+            std::vector<int> left;
+            for (size_t i = 0; i < move.size(); i += 4)
+                if (move[i + 1] < 0 && move[i] != sys && std::find(left.begin(), left.end(), move[i]) == left.end()) left.push_back(move[i]);
+            for (int from : left) {
+                Force stay = g.systems[size_t(from)].space[size_t(p)];
+                for (size_t i = 0; i < move.size(); i += 4)
+                    if (move[i] == from && move[i + 1] < 0) stay.remove(UnitType(move[i + 2]), move[i + 3], false);
+                const int guns = stay.count(UnitType::PDS);
+                if (guns <= 0 || stay.ships() > 0 || !enemyNear(g, p, from, 2)) continue;
+                Reach r = shipReach(g, p, from, sys, UnitType::PDS, gd ? 1 : 0);
+                if (!r.ok || r.viaRift) continue;
+                int k = guns;
+                if (g.fixes >= 28 && mirvedaPdsCap(g, p) >= 0) {
+                    int there = g.systems[size_t(sys)].space[size_t(p)].count(UnitType::PDS);
+                    for (size_t i = 0; i < move.size(); i += 4)
+                        if (move[i + 2] == int(UnitType::PDS) && move[i] != sys) there += move[i + 3];
+                    k = std::min(k, mirvedaPdsCap(g, p) - there);
+                }
+                if (k <= 0) continue;
+                move.insert(move.end(), {from, -1, int(UnitType::PDS), k});
+                plan.value += 0.5f * float(k);
             }
         }
     }
@@ -1921,6 +1977,9 @@ Plan buildPlan(const Game& g, int p, int sys, bool forActivation) {
             if (G.dread > 0 && budget >= 4) want += G.dread;
             if (G.mech > 0 && budget >= 2) want += G.mech;
             if (G.fleetShip > 0 && g.systems[sys].space[p].nonFighterShips() + 3 >= G.fleetTarget) want += G.fleetShip * 2.f;
+            // (switch ghrebuild, test) the Ghoti without the All Mother: a build that can bring her back
+            if (aiTune("ghrebuild", 0.f) > 0.f && budget >= 6 && isFaction(g, p, "ghoti") && unitsAvailable(g, p, UnitType::Flagship) > 0)
+                want += aiTune("ghrebuildval", 8.f);
             plan.value += want * 0.8f;
         }
     }
@@ -1941,6 +2000,25 @@ Plan buildPlan(const Game& g, int p, int sys, bool forActivation) {
         n = std::min(n, unitsAvailable(g, p, UnitType::PDS) + unitsAvailable(g, p, UnitType::Mech));
         awaken = aiTune("awakenval", 3.f) * float(n);
         plan.value += awaken;
+    }
+    // (the Ghoti review, checkpoint 2 - switch ghsafe, test) an activation that leaves the All Mother (moving in or already there - a
+    // build at home) under other players' space cannon her escorts can't soak up: not worth it (she fell to PDS while building)
+    if (plan.value > 0.f && aiTune("ghsafe", 0.f) > 0.f && isFaction(g, p, "ghoti")) {
+        Force total = target.space[p];
+        for (size_t i = 0; i < move.size(); i += 4)
+            if (move[i + 1] < 0 && isShip(UnitType(move[i + 2]))) total.add(UnitType(move[i + 2]), move[i + 3]);
+        if (total.count(UnitType::Flagship) > 0) {
+            const float threat = cannonThreat(g, p, sys);
+            Force her;
+            her.add(UnitType::Flagship, 1);
+            her.dmg[int(UnitType::Flagship)] = total.dmg[int(UnitType::Flagship)] ? 1 : 0;
+            const float spare = hitPoints(g, p, total, true) - hitPoints(g, p, her, true);
+            if (threat > 0.f && threat + 0.5f > spare) {
+                plan.value = 0.f;
+                plan.move.clear();
+                move.clear();
+            }
+        }
     }
     if (move.empty() && !((hasProductionIn(g, p, sys) || duha > 0) && plan.value > 0) && !landsAnyway && awaken <= 0.f) plan.value = 0;
     // (0.59.1, owner: the Creuss park ships in their empty Gate - 7 of 30 games in round 1) a system with no planets
@@ -2348,6 +2426,64 @@ float techWant(const Game& g, int p, int t) {
     // warfare debug pass (0.44.8): AI Development Algorithm and Self-Assembly Routines sat at the default 2; the
     // Codex Magen Defense Grid (infantry on every planet with a structure, a free hit) is one of the best red cards
     if (keyIs(d.key, "aida")) v = 3.f;
+    // (the Kjalengard review, checkpoint 2 - test knob kjzhrgar, OFF) Zhrgar Stimulants: their own green technology (a reroll of
+    // any dice once a round, trade goods from the bloodshed at Glory) researched in ~50% of their games at the table's 4
+    if (keyIs(d.key, "dskjalg") && aiTune("kjzhrgar", 0.f) > 0.f) v = aiTune("kjzhrgar", 0.f);
+    // (the Kolume review, checkpoint 2 - test knob kuomni, OFF) Omniscience Field (RRR): researched in 3-4% of their games at the table's 5
+    if (keyIs(d.key, "dskolur") && aiTune("kuomni", 0.f) > 0.f) v = aiTune("kuomni", 0.f);
+    // (the Nokar review, checkpoint 2 - test knob nklocal) Local Contracts (YY): production anywhere their units can, without a token -
+    // researched in 18% of their games at the table's 4. REVISIT (checkpoint 2, 90 forced games each, at 7): researched in 50%, used 1.6
+    // a game instead of 0.7 - 18 wins / 7.08 VP against 15 / 7.17, second sample 11 / 6.79 against 11 / 6.70: not clear in both - off
+    if (keyIs(d.key, "dsnokay") && aiTune("nklocal", 0.f) > 0.f) v = aiTune("nklocal", 0.f);
+    // (the Olradin review, checkpoint 2 - test knob olgeo) Geosympathic Impeller (B): +1 move to every ship of the activation for a planet of a
+    // type found there - researched in 2% of their games at the table's 2. REVISIT (checkpoint 2, 90 forced games each, at 6): researched in
+    // 34-47%, used 0.12-0.17 a game - 20 wins / 7.34 VP against 19 / 7.32, second sample 23 / 7.58 against 20 / 7.48: not clear - off
+    if (keyIs(d.key, "dsolrab") && aiTune("olgeo", 0.f) > 0.f) v = aiTune("olgeo", 0.f);
+    // (the Tnelis review, checkpoint 2 - test knob tndfs) Daedalon Flight System (Y): a hit on a cruiser / dreadnought / destroyer after each
+    // space combat round where their mechs are - researched in 16-21% of their games at the table's 3. REVISIT (checkpoint 2, 90 forced games
+    // each, at 6): researched in 46-49%, used 0.12 a game - 10 wins / 7.00 VP against 11 / 7.01, second sample 11 / 6.87 against 11 / 6.83:
+    // no gain - off
+    if (keyIs(d.key, "dstnely") && aiTune("tndfs", 0.f) > 0.f) v = aiTune("tndfs", 0.f);
+    // (the Vaden review, checkpoint 2 - test knob vdmidas) Midas Turbine (B): trade goods for moves - researched in 22% of their games at the
+    // table's 2 (the Vaden hold the most trade goods at the table). REVISIT (checkpoint 2, 90 forced games each, at 5): researched in 70-74%,
+    // used 0.22-0.33 a game - 18 wins / 7.68 VP against 17 / 7.73, second sample 23 / 7.61 against 20 / 7.54: not clear in both - off
+    if (keyIs(d.key, "dsvadeb") && aiTune("vdmidas", 0.f) > 0.f) v = aiTune("vdmidas", 0.f);
+    // (the Veldyr review, checkpoint 2 - test knob vlseidr) SEIDR Project (RR): a space cannon shot after every round of space combat from a
+    // Lancer Dreadnought (space cannon 8 / 5) or a PDS - at the table's 5. REVISIT (checkpoint 2, 90 forced games each, at 7): researched in
+    // 58-62% (44-51% at 5), shots 0.51-0.61 a game - 21 wins / 7.46 VP against 21 / 7.36, second sample 24 / 7.66 against 22 / 7.58: a
+    // small gain, not clear in both - off (the owner's call)
+    if (keyIs(d.key, "dsveldr") && aiTune("vlseidr", 0.f) > 0.f) v = aiTune("vlseidr", 0.f);
+    // (the Zealots review, checkpoint 2 - test knobs zlpilgrim / zlsanct) Pilgrimage Beacons (BB: a ship once a turn where their specialty
+    // planets are exhausted) at the table's 4; Sanctification Field (YYY: another player's technology blank for a tactical action) at 5.
+    // REVISIT (checkpoint 2, 90 forced games each, at 7): zlpilgrim - researched in 73-78% (38-49% at 4), its ships 0.3 -> 0.8-0.9 a game -
+    // 7 wins / 6.51 VP against 9 / 6.41, second sample 7 / 6.01 against 5 / 6.10: not clear; zlsanct - researched in 52-60% (26-32%), used
+    // 6.0-7.2 times a game (2.3-3.0) - 12 / 6.34 against 9 / 6.41, second sample 5 / 6.12 against 5 / 6.10: not clear in both. Both off
+    if (keyIs(d.key, "dsrhodb") && aiTune("zlpilgrim", 0.f) > 0.f) v = aiTune("zlpilgrim", 0.f);
+    if (keyIs(d.key, "dsrhody") && aiTune("zlsanct", 0.f) > 0.f) v = aiTune("zlsanct", 0.f);
+    // (the Sardakk checkpoint 2 - sdvpw ON at 9, owner 2026-11-17 11:05 "Go ahead and turn them on") Valkyrie Particle Weave (RR): 1 more
+    // hit in every ground combat round the opponent hits - researched in 62% of their games at the table's 6 (the strategy guide: Plasma
+    // Scoring and Particle Weave for ground superiority); at 9: 17 wins / 7.62 VP against 14 / 7.41, second sample 18 / 7.02 against 15 / 6.77
+    if (keyIs(d.key, "vpw") && isFaction(g, p, "sardakk") && aiTune("sdvpw", 9.f) > 0.f) v = aiTune("sdvpw", 9.f);
+    // (the Crimson checkpoint 2 - test knob cmsplice, OFF) Subatomic Splicer (Y): a destroyed ship comes back at their home dock - researched
+    // in 16-24% of their games at the table's 5. REVISIT (checkpoint 2, 90 forced games each, at 7, with the owner's starting-breakthrough
+    // ruling): researched in 30-34% - 9 wins / 6.89 VP against 10 / 6.88, second sample 15 / 7.08 against 16 / 7.10: no gain
+    if (keyIs(d.key, "subatomic") && isFaction(g, p, "crimson") && aiTune("cmsplice", 0.f) > 0.f) v = aiTune("cmsplice", 0.f);
+    // (the Kortali review, checkpoint 2 - kotrib; owner 2026-11-16 14:23 "keep the dreadnought switch on": ON at 9) Dreadnought II with
+    // The Queens' Wrath held: their dreadnoughts become Tribunes (move 2, a reroll while undamaged, repaired by a hit) - researched in 19%
+    // of their games at the table's 6, 38% at 9 (29 wins in 180 games against 26)
+    if (keyIs(d.key, "dn2") && aiTune("kotrib", 9.f) > 0.f && isFaction(g, p, "kortali") && hasBreakthrough(g, p)) v = aiTune("kotrib", 9.f);
+    // (the Lanefir review, checkpoint 2 - lanespark ON at 6, owner 2026-11-16 17:03 "spark thrusters on"; laneats OFF) their own
+    // technologies: Spark Thrusters (BB, a ship jumps for a strategy token or a fragment) researched in 8-13% of their games at the table's
+    // 2, ~70% at 6 (35 wins in 180 games against 33); ATS Armaments (RR, rerolls from every exploration and fragment purge) in 17-29% at 5
+    if (keyIs(d.key, "dslaneb") && aiTune("lanespark", 6.f) > 0.f) v = aiTune("lanespark", 6.f);
+    if (keyIs(d.key, "dslaner") && aiTune("laneats", 0.f) > 0.f) v = aiTune("laneats", 0.f);
+    // (the Li-Zho review, checkpoint 2 - lzwraith ON at 6, owner 2026-11-16 18:12 "let's get those switches on") Wraith Engine (BB: one
+    // ship counts as adjacent to the active system) researched in ~10% of their games at the table's 2, 74-77% at 6 (29 wins in 180 games
+    // against 28)
+    if (keyIs(d.key, "dslizhb") && aiTune("lzwraith", 6.f) > 0.f) v = aiTune("lzwraith", 6.f);
+    // (the Mortheus review, checkpoint 2 - test knob mogd, OFF) their home is a nebula (fixes 28): ships leave it at move 1, Gravity Drive
+    // makes it 2 - researched in ~43% of their games at the table's 7
+    if (keyIs(d.key, "gd") && isFaction(g, p, "mortheus") && aiTune("mogd", 0.f) > 0.f) v = aiTune("mogd", 0.f);
     if (keyIs(d.key, "sar")) v = 3.f + 0.3f * float(std::min(5, unitsOnBoard(g, p, UnitType::Mech)));
     if (keyIs(d.key, "md_base") && codexOn(g)) v = 5.5f;
     if (keyIs(d.key, "mr")) {  // Magmus Reactor: only worth it with a supernova within reach
@@ -2391,6 +2527,10 @@ float techWant(const Game& g, int p, int t) {
     // (ngwant=3): researched in 24-32% of games; TE 25 wins / 7.51 VP against 22 / 7.46, fresh 20 / 7.53 against 21 / 7.51,
     // plain fresh 18 / 7.38 against 20 / 7.44 - no gain. OFF
     if (aiTune("ngwant", 0.f) > 0.f && keyIs(d.key, "ng")) v += aiTune("ngwant", 0.f);
+    // (the Cheiran review, checkpoint 2 - switch broodwant, ON - owner 2026-11-15: "Go ahead and turn on the Brood Pod") Brood
+    // Pod: researched in 22% of the Cheiran's games; with it 76%, used 0.48 a game (0.12), 21 / 7.26 vs 19 / 7.04 and fresh
+    // seeds 14 / 6.77 vs 15 / 6.96 - even, and the strategy guide's "Brood Pod for reactive production"; broodwant=0 turns it off
+    if (aiTune("broodwant", 3.f) > 0.f && keyIs(d.key, "dscheir")) v += aiTune("broodwant", 3.f);
     // (the Yin review, checkpoint 2 - test knob yinspin) Yin Spinner Omega (2 infantry after every production) was
     // researched in 10 games of 90. Tested (yinspin=4): researched in 46 games, 332 uses, 21 wins / 7.24 VP against
     // 19 / 7.06; fresh seeds 14 / 7.04 against 11 / 6.83 - ON since the owner's go (2026-11-12); yinspin=0 = the old way
@@ -2451,12 +2591,18 @@ Answer aiHits(const Game& g, const Decision& d) {
     }
     // Metali Void Shielding (Thunder's Edge relic) / Splintering Gale (Khrask): ships without Sustain Damage that may
     // use it - the most valuable first
-    int extra = d.noSustain ? 0 : extraSustains(g, p, d.system, d.planet);
+    // (rules 28: the Gale's chosen ships first, each of its type; then the pool any of them may use)
+    int extra = d.noSustain ? 0 : extraSustainsPooled(g, p, d.system, d.planet);
     for (UnitType t : {UnitType::Carrier, UnitType::Cruiser, UnitType::Destroyer, UnitType::Dreadnought, UnitType::Flagship,
                        UnitType::Flagship2, UnitType::WarSun}) {
-        if (extra <= 0 || need <= 0) break;
+        if (need <= 0) break;
         if (!allowed(t) || unitSustainsAt(g, p, t, d.system, d.planet) || !metaliSustain(g, p, t, d.system, d.planet)) continue;
-        for (int k = f.n[int(t)] - f.dmg[int(t)]; k > 0 && extra > 0 && need > 0; --k, --extra) {
+        int k = f.n[int(t)] - f.dmg[int(t)];
+        for (int gl = d.noSustain || d.planet >= 0 ? 0 : galeLeft(g, p, d.system, t); k > 0 && gl > 0 && need > 0; --k, --gl) {
+            a.data.insert(a.data.end(), {int(t), 1});
+            need -= sustainWorth(g, p);
+        }
+        for (; k > 0 && extra > 0 && need > 0; --k, --extra) {
             a.data.insert(a.data.end(), {int(t), 1});
             need -= sustainWorth(g, p);
         }
@@ -2922,6 +3068,11 @@ Answer aiProduceCore(const Game& g, const Decision& d) {
         plan = next;
         return true;
     };
+    // (the Ghoti review, checkpoint 2 - switch ghrebuild, test) without the All Mother the Ghoti score no public objectives (they
+    // rebuilt her 6 times in the 41 games of 180 that lost her): she comes first in any production that can make her. OFF: rebuilt 7
+    // times in 90 games against 2, but 14 wins / 6.73 VP against 14 / 6.72 (still no win after losing her); with ghsafe 11 / 6.82
+    if (aiTune("ghrebuild", 0.f) > 0.f && (g.modules & kModDiscordant) && isFaction(g, p, "ghoti") && unitsAvailable(g, p, UnitType::Flagship) > 0)
+        tryAdd(UnitType::Flagship, 1);
     // Combat Drones (Mirveda): no infantry from docks - fighters are the invaders
     const bool drones = (g.modules & kModDiscordant) && isFaction(g, p, "mirveda") && aiTune("drones", 1.f) > 0.f;
     int infHere = 0;
@@ -3042,7 +3193,12 @@ Answer aiProduceCore(const Game& g, const Decision& d) {
     if (capacityTotal < 6) tryAdd(UnitType::Carrier, 1);
     if (budget >= 12 && unitsAvailable(g, p, UnitType::WarSun) > 0) tryAdd(UnitType::WarSun, 1);
     if (budget >= 10 && g.round >= 3 && unitsAvailable(g, p, UnitType::Flagship) > 0) tryAdd(UnitType::Flagship, 1);
-    if (budget >= 10 && g.round >= 3 && unitsAvailable(g, p, UnitType::Flagship2) > 0) tryAdd(UnitType::Flagship2, 1);  // (0.52.0: the Lady)
+    // (the Ghemina review, checkpoint 2 - switch ghlady, test) the Lady once the Lord is out: both flagships on the board unlock Jarl
+    // Vel & Jarl Jotrun, and the pair fights with Rule of Two. OFF: the Lady 0.39 -> 0.50 a game, Jarls unlocked 37 -> 46%, but 11 wins /
+    // 7.07 VP of 90 against 11 / 7.10
+    const bool lady = aiTune("ghlady", 0.f) > 0.f && g.round >= 2 && budget >= 6 && unitsOnBoard(g, p, UnitType::Flagship) > 0 &&
+                      isFaction(g, p, "ghemina");
+    if (((budget >= 10 && g.round >= 3) || lady) && unitsAvailable(g, p, UnitType::Flagship2) > 0) tryAdd(UnitType::Flagship2, 1);  // (0.52.0: the Lady)
     // 0.42.1 (#187: Arborec built 18 infantry at home in one go - its fleet pool was full - and lost
     // 19 to Plague): the filler stops adding infantry once 8 ground forces stand in this system
     int gfThere = g.systems[sys].space[p].groundForces();
@@ -3182,9 +3338,11 @@ Answer aiPick(const Game& g, const Decision& d, Rng& rng) {
                 if (o.id >= 700 && o.id < 1000 && aiFactionComponentValue(g, p, o.id) >= 0.5f) return pickOne(o.id);
             // Soul Cage (0.43.0): a bound hero costs the Myko-Mentori nothing but the cage - from round 5 the most useful
             // one goes as soon as its ability does something
-            if (g.round >= 5) {
+            // (the Myko-Mentori review, checkpoint 2 - test switch mkcage: from round 3, a lower bar)
+            const bool mkcage = aiTune("mkcage", 0.f) > 0.f;
+            if (g.round >= (mkcage ? 3 : 5)) {
                 int cage = -1;
-                float cv = 0.45f;
+                float cv = mkcage ? 0.3f : 0.45f;
                 for (const Option& o : d.options)
                     if (o.id >= 6000 && o.label.compare(0, 10, "Soul Cage:") == 0) {
                         const float v = aiComponentValue(g, p, o.id);
@@ -3367,6 +3525,12 @@ Answer aiPick(const Game& g, const Decision& d, Rng& rng) {
             float odds = fightOdds(g, p, g.systems[sys].space[p], enemy, g.systems[sys].space[enemy], true);
             const Style& S = aiStyle(g, p);
             if (S.neverRetreat) return pickOne(0);  // Blood Rage
+            // (the Kollecc review, checkpoint 2 - knob koretreat, ON at 0.45 - owner 2026-11-16 11:29 "Let's keep the switches on")
+            // Nightingale V: "When this unit retreats, you may capture each of your units that retreat" - the whole fleet goes onto the
+            // sheet for Shroud of Lith: leave a losing fight sooner (0.02 retreats a game; tested 18 / 6.98 = the same, 0.06 retreats)
+            if (aiTune("koretreat", 0.45f) > 0.f && flagshipAbility(g, p, "kollecc") && g.systems[size_t(sys)].space[size_t(p)].count(UnitType::Flagship) > 0 &&
+                odds < aiTune("koretreat", 0.45f))
+                return pickOne(1);
             return pickOne(odds < (S.on ? S.retreatOdds : 0.25f) ? 1 : 0);
         }
         case Tag::RetreatCargo: {  // (0.54.0) ground forces the winner would overrun go along; otherwise they hold the planet
@@ -3413,7 +3577,12 @@ Answer aiPick(const Game& g, const Decision& d, Rng& rng) {
             }
             switch (card) {
                 case 1: yes = pl.strategy >= 2 || free; break;
-                case 2: yes = pl.strategy >= 2 || free; break;
+                case 2:
+                    yes = pl.strategy >= 2 || free;
+                    // (the Kyro review, checkpoint 2 - test knob kypol, OFF) Contagion: the secondary is a free infantry invasion as well -
+                    // followed with a single strategy token (followed 0.7 a game with 2 needed)
+                    if (!yes && aiTune("kypol", 0.f) > 0.f && isFaction(g, p, "kyro") && pl.strategy >= 1 && (g.modules & kModDiscordant)) yes = true;
+                    break;
                 case 3: {
                     // the strategy token lands in that system and locks our ships there: never at
                     // home, unless we already have a token there (then nothing gets locked)
@@ -3437,6 +3606,10 @@ Answer aiPick(const Game& g, const Decision& d, Rng& rng) {
                 case 5:
                     yes = pl.strategy >= 2 && spendable(g, p, false) >= 4;
                     if (isFaction(g, p, "kortali") && pl.strategy >= 1) yes = true;  // Zealous (Discordant Stars): it is the primary for them
+                    // (the Kortali review, checkpoint 2 - test knob kozeal, OFF) with Thunder's Edge the primary is a tactical action:
+                    // follow when it has a plan worth the token, or when the home system's Production (the secondary) can buy something
+                    if (yes && isFaction(g, p, "kortali") && aiTune("kozeal", 0.f) > 0.f && (g.modules & kModThundersEdge))
+                        yes = aiFreeTacticalValue(g, p) >= aiTune("kozeal", 0.f) || spendable(g, p, false) >= 4;
                     break;
                 case 6: yes = spendable(g, p, false) - objectiveReserve(g, p).resources >= 5; break;
                 case 7: yes = (pl.strategy >= 2 || free) && pl.secrets.size() < 3; break;
@@ -3455,7 +3628,7 @@ Answer aiPick(const Game& g, const Decision& d, Rng& rng) {
                     case 7: {  // another secret objective (or a better one in place of the hardest)
                         int scoredSecrets = 0;
                         for (int16_t x : pl.scored)
-                            if (kObjectives[x].kind == 3) ++scoredSecrets;
+                            if (scoredAsSecret(g, p, x)) ++scoredSecrets;
                         yes = spare && scoredSecrets < 3 && (int(pl.secrets.size()) + scoredSecrets < 3 || !pl.secrets.empty());
                         break;
                     }
@@ -3650,6 +3823,16 @@ Answer aiPick(const Game& g, const Decision& d, Rng& rng) {
                     v = dock ? (home ? 1.f : 3.f + planetResources(g, planet)) : 1.f + planetValue(g, p, planet) * 0.2f;
                     // (0.59.0) the Crimson's first dock out on the board: their production 2 moves nearer
                     if (dock && !home && crimsonNeedsDock(g, p) && aiTune("crimsondock", 1.f) > 0.f) v += 5.f;
+                    // (the Celdauri review, checkpoint 2 - test knob celdock) a dock not in or next to home unlocks Henry
+                    // Storcher (dock systems adjacent to each other, a commodity per activation)
+                    if (dock && !home && aiTune("celdock", 0.f) > 0.f && isFaction(g, p, "celdauri") && leaderStatus(g, p, kCommander) == kLocked) {
+                        const int sy = g.planets[size_t(planet)].system, hs = g.players[size_t(p)].homeSystem;
+                        bool next = false;
+                        for (int16_t a : g.systems[size_t(sy)].adj) next = next || a == hs;
+                        if (!next) v += 4.f;
+                    }
+                    // (the Myko-Mentori review, checkpoint 2 - test switch mkdock) a dock out on the board: +1 commodity value
+                    if (dock && !home && aiTune("mkdock", 0.f) > 0.f && isFaction(g, p, "mykomentori")) v += 2.f;
                     if (!dock) v += aiStyle(g, p).pdsPref * 2.f;  // Turtler, Shell Defense, Iron Shepherd
                     // (the Arborec review, checkpoint 2 - test knob bestfriend) the Arborec's Best Friend trait says it
                     // fortifies its legendary planets and Mecatol Rex, but its PDS liking is general (and toned down on
@@ -3667,6 +3850,7 @@ Answer aiPick(const Game& g, const Decision& d, Rng& rng) {
                         const int fleet = g.systems[size_t(sy)].space[size_t(p)].nonFighterShips();
                         v += 1.5f + 0.6f * float(std::min(fleet, 4)) + (home ? -1.f : 1.f);
                         if (fleet == 0 && enemyNear(g, p, sy, 1)) v -= 3.f;
+                        if (fleet == 0 && aiTune("mvgauss", 1.f) > 0.f) v -= enemyNear(g, p, sy, 2) ? 2.f : 1.f;  // (checkpoint 2, mvgauss ON)
                     }
                     if (aiLevelScale(g) > 0.f) {
                         const Goals& G = aiGoals(g, p);

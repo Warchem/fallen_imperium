@@ -107,76 +107,103 @@ const BreakthroughDef kBt[] = {
                                      "they are placed on this card instead. When you pass, take 1 action card from this card and "
                                      "discard the rest.", true},  // (the Ral Nel review: the card's wording)
     // Discordant Stars (0.43.0, owner D1: with Thunder's Edge too) - done is set as each is implemented (rules_dsbt.cpp)
-    {"axis", "Arms Brokerage", B, R, "At the start of another player's turn, exhaust it: that player uses 1 of your unit upgrades as their own "
-                                    "this turn. After you refill commodities, gain a trade good per unit upgrade you own.", true},
-    {"bentor", "Historian Conclave", B, G_, "Action: exhaust it - each other player explores 1 of their planets; you may put 1 infantry, "
-                                           "coexisting, on one of those planets. Exploring a planet, you may exhaust it to explore the "
-                                           "frontier deck in that system instead.", true},
-    {"celdauri", "Trade Protectorate", Y, R, "When you gain it: a second flagship, the Celagrom token, goes in a system with your ships.", true},
-    {"cheiran", "Matriphagy", B, R, "End of your turn: exhaust it to swap one of your non-fighter ships for units from your reinforcements "
-                                   "costing less in total.", true},
-    {"cymiae", "Synaptic Interference", Y, R, "After you win a combat: purge a promissory note from your hand to push another player's "
-                                             "command token out of the active system, or gain 2 trade goods. Action: exhaust it to discard "
-                                             "the top 3 action cards.", true},
-    {"dihmohn", "Exodus Engineering", B, Y, "Once per space combat, after an opponent's non-fighter ship is destroyed: exhaust it to put a "
-                                           "frontier token there - or produce 1 or 2 non-fighter ships there (beside the enemy's ships), which readies it.", true},
-    {"edyn", "Celestial Ambassadors", G_, B, "Action: exhaust it and show another player one of your unscored secrets - they show you one "
-                                            "of theirs at random, or let you put 1 ground force, coexisting, on one of their planets.", true},
-    {"freesystems", "Galactic Movement", G_, Y, "After you spend a strategy token: put 1 infantry, coexisting, on a cultural, hazardous or "
-                                               "industrial planet with the active player's ground forces.", true},
-    {"ghemina", "Raiding Parties", G_, R, "Each combat round one of your units rolls twice and keeps the better roll. Announcing a retreat, "
-                                         "exhaust it to retreat at once.", true},
-    {"ghoti", "Cult of the All-Mother", G_, B, "When you pass, exhaust it: move an ingress token into an empty system, or one of your ships "
-                                              "next door to your ships. Your units may retreat into any empty system.", true},
-    {"gledge", "Dhonraz Installations", Y, B, "Your planets with Core tokens also count as space stations (not for control). Your space "
-                                             "stations have Space Cannon 5 (offence, in their own system).", true},
-    {"augers", "Cryptic Insights", Y, G_, "When you explore a planet, you may discard the card to draw 1 action card instead.", true},
-    {"kjalengard", "Bannerhalls", R, G_, "A Bannerhall for each Glory token on the board. Once per action, when anyone wins a combat where "
-                                        "a Glory token is, every Bannerhall readies. (A Bannerhall: a planet card worth 1 resource or 1 influence, not for votes.)", true},
-    {"kollecc", "The Collector's Museum", B, G_, "When you explore a planet: exhaust it to resolve a card from that deck's discard pile "
-                                                "instead; it is shuffled back into the deck afterwards.", true},
-    {"kolume", "Synchronicity VI", B, Y, "Action: exhaust it to gain 1 command token, or research a technology of the colour of one of your "
-                                        "exhausted ones. Each time you exhaust a technology, gain 1 commodity.", true},
-    {"florzen", "Reverie Implants", B, G_, "End of your turn: exhaust it - you and another player each secretly spend 0, 1 or 2 trade goods; "
-                                          "if the amounts differ, take a random promissory note from them or explore one of your planets.", true},
-    {"kortali", "The Queens' Wrath", B, R, "With Dreadnought II: flip it - your dreadnoughts become Tribunes (move 2, capacity 1, combat 5, "
-                                          "bombardment 5, sustain damage; they repair when they hit, reroll while undamaged).", true},
-    {"kyro", "Strain Dispersal", Y, R, "Researching: discard an action card to ignore 1 prerequisite. Once per action, winning a combat: a "
-                                      "commodity (or a commodity into a trade good) for each technology the loser has and you don't.", true},
-    {"lanefir", "Erasure Corps", G_, R, "When another player purges components (not action cards): gain 1 command token or ready it. In the "
-                                       "action phase: exhaust it to explore one of your planets.", true},
-    {"lizho", "Professional Intrigue", G_, R, "After a tactical action in a non-home system: move 1 of your infantry there, coexisting, onto "
-                                             "a planet. Whoever ends your coexistence discards an action card.", true},
-    {"khrask", "Mended Grove", G_, Y, "Meteor Slings: when every hit is cancelled, your infantry may coexist instead (not committed this "
-                                     "action). The Grove: a planet card worth 2 resources.", true},
-    {"mirveda", "Stabilization Arrays", B, Y, "With Fighter II: flip it - your fighters become the Eye of the Curator (move 3, combat 8, "
-                                             "they move without carriers and take half a slot of capacity each).", true},
-    {"mortheus", "Mirage Craft", R, Y, "Defending a space combat: swap one of your ships there with one of yours in a system with your "
-                                      "command token (the swapped ships carry nothing).", true},
-    {"mykomentori", "Dreamwalkers", G_, Y, "Other players' infantry destroyed in combat on your planets are captured. After each ground "
-                                          "combat round on your planet, roll: 7+ puts a captured infantry there as yours.", true},
-    {"nivyn", "Anomaly Stabilization", B, R, "The Wound's system is also an entropic scar; you ignore entropic scars, and they count as "
-                                            "ingress tokens for you.", true},
-    {"nokar", "Mercenary Captains", Y, R, "Action: exhaust it to put 1 neutral cruiser and 2 neutral destroyers in a system (not the "
-                                        "Fracture) without other ships. When another player wins a space combat where your ships are: "
-                                        "gain 2 commodities or 1 command token.", true},
-    {"olradin", "Insurrectionist Networking", G_, R, "Once per action, after a policy ability: spend 1 trade good to move 1 of your "
-                                                    "infantry, coexisting, onto a planet next door. When you pass: purge it to invade every "
-                                                    "planet with your coexisting infantry.", true},
-    {"zealots", "Rhodun's Reliquary", Y, R, "After you take a legendary or Fracture planet: research 1 technology, or take back 1 of your "
-                                           "command tokens in that system.", true},
-    {"rohdhna", "The Prodigy's Triumph", Y, B, "With Terrafactory II: flip it - your war suns become Omni-Forgeworlds (production 7, "
-                                              "capacity 8, combat 3 x3).", true},
-    {"tnelis", "Hidden Hardpoints", R, B, "End of a ground combat round: discard a secret objective - your units there coexist instead. "
-                                         "Whenever someone ends your coexistence, draw a secret objective.", true},
-    {"vaden", "High Security Vault", R, G_, "Nobody takes your trade goods, commodities or relic fragments without your leave. When another "
-                                           "player gives back one of your promissory notes, 1 of their control tokens goes on your sheet.", true},
-    {"vaylerian", "Gravitic Disruption", R, B, "After moving ships into the active system: discard an action card to move one of them on to "
-                                              "a system next door without other players' ships.", true},
-    {"veldyr", "Aurora Research Base", Y, B, "Your home system is also a nebula. When you pass, explore the frontier deck in your home "
-                                            "system. Their space cannon hits in a nebula can't be cancelled.", true},
-    {"zelian", "Awakened Planetoids", G_, R, "Your planets in the active system fight beside your ships (space) and ground forces (ground): "
-                                            "combat 10 minus their resources (at least 1); they can't be hit.", true},
+    {"axis", "Arms Brokerage", B, R, "At the start of a player's turn, you may exhaust this card to allow that player to treat 1 of your unit "
+                                    "upgrade technologies as their own until the end of that turn. After you replenish commodities, gain a number "
+                                    "of trade goods equal to the number of unit upgrade technologies you own.", true},  // (the Axis review)
+    {"bentor", "Historian Conclave", B, G_, "ACTION: Exhaust this card to allow all other players to explore 1 planet they control. Then, place "
+                                           "up to 1 infantry from your reinforcements into coexistence on 1 of those planets. When you explore a "
+                                           "planet, you may exhaust this card to instead explore the frontier deck in that system.", true},  // (the Bentor review)
+    {"celdauri", "Trade Protectorate", Y, R, "When you gain this card, flip this card and place it on your faction sheet. Then, place the Celagrom token in a system that contains your ships, if able. The Celagrom token is a second flagship with the attributes, abilities, and ability text on the Celagrom flagship card.", true},
+    {"cheiran", "Matriphagy", B, R, "At the end of your turn, you may exhaust this card to choose 1 of your non-fighter ships on the game board; replace that ship with 1 or more units from your reinforcements that have a total combined cost less than that ship's cost value.", true},
+    {"cymiae", "Synaptic Interference", Y, R, "After you win a combat, you may purge 1 of your promissory notes from your hand to move 1 other "
+                                             "player's command token in the active system to an adjacent system, or gain 2 trade goods. "
+                                             "Action: exhaust this card to discard the top 3 cards of the action card deck.", true},
+    {"dihmohn", "Exodus Engineering", B, Y, "Once per space combat, after 1 of your opponent's non-fighter ships is destroyed, you may exhaust "
+                                           "this card to place 1 frontier token in the active system, or produce 1 or 2 non-fighter ships in that "
+                                           "system to ready this card. You can produce ships in systems that contain both your ships and another "
+                                           "player's ships.", true},
+    {"edyn", "Celestial Ambassadors", G_, B, "Action: exhaust this card and show another player 1 of your unscored secret objectives; that "
+                                            "player must show you 1 of their unscored secret objectives, at random, or allow you to place 1 "
+                                            "ground force from your reinforcements into coexistence on a planet they control.", true},
+    {"freesystems", "Galactic Movement", G_, Y, "After you spend a strategy token, you may place 1 infantry from your reinforcements into "
+                                               "coexistence on any cultural, hazardous, or industrial planet that contains the active player's ground "
+                                               "forces. Your infantry tokens on planets you control can be accompanied by your control tokens instead of "
+                                               "plastic pieces.", true},
+    {"ghemina", "Raiding Parties", G_, R, "During each round of combat, you may choose 1 of your participating units; roll that unit's combat "
+                                         "roll twice and resolve the result of your choice. When you announce a retreat, you may exhaust this "
+                                         "card to immediately resolve that retreat.", true},
+    {"ghoti", "Cult of the All-Mother", G_, B, "When you pass, you may exhaust this card to move 1 ingress token into a non-Fracture system that "
+                                              "contains no planets, or move 1 of your ships to an adjacent system that contains your ships. Your "
+                                              "units may retreat to any system that contains no other player's ships and no planets.", true},
+    {"gledge", "Dhonraz Installations", Y, B, "ACTION: Exhaust this card to resolve BOMBARDMENT 5(xY) against each player's units on a planet "
+                                             "in a system adjacent to a system that contains a Core token, where Y is the number of structures you "
+                                             "control.", true},
+    {"augers", "Cryptic Insights", Y, G_, "When you explore a planet, you may discard that card to draw 1 action card instead.", true},  // (the Augurs review)
+    {"kjalengard", "Bannerhalls", R, G_, "For each Glory token on the game board, you control 1 Bannerhall card. Once per action, when a player "
+                                        "wins a combat in a system that contains a Glory token, ready each Bannerhall card. (Bannerhall - 1/1.)", true},
+    {"kollecc", "The Collector's Museum", B, G_, "When you explore a planet, you may exhaust this card to resolve a card from that exploration "
+                                                "deck's discard pile instead; if you would discard that card, instead shuffle it into the "
+                                                "corresponding exploration deck.", true},
+    {"kolume", "Synchronicity VI", B, Y, "ACTION: Exhaust this card to either gain 1 command token, or research a technology of the same color "
+                                        "as one of your exhausted technologies. When you exhaust a technology, gain 1 commodity.", true},
+    {"florzen", "Reverie Implants", B, G_, "At the end of your turn, you may exhaust this card and choose 1 other player; you and that player each "
+                                          "secretly spend 0, 1, or 2 trade goods. Then, reveal the spent trade goods; if you spent a different number of "
+                                          "trade goods, you may take 1 promissory note from that player's hand, at random, or explore 1 planet you control.", true},
+    {"kortali", "The Queens' Wrath", B, R, "If you have the Dreadnought II technology, flip this card and place it on top of Dreadnought II. Tribune "
+                                          "(cost 4, combat 5, move 2, capacity 1, sustain damage, bombardment 5): this unit cannot be destroyed by "
+                                          "\"Direct Hit\" action cards. When this unit produces a hit, you may repair it. While this unit is not "
+                                          "damaged, you may reroll its combat roll.", true},
+    {"kyro", "Strain Dispersal", Y, R, "When researching a technology, you may discard an action card to ignore 1 of that technology's prerequisites. "
+                                      "Once per action, when you win a combat, for each technology your opponent owns, if you do not own that technology, "
+                                      "gain 1 commodity or convert 1 of your commodities to a trade good.", true},
+    {"lanefir", "Erasure Corps", G_, R, "After another player purges 1 or more non-action card components, gain 2 commodities or ready this card. "
+                                        "During the action phase, you may exhaust this card to explore 1 planet you control.", true},
+    {"lizho", "Professional Intrigue", G_, R, "After you perform a tactical action in a non-home system, you may move 1 of your infantry on "
+                                             "the game board into coexistence on a planet in that system. When a player ends your units' "
+                                             "coexistence on a planet, they must discard 1 action card, if able.", true},
+    {"khrask", "Mended Grove", G_, Y, "Gain the Grove card. When you resolve METEOR SLINGS, if you cancel all hits produced, you may place "
+                                     "your units into coexistence; you cannot commit those coexisting ground forces during this action. "
+                                     "(The Grove - 2/X: this card's influence value is equal to the number of planets that contain your "
+                                     "coexisting units.)", true},
+    {"mirveda", "Stabilization Arrays", B, Y, "If you have the Fighter II unit upgrade technology, flip this card and place it on top of Fighter "
+                                             "II. (Eye of the Curator - 1 (x2), combat 8, move 3: this unit may move without being transported; "
+                                             "fighters in excess of your ships' capacity count against your fleet pool; your fighters count as 1/2 a "
+                                             "ship for the purposes of capacity and transportation.)", true},
+    {"mortheus", "Mirage Craft", R, Y, "At the start of a space combat in which you are the defender, you may swap 1 of your ships in the "
+                                      "active system with 1 of your ships in another system that contains 1 of your command tokens; the swapped "
+                                      "ships cannot transport units.", true},
+    {"mykomentori", "Dreamwalkers", G_, Y, "Capture other player's infantry that are destroyed during combat on planets you control, even if "
+                                          "you are blockaded. After each round of ground combat on a planet you control, if that combat has not "
+                                          "ended, roll a die. On a result of 7 or greater, place up to 1 of your captured infantry onto that "
+                                          "planet, as if it were your own.", true},
+    {"nivyn", "Anomaly Stabilization", B, R, "The system that contains the Wound token is also an entropic scar. You may ignore the effects "
+                                            "of entropic scars. You may treat entropic scars as ingress tokens.", true},
+    {"nokar", "Mercenary Captains", Y, R, "ACTION: Exhaust this card to place 1 neutral cruiser and 2 neutral destroyers into a "
+                                        "non-fracture system that contains no non-neutral ships. After another player wins a space combat in "
+                                        "a system that contains your ships, gain 2 commodities or 1 command token.", true},
+    {"olradin", "Insurrectionist Networking", G_, R, "At the end of your turn, if you resolved a policy ability that turn, you may spend 1 "
+                                                    "trade good to move 1 of your infantry on the game board into coexistence on a planet in an "
+                                                    "adjacent system. When you pass, you may purge this card to resolve invasion on all planets "
+                                                    "that contain your coexisting infantry.", true},
+    {"zealots", "Rhodun's Reliquary", Y, R, "After you gain control of a legendary or relic planet, you may research 1 technology or remove "
+                                           "1 of your command tokens in that system and return it to your reinforcements.", true},
+    {"rohdhna", "The Prodigy's Triumph", Y, B, "If you have the Terrafactory II technology, flip this card and place it on top of "
+                                              "Terrafactory II. Omni-Forgeworld: Other player's units in this system lose PLANETARY SHIELD. "
+                                              "This unit is also a station. When you would exhaust this station's planet card, this unit "
+                                              "becomes damaged instead.", true},
+    {"tnelis", "Hidden Hardpoints", R, B, "At the end of a round of ground combat, you may discard 1 secret objective to have all your "
+                                         "participating units enter coexistence; that combat ends in a draw. When another player ends your "
+                                         "units' coexistence on a planet, you may draw 1 secret objective.", true},
+    {"vaden", "High Security Vault", R, G_, "Other players cannot take or force you to give them any of your trade goods, commodities, or relic "
+                                           "fragments, unless you allow it. When another player returns 1 of your promissory notes, place 1 of "
+                                           "their control tokens on your faction sheet.", true},
+    {"vaylerian", "Gravitic Disruption", R, B, "After you move 1 or more ships into the active system, you may discard an action card to move 1 "
+                                              "of those ships into an adjacent system that does not contain another player's ships.", true},
+    {"veldyr", "Aurora Research Base", Y, B, "Your home system is also a nebula. Hits produced by the ability rolls of your units in nebulae "
+                                            "cannot be canceled. When you pass, explore the frontier deck in your home system.", true},
+    {"zelian", "Awakened Planetoids", G_, R, "Your planets in the active system participate in space combat if that system contains 1 or more "
+                                            "of your ships, and ground combat on themselves if they contain 1 or more of your ground forces. Your "
+                                            "planets cannot be assigned hits and have a combat value equal to 10 minus their resource value, minimum 1.", true},
 };
 }  // namespace
 

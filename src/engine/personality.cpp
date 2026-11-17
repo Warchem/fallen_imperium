@@ -238,6 +238,7 @@ float attitudeScore(const Game& g, int bot, int q) {
     const int a = pe.now >= 0 ? pe.now : pe.arch;
     float s = 15.f + (pe.bf[q] - kArchetypes[pe.arch].bStart) + kMood[a];
     s += 3.f * pe.attacks[q] + 4.f * pe.broke[q] - 2.f * pe.deals[q] - 2.f * pe.kept[q] - 0.5f * pe.gifts[q];
+    s += 2.f * pe.threats[q];  // (owner 2026-11-15) demands it paid under q's threats
     if (hostileFlag(g, bot, q)) s += 12.f;
     Relation r = relationOf(g, bot, q);
     if (r == Relation::Contract) s -= 6.f;

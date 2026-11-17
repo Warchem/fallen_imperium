@@ -128,6 +128,12 @@ float creussSpot(const Game& g, int p, int sys, int k) {
     for (int16_t a : g.systems[size_t(sys)].adj) fleet = fleet || hasShips(g, p, a);
     if (fleet) v += 1.f;
     if (g.systems[size_t(sys)].home == p) v -= 1.f;
+    // (the Creuss checkpoint 2 - crseravus ON at 2, owner 2026-11-17 11:05) Sai Seravus unlocks with units in 3 systems with an alpha or
+    // beta wormhole - in 10-16% of their games: while it is locked, an alpha / beta token where our units already are (and no such wormhole
+    // yet) counts toward it - unlocked in 19-27%, 10 wins / 6.30 VP against 6 / 6.03, second sample 9 / 6.29 against 7 / 6.19
+    if (aiTune("crseravus", 2.f) > 0.f && k < 2 && leaderStatus(g, p, kCommander) == kLocked && hasUnits(g, p, sys) &&
+        !(g.systems[size_t(sys)].d().wormholes & (kAlpha | kBeta)))
+        v += aiTune("crseravus", 2.f);
     // Wormhole Weavers (Creuss faction trait, 0.59.0): a door behind another player's lines - their planets in or next
     // to it with none of their ships around (their home half again)
     if (fquirkIs(g, p, "ghost", 0)) {
@@ -327,7 +333,11 @@ float aiFactionComponentValue(const Game& g, int p, int option) {
     if (float tv = 0.f; option >= 6000 && aiTeComponentValue(g, p, int(ab), tv)) return tv;  // breakthroughs (ai_te.cpp)
     if (float dv = 0.f; option >= 6000 && aiDsComponentValue(g, p, int(ab), dv)) return dv;  // Discordant Stars (ai_ds.cpp)
     switch (ab) {
-        case Ab::HacanAgent: return me.commodities + 2 <= commodityValue(g, me) ? 0.6f : 0.f;
+        case Ab::HacanAgent: {
+            const int q = aiAgentPromisedTo(g, p);  // (rules 28) a promised refill
+            if (q >= 0 && g.players[size_t(q)].commodities < commodityValue(g, q)) return 2.5f;
+            return me.commodities + 2 <= commodityValue(g, me) ? 0.6f : 0.f;
+        }
         case Ab::OrbitalDrop:
             // (the Sol review, checkpoint 2 - test knob odrop, OFF) only with enemy ships in or next to a system with a planet
             // of ours, or in the last round. Tested (90 games): 111 Orbital Drops instead of 132, 22 wins / 7.67 VP against 27
@@ -348,6 +358,9 @@ float aiFactionComponentValue(const Game& g, int p, int option) {
         case Ab::NaaluAgent:  // Z'eu Omega: a free tactical action (0.43.0, C3: a promised one is worth keeping the word)
             return g.fixes >= 2 && g.agentFor[p] >= 0 ? 2.5f : aiFreeTacticalValue(g, p);
         case Ab::XxchaAgent: {
+            if (const int q = aiAgentPromisedTo(g, p); q >= 0)  // (rules 28) a promised planet of theirs to ready
+                for (int x : controlledPlanets(g, q))
+                    if (g.planets[size_t(x)].exhausted) return 2.5f;
             float best = 0;
             for (int x : controlledPlanets(g, p))
                 if (g.planets[x].exhausted) best = std::max(best, planetWorth(g, x));
@@ -405,7 +418,7 @@ float aiFactionComponentValue(const Game& g, int p, int option) {
             return late ? 0.8f : 0.f;
         }
         // batch 2
-        case Ab::ArborecAgent: return 0.8f;  // a free upgrade
+        case Ab::ArborecAgent: return aiAgentPromisedTo(g, p) >= 0 ? 2.5f : 0.8f;  // a free upgrade (rules 28: a promised one)
         case Ab::ArborecHero:
             // (the Arborec review, checkpoint 2 - test knob arbhero) it was used with 8 resources that the objective
             // reserve then kept back: in sims it often built nothing at all, or 2 infantry. With the knob: only with 8
@@ -472,7 +485,20 @@ float aiFactionComponentValue(const Game& g, int p, int option) {
                 }
             return (me.strategy >= 3 ? 1.1f : 0.6f) + near;
         }
-        case Ab::MuaatAgent:
+        case Ab::MuaatAgent: {
+            // (owner 2026-11-16 08:55, the stuck simulated game - knob umbatown) worth nothing when the Muaat has no war sun or
+            // flagship of its own (rules 26 offers Umbat when ANY player has one) and no promise to a player who has one: the bot
+            // picked it, backed out at "which player produces?" and, on a seat marked as a person, picked it again forever
+            auto producer = [&](int q) {
+                if (q < 0 || q >= g.numPlayers) return false;
+                for (const SystemState& s : g.systems)
+                    if (s.space[size_t(q)].count(UnitType::WarSun) || s.space[size_t(q)].count(UnitType::Flagship)) return true;
+                return false;
+            };
+            const bool own = aiTune("umbatown", 1.f) <= 0.f || producer(p);
+            const int promised = aiAgentPromisedTo(g, p);
+            if (promised >= 0 && (aiTune("umbatown", 1.f) <= 0.f || producer(promised))) return 2.5f;  // (rules 28) a promised Umbat
+            if (!own) return 0.f;
             // (the Muaat review, checkpoint 2 - test knob umbatplan) only when its production would buy something: 78
             // of 290 uses built nothing (the reserves / the fleet pool kept the production empty).
             // OFF - owner 2026-11-12 "leave it as is": variant 2 cut the wasted uses 78 -> 2 but the Muaat won no more
@@ -482,6 +508,7 @@ float aiFactionComponentValue(const Game& g, int p, int option) {
             if (aiTune("umbatplan", 0.f) >= 2.f) return aiFreeSpend(g, p, false) >= 2 && spendable(g, p, false) >= 4 ? 0.7f : 0.f;  // (variant 2)
             if (aiTune("umbatplan", 0.f) > 0.f) return aiUmbatWorth(g, p) ? 0.8f : 0.f;
             return spendable(g, p, false) >= 4 ? 0.7f : 0.f;
+        }
         case Ab::FiresOfGashlai: return 0.6f;
         case Ab::BloodPact: return 0.35f;
         case Ab::LazaxGate: return 0.4f;
@@ -502,6 +529,10 @@ float aiFactionComponentValue(const Game& g, int p, int option) {
         case Ab::NekroHero: return g.round >= 3 ? 1.0f : 0.f;
         case Ab::EmpyreanHero: return g.round >= 4 ? 0.9f : 0.f;
         case Ab::NekroAgent: {
+            if (const int q = aiAgentPromisedTo(g, p); q >= 0) {  // (rules 28) a promised Nekro Malleon
+                const Player& o = g.players[size_t(q)];
+                if (!o.actionCards.empty() || o.tactic + o.fleet + o.strategy > 0) return 2.5f;
+            }
             bool spare = me.tactic >= 3;
             if (me.actionCards.size() >= 3)
                 for (int16_t c : me.actionCards)
@@ -692,8 +723,9 @@ bool aiFactionAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
                 out = yes(true);
                 return true;
             }
-            if (ab == Ab::XxchaAgent) {  // ready our best exhausted planet
-                int x = bestBy(d, [&](int id) { return g.planets[id].owner == p ? planetWorth(g, id) : -1.f; }, 0.f);
+            if (ab == Ab::XxchaAgent) {  // ready our best exhausted planet (rules 28: the promised player's)
+                const int q = aiAgentPromisedTo(g, p), who = q >= 0 ? q : p;
+                int x = bestBy(d, [&](int id) { return id >= 0 && g.planets[id].owner == who ? planetWorth(g, id) : -1.f; }, 0.f);
                 out = one(x >= 0 ? x : (has(d, -1) ? -1 : firstReal(d)));
                 return true;
             }
@@ -759,7 +791,11 @@ bool aiFactionAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
             out = one(q >= 0 ? q : firstReal(d));
             return true;
         }
-        case Ab::HacanAgent: out = one(has(d, p) ? p : -1); return true;
+        case Ab::HacanAgent: {
+            const int q = aiAgentPromisedTo(g, p);  // (rules 28) the promised player first
+            out = one(q >= 0 && has(d, q) ? q : has(d, p) ? p : -1);
+            return true;
+        }
         case Ab::HacanCommander: {
             int k = me.tradeGoods >= 6 ? 2 : 0;
             // (the Hacan review, checkpoint 2 - test knob gila, OFF) half the trade goods over 4, up to 6 (12 votes). Tested (90
@@ -1160,15 +1196,16 @@ bool aiFactionAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
                 return float(unitCost2(g, p, UnitType(u)) - unitCost2(g, p, UnitType(t))) + (u == int(UnitType::Dreadnought) ? 2.f : 0.f);
             };
             if (d.prompt.find("which player's ship") != std::string::npos) {
-                // (fixes 26) the Arborec bot picks its own ship with the best upgrade, as before (another player's: later)
+                // (fixes 26) the Arborec bot picks its own ship with the best upgrade, as before (rules 28: the promised player's)
+                const int prom = aiAgentPromisedTo(g, p), who = prom >= 0 ? prom : p;
                 float best = 0.f;
                 int pick = -1;
                 for (const Option& o : d.options) {
-                    if (o.id < 0 || o.id / 4096 != p) continue;
+                    if (o.id < 0 || o.id / 4096 != who) continue;
                     const int t = o.id % 16;
                     for (int u : kShipIdx)
-                        if (u != t && u != int(UnitType::Fighter) && unitsAvailable(g, p, UnitType(u)) > 0 &&
-                            unitCost2(g, p, UnitType(u)) <= unitCost2(g, p, UnitType(t)) + 4 && gain(t, u) > best)
+                        if (u != t && u != int(UnitType::Fighter) && unitsAvailable(g, who, UnitType(u)) > 0 &&
+                            unitCost2(g, who, UnitType(u)) <= unitCost2(g, who, UnitType(t)) + 4 && gain(t, u) > best)
                             best = gain(t, u), pick = o.id;
                 }
                 out = one(pick);
@@ -1788,6 +1825,10 @@ bool aiFactionAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
             // (fixes 27) "choose a player": the bot picks itself, when it has something to give up as before (a deal to lend it
             // is for later); nobody otherwise
             if (d.prompt.find("choose a player") != std::string::npos) {
+                if (const int q = aiAgentPromisedTo(g, p); q >= 0 && has(d, q)) {  // (rules 28) the promised player
+                    out = one(q);
+                    return true;
+                }
                 bool self = false;
                 for (const Option& o : d.options) self = self || o.id == p;
                 float best = 0.f;
@@ -2278,7 +2319,8 @@ bool aiFactionAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
             if (d.prompt.find("which player") != std::string::npos) {
                 bool self = false;
                 for (const Option& o : d.options) self = self || o.id == p;
-                out = one(self ? p : -1);
+                const int q = aiAgentPromisedTo(g, p);  // (rules 28) the promised player
+                out = one(q >= 0 && has(d, q) ? q : self ? p : -1);
                 return true;
             }
             // (checkpoint 2 - test knob umbatplan, OFF - see the Umbat value above) the system where the production buys

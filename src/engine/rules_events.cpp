@@ -467,7 +467,7 @@ void Rules::eventControl(int planet, int p, int old) {
 void Rules::orthodoxyCheck(int p) {
     if (!eventOn(G, kEvOrthodoxy) || G.orthodoxy >= 0 || p < 0 || p >= G.numPlayers) return;
     int n = 0;
-    for (int16_t o : G.players[size_t(p)].scored) n += kObjectives[o].kind == 3;
+    for (int16_t o : G.players[size_t(p)].scored) n += scoredAsSecret(G, p, o);
     if (n < 2) return;
     G.orthodoxy = int8_t(G.players[size_t(p)].faction);
     const int16_t ally = makeNote(p, kNoteAlliance);  // their Alliance note is purged

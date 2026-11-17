@@ -106,6 +106,15 @@ void moveCard(Player& from, Player& to, int card) {
 }  // namespace
 
 // ------------------------------------------------------------------ shared
+// (fixes 28) trade goods that aren't taken from the supply: commodities turned into trade goods, or another player's - Artuno
+// the Betrayer doesn't catch them; everything else (Pillage, ...) as gainTG
+void Rules::gainTGNotSupply(int p, int n) {
+    const bool prev = convertTG_;
+    convertTG_ = G.fixes >= 28;
+    gainTG(p, n);
+    convertTG_ = prev;
+}
+
 void Rules::gainTG(int p, int n) {
     if (n <= 0 || p < 0 || p >= G.numPlayers) return;
     Player& pl = G.players[p];
@@ -113,7 +122,9 @@ void Rules::gainTG(int p, int n) {
     // Artuno the Betrayer (Nomad agent): the same number of trade goods go on the card - only for trade goods
     // from the supply (0.43.0, fixes 2: not those another player hands over in a deal or a loan)
     // (fixes 26, the Nomad review - owner 2026-11-13: Ssruu has the text of every other agent - the Yssaril may use it as Artuno)
-    if (!artunoPay_ && !(tgFromPlayer_ && G.fixes >= 2) && !pl.eliminated && (fac(p, "nomad") || (G.fixes >= 26 && fac(p, "yssaril"))) &&
+    // (fixes 28 - owner 2026-11-14: "When you gain trade goods from the supply") nor commodities that become trade goods -
+    // received from another player (LRR 21.5: the token is flipped) or converted (gainTGNotSupply)
+    if (!artunoPay_ && !(tgFromPlayer_ && G.fixes >= 2) && !convertTG_ && !pl.eliminated && (fac(p, "nomad") || (G.fixes >= 26 && fac(p, "yssaril"))) &&
         canUseNomadAgent(p, 2)) {
         curValue_ = n;
         bool use = fyes(p, Ab::NomadArtuno, "Exhaust Artuno the Betrayer to put " + std::to_string(n) + " trade good" + (n > 1 ? "s" : "") +
@@ -275,7 +286,7 @@ void Rules::bioplasmosis() {
 
 void Rules::oracle() {
     for (int p = 0; p < G.numPlayers; ++p) {
-        if (!fac(p, "naalu") || !heroUnlocked(G, p)) continue;
+        if (!(fac(p, "naalu") || caged(p, "naaluhero")) || !heroUnlocked(G, p)) continue;  // (fixes 28: the Soul Cage too)
         int notes = 0;
         for (int q = 0; q < G.numPlayers; ++q)
             if (q != p && !G.players[q].eliminated) notes += int(G.players[q].notes.size());
@@ -405,10 +416,14 @@ void Rules::afterActivation2(int p, int sys) {
             if (G.systems[sys].space[p].count(UnitType::Infantry)) opts.push_back({-2, "Infantry in space", ""});
             for (int16_t x : G.systems[sys].planets)
                 if (G.planets[x].units[p].count(UnitType::Infantry) && !isDMZ(G, x)) opts.push_back({x, planetName(x), ""});
-            if (!opts.empty() && fyes(Lz, Ab::L1Z1XAgent, "Exhaust I48S for " + pn(p) + ": they replace 1 of their infantry here with a mech?",
-                                      leaderText(findLeader("l1z1xagent")))) {
+            if (G.fixes >= 28) agentFor(Lz, p);  // (a promise to p: Decision::targetPlayer for the bot)
+            const bool yes = !opts.empty() && fyes(Lz, Ab::L1Z1XAgent, "Exhaust I48S for " + pn(p) + ": they replace 1 of their infantry here with a mech?",
+                                                   leaderText(findLeader("l1z1xagent")));
+            curFor_ = -1;
+            if (yes) {
                 int where = opts.size() == 1 ? opts[0].id : fpick(p, Ab::L1Z1XAgent, "I48S: replace which infantry with a mech?", opts);
                 spendAgent(Lz, "l1z1x");
+                agentUsedFor(Lz, p);
                 Force& f = where == -2 ? G.systems[sys].space[p] : G.planets[where].units[p];
                 f.remove(UnitType::Infantry, 1, false);
                 f.add(UnitType::Mech, 1);
@@ -489,7 +504,7 @@ void Rules::afterMoveFactions(int p, int sys) {
         for (int16_t a : G.systems[sys].adj) {
             const SystemState& s = G.systems[a];
             if (s.isHyperlane()) continue;
-            uint8_t an = s.d().anomalies;
+            uint8_t an = tileAnomalies(G, a);  // (fixes 29: the Zelian home too)
             if (an & kSupernova) continue;
             if ((an & kAsteroid) && !owns(q, "amd")) continue;
             // (fixes 27, the Naalu review - LRR 59.2) ships move into a nebula only when it is the active system
@@ -689,7 +704,7 @@ void Rules::spaceCombatStart2(int att, int def, int sys) {
     ipswitch_ = -1;
     // Ipswitch, Loose Cannon (Mentak hero)
     for (int p : {att, def})
-        if (fac(p, "mentak") && heroUnlocked(G, p) && ipswitch_ < 0 &&
+        if ((fac(p, "mentak") || caged(p, "mentakhero")) && heroUnlocked(G, p) && ipswitch_ < 0 &&  // (fixes 28: the Soul Cage too)
             fyes(p, Ab::MentakHero, "Use Ipswitch, Loose Cannon in this combat?", leaderText(findLeader("mentakhero")))) {
             purgeHero(p);
             ipswitch_ = p;
@@ -911,10 +926,12 @@ void Rules::harrow(int att, int def, int planet) {
             if (G.planets[planet].units[o].n[t] && unitDef(G, o, UnitType(t)).shield) shield = true;
         if (G.fixes >= 12 && G.fx.dsShieldPlanet == planet) shield = true;  // (0.44.8: Orbital Defense Grid)
         if (shieldsDown(G, o, sys)) shield = false;
+        if (shield && !ignoreShield && (G.modules & kModDiscordant) && wraegShield29(o, p, sys, planet)) shield = false;  // (fixes 29: Suldhan Wraeg)
         if (shield && !ignoreShield) continue;
         if (!fyes(p, Ab::Harrow, "Harrow: bombard " + pn(o) + "'s ground forces on " + planetName(planet) + "?",
                   abilityText(G.players[p].faction, 1)))
             continue;
+        if (G.modules & kModDiscordant) wraegRoll29(p, o, sys, guns, RollKind::Bombard, nullptr);  // (fixes 29: Suldhan Wraeg, Nivyn agent)
         RollResult r = rollUnits(p, guns, RollKind::Bombard, 0, owns(p, "ps"));
         reportRoll(p, sys, "Harrow (bombardment of " + planetName(planet) + ")", r);
         afterUnitRoll(p, o, sys, r, "bombardment");
@@ -1179,6 +1196,7 @@ bool Rules::factionAction2(int p, Ab ab) {
                 if (c < 0) return false;
                 const int t = c % 16, s = (c / 16) % 256, q = c / 4096;
                 spendAgent(p, "arborec");
+                agentUsedFor(p, q);
                 if (q != p) say(p, pn(p) + " offers " + pn(q) + " Letani Ospha for their " + unitTypeName(UnitType(t)) + " in " + sysName(s) + ".", s);
                 std::vector<Option> to;
                 for (int u : osphaReplacements(G, q, t))

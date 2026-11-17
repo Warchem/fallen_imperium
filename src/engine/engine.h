@@ -77,7 +77,7 @@ struct Setup {
     // Rule fixes (0.33.0) that change what happened in older games, so they only apply to games started
     // with them: 1 = Lucky Shot destroys the ship that was picked (it misread odd-numbered systems).
     // Saves without the line load as 0.
-    int fixes = 27;  // 1 Lucky Shot target (0.33.0), 2 the 0.43.0 fixes, 3 the Fracture's planets at its ends (0.43.2),
+    int fixes = 30;  // 1 Lucky Shot target (0.33.0), 2 the 0.43.0 fixes, 3 the Fracture's planets at its ends (0.43.2),
                     // 4 a token gained in a tactical action no longer gives another action (0.43.3),
                     // 5 the 0.43.4 fixes (entropic scars at the start of the status phase, ...),
                     // 6 the Veldyr start with all 4 Branch Offices (0.44.1: Tax Haven was missing),
@@ -247,6 +247,62 @@ struct Setup {
                     //    Reveal Prototype and the Book of Latvinia, no Nekro Acidos card for a Valefar token, Plagiarize
                     //    and the Maw of Worlds a gain (not research); the entropic scar paid with the Scepter of Emelpar
                     //    (+ a feed note for a person with ships there and nothing to pay with)
+                    // 28 (0.59.40 - FROZEN; the next rule fix goes behind 29) the tester's reports (owner 2026-11-14): a promissory note back with its owner is
+                    //    known to be there (returnNote records it in dealNotes - deals can ask for it again), Classified
+                    //    Document Leaks' secret scored as a public objective isn't one of the scorer's secret objectives
+                    //    (Player::scoredAsPublic - the 3-secret limit and the other secret counts); Artuno the
+                    //    Betrayer (owner 2026-11-14, LRR 21.5): trade goods that aren't from the supply - commodities
+                    //    received from another player (Trade Agreement, Salvage, ...) or turned into trade goods - are not
+                    //    placed on her (Rules::gainTGNotSupply); the Discordant Stars debug pass (owner 2026-11-14/15): the
+                    //    Augurs (Clodho, Read the Fates), the Axis (Military Industrial Complex, Tactical Shipmonger,
+                    //    Demi-Queen, Rift Engines), the Bentor (fragment tokens when gained, Ken Tucc, Merged Replicators),
+                    //    the Celdauri (George Nobin: 2 of one kind, any player's tactical action, that player picks the
+                    //    planet; Titus Flavius with no dock to place; Supremacy builds only ships), a coexistence fix
+                    //    (units chosen for an attack that then coexists instead - Research Team - keep coexisting), the
+                    //    Cheiran (Lithodax's barrage die, Brood Pod with other ships there, Operator Kkavras for any player's
+                    //    turn, Spc. Phquaiset 1 hit per roll, Thakt Clqua's units placed one by one), the Cymiae (Autonetic
+                    //    Memory's discard-pile card after the draw, Cybernetic Madness after Reverse Engineer / The Codex,
+                    //    Skhot Unit X-12 for any player's discard, Koryl Ferax moves a mech, Unholy Abomination II's
+                    //    infantry come back one at a time); threats (owner 2026-11-15): a demand paid under a threat is a
+                    //    grudge, not a fair deal, and a refused one a bigger grudge (B-Factors drive the betrayals the engine
+                    //    hands out, so this changes what older games did); the Dih-Mohn (an Aegis shields another Aegis,
+                    //    Jgin Faru for any player's invasion, Maximus produces no ships beside other players' ships - LRR
+                    //    67.6, Exodus Engineering's frontier token anywhere and its production only to ready it, Verrisus
+                    //    Ypru after every space combat roll), the Edyn (Grace's secondary costs its token, Kadryn whenever a
+                    //    public objective could be scored, Rune Bearer systems are anomalies - also under Articles of War,
+                    //    Midir's agendas in the order chosen, Unity Algorithm staked on one prediction a phase; Encrypted
+                    //    Trade Hub lets an agenda - a law a player holds - change hands too: DealSide::laws, deal version 7);
+                    //    the Florzen (Mercenaries' "up to 2" fighters, Sal Gavda to a planet in the same system and for any
+                    //    player's turn - the player whose turn it is chooses); the Free Systems (Cordo Haved at the end of a
+                    //    turn, not as an action, with every legendary planet ability at its own moment - the end of a turn,
+                    //    passing, an activation, an agenda reveal, The Nucleus as an action - and for any player)
+                    // 29 the unattended faction reviews (0.59.50, owner 2026-11-16 23:28 - Living Rules first, then his DS Reference, then
+                    //    AsyncTI4) - the Nivyn Star Kings: their home system is a gravity rift (Reference and AsyncTI4 d25 - the generated
+                    //    data has no anomaly on it: nivynRift); Suldhan Wraeg before the unit ability is used, for any player's unit and
+                    //    any non-Production ability - Space Cannon, Anti-Fighter Barrage, Bombardment, Sustain Damage, Planetary Shield -
+                    //    offered in initiative order to whoever can use it (a person: "don't ask again this round"; a promised agent for its
+                    //    beneficiary); Voidwake Missiles rerolls the whole roll of the unit the player picks; Krill Drakkon stays in play
+                    //    (exhausted) until the end of the round, damages neutral units too and never the Nivyn's mechs in space either; heroes
+                    //    purged at the end of a round go through purgeHero (the Myko-Mentori's Soul Cage, Aggressive Broker...); Thussad
+                    //    Krath unlocks with any anomaly (dynamic ones too: the Wound, a Dimensional Tear, ...) outside every home system;
+                    //    the Voidflare Warden: the player picks the mech and a person may say "not again this round"; "contains or is
+                    //    adjacent to an anomaly" (Suldhan Wraeg, Nivyn Guidance) counts every anomaly (isAnomaly). The other factions of
+                    //    the run (Nokar, Olradin, Roh'Dhna, Tnelis, Vaden, ...): their agents for any player (initiative order, a
+                    //    person's "not again this round", bots only for themselves / a promise), commanders through the Alliance, the
+                    //    card texts' timing; the Zelian home is an asteroid field (zelianAsteroids / tileAnomalies) - see CLAUDE.md per
+                    //    faction and RULES-CHECK 0.59.50 N1, N2, ... Owner 2026-11-17: the Crimson Rebellion start with their breakthrough
+                    //    and roll for the Fracture at setup (setupGame, LRR setup step 11; not with Rapid Mobilization) - N49
+                    // 30 the agenda and relic passes (0.60.0, owner 2026-11-17 14:59 "Go ahead with those changes"): Enforced Travel Ban
+                    //    and Nexus Sovereignty only stop movement (FAQ: space cannon and neighbours keep the wormholes - adjNoMove);
+                    //    Miscount Disclosed's law stays in play during the revote (FAQ) and a Deadly Plot on it discards the card;
+                    //    Representative Government: no Zeal / Blood Pact votes ("cannot cast additional votes"); Wormhole Research and
+                    //    Ixthian Artifact "may research" (Don't research); Research Grant Reallocation / Maw of Worlds offer a Thunder's
+                    //    Edge / Discordant Stars faction's own technologies; Economic Equality's 5 trade goods are gained (Pillage) and
+                    //    not by eliminated players; a leaked secret no longer counts toward its scorer's secrets (FAQ); Committee
+                    //    Formation after the "after an agenda is revealed" window (riders first - owner); no space stations in "Elect
+                    //    Planet" (owner); The Codex takes copies of one card; Neuraloop draws from the unused objectives; Crown of
+                    //    Thalnos destroys each unit that rerolled without a hit (not one per missed die); Stellar Converter destroys
+                    //    neutral units too
     // 0.54.0: the human players' habits from their earlier games (the bots adapt to them); saved as "habits" when known
     HabitProfile habits;
     // The Council Keleres (0.21.0): per seat, the faction whose home system a

@@ -50,13 +50,18 @@ int maxAbsorbableHits(const Game& g, int p, int sys, int planet, int mask, bool 
     const Force& f = planet < 0 ? g.systems[sys].space[p] : g.planets[planet].units[p];
     int n = 0;
     int metali = 0;  // ships without Sustain Damage that may use it here (Metali Void Shielding, Splintering Gale)
+    int gale = 0;    // (rules 28) the Splintering Gale's chosen ships, per type
     for (int t = 0; t < kUnitTypes; ++t) {
         if (mask && !((mask >> t) & 1)) continue;
         n += f.n[t];
         if (!noSustain && unitSustainsAt(g, p, UnitType(t), sys, planet)) n += (f.n[t] - f.dmg[t]) * sustainWorth(g, p);
-        else if (!noSustain && f.n[t] > f.dmg[t] && metaliSustain(g, p, UnitType(t), sys, planet)) metali += f.n[t] - f.dmg[t];
+        else if (!noSustain && f.n[t] > f.dmg[t] && metaliSustain(g, p, UnitType(t), sys, planet)) {
+            const int own = planet < 0 ? std::min(f.n[t] - f.dmg[t], galeLeft(g, p, sys, UnitType(t))) : 0;
+            gale += own;
+            metali += f.n[t] - f.dmg[t] - own;
+        }
     }
-    return n + std::min(metali, extraSustains(g, p, sys, planet)) * sustainWorth(g, p);
+    return n + (gale + std::min(metali, extraSustainsPooled(g, p, sys, planet))) * sustainWorth(g, p);
 }
 
 std::string checkHits(const Game& g, int p, int sys, int planet, int hits, int mask, const std::vector<int>& data,
@@ -90,6 +95,12 @@ std::string checkHits(const Game& g, int p, int sys, int planet, int hits, int m
     if (metali > extraSustains(g, p, sys, planet))
         return extraSustains(g, p, sys, planet) == 1 ? "Only one ship without Sustain Damage may sustain damage here."
                                                      : "Only " + std::to_string(extraSustains(g, p, sys, planet)) + " ships without Sustain Damage may sustain damage here.";
+    if (g.fixes >= 28 && planet < 0) {  // (the Khrask review) the Splintering Gale's ships are the ones chosen: per type
+        int over = 0;
+        for (int t = 0; t < kUnitTypes; ++t)
+            if (sustain[t] && !unitSustainsAt(g, p, UnitType(t), sys, planet)) over += std::max(0, sustain[t] - galeLeft(g, p, sys, UnitType(t)));
+        if (over > extraSustainsPooled(g, p, sys, planet)) return "Only the ships chosen for the Splintering Gale may sustain damage here.";
+    }
     int need = std::min(hits, maxAbsorbableHits(g, p, sys, planet, mask, noSustain));
     // Each destroyed unit takes 1 hit, each Sustain Damage cancels 1 (2 with Non-Euclidean Shielding).
     const int worth = sustainWorth(g, p);
@@ -515,6 +526,11 @@ std::string checkMovePlan(const Game& g, int p, int active, const std::vector<in
                (fightersFree(g, p) ? " (fighters beyond capacity count too)." : ".");
     if (overflowOf(g, p, active, after) > capacityOverflow(g, p, active))
         return "Not enough capacity in the active system for all fighters and ground forces.";
+    // (fixes 28, the Mirveda review) Privileged Citizenry: "Each system can contain a number of your PDS equal to the number of command
+    // tokens in your fleet pool" - Gauss Cannons moving in
+    if (g.fixes >= 28 && arriving.count(UnitType::PDS) > 0 && mirvedaPdsCap(g, p) >= 0 &&
+        after.count(UnitType::PDS) > std::max(mirvedaPdsCap(g, p), int(g.systems[active].space[p].count(UnitType::PDS))))
+        return "Privileged Citizenry: at most " + std::to_string(mirvedaPdsCap(g, p)) + " of your PDS in a system (the command tokens in your fleet pool).";
     if (needsColish) {
         bool flagship = false;
         for (size_t i = 0; i + 3 < data.size(); i += 4)
@@ -590,6 +606,12 @@ std::string checkProducePlan(const Game& g, int p, int sys, const std::vector<in
         freeFF += std::min(cap, ff - freeFF);
     }
     if (total - freeFF > capacityLimit) return "Production limit here is " + std::to_string(capacityLimit) + " units.";
+    // (fixes 28, the Celdauri review) Supremacy: "use the PRODUCTION ability of other player's space docks in this system to
+    // produce ships" - ground forces only fit the rest of the Production
+    if (g.fixes >= 28 && gf > 0)
+        if (const int extra = supremacyCapacity(g, p, sys); extra > 0 && gf > std::max(0, capacityLimit - extra))
+            return "Supremacy: other players' space docks produce only ships for you - " + std::to_string(std::max(0, capacityLimit - extra)) +
+                   " ground forces at most here.";
     int gfPlanet = data[kUnitTypes];
     const SystemState& s = g.systems[sys];
     if (gf) {
@@ -989,7 +1011,7 @@ void Rules::placeTokenFromReinforcements(int p, int sys, const std::string& why)
     zeuTE(p, sys);  // (fixes 27: Thunder's Edge's Z'eu)
 }
 
-void Rules::gainTokens(int p, int n, bool redistribute, const std::string& why) {
+void Rules::gainTokens(int p, int n, bool redistribute, const std::string& why, const std::string& prompt) {
     Player& pl = G.players[p];
     n = std::max(0, std::min(n, reinforcementTokens(p)));
     if (n == 0 && !redistribute) return;
@@ -997,7 +1019,7 @@ void Rules::gainTokens(int p, int n, bool redistribute, const std::string& why) 
     d.player = p;
     d.kind = DecisionKind::Tokens;
     d.tag = redistribute ? Tag::TokenRedistribute : Tag::TokenGain;
-    d.prompt = redistribute ? "Arrange your command tokens" : "Place " + std::to_string(n) + " new command token(s)";
+    d.prompt = !prompt.empty() ? prompt : redistribute ? "Arrange your command tokens" : "Place " + std::to_string(n) + " new command token(s)";
     d.context = why;
     d.newTokens = n;
     d.redistribute = redistribute;
@@ -1031,6 +1053,9 @@ void Rules::addUnits(int p, UnitType t, int k, int sys, int planet) {
     // Gauss Cannon (Mirveda PDS, Discordant Stars): placed in the space area instead of on a planet
     if (planet >= 0 && t == UnitType::PDS && (G.modules & kModDiscordant) && p >= 0 && p < G.numPlayers && unitDef(G, p, t).spaceOnly) planet = -1;
     k = std::min(k, (p < G.numPlayers ? unitLimitOf(G, p, t) : unitLimit(t)) - unitsOnBoard(G, p, t));  // the pieces in the box are the limit
+    // (fixes 28, the Mirveda review) Privileged Citizenry: no more of their PDS in a system than their fleet tokens
+    if (G.fixes >= 28 && t == UnitType::PDS && planet < 0 && p >= 0 && p < G.numPlayers && mirvedaPdsCap(G, p) >= 0 && sys >= 0)
+        k = std::min(k, mirvedaPdsCap(G, p) - int(G.systems[size_t(sys)].space[size_t(p)].count(UnitType::PDS)));
     if (k <= 0) return;
     if (planet >= 0 && (isDMZ(G, planet) || G.planets[planet].destroyed)) {
         say(p, std::string("Units can't be placed on ") + planetName(planet) + " (Demilitarized Zone).");
@@ -1330,6 +1355,18 @@ void Rules::enforceFleetLimit(int p) {
 }
 
 void Rules::enforceFleetIn(int p, int s) {
+    // (fixes 28, the Mirveda review) Privileged Citizenry: fewer fleet tokens than Gauss Cannons in a system - the extra ones go
+    if (G.fixes >= 28 && mirvedaPdsCap(G, p) >= 0) {
+        const int extra = int(G.systems[size_t(s)].space[size_t(p)].count(UnitType::PDS)) - mirvedaPdsCap(G, p);
+        if (extra > 0) {
+            const bool was = removing_;
+            removing_ = true;
+            destroyUnits(p, UnitType::PDS, extra, s, -1, -1, "Privileged Citizenry");
+            removing_ = was;
+            say(p, pn(p) + " returns " + std::to_string(extra) + " Gauss Cannon" + (extra > 1 ? "s" : "") + " from " + sysName(s) +
+                       ": no more PDS in a system than fleet tokens (Privileged Citizenry).", s);
+        }
+    }
     // Fighter II: fighters beyond capacity count too (Naalu: half each), so they may go instead.
     for (int guard = 0; guard < 8; ++guard) {
         int over = fleetUseIn(G, p, s) - fleetLimit(G, p);

@@ -395,7 +395,8 @@ void factionQuirk(Style& st, const Game& g, int p) {
         st.unit[int(UnitType::Cruiser)] = 1.5f;
         st.unit[int(UnitType::Destroyer)] = 1.5f;
         st.aggression *= 1.1f;
-    } else if (is("sardakk", 0)) {
+    } else if (is("sardakk", 0)) {  // Blood Rage
+        // REVISIT (the Sardakk checkpoint 2, 90 forced games; base 14 / 7.41): 15 / 7.46 - no clear effect (Hive Command: 19 / 7.57)
         st.neverRetreat = true;
         if (g.round >= 2 && g.round <= 3) {  // the nearest neighbour
             int best = -1, bd = 1 << 20;
@@ -545,7 +546,8 @@ void factionQuirk(Style& st, const Game& g, int p) {
     } else if (is("jolnar", 1)) {
         st.dealRate *= 1.3f;
         st.noteMult *= 0.8f;
-    } else if (is("ghost", 0)) {
+    } else if (is("ghost", 0)) {  // Wormhole Weavers
+        // REVISIT (the Creuss checkpoint 2, 90 forced games; base 6 / 6.03): 7 / 6.11; Phantom Raiders 6 / 5.96 - no clear effect
         st.aggression *= 1.1f;
         if (aiTune("weavetech", 1.f) > 0.f) st.techPref[0] = "wg";  // (0.59.0: Wormhole Generator early - the doors it strikes through)
     } else if (is("ghost", 1)) {
@@ -592,6 +594,51 @@ void factionQuirk(Style& st, const Game& g, int p) {
     // we should look into why" at the balancing pass; dwmech=0 turns it off)
     if (isFaction(g, p, "deepwrought") && aiTune("dwmech", 1.6f) > 0.f)
         st.unit[int(UnitType::Mech)] = std::max(st.unit[int(UnitType::Mech)], aiTune("dwmech", 1.6f));
+    // (the Khrask review, checkpoint 2 - test switch khmech, OFF: 0.07 mechs a game, the Megalith in 0.2 first rounds of ground combat;
+    // at 1.6 nothing changes (the production list never reaches the mech), at 3: 2.8 mechs a game, Megalith 0.58 first rounds, 24 / 7.51
+    // against 23 / 7.62 - no gain: Megalith holds planets the Khrask rarely need to hold, and mechs cost Garden Worlds its +1)
+    if (isFaction(g, p, "khrask") && aiTune("khmech", 0.f) > 0.f)
+        st.unit[int(UnitType::Mech)] = std::max(st.unit[int(UnitType::Mech)], aiTune("khmech", 0.f));
+    // (the Cheiran review, checkpoint 2 - test switch chmech, OFF: no effect - 19 / 7.04 and 2.59 mechs a game either way) the
+    // strategy guide: "Spread mechs (which count as structures) to
+    // make every planet a Brood Pod trigger and a Lithodax bonus zone" - and 4 structures outside home unlock Spc. Phquaiset
+    if (isFaction(g, p, "cheiran") && aiTune("chmech", 0.f) > 0.f)
+        st.unit[int(UnitType::Mech)] = std::max(st.unit[int(UnitType::Mech)], aiTune("chmech", 0.f));
+    // (the Myko-Mentori review, checkpoint 2 - test switch mkdock) every Myko-Mentori space dock is +1 commodity value (Necrophage)
+    // and a Mycelium Ring produces its planet's resources + 2 / + 5: Construction for a dock out on the board
+    if (isFaction(g, p, "mykomentori") && aiTune("mkdock", 0.f) > 0.f) st.card[3] += 0.8f;
+    // (the Roh'Dhna review, checkpoint 2 - test switch rhcons) Industrious: a space dock placed where no other player's ships are can be
+    // swapped for a war sun for 6 resources - Construction (a dock out on the board) is the way to it. REVISIT (checkpoint 2, 90 forced games
+    // each, +1): 9 wins / 6.66 VP against 8 / 6.68, second sample 12 / 7.06 against 13 / 6.98 - no gain, off
+    if (isFaction(g, p, "rohdhna") && aiTune("rhcons", 0.f) > 0.f) st.card[3] += aiTune("rhcons", 0.f);
+    // (the Tnelis review, checkpoint 2 - test switch tnimp) Plausible Deniability + Information Brokers: every secret drawn is 2 to pick
+    // from and they hold 1 more - Imperial (a secret from its primary or secondary) is worth more to them. REVISIT (checkpoint 2, 90 forced
+    // games each, +1): 12 wins / 7.07 VP against 11 / 7.01, second sample 9 / 6.63 against 11 / 6.83 - not clear in both, off
+    if (isFaction(g, p, "tnelis") && aiTune("tnimp", 0.f) > 0.f) st.card[7] += aiTune("tnimp", 0.f);
+    // (the Vaden review, checkpoint 2 - test switch vdmech) the Collector: 1 infantry for each token at the end of every ground combat round -
+    // 0.1 mechs built a game. REVISIT (checkpoint 2, 90 forced games each, 1.4): the games came out identical (17 / 7.73 and 20 / 7.54) - the
+    // preference never decided a build; off
+    // (the Vaylerian review, checkpoint 2 - test switch vyflag) Lost Cause: an opponent can't retreat to one system, and with no way out the
+    // Raiders' hits go to their non-fighter ships - used in 0.33-0.38 of their games. REVISIT (checkpoint 2, 90 forced games each, 1.4): the
+    // games came out identical (18 / 7.04 and 15 / 7.11) - the preference never decided a build; off
+    if (isFaction(g, p, "vaylerian") && aiTune("vyflag", 0.f) > 0.f)
+        st.unit[int(UnitType::Flagship)] = std::max(st.unit[int(UnitType::Flagship)], aiTune("vyflag", 0.f));
+    // (the Creuss / Firmament checkpoint 2 - test switches crexpand / fmexpand, OFF) both have a weak home (Creuss 4/2, the Firmament 3/3) -
+    // expansion worth more in rounds 1-3. REVISIT (90 forced games each, x1.2): Creuss 4 / 5.96 against 6 / 6.03, second sample 7 / 6.21
+    // against 7 / 6.19; Firmament 6 / 6.51 against 6 / 6.52, second sample 4 / 6.41 against 5 / 6.46 - no gain
+    if (g.round <= 3 && isFaction(g, p, "ghost") && aiTune("crexpand", 0.f) > 0.f) st.expansion *= aiTune("crexpand", 0.f);
+    if (g.round <= 3 && isFaction(g, p, "firmament") && aiTune("fmexpand", 0.f) > 0.f) st.expansion *= aiTune("fmexpand", 0.f);
+    // (the Sardakk checkpoint 2 - test switch sdtech, OFF) the strategy guide: "Technology early is good because you start with nothing" -
+    // Technology worth more to them in rounds 1-2. REVISIT (90 forced games each, +1.5): 11 / 7.32 against 14 / 7.41, second sample 15 /
+    // 6.80 against 15 / 6.77 - no gain
+    if (isFaction(g, p, "sardakk") && aiTune("sdtech", 0.f) > 0.f && g.round <= 2) st.card[6] += aiTune("sdtech", 0.f);
+    // (the Zelian review, checkpoint 2 - test switch zlmech) the Collider (a mech in space removes 1 unit on a planet at the start of an
+    // invasion) - 0.04-0.13 mechs built a game (their mechs come from Zelian A: ~3.8 a game). REVISIT (checkpoint 2, 90 forced games each,
+    // 1.4): the games came out identical (19 / 7.51 and 14 / 6.93) - the preference never decided a build; off
+    if (isFaction(g, p, "zelian") && aiTune("zlmech", 0.f) > 0.f)
+        st.unit[int(UnitType::Mech)] = std::max(st.unit[int(UnitType::Mech)], aiTune("zlmech", 0.f));
+    if (isFaction(g, p, "vaden") && aiTune("vdmech", 0.f) > 0.f)
+        st.unit[int(UnitType::Mech)] = std::max(st.unit[int(UnitType::Mech)], aiTune("vdmech", 0.f));
     // (the Last Bastion review, checkpoint 2 - switch bastionmech, test: 0.14 mechs a game - A3 Valiance once in 90 games)
     if (isFaction(g, p, "bastion") && aiTune("bastionmech", 0.f) > 0.f)
         st.unit[int(UnitType::Mech)] = std::max(st.unit[int(UnitType::Mech)], aiTune("bastionmech", 0.f));
@@ -617,6 +664,8 @@ void factionQuirk(Style& st, const Game& g, int p) {
         st.bigFights *= 0.85f;
         st.unit[int(UnitType::Destroyer)] = std::max(st.unit[int(UnitType::Destroyer)], 1.3f);
     } else if (is("crimson", 0)) {  // Empty House: no home guard, all forward
+        // REVISIT (the Crimson checkpoint 2, 90 forced games, with the starting breakthrough; base 10 / 6.88): 14 / 7.19 - better, not
+        // tested on a second sample; Quiet Breaches 8 / 6.64 - worse
         st.homeGuard = 0;
         st.aggression *= 1.1f;
         st.unit[int(UnitType::Destroyer)] = std::max(st.unit[int(UnitType::Destroyer)], 1.3f);
@@ -631,6 +680,7 @@ void factionQuirk(Style& st, const Game& g, int p) {
         // shows; 30 wins / 7.98 VP vs 32 / 8.17
         st.research *= 1.2f;
     } else if (is("firmament", 0) || is("obsidian", 0)) {  // Puppet Master: courts its neighbours (ai_deals bestProposal)
+        // REVISIT (the Firmament checkpoint 2, 90 forced games; base 6 / 6.52): 5 / 6.63; Coup Clock 9 / 6.59 - no clear effect
         if (aiTune("puppetold", 0.f) > 0.f) {  // (test only: the trait before the owner's 2026-11-11 review)
             st.dealRate *= 1.3f;
             st.pres *= 1.15f;
@@ -644,9 +694,11 @@ void factionQuirk(Style& st, const Game& g, int p) {
         st.card[5] -= 1.5f;
         st.card[0] += 0.5f;
     } else if (is("vaylerian", 0)) {  // Corsair Code: small fights, raiders
+        // REVISIT (the Vaylerian review, checkpoint 2, 90 forced games; base 18 / 7.04): 16 / 7.22 - no clear effect
         st.smallFights *= 1.3f;
         st.unit[int(UnitType::Cruiser)] = std::max(st.unit[int(UnitType::Cruiser)], 1.8f);
     } else if (is("vaylerian", 1)) {  // Card Sharp (ai_ds: Scour on cheaper planets)
+        // REVISIT (checkpoint 2, 90 forced games): 21 / 7.17 - a little better, not clear
         st.card[2] += 1.f;
     } else if (is("lanefir", 0)) {  // Grave Robber
         st.expansion *= 1.15f;
@@ -658,42 +710,60 @@ void factionQuirk(Style& st, const Game& g, int p) {
     } else if (is("kyro", 1)) {  // Pale Rider (ai_ds: Silas Deriga, Kyro Rider)
         st.unit[int(UnitType::Infantry)] = std::max(st.unit[int(UnitType::Infantry)], 1.5f);
     } else if (is("cheiran", 0)) {  // Hive Bastion
+        // REVISIT (the Cheiran review, checkpoint 2, 90 forced games; base 19 / 7.04): 19 / 6.94 - PDS 1.52 a game vs 1.44,
+        // mechs 2.54 vs 2.59: the mechs "on everything it holds" don't come
         st.pdsPref += 1.f;
         st.homeGuard += 1;
         st.unit[int(UnitType::Mech)] = std::max(st.unit[int(UnitType::Mech)], 1.4f);
     } else if (is("cheiran", 1)) {  // Moulting Season: defender
+        // REVISIT (the Cheiran review, checkpoint 2, 90 forced games): 19 / 7.16 - dreadnoughts 3.11 a game vs 3.01, but space
+        // attacks 3.43 vs 3.07 (attacked 3.71 vs 3.61): it doesn't wait for the enemy to come
         st.aggression *= 0.85f;
         st.unit[int(UnitType::Dreadnought)] = std::max(st.unit[int(UnitType::Dreadnought)], 1.5f);
     } else if (is("celdauri", 0)) {  // Merchant Princes
+        // REVISIT (the Celdauri review, checkpoint 2, 90 forced games; base 12 / 7.16): 12 / 7.16 - deals 15.1 a game vs 14.9;
+        // it never sells its Trade Alliance (the tasell switch tried it for every Celdauri bot: 9 / 6.98)
         st.dealRate *= 1.3f;
     } else if (is("celdauri", 1)) {  // Dock Barons
+        // REVISIT (the Celdauri review, checkpoint 2, 90 forced games): 14 / 7.24 - Construction taken 63 vs 60, docks built
+        // 0.77 a game vs 0.72; George Nobin "every turn it can" is every Celdauri bot's habit already
         st.card[3] += 1.f;
     } else if (is("khrask", 0)) {  // Stone Garden
+        // REVISIT (the Khrask review, checkpoint 2, 90 forced games; base 23 / 7.62): 22 / 7.59 - no clear effect
         st.unit[int(UnitType::Infantry)] = std::min(st.unit[int(UnitType::Infantry)], 0.7f);
         st.pdsPref += 1.f;
     } else if (is("khrask", 1)) {  // Crystal Bloc
+        // REVISIT (the Khrask review, checkpoint 2, 90 forced games; base 23 / 7.62): 25 / 7.72 - no clear effect
         st.card[2] += 1.f;
         st.dealRate *= 1.15f;
     } else if (is("zealots", 0)) {  // Relic Hunters
+        // REVISIT (the Zealots review, checkpoint 2, 90 forced games; base 9 / 6.41): 10 / 6.46 - no clear effect
         st.research *= 1.2f;
         st.expansion *= 1.1f;
     } else if (is("zealots", 1)) {  // Last Word
+        // REVISIT (checkpoint 2, 90 forced games): 9 / 6.47 - no clear effect
         st.card[2] += 1.f;
     } else if (is("zelian", 0)) {  // Purifier's Zeal
+        // REVISIT (the Zelian review, checkpoint 2, 90 forced games; base 19 / 7.51): 18 / 7.61 - no clear effect
         st.aggression *= 1.15f;
         st.smallFights *= 1.2f;
     } else if (is("zelian", 1)) {  // Hammerfall
+        // REVISIT (checkpoint 2, 90 forced games): 17 / 7.53 - no clear effect
         st.unit[int(UnitType::Infantry)] = std::max(st.unit[int(UnitType::Infantry)], 1.6f);
         st.techPref[0] = "inf2";
     } else if (is("rohdhna", 0)) {  // Foundry Lords
+        // REVISIT (the Roh'Dhna review, checkpoint 2, 90 forced games): 12 wins / 6.82 VP against 8 / 6.68 - a little better, not clear
         st.unit[int(UnitType::WarSun)] = std::max(st.unit[int(UnitType::WarSun)], 2.5f);
         st.card[3] += 1.f;
     } else if (is("rohdhna", 1)) {  // Scrap Economy
+        // REVISIT (checkpoint 2, 90 forced games): 8 / 6.40 against 8 / 6.68 - weaker on VP
         st.tgKeep += 1;
         st.dealRate *= 1.1f;
     } else if (is("tnelis", 0)) {  // Shadow Brokers
+        // REVISIT (the Tnelis review, checkpoint 2, 90 forced games; base 11 / 7.01): 13 / 7.00 - a little better, not clear
         st.card[7] += 1.5f;
     } else if (is("tnelis", 1)) {  // Runner Fleets
+        // REVISIT (checkpoint 2, 90 forced games): 10 / 6.91 - no clear effect
         st.unit[int(UnitType::Destroyer)] = std::max(st.unit[int(UnitType::Destroyer)], 1.8f);
         st.smallFights *= 1.2f;
     } else if (is("kolume", 0)) {  // Silent Gunners
@@ -703,16 +773,24 @@ void factionQuirk(Style& st, const Game& g, int p) {
         st.research *= 1.15f;
         st.card[0] += 1.f;
     } else if (is("bentor", 0)) {  // Map Collectors
+        // REVISIT (the Bentor review, checkpoint 2, 90 forced games; base 12 / 6.70): 11 / 6.71 - explorations 15.3 a game vs
+        // 15.2, docks built 1.09 vs 1.04 (damped on Competitive): barely what it says.
         st.explore += 1.f;
         st.expansion *= 1.15f;
         st.card[3] += 0.5f;
     } else if (is("bentor", 1)) {  // Company Store
+        // REVISIT (the Bentor review, checkpoint 2, 90 forced games): 13 / 6.70 - deals 16.7 a game vs 16.6; Mgur never goes to
+        // another player ("lends a hand with Mgur's dividends" isn't done).
         st.dealRate *= 1.25f;
         st.card[4] += 0.5f;
     } else if (is("dihmohn", 0)) {  // Grand Armada
+        // REVISIT (the Dih-Mohn review, checkpoint 2, 90 forced games; base 12 / 6.51): 12 / 6.51 - destroyers 4.5 a game vs
+        // 4.8: at Competitive the preference is damped below the "favourite unit" bar (1.4)
         st.unit[int(UnitType::Destroyer)] = std::max(st.unit[int(UnitType::Destroyer)], 1.8f);
         st.bigFights *= 1.15f;
     } else if (is("dihmohn", 1)) {  // Pressgangs (ai_ds: Impressment Programs)
+        // REVISIT (the Dih-Mohn review, checkpoint 2, 90 forced games): 8 / 6.54 - Impressment ships 4.2 a game vs 3.6,
+        // its action 2.1 vs 1.9: more ships from exploring, no gain
         st.explore += 1.f;
         st.techPref[0] = "dsdihmy";
     } else if (is("florzen", 0)) {  // Swarm Lords
@@ -721,15 +799,19 @@ void factionQuirk(Style& st, const Game& g, int p) {
     } else if (is("florzen", 1)) {  // Extortionists (ai_ds: Blackmail Programs)
         st.techPref[0] = "dsflorg";
         st.spoiler += 0.5f;
-    } else if (is("gledge", 0)) {  // Deep Core Miners
+    } else if (is("gledge", 0)) {  // Deep Core Miners (the Gledge review, checkpoint 2: forced 13 wins / 6.69 VP of 90, unforced 15 / 6.76 - REVISIT)
         st.unit[int(UnitType::Mech)] = std::max(st.unit[int(UnitType::Mech)], 1.8f);
         st.tgKeep += 1;
-    } else if (is("gledge", 1)) {  // Platform Builders
+    } else if (is("gledge", 1)) {  // Platform Builders (the Gledge review, checkpoint 2: forced 10 / 6.64 - no clear effect, REVISIT)
         st.pdsPref += 1.5f;
         st.card[3] += 1.f;
     } else if (is("augers", 0)) {  // Foresight
+        // REVISIT (the Augurs review, checkpoint 2, 90 forced games; base 13 / 6.99): forced 10 / 6.82 - Imperial taken 89 times
+        // vs 85 (the liking is damped on Competitive). "Plans for the objective it knows is coming next" is now done for every
+        // Augurs bot (ai_goals knob foresight = 2, owner's go 2026-11-14), so this trait is the Imperial liking only.
         st.card[7] += 1.f;
     } else if (is("augers", 1)) {  // Data Brokers (ai_ds: Sentient Datapool)
+        // (the Augurs review, checkpoint 2: forced 15 / 7.31 - Sentient Datapool used 66 times vs 50: does what it says)
         st.tgKeep += 2;
         st.research *= 1.15f;
     } else if (is("kjalengard", 0)) {  // Saga Seekers
@@ -751,22 +833,32 @@ void factionQuirk(Style& st, const Game& g, int p) {
         st.techPref[0] = "dsmorty";
         st.pres *= 1.15f;
     } else if (is("vaden", 0)) {  // Loan Sharks
+        // REVISIT (the Vaden review, checkpoint 2, 90 forced games): 18 wins / 7.73 VP against 17 / 7.73 - no clear effect
         st.card[4] += 0.8f;
         st.card[6] += 0.5f;
     } else if (is("vaden", 1)) {  // Gold Engines
+        // REVISIT (checkpoint 2, 90 forced games): 16 / 7.60 against 17 / 7.73 - no clear effect
         st.tgKeep += 2;
     } else if (is("cymiae", 0)) {  // Card Hoarders
+        // REVISIT (the Cymiae review, checkpoint 2, 90 forced games; base 9 / 6.23): 8 / 6.13 - Politics taken 54 times vs 50,
+        // action cards played 16.6 a game vs 16.6: the hand doesn't change
         st.card[2] += 1.f;
     } else if (is("cymiae", 1)) {  // Undying Horde
+        // REVISIT (the Cymiae review, checkpoint 2, 90 forced games): 8 / 6.21 - infantry built 14.1 a game vs 13.5, Unholy II
+        // returns 1.6 vs 1.5: a little more infantry, no gain
         st.unit[int(UnitType::Infantry)] = std::max(st.unit[int(UnitType::Infantry)], 1.7f);
     } else if (is("nivyn", 0)) {  // Rift Riders
+        // REVISIT (the Nivyn review, checkpoint 2, 90 forced games): 15 wins / 7.41 VP against 14 / 7.47 - no clear effect
         st.anomaly += 1.f;
     } else if (is("nivyn", 1)) {  // Wound Keepers
+        // REVISIT (checkpoint 2, 90 forced games): 8 wins / 7.34 VP against 14 / 7.47 - the home guard keeps the fleet back; weaker
         st.homeGuard += 1;
         st.unit[int(UnitType::Mech)] = std::max(st.unit[int(UnitType::Mech)], 1.4f);
     } else if (is("olradin", 0)) {  // Popular Front
+        // REVISIT (the Olradin review, checkpoint 2, 90 forced games): 18 wins / 7.23 VP against 19 / 7.32 - no clear effect
         st.expansion *= 1.15f;
     } else if (is("olradin", 1)) {  // Council Hall
+        // REVISIT (checkpoint 2, 90 forced games): 21 / 7.34 against 19 / 7.32 - no clear effect
         st.card[2] += 1.f;
     } else if (is("freesystems", 0)) {  // Liberators (ai_ds: Rally to the Cause, Liberator)
         st.expansion *= 1.15f;
@@ -781,27 +873,36 @@ void factionQuirk(Style& st, const Game& g, int p) {
         st.card[2] += 0.8f;
         st.card[7] += 0.6f;
     } else if (is("nokar", 0)) {  // Privateers (ai_ds: Hired Guns)
+        // REVISIT (the Nokar review, checkpoint 2, 90 forced games): 16 wins / 7.23 VP against 15 / 7.17 - no clear effect
         st.unit[int(UnitType::Destroyer)] = std::max(st.unit[int(UnitType::Destroyer)], 1.8f);
     } else if (is("nokar", 1)) {  // Mercenary Admiralty
+        // REVISIT (checkpoint 2, 90 forced games): 14 wins / 7.11 VP against 15 / 7.17 - no clear effect
         st.aggression *= 1.1f;
         st.unit[int(UnitType::Destroyer)] = std::max(st.unit[int(UnitType::Destroyer)], 1.5f);
     } else if (is("axis", 0)) {  // War Profiteers (ai_deals: Axis Orders for trade goods)
+        // REVISIT (the Axis review, checkpoint 2, 90 forced games; base 14 / 7.30): 13 / 7.23 - deals with Axis Orders 14.9 a game
+        // vs 15.1, Trade 120 picks vs 117: every Axis bot already sells its orders to everyone (ai_deals), so the trait is a
+        // Trade liking only (damped on Competitive).
         st.card[4] += 1.f;
     } else if (is("axis", 1)) {  // Shipyards
+        // REVISIT (the Axis review, checkpoint 2, 90 forced games): 13 / 7.31 - Construction 54 vs 47, dreadnoughts 167 vs 161;
+        // "with Industry Secrets in its customers' hands" isn't done: selling it (ai_deals knob secretsale) lost games, left off.
         st.card[3] += 0.8f;
         st.unit[int(UnitType::Dreadnought)] = std::max(st.unit[int(UnitType::Dreadnought)], 1.4f);
     } else if (is("mykomentori", 0)) {  // Fungal Bloom (Mycelium Ring)
         st.unit[int(UnitType::Infantry)] = std::max(st.unit[int(UnitType::Infantry)], 1.6f);
     } else if (is("mykomentori", 1)) {  // Seers (ai_ds: Divination)
         st.homeGuard += 1;
-    } else if (is("ghemina", 0)) {  // Twin Raiders
+    } else if (is("ghemina", 0)) {  // Twin Raiders (the Ghemina review, checkpoint 2: forced 13 wins / 7.18 VP of 90, unforced 11 / 7.10 - REVISIT)
         st.aggression *= 1.15f;
         st.unit[int(UnitType::Flagship)] = std::max(st.unit[int(UnitType::Flagship)], 1.5f);
-    } else if (is("ghemina", 1)) {  // Plunderers
+    } else if (is("ghemina", 1)) {  // Plunderers (the Ghemina review, checkpoint 2: forced 11 / 7.10 - no clear effect, REVISIT)
         st.smallFights *= 1.2f;
     } else if (is("veldyr", 0)) {  // Board of Directors (ai_ds: Targeted Acquisition)
+        // REVISIT (the Veldyr review, checkpoint 2, 90 forced games; base 21 / 7.36): 21 / 7.31 - no clear effect
         st.card[4] += 0.6f;
     } else if (is("veldyr", 1)) {  // Lancer Line
+        // REVISIT (checkpoint 2, 90 forced games): 21 / 7.38 - no clear effect
         st.unit[int(UnitType::Dreadnought)] = std::max(st.unit[int(UnitType::Dreadnought)], 1.6f);
     } else if (is("lizho", 0)) {  // Trapmasters
         st.unit[int(UnitType::Infantry)] = std::max(st.unit[int(UnitType::Infantry)], 1.3f);
@@ -812,11 +913,26 @@ void factionQuirk(Style& st, const Game& g, int p) {
     } else if (is("mirveda", 1)) {  // Drone Carriers
         st.unit[int(UnitType::Carrier)] = std::max(st.unit[int(UnitType::Carrier)], 1.4f);
         st.unit[int(UnitType::Fighter)] = std::max(st.unit[int(UnitType::Fighter)], 1.5f);
-    } else if (is("ghoti", 0)) {  // Wandering Court
+    } else if (is("ghoti", 0)) {  // Wandering Court (the Ghoti review, checkpoint 2: forced 14 wins / 6.74 VP of 90, unforced 14 / 6.72 - REVISIT)
         st.aggression *= 1.05f;
-    } else if (is("ghoti", 1)) {  // Deep Void
+    } else if (is("ghoti", 1)) {  // Deep Void (the Ghoti review, checkpoint 2: forced 12 / 6.78 - no clear effect, REVISIT)
         st.expansion *= 1.15f;
     }
+    // test switch dmnflag (the Dih-Mohn review, checkpoint 2: off) - the guide: "Get Maximus out early; it produces wherever your
+    // fleet goes" (the flagship was built in 43% of games): the flagship a favourite unit (built first once affordable). 1.8
+    // did nothing at Competitive (competitiveDamp: 1 + 0.8 x .35 < 1.4); 2.5 - built in 74% of games, VP 6.51 -> 6.34 and
+    // fresh seeds 6.58 -> 6.48: off
+    // (the Veldyr review, checkpoint 2 - test switch vlflag) Richtyrian: 1 more die for every round already fought - a flagship for the long
+    // fights. REVISIT (checkpoint 2, 90 forced games each, 1.4): the games came out identical (21 / 7.36 and 22 / 7.58) - the preference
+    // never decided a build; off
+    if (aiTune("vlflag", 0.f) > 0.f && fac(g, p, "veldyr"))
+        st.unit[int(UnitType::Flagship)] = std::max(st.unit[int(UnitType::Flagship)], aiTune("vlflag", 0.f));
+    if (aiTune("dmnflag", 0.f) > 0.f && fac(g, p, "dihmohn"))
+        st.unit[int(UnitType::Flagship)] = std::max(st.unit[int(UnitType::Flagship)], aiTune("dmnflag", 0.f));  // (before the damping)
+    // test switch flzmech (the Florzen review, checkpoint 2: off) - the Privateer (paid with influence) was built in 4 of 90
+    // games: the mech a favourite unit
+    if (aiTune("flzmech", 0.f) > 0.f && fac(g, p, "florzen"))
+        st.unit[int(UnitType::Mech)] = std::max(st.unit[int(UnitType::Mech)], aiTune("flzmech", 0.f));
 }
 
 // Competitive: the personality still shows in deals, grudges and betrayals, but its

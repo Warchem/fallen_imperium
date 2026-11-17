@@ -50,7 +50,8 @@ void Rules::receiveNote(int p, int note) {
         say(p, pn(p) + " places " + pn(owner) + "'s Trade Alliance face up.");
         return;
     }
-    if (type == kNoteFaction && isFaction(G, owner, "augers")) {  // Read the Fates (Discordant Stars): face up
+    // (fixes 28, the Augurs review) "ACTION: Place this face up in your play area": in hand until played (ds3Action)
+    if (type == kNoteFaction && isFaction(G, owner, "augers") && G.fixes < 28) {  // Read the Fates (Discordant Stars): face up
         G.players[p].notesInPlay.push_back(int16_t(note));
         say(p, pn(p) + " places " + pn(owner) + "'s Read the Fates face up.");
         const int16_t o = G.players[size_t(owner)].dsSheet;
@@ -73,6 +74,9 @@ void Rules::receiveNote(int p, int note) {
     if (type == kNoteFaction && isFaction(G, owner, "empyrean") && G.players[p].human)  // 0.32.1
         feedNote(p, "Dark Pact is in your hand: play it from Component Actions (it uses your action). Then giving the "
                     "Empyrean as many commodities as your commodity value earns you each 1 trade good.");
+    if (type == kNoteFaction && isFaction(G, owner, "augers") && G.players[p].human && p != owner)  // (fixes 28)
+        feedNote(p, "Read the Fates is in your hand: play it from Component Actions (it uses your action). Face up, it shows you "
+                    "the public objective on the Augurs' faction sheet - the next one revealed.");
 }
 
 void Rules::returnNote(int holder, int note) {
@@ -85,11 +89,16 @@ void Rules::returnNote(int holder, int note) {
         }
     }
     int owner = noteOwner(note);
-    if (owner >= 0 && owner < G.numPlayers && !G.players[owner].eliminated) G.players[owner].notes.push_back(int16_t(note));
+    if (owner >= 0 && owner < G.numPlayers && !G.players[owner].eliminated) {
+        G.players[owner].notes.push_back(int16_t(note));
+        // (fixes 28, the tester's report: "once returning a promissory note to a bot the bot does not gain the promissory note
+        // in hand again") everyone saw it go back - the note is known to be its owner's again (askable in deals; knownHolder)
+        if (G.fixes >= 28 && owner != holder) G.dealNotes.push_back({int16_t(note), int8_t(owner)});
+    }
     // High Security Vault (Vaden breakthrough, 0.43.0): a note of theirs given back - 1 of that player's control tokens on
     // their sheet
     if ((G.modules & kModDiscordant) && breakthroughsOn(G) && owner >= 0 && owner < G.numPlayers && owner != holder &&
-        breakthroughIs(G, owner, "vaden") && G.dsDebt[holder] < 6) {
+        breakthroughIs(G, owner, "vaden") && G.dsDebt[holder] < vadenDebtCap(G)) {
         ++G.dsDebt[holder];
         say(owner, pn(holder) + " puts 1 control token on " + pn(owner) + "'s sheet (High Security Vault).");
     }
@@ -162,7 +171,7 @@ void Rules::tradeAgreement(int owner) {
         }
         int n = G.players[owner].commodities;
         G.players[owner].commodities = 0;
-        gainTG(q, n);
+        gainTGNotSupply(q, n);  // (fixes 28: their commodities, flipped - LRR 21.5 - not from the supply: no Artuno)
         say(q, pn(q) + " receives " + std::to_string(n) + " commodities from " + pn(owner) + " (as trade goods).");
         // (fixes 26, the Empyrean review - owner 2026-11-12) Dark Pact: "When you give a number of commodities to the
         // Empyrean player equal to your maximum commodity value, you each gain 1 trade good" - this way too

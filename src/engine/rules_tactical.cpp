@@ -296,8 +296,14 @@ void Rules::checkFloatingFactories(int sys) {
 
 // ------------------------------------------------------------------ movement
 void Rules::movement(int p, int sys) {
+    // (fixes 28, the Kollecc review - owner 2026-11-16 10:27 "Allow shroud of lith to be offered if it's allowed by the card text") the
+    // movement step happens even when nothing moves: "After movement, if the active system contains 1 or more of your non-fighter ships"
+    auto nothingMoved = [&] {
+        if ((G.modules & kModDiscordant) && G.fixes >= 28) ds4AfterMovement(p, sys);  // Shroud of Lith
+    };
     if (G.fx.noMoveIn) {
         say(p, pn(p) + " can't move units into " + sysName(sys) + " (Ceasefire).", sys);
+        nothingMoved();
         return;
     }
     // Dominus Orb: purge it to move units out of systems with your command tokens.
@@ -321,6 +327,7 @@ void Rules::movement(int p, int sys) {
     }
     if (!anyShipCanReach(G, p, sys)) {
         say(p, "No ships of " + pn(p) + " can reach " + sysName(sys) + " - no movement.", sys);
+        nothingMoved();
         return;
     }
 
@@ -341,6 +348,7 @@ void Rules::movement(int p, int sys) {
     if (!routes.empty()) a.data = moveUnitsOnly(a.data);
     if (a.data.empty()) {
         say(p, pn(p) + " moves nothing into " + sysName(sys) + ".", sys);
+        nothingMoved();
         return;
     }
 
@@ -476,10 +484,29 @@ void Rules::movement(int p, int sys) {
     }
     persMoveNear(p, sys);
     if (G.fx.crucible) riftShips.clear();  // Crucible: no gravity rift rolls this movement
+    // (fixes 28, the Myko-Mentori review) with the Myko-Mentori in the game a gravity rift roll is "a die" for their Omen dice
+    // (Divination, Lactarius Indigo - before the roll) and for Gift of Insight (after it): all of a ship's rolls are rolled at once
+    // (it is lost if any of them is 1-3), so a die can be chosen before and rolled again after
+    const bool omens = G.fixes >= 28 && (G.modules & kModDiscordant) && playerOfFaction(G, "mykomentori") >= 0;
     for (const RiftShip& rs : riftShips) {
         RollResult res;
         int lost = 0;
-        for (int i = 0; i < rs.count; ++i) {
+        if (omens) {
+            for (int i = 0; i < rs.count * rs.rolls; ++i) {
+                res.dice.push_back(int8_t(E.rng().d10()));
+                res.need.push_back(4);
+                res.unit.push_back(int8_t(rs.type));
+            }
+            dsOmen(p, RollKind::Rift, res, "gravity rift");
+            recount(res);
+            dsAfterRoll(p, RollKind::Rift, res);
+            for (int i = 0; i < rs.count; ++i) {
+                bool gone = false;
+                for (int roll = 0; roll < rs.rolls; ++roll) gone = gone || res.dice[size_t(i * rs.rolls + roll)] <= 3;
+                lost += gone ? 1 : 0;
+            }
+        }
+        for (int i = 0; i < rs.count && !omens; ++i) {
             for (int roll = 0; roll < rs.rolls; ++roll) {
                 int v = E.rng().d10();
                 res.dice.push_back(int8_t(v));
@@ -528,11 +555,11 @@ void Rules::movement(int p, int sys) {
     }
     afterMoveFactions(p, sys);  // Stymie, Foresight
     afterMove3(p, sys, wormholeCarriers, moved.count(UnitType::WarSun) > 0);  // Sai Seravus, Ba'al, Acamar, Xuange, Voidwatch
-    if ((G.modules & kModDiscordant) && !moved.empty()) dsAfterMovement(p, sys, moved.count(UnitType::Destroyer) > 0);  // Cataclysm, Daedalon
+    if ((G.modules & kModDiscordant) && !moved.empty()) dsAfterMovement(p, sys, moved.count(UnitType::Destroyer) > 0, &moved);  // Cataclysm, Daedalon
     if ((G.modules & kModDiscordant) && !moved.empty() && G.fixes < 2) ds3AfterMovement(p, sys, moved.count(UnitType::Flagship) > 0);  // Maximus
-    if ((G.modules & kModDiscordant) && !moved.empty()) ds4AfterMovement(p, sys);  // Shroud of Lith
+    if ((G.modules & kModDiscordant) && !moved.empty()) ds4AfterMovement(p, sys);  // Shroud of Lith (fixes 28: any player's movement)
     if ((G.modules & kModDiscordant) && !moved.empty()) ds5AfterMovement(p, sys);  // the Lady moves, Sal Sparrow
-    if ((G.modules & kModDiscordant) && !moved.empty()) ds7AfterMovement(p, sys);  // the Ghoti home moves
+    if ((G.modules & kModDiscordant) && !moved.empty()) ds7AfterMovement(p, sys, moved.count(UnitType::Infantry));  // the Ghoti home moves, Assault Machina
     capturedBlockade();  // LRR 17.2c
 }
 
@@ -581,6 +608,9 @@ CannonGuns Rules::cannonGuns(int q, int p, int sys) const {
         // q's space cannon units: in the system, or deep-space cannon next door
         Force& guns = out.guns;
         RollMods& galvDice = out.galv;  // Galvanize (Thunder's Edge): galvanized units roll 1 more die for unit abilities
+        // (fixes 28, the Mirveda review) Assault Machina: "You may use the SPACE CANNON of 1 of your units against units that are
+        // adjacent to that unit's system" - one unit from next door (the best gun), not all of them
+        int machinaType = -1;
         auto collect = [&](const Force& f, bool adjacentOnly) {
             for (int t = 0; t < kUnitTypes; ++t) {
                 if (!f.n[t]) continue;
@@ -588,6 +618,11 @@ CannonGuns Rules::cannonGuns(int q, int p, int sys) const {
                 if (u.cannon <= 0) continue;
                 // Assault Machina (Mirveda commander, Discordant Stars): their space cannon reaches the next systems too
                 const bool machina = (G.modules & kModDiscordant) && q < G.numPlayers && commanderUsable(G, q, "mirveda");
+                if (adjacentOnly && !u.deepCannon && machina && G.fixes >= 28) {
+                    const UnitDef* best = machinaType >= 0 ? &unitDef(G, q, UnitType(machinaType)) : nullptr;
+                    if (!best || u.cannon < best->cannon || (u.cannon == best->cannon && u.cannonDice > best->cannonDice)) machinaType = t;
+                    continue;
+                }
                 if (adjacentOnly && !u.deepCannon && !machina) continue;
                 guns.add(UnitType(t), f.n[t]);
                 galvDice.extraDice[t] += std::min(f.galv[t], f.n[t]);
@@ -625,6 +660,7 @@ CannonGuns Rules::cannonGuns(int q, int p, int sys) const {
             collectSpace(G.systems[a].space[q], true);
             for (int16_t pl : G.systems[a].planets) collect(G.planets[pl].units[q], true);
         }
+        if (machinaType >= 0) guns.add(UnitType(machinaType), 1);  // (fixes 28: Assault Machina's one unit)
         out.ul = ulCannonDice(q, sys);  // Ul the Progenitor on Elysium
         const bool dsOn = (G.modules & kModDiscordant) != 0;
         if (dsOn) dsCannonLimit(q, p, guns);                       // Starfall Gunnery: one unit when it's not their action
@@ -668,6 +704,7 @@ void Rules::spaceCannonOffense(int p, int sys) {
                    "Space cannon offense."))
             continue;
         const bool gls = askGraviton(q, target, sys);
+        if (dsOn) wraegRoll29(q, target, sys, guns, RollKind::Cannon, &galvDice);  // (fixes 29: Suldhan Wraeg, Nivyn agent)
         int mod = owns(target, "amd") ? -1 : 0;
         mod += classifiedWeapons(q, sys, guns.total());  // Uncharted Space (0.33.0)
         mod += assail(q, target);                         // Assail (Thunder's Edge)
@@ -768,6 +805,8 @@ void Rules::spaceCannonOffense(int p, int sys) {
 // ------------------------------------------------------------------ invasion
 void Rules::bombardment(int p, int sys) {
     SystemState& s = G.systems[sys];
+    impactorCommit_.clear();
+    hyperPending_ = false;
     if ((scarAt(G, sys) && !ignoresScars(G, p)) || quietusAt(G, p, sys)) return;  // Thunder's Edge: no bombardment inside an entropic scar (the Quietus)
     int typeMask = 0;
     bool warSun = commanderUsable(G, p, "l1z1x");  // 2RAM: planetary shields don't stop the bombardment
@@ -811,12 +850,30 @@ void Rules::bombardment(int p, int sys) {
             if (G.fx.bypass == p && q != p) shield = false;  // Combinatorial Bypass (Discordant Stars)
             if (G.fixes < 12 && G.fx.dsShieldPlanet == pl) shield = true;    // Orbital Defense Grid (Discordant Stars)
             // Justicar (Kortali mech, Discordant Stars): its Planetary Shield can't be taken away
-            const bool justicar = q < G.numPlayers && (G.modules & kModDiscordant) && fac(q, "kortali") && mechAbilities(G) &&
+            // (fixes 28, the Kortali review) "This unit cannot lose its PLANETARY SHIELD" - not under Articles of War either ("cannot" is
+            // absolute, LRR 1.6)
+            const bool justicar = q < G.numPlayers && (G.modules & kModDiscordant) && fac(q, "kortali") && (mechAbilities(G) || G.fixes >= 28) &&
                                   G.planets[pl].units[q].count(UnitType::Mech) > 0;
             if (justicar) continue;
+            if (shield && !warSun && (G.modules & kModDiscordant) && q < G.numPlayers && wraegShield29(q, p, sys, pl)) shield = false;  // (fixes 29)
             if (shield && !warSun) continue;
             targets.push_back(pl);
             break;
+        }
+        // (fixes 28, the Khrask review) Meteor Slings / Stone Speakers: a planet another player controls with no ground forces on it
+        // (only structures, or nothing) - its owner's Planetary Shield still stops it (LRR 15.1f)
+        const int own = G.planets[pl].owner;
+        if (dsSlingsAt(p) && own >= 0 && own < G.numPlayers && own != p && !isDMZ(G, pl) &&
+            std::find(targets.begin(), targets.end(), int(pl)) == targets.end()) {
+            bool anyGf = neutralGroundOn(G, pl) > 0, shield = false;
+            for (int q = 0; q < G.numPlayers; ++q)
+                if (q != p && groundForcesOn(G, q, pl) > 0) anyGf = true;
+            for (int t = 0; t < kUnitTypes; ++t)
+                if (G.planets[pl].units[own].n[t] && unitDef(G, own, UnitType(t)).shield && !(UnitType(t) == UnitType::PDS && disabled_)) shield = true;
+            if ((G.fx.echoShield >> own) & 1) shield = true;
+            if (G.fx.dsShieldPlanet == pl) shield = true;
+            if (shieldsDown(G, own, sys) || G.fx.bypass == p) shield = false;
+            if (!anyGf && (!shield || warSun)) targets.push_back(pl);
         }
     }
     if (targets.empty()) return;
@@ -874,7 +931,8 @@ void Rules::bombardment(int p, int sys) {
                 else blitzers.add(t, a.data[i + 2]);
             }
         if (shooters.empty() && blitzers.empty()) continue;
-        const int q = defenderOn(pl);
+        int q = defenderOn(pl);
+        if (q < 0 && dsSlingsAt(p) && G.planets[pl].owner >= 0 && G.planets[pl].owner != p) q = G.planets[pl].owner;  // (fixes 28: Meteor Slings)
         if (q < 0) continue;
         int mod = G.planets[pl].owner == bunkerOwner_ && bunkerOwner_ >= 0 ? -4 : 0;  // Bunker
         mod += classifiedWeapons(p, sys, shooters.total());                       // Classified Weapons (Uncharted Space)
@@ -882,6 +940,13 @@ void Rules::bombardment(int p, int sys) {
         if (G.modules & kModDiscordant) mod += dsAbilityMod(p);                  // Issac of Sinci, Omniscience Field
         RollMods galvDice;  // Galvanize: 1 more die each
         for (int t = 0; t < kUnitTypes; ++t) galvDice.extraDice[t] = std::min<int>(shooters.n[t], s.space[size_t(p)].galv[t]);
+        if (shooters.n[int(UnitType::Flagship)]) galvDice.extraDice[int(UnitType::Flagship)] += worldCrackerDice(p, sys);  // (fixes 29: World-Cracker)
+        if ((G.modules & kModDiscordant) && q < G.numPlayers) wraegRoll29(p, q, sys, shooters, RollKind::Bombard, &galvDice);  // (fixes 29: Suldhan Wraeg)
+        if (G.modules & kModDiscordant) dsBombardBefore(p, sys, pl, shooters);  // (fixes 29: Hyperkinetic Ordnance before the dice)
+        // (fixes 29, the Zelian review) Impactor I: "During invasion, this unit must commit to a planet it bombards" - invasion() lands the
+        // ones that weren't committed there (not Impactor II: its card doesn't say so)
+        if (G.fixes >= 29 && (G.modules & kModDiscordant) && shooters.n[int(UnitType::Infantry)] && !std::strcmp(unitDef(G, p, UnitType::Infantry).key, "zelian_infantry"))
+            impactorCommit_.push_back({pl, shooters.n[int(UnitType::Infantry)]});
         RollResult r = rollUnits(p, shooters, RollKind::Bombard, mod, G.fixes >= 12 ? (pl == extraPlanet ? extraOnce : 0) : abilityDice(p, sys),
                                  0, &galvDice);
         for (int t = 0; t < kUnitTypes; ++t)  // Blitz: bombardment 6
@@ -893,6 +958,7 @@ void Rules::bombardment(int p, int sys) {
             }
         if (G.modules & kModDiscordant) dsBombardDice(p, sys, r, mod, shooters);  // Davish S'Norri, the Lady, Raid Leaders
         reportRoll(p, sys, "Bombardment of " + planetName(pl), r);
+        if (G.fixes >= 28 && (G.modules & kModDiscordant)) dsbtTribuneBombard(p, sys, r);  // (the Kortali review) a Tribune's hit repairs it
         afterUnitRoll(p, q, sys, r, "bombardment");
         if (x89Omega(G, p) && r.hits > 0) {  // X-89 Bacterial Weapon (Codex, Thunder's Edge's version - 0.43.3)
             r.hits *= 2;
@@ -936,6 +1002,7 @@ void Rules::afterUnitRoll(int roller, int target, int sys, RollResult& r, const 
 
 void Rules::invasion(int p, int sys) {
     SystemState& s = G.systems[sys];
+    impactorCommit_.clear();  // (fixes 29: filled by this invasion's bombardment)
     if (s.planets.empty()) return;
     // A player can only invade if they won (or avoided) space combat (Sh'val skips all that).
     if (otherShipsIn(G, p, sys) && !shval_) return;
@@ -1062,6 +1129,28 @@ void Rules::invasion(int p, int sys) {
               pn(p) + " lands " + std::to_string(k) + " " + unitTypeName(UnitType(t), k > 1) + " on " + planetName(pl) + ".",
               sys, pl);
     }
+    // (fixes 29, the Zelian review) Impactor I: "During invasion, this unit must commit to a planet it bombards" - the infantry that bombarded
+    // a planet and weren't committed to it land there now (from those still in the space area)
+    for (const auto& ic : impactorCommit_) {
+        const int pl = ic.first;
+        int already = 0;
+        for (size_t i = 0; i + 2 < a.data.size(); i += 3)
+            if (a.data[i] == pl && a.data[i + 1] == int(UnitType::Infantry)) already += a.data[i + 2];
+        Force& src = s.space[p];
+        const int k = std::min(ic.second - already, src.count(UnitType::Infantry));
+        if (k <= 0 || G.planets[size_t(pl)].destroyed) continue;
+        const int galvMoved = std::min<int>(k, src.galv[int(UnitType::Infantry)]);
+        src.galv[int(UnitType::Infantry)] = uint8_t(src.galv[int(UnitType::Infantry)] - galvMoved);
+        src.remove(UnitType::Infantry, k, false);
+        G.planets[size_t(pl)].units[p].add(UnitType::Infantry, k);
+        G.planets[size_t(pl)].units[p].galv[int(UnitType::Infantry)] = uint8_t(G.planets[size_t(pl)].units[p].galv[int(UnitType::Infantry)] + galvMoved);
+        if (std::find(landed.begin(), landed.end(), pl) == landed.end()) landed.push_back(pl);
+        event(EventKind::Land, p,
+              pn(p) + " lands " + std::to_string(k) + " " + unitTypeName(UnitType::Infantry, k > 1) + " on " + planetName(pl) +
+                  " (Impactor I: the infantry that bombarded a planet must commit to it).",
+              sys, pl);
+    }
+    impactorCommit_.clear();
     // (fixes 25, Sardakk review 2026-11-11) G'hom Sek'kus "commits (moves)" ground forces: the ones it brought that didn't
     // land go back to their planets (no ship carries them) - whatever is left above what the ships brought in
     if (G.fixes >= 25 && !ghomBrought_.empty()) {
@@ -1178,76 +1267,7 @@ void Rules::invasion(int p, int sys) {
     // --- space cannon defense (L4 Disruptors: none against the invader; none inside an entropic scar)
     for (int pl : landed) {
         if (owns(p, "l4") || (scarAt(G, sys) && G.fixes < 8)) break;
-        for (int q = 0; q < G.numPlayers; ++q) {
-            if (q == p || (scarAt(G, sys) && !ignoresScars(G, q))) continue;  // (0.44.4: the Nivyn ignore the scar)
-            Force guns;
-            const Force& f = G.planets[pl].units[q];
-            for (int t = 0; t < kUnitTypes && !quietusAt(G, q, sys); ++t) {  // (the Quietus: no unit abilities)
-                if (!f.n[t] || unitDef(G, q, UnitType(t)).cannon <= 0) continue;
-                if (disabled_ && UnitType(t) == UnitType::PDS) continue;  // Disable
-                guns.add(UnitType(t), f.n[t]);
-            }
-            const int ul = G.planets[pl].ulHero && G.planets[pl].owner == q ? 3
-                           : sys == G.mecatol() && G.planets[pl].owner == q && custodiaMecatol(G, q) ? 1  // Custodian's Favour
-                                                                                                      : 0;  // Ul the Progenitor
-            if (G.fx.bypass == p) continue;  // Combinatorial Bypass (Discordant Stars): no space cannon against this invasion
-            if (G.modules & kModDiscordant) dsCannonLimit(q, p, guns);  // Starfall Gunnery
-            // Dhonraz Installations (Gledge breakthrough, 0.44.4 fixes 8): their station planet's Space Cannon 5 defends it too
-            const int dhonraz = G.fixes >= 8 && (G.modules & kModDiscordant) && G.planets[pl].owner == q && breakthroughIs(G, q, "gledge") &&
-                                        stationFor(G, q, pl) && !quietusAt(G, q, sys)
-                                    ? 1
-                                    : 0;
-            if (guns.empty() && !ul && !dhonraz) continue;
-            if (!yesNo(q, Tag::SpaceCannonFire, "Fire space cannon at the forces landing on " + planetName(pl) + "?",
-                       "Space cannon defense."))
-                continue;
-            int mod = owns(p, "amd") ? -1 : 0;
-            mod += classifiedWeapons(q, sys, guns.total());  // Uncharted Space (0.33.0)
-            mod += assail(q, p);                              // Assail (Thunder's Edge)
-            if (G.modules & kModDiscordant) mod += dsAbilityMod(q);
-            RollMods galvDice;  // Galvanize: 1 more die each
-            for (int t = 0; t < kUnitTypes; ++t) galvDice.extraDice[t] = guns.n[t] ? std::min(f.galv[t], f.n[t]) : 0;
-            RollResult r = rollUnits(q, guns, RollKind::Cannon, mod, abilityDice(q, sys), 0, &galvDice);
-            if (ul) addDice(r, ul, 5 - mod);
-            if (dhonraz) addDice(r, dhonraz, 5 - mod);
-            reportRoll(q, sys, "Space cannon defense", r);
-            afterUnitRoll(q, p, sys, r, "space cannon");
-            if (r.hits > 0 && !classified_ && !((G.modules & kModDiscordant) && flagshipAbility(G, q, "kolume") && flagshipIn(G, q, sys)) &&
-                !(dsbtOn(q, "veldyr") && (anomaliesFor(G, q, sys) & kNebula))) {
-                WinCtx w;
-                w.w = Win::BeforeCannonHits;
-                w.a = p;
-                w.b = q;
-                w.sys = sys;
-                w.value = r.hits;
-                if (cardHas(window(w), "mjets")) r.hits = eventOn(G, kEvWild) ? 0 : r.hits - 1;  // (Wild, Wild Galaxy: all)
-            }
-            int mask = (1 << int(UnitType::Infantry)) | (1 << int(UnitType::Mech));
-            if (matriarch) mask |= 1 << int(UnitType::Fighter);
-            if (r.hits) assignHits(p, sys, pl, r.hits, mask, "space cannon defense", q);
-        }
-        // Thunder's Edge (0.34.0): neutral PDS on the planet always fire
-        Force nguns;
-        for (int t = 0; t < kUnitTypes; ++t)
-            if (G.planets[pl].units[kNeutral].n[t] && unitDef(G, kNeutral, UnitType(t)).cannon > 0 && !(disabled_ && UnitType(t) == UnitType::PDS))
-                nguns.add(UnitType(t), G.planets[pl].units[kNeutral].n[t]);
-        if (!nguns.empty() && G.planets[pl].units[p].groundForces() > 0 && !scarAt(G, sys)) {
-            RollResult r = rollUnits(kNeutral, nguns, RollKind::Cannon, owns(p, "amd") ? -1 : 0, 0);
-            reportRoll(kNeutral, sys, "Space cannon defense", r);
-            afterUnitRoll(kNeutral, p, sys, r, "space cannon");
-            if (r.hits > 0) {
-                WinCtx w;
-                w.w = Win::BeforeCannonHits;
-                w.a = p;
-                w.b = kNeutral;
-                w.sys = sys;
-                w.value = r.hits;
-                if (cardHas(window(w), "mjets")) r.hits = eventOn(G, kEvWild) ? 0 : r.hits - 1;  // (Wild, Wild Galaxy: all)
-            }
-            int mask = (1 << int(UnitType::Infantry)) | (1 << int(UnitType::Mech));
-            if (matriarch) mask |= 1 << int(UnitType::Fighter);
-            if (r.hits > 0) assignHits(p, sys, pl, r.hits, mask, "space cannon defense", kNeutral);
-        }
+        cannonDefense(p, sys, pl, matriarch);
     }
 
     // --- ground combat and control
@@ -1314,7 +1334,13 @@ void Rules::invasion(int p, int sys) {
                     G.planets[pl].coexist = uint16_t(G.planets[pl].coexist & ~(1u << q));
                     if ((G.modules & kModDiscordant) && breakthroughsOn(G)) dsbtCoexistEnded(q, p);  // (0.43.0)
                 }
-                if (coexistInstead(p, q, pl, ended ? p : -1)) continue;  // Research Team / Viper EX-23 (not the one who chose to fight)
+                if (coexistInstead(p, q, pl, ended ? p : -1)) {  // Research Team / Viper EX-23 (not the one who chose to fight)
+                    // (fixes 28, the Celdauri review's simulations - a game ended with the Free Systems, the Kyro and the
+                    // Deepwrought on Tinnes: the Deepwrought chose to attack the Free Systems' coexisting units, then took
+                    // Research Team instead of fighting) no fight after all: the units we chose to attack coexist again
+                    if (engaged && G.fixes >= 28) G.planets[pl].coexist = uint16_t(G.planets[pl].coexist | (1u << q));
+                    continue;
+                }
             }
             groundCombat(p, q, pl);
             // 0.43.0 (debug passes): coexisting units that beat off the invader still only coexist with the planet's
@@ -1727,6 +1753,81 @@ void Rules::integratedEconomy(int p, int planet) {
     if ((G.modules & kModThundersEdge) && G.fixes >= 24) phantomProduced(p, sys, counts);  // Homesick Phantom
     enforceFleetLimit(p);
     removeExcessCapacity(p, sys);
+}
+
+// Space cannon defense against the ground forces p committed to planet pl (LRR 49.3) - the invasion's step 3, also for Contagion (fixes 28)
+void Rules::cannonDefense(int p, int sys, int pl, bool matriarch) {
+    for (int q = 0; q < G.numPlayers; ++q) {
+        if (q == p || (scarAt(G, sys) && !ignoresScars(G, q))) continue;  // (0.44.4: the Nivyn ignore the scar)
+        Force guns;
+        const Force& f = G.planets[pl].units[q];
+        for (int t = 0; t < kUnitTypes && !quietusAt(G, q, sys); ++t) {  // (the Quietus: no unit abilities)
+            if (!f.n[t] || unitDef(G, q, UnitType(t)).cannon <= 0) continue;
+            if (disabled_ && UnitType(t) == UnitType::PDS) continue;  // Disable
+            guns.add(UnitType(t), f.n[t]);
+        }
+        const int ul = G.planets[pl].ulHero && G.planets[pl].owner == q ? 3
+                       : sys == G.mecatol() && G.planets[pl].owner == q && custodiaMecatol(G, q) ? 1  // Custodian's Favour
+                                                                                                  : 0;  // Ul the Progenitor
+        if (G.fx.bypass == p) continue;  // Combinatorial Bypass (Discordant Stars): no space cannon against this invasion
+        if (G.modules & kModDiscordant) dsCannonLimit(q, p, guns);  // Starfall Gunnery
+        // Dhonraz Installations (Gledge breakthrough, 0.44.4 fixes 8): their station planet's Space Cannon 5 defends it too
+        const int dhonraz = G.fixes >= 8 && (G.modules & kModDiscordant) && G.planets[pl].owner == q && breakthroughIs(G, q, "gledge") &&
+                                    stationFor(G, q, pl) && !quietusAt(G, q, sys)
+                                ? 1
+                                : 0;
+        if (guns.empty() && !ul && !dhonraz) continue;
+        if (!yesNo(q, Tag::SpaceCannonFire, "Fire space cannon at the forces landing on " + planetName(pl) + "?",
+                   "Space cannon defense."))
+            continue;
+        int mod = owns(p, "amd") ? -1 : 0;
+        mod += classifiedWeapons(q, sys, guns.total());  // Uncharted Space (0.33.0)
+        mod += assail(q, p);                              // Assail (Thunder's Edge)
+        if (G.modules & kModDiscordant) mod += dsAbilityMod(q);
+        RollMods galvDice;  // Galvanize: 1 more die each
+        for (int t = 0; t < kUnitTypes; ++t) galvDice.extraDice[t] = guns.n[t] ? std::min(f.galv[t], f.n[t]) : 0;
+        if (G.modules & kModDiscordant) wraegRoll29(q, p, sys, guns, RollKind::Cannon, &galvDice);  // (fixes 29: Suldhan Wraeg, Nivyn agent)
+        RollResult r = rollUnits(q, guns, RollKind::Cannon, mod, abilityDice(q, sys), 0, &galvDice);
+        if (ul) addDice(r, ul, 5 - mod);
+        if (dhonraz) addDice(r, dhonraz, 5 - mod);
+        reportRoll(q, sys, "Space cannon defense", r);
+        afterUnitRoll(q, p, sys, r, "space cannon");
+        if (r.hits > 0 && !classified_ && !((G.modules & kModDiscordant) && flagshipAbility(G, q, "kolume") && flagshipIn(G, q, sys)) &&
+            !(dsbtOn(q, "veldyr") && (anomaliesFor(G, q, sys) & kNebula))) {
+            WinCtx w;
+            w.w = Win::BeforeCannonHits;
+            w.a = p;
+            w.b = q;
+            w.sys = sys;
+            w.value = r.hits;
+            if (cardHas(window(w), "mjets")) r.hits = eventOn(G, kEvWild) ? 0 : r.hits - 1;  // (Wild, Wild Galaxy: all)
+        }
+        int mask = (1 << int(UnitType::Infantry)) | (1 << int(UnitType::Mech));
+        if (matriarch) mask |= 1 << int(UnitType::Fighter);
+        if (r.hits) assignHits(p, sys, pl, r.hits, mask, "space cannon defense", q);
+    }
+    // Thunder's Edge (0.34.0): neutral PDS on the planet always fire
+    Force nguns;
+    for (int t = 0; t < kUnitTypes; ++t)
+        if (G.planets[pl].units[kNeutral].n[t] && unitDef(G, kNeutral, UnitType(t)).cannon > 0 && !(disabled_ && UnitType(t) == UnitType::PDS))
+            nguns.add(UnitType(t), G.planets[pl].units[kNeutral].n[t]);
+    if (!nguns.empty() && G.planets[pl].units[p].groundForces() > 0 && !scarAt(G, sys)) {
+        RollResult r = rollUnits(kNeutral, nguns, RollKind::Cannon, owns(p, "amd") ? -1 : 0, 0);
+        reportRoll(kNeutral, sys, "Space cannon defense", r);
+        afterUnitRoll(kNeutral, p, sys, r, "space cannon");
+        if (r.hits > 0) {
+            WinCtx w;
+            w.w = Win::BeforeCannonHits;
+            w.a = p;
+            w.b = kNeutral;
+            w.sys = sys;
+            w.value = r.hits;
+            if (cardHas(window(w), "mjets")) r.hits = eventOn(G, kEvWild) ? 0 : r.hits - 1;  // (Wild, Wild Galaxy: all)
+        }
+        int mask = (1 << int(UnitType::Infantry)) | (1 << int(UnitType::Mech));
+        if (matriarch) mask |= 1 << int(UnitType::Fighter);
+        if (r.hits > 0) assignHits(p, sys, pl, r.hits, mask, "space cannon defense", kNeutral);
+    }
 }
 
 }  // namespace ti

@@ -36,8 +36,9 @@ ARMFLAGS  := -marm -march=armv7-a -mtune=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=
 
 HOST_OBJS  := $(SRCS:src/%.cpp=build/host/obj/%.o)
 MIYOO_OBJS := $(SRCS:src/%.cpp=build/miyoo/obj/%.o)
-WIN_SRCS   := $(filter-out src/platform/fbdev.cpp src/platform/sdl12.cpp,$(SRCS))
-WIN_OBJS   := $(WIN_SRCS:src/%.cpp=build/win/obj/%.o)
+# (0.59.40) without the screen-test file: clang needs more than the build machine's 6 GB for it - a stub instead
+WIN_SRCS   := $(filter-out src/platform/fbdev.cpp src/platform/sdl12.cpp src/sim/uitest.cpp,$(SRCS))
+WIN_OBJS   := $(WIN_SRCS:src/%.cpp=build/win/obj/%.o) build/win/obj/uitest_stub.o
 VERSION_NUM := $(shell echo $(VERSION) | tr '.' ',' ),0
 
 APPDIR    := TwilightImperium
@@ -112,6 +113,9 @@ build/win/TwilightImperium.exe: $(WIN_OBJS) build/win/obj/resources.o
 build/win/obj/%.o: src/%.cpp
 	@mkdir -p $(dir $@)
 	$(WINCROSS)g++ $(COMMON) -c $< -o $@
+build/win/obj/uitest_stub.o: package/windows/uitest_stub.cpp
+	@mkdir -p $(dir $@)
+	$(WINCROSS)g++ $(COMMON) -c $< -o $@
 build/win/obj/resources.o: package/windows/ti4.rc package/windows/ti4.ico src/app/app.h
 	@mkdir -p $(dir $@)
 	printf '#define TI4_VER_NUM %s\n#define TI4_VER_STR "%s"\n' "$(VERSION_NUM)" "$(VERSION)" > build/win/obj/version.h
@@ -148,6 +152,14 @@ test: build/host/ti4
 	  || { echo "FAILED: sounds"; tail -5 build/test/audio/stdout.txt; exit 1; }; echo "ok   sounds"
 	@mkdir -p build/test/hd && TI4_SCALE=2.25 ./build/host/ti4 --headless tests/01_tour.txt build/test/hd > build/test/hd/stdout.txt 2>&1 \
 	  || { echo "FAILED: sharp picture"; tail -5 build/test/hd/stdout.txt; exit 1; }; echo "ok   sharp picture (1440x1080)"
+	@mkdir -p build/test/intro && TI4_TITLEINTRO=1 ./build/host/ti4 --headless tests/intro/opening.txt build/test/intro > build/test/intro/stdout.txt 2>&1 \
+	  && mkdir -p build/test/intro_skip && TI4_TITLEINTRO=1 ./build/host/ti4 --headless tests/intro/opening_skip.txt build/test/intro_skip > build/test/intro_skip/stdout.txt 2>&1 \
+	  && TI4_UITEST_ONLY=titlebg ./build/host/ti4 --uitest build/test/intro > build/test/intro/uitest.txt 2>&1 \
+	  && mkdir -p build/test/intro_void && echo "tileset=2" > build/test/intro_void/settings.cfg \
+	  && TI4_TITLEINTRO=1 ./build/host/ti4 --headless tests/intro/opening_voidfall.txt build/test/intro_void > build/test/intro_void/stdout.txt 2>&1 \
+	  && TI4_UITEST_ONLY=titlewar ./build/host/ti4 --uitest build/test/intro_void > build/test/intro_void/uitest.txt 2>&1 \
+	  && TI4_UITEST_ONLY=titlewar_assets ./build/host/ti4 --uitest build/test/intro_void >> build/test/intro_void/uitest.txt 2>&1 \
+	  || { echo "FAILED: title opening"; tail -5 build/test/intro/stdout.txt; exit 1; }; echo "ok   title opening (Lazaxian name, pan, Retrowave planet, Voidfall battlefield)"
 	@mkdir -p build/test/waypoints && TI4_UITEST_ONLY=waypoints ./build/host/ti4 --uitest build/test/waypoints > build/test/waypoints/stdout.txt 2>&1 \
 	  || { echo "FAILED: waypoints"; tail -5 build/test/waypoints/stdout.txt; exit 1; }; echo "ok   waypoints (routes, Waypoint Mode screens)"
 	@mkdir -p build/test/codec && TI4_UITEST_ONLY=codec ./build/host/ti4 --uitest build/test/codec > build/test/codec/stdout.txt 2>&1 \

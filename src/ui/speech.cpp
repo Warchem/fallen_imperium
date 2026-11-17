@@ -119,7 +119,7 @@ std::string pick(int speaker, int listener, Cat cat, uint32_t seed) {
     std::vector<const char*> pair, gen;
     gather(cat, pair, gen);
     if (pair.empty() && gen.empty()) {  // (every faction has every kind; this is only a safety net)
-        Cat alt = cat == Cat::Counter ? Cat::Decline : Cat::Offer;
+        Cat alt = cat == Cat::Counter || cat == Cat::Yield ? Cat::Decline : Cat::Offer;
         gather(alt, pair, gen);
     }
     if (pair.empty() && gen.empty()) return "";

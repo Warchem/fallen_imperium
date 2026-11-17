@@ -27,6 +27,7 @@ Rules::RollResult Rules::rollUnits(int p, const Force& f, RollKind kind, int mod
             case RollKind::AFB: value = u.afb; dice = u.afbDice; break;
             case RollKind::Bombard: value = u.bombard; dice = u.bombardDice; break;
             case RollKind::Cannon: value = u.cannon; dice = u.cannonDice; break;
+            default: break;
         }
         if (value <= 0) continue;
         dice = std::max(1, dice);
@@ -224,10 +225,27 @@ void Rules::assignHits(int victim, int sys, int planet, int hits, int mask, cons
         return checkHits(*gp, victim, sys, planet, hits, mask, a.data);
     };
     Answer a = E.ask(std::move(d));
+    // (fixes 29, the Nivyn review) Suldhan Wraeg may stop one of the units about to use Sustain Damage: the hit destroys it instead
+    int stopped = -1;
+    if (G.fixes >= 29 && (G.modules & kModDiscordant) && victim < G.numPlayers) {
+        std::vector<std::pair<int, int>> c;
+        for (size_t i = 0; i < a.data.size(); i += 2) {
+            const int t = a.data[i];
+            if (a.data[i + 1] != 1 || std::find_if(c.begin(), c.end(), [&](const std::pair<int, int>& x) { return x.first == t; }) != c.end()) continue;
+            c.push_back({t, unitCost2(G, victim, UnitType(t))});
+        }
+        if (!c.empty()) stopped = wraeg29(victim, attacker, sys, c, 3, "Sustain Damage");
+    }
     // sustain first (it only marks units damaged), then destroy (damaged first)
     std::vector<int> sustainedTypes;
     for (size_t i = 0; i < a.data.size(); i += 2)
         if (a.data[i + 1] == 1) {
+            if (a.data[i] == stopped) {  // (the stopped unit: destroyed below - marked damaged so that one goes, not a damaged one)
+                a.data[i + 1] = 0;
+                f.dmg[stopped] = uint8_t(f.dmg[stopped] + 1);
+                stopped = -2;
+                continue;
+            }
             sustainedTypes.push_back(a.data[i]);
             int t = a.data[i];
             f.dmg[t] = uint8_t(f.dmg[t] + 1);
@@ -276,7 +294,7 @@ std::vector<int> Rules::retreatOptions(int p, int sys) const {
         if (a == dsBlockRetreat_[p]) continue;  // Lost Cause (Vaylerian flagship, Discordant Stars)
         const SystemState& s = G.systems[a];
         if (s.isHyperlane()) continue;
-        uint8_t an = s.d().anomalies;
+        uint8_t an = tileAnomalies(G, a);  // (fixes 29: the Zelian home too)
         if ((an & kSupernova) && !owns(p, "mr")) continue;  // Magmus Reactor
         if ((an & kAsteroid) && !owns(p, "amd")) continue;
         if (otherShipsIn(G, p, a)) continue;
@@ -297,7 +315,7 @@ std::vector<int> Rules::retreatOptions(int p, int sys) const {
             bool mech = G.systems[a].space[p].count(UnitType::Mech) > 0;
             for (int16_t x : G.systems[a].planets) mech = mech || G.planets[size_t(x)].units[p].count(UnitType::Mech) > 0;
             if (!mech || int(a) == dsBlockRetreat_[p] || otherShipsIn(G, p, int(a))) continue;
-            const uint8_t an = G.systems[a].d().anomalies;
+            const uint8_t an = tileAnomalies(G, int(a));  // (fixes 29: the Zelian home too)
             if ((an & kSupernova) && !owns(p, "mr")) continue;
             if ((an & kAsteroid) && !owns(p, "amd")) continue;
             out.push_back(int(a));
@@ -616,7 +634,7 @@ void Rules::spaceCombat(int att, int def, int sys) {
         return hasShips(G, p, sys) || (alastor_[p] && s.space[p].groundForces() > 0) || (zgrav_[p] && s.space[p].count(UnitType::Mech) > 0);
     };
     // Cosmic Phenomenae (galactic event): Fighter I doesn't fight in an asteroid field
-    const bool rocks = eventOn(G, kEvCosmic) && (s.d().anomalies & kAsteroid);
+    const bool rocks = eventOn(G, kEvCosmic) && (tileAnomalies(G, sys) & kAsteroid);  // (fixes 29: the Zelian home too)
     auto fighters = [&](int p) {
         Force f = s.space[p];
         for (int t = 0; t < kUnitTypes; ++t)
@@ -626,6 +644,7 @@ void Rules::spaceCombat(int att, int def, int sys) {
     };
 
     const bool nebula = (s.d().anomalies & kNebula) != 0 || ((G.modules & kModDiscordant) && sys == G.dsWound) ||  // (the Wound, Nivyn)
+                        mortheusNebula(G, sys) ||  // (fixes 28: the Mortheus home)
                         // Aurora Research Base (Veldyr breakthrough, 0.44.4 fixes 8): their home system is a nebula
                         (G.fixes >= 8 && (G.modules & kModDiscordant) && s.home >= 0 && s.home < G.numPlayers && breakthroughsOn(G) &&
                          breakthroughIs(G, s.home, "veldyr"));
@@ -712,6 +731,9 @@ void Rules::spaceCombat(int att, int def, int sys) {
                 const int afbDice = abilityDice(side, sys, false);
                 RollMods galvDice;  // Galvanize (Thunder's Edge): 1 more die each
                 for (int t = 0; t < kUnitTypes; ++t) galvDice.extraDice[t] = afb.n[t] ? std::min(s.space[side].galv[t], s.space[side].n[t]) : 0;
+                if (afb.n[int(UnitType::Flagship)]) galvDice.extraDice[int(UnitType::Flagship)] += lithodaxAfbDice(side, sys);  // (fixes 28)
+                if (afb.n[int(UnitType::Flagship)]) galvDice.extraDice[int(UnitType::Flagship)] += worldCrackerDice(side, sys);  // (fixes 29)
+                if (G.modules & kModDiscordant) wraegRoll29(side, other, sys, afb, RollKind::AFB, &galvDice);  // (fixes 29: Suldhan Wraeg, Nivyn agent)
                 RollResult r = rollUnits(side, afb, RollKind::AFB, afbMod, afb.empty() ? 0 : afbDice, 0, &galvDice);
                 if (metaliArm) addDice(r, 3, 6 - afbMod);
                 if (dsAfb) addDice(r, dsAfb, 6 - afbMod);
@@ -721,6 +743,10 @@ void Rules::spaceCombat(int att, int def, int sys) {
                 afterUnitRoll(side, other, sys, r, "anti-fighter barrage");
                 // (fixes 26, the Nomad review - owner 2026-11-13) Quantum Manipulator: "during combat" - the barrage too
                 if (G.fixes >= 26 && r.hits > 0 && other < G.numPlayers) r.hits = quantumManipulator(other, sys, r.hits, true);
+                // (fixes 28, the Kortali review) Queen Lorena: the barrage is step 1 of the first round (LRR 78.3) - its hits too
+                if (G.fixes >= 28 && (G.modules & kModDiscordant) && r.hits > 0 && other < G.numPlayers) r.hits = dsLorena(other, sys, r.hits, true);
+                // (fixes 28, the Myko-Mentori review) Amanita Muscaria: "during space combat" - the barrage is part of it (LRR 10)
+                if (G.fixes >= 28 && (G.modules & kModDiscordant) && r.hits > 0 && other < G.numPlayers) r.hits = amanita(other, sys, r.hits, true);
                 if (waylay) {
                     if (r.hits) assignHits(other, sys, -1, r.hits, kShipMask | alastorMask(other), "anti-fighter barrage (Waylay)", side);
                 } else if (r.hits) {
@@ -939,6 +965,8 @@ void Rules::spaceCombat(int att, int def, int sys) {
     }
     inSpaceCombat_ = false;
     G.dsGale = -1;  // (Splintering Gale: only during the combat)
+    G.dsGaleOwner = -1;
+    for (int8_t& x : G.dsGaleShips) x = 0;
     G.dsKomatSys = -1;  // (Komat: the same)
     // LRR 78.10: the player with ships left in the system wins (a retreat counts).
     bool a = fighting(att), d = fighting(def);

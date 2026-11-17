@@ -180,8 +180,9 @@ std::vector<Item> of(const Game& g, int p, int viewer) {
             it.faction = pl.faction;
             it.detail = it.dim ? std::string("used - back at the next strategy phase") : "shows " + std::to_string(pl.dsOmen[k]);
             it.kindLine = it.dim ? std::string("Omen die - used, rolled again at the next strategy phase") : "Omen die - showing " + std::to_string(pl.dsOmen[k]);
-            it.text = "Prescient Memories: the 4 Omen dice are rolled at the start of each strategy phase. Divination: before you roll a die, "
-                      "you may spend an Omen die instead - the roll takes the Omen's result.";
+            it.text = "Prescient Memories: you have 4 \"Omen\" dice. At the start of the strategy phase, roll all 4 Omen dice and place them near "
+                      "your faction sheet. Divination: before you would roll a die, you may instead return 1 Omen die near your faction sheet to "
+                      "your reinforcements to resolve that roll as if it had the result of that die.";
             out.push_back(it);
         }
     // The Sowing (Firmament): trade goods waiting on the card

@@ -605,9 +605,9 @@ float playValue(const Game& g, const Decision& d, int card) {
     if (is("summit")) return 3.f;
     if (is("investments")) return 1.f;
     if (is("disgrace")) {
-        int picker = -1;
-        for (int q = 0; q < g.numPlayers; ++q)
-            if (q != p) picker = picker < 0 || g.players[q].vp > g.players[picker].vp ? q : picker;
+        // (the tester's report, 2026-11-14) the player who just chose the card (the window's player - Decision::targetPlayer):
+        // it used to judge the highest-scoring opponent, so it was played against whoever chose Imperial while someone led
+        const int picker = d.targetPlayer >= 0 && d.targetPlayer < g.numPlayers && d.targetPlayer != p ? d.targetPlayer : -1;
         return picker >= 0 && g.players[picker].vp >= me.vp + 2 && d.value == 7 ? 2.f : 0.f;
     }
     if (is("fs")) return sys >= 0 && otherShipsIn(g, p, sys) ? 1.5f : 0.f;

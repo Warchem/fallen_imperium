@@ -142,6 +142,8 @@ int g_cur = -1;                        // track open in g_music (audio thread)
 std::atomic<int> g_want{-1};           // track asked for (-2 = silence)
 std::atomic<int> g_fadeOutMs{900}, g_fadeInMs{1500};
 std::atomic<int> g_showTrack{-1};
+std::atomic<bool> g_hold{false};  // 0.59.70: the first track waits for releaseMusic() (the title's reveal)
+std::atomic<int> g_heldFirst{-1};
 std::atomic<uint32_t> g_rand{0x9e3779b9u};
 std::atomic<int> g_duckTarget{4096};  // 0.28.0: music hushed for the game-start transition (4096 = full)
 int g_duck = 4096;
@@ -208,7 +210,8 @@ const char* sfxName(Sfx s) {
                                   "pulse_laser", "red_gatling", "bone_spine", "plasma_ball", "slime_shot", "splat", "purple_laser",
                                   "purple_beam", "big_rocket", "lightning", "hyper_beam", "crystal_shard", "big_crystal", "shatter",
                                   "star_launch", "dark_star", "supernova", "black_hole", "rock_throw", "rock_impact", "meteor_fall",
-                                  "slime_stream", "gas_hiss", "droid_blaster", "crystal_laser", "fire_plasma"};
+                                  "slime_stream", "gas_hiss", "droid_blaster", "crystal_laser", "fire_plasma",
+                                  "title_glyph", "title_decode", "title_reveal"};
     static_assert(sizeof names / sizeof names[0] == size_t(Sfx::Count), "a name for every sound");
     return names[int(s)];
 }
@@ -266,7 +269,9 @@ void mix(int16_t* out, int frames) {
                 }
                 if (v.serial < g_voices[oldest].serial) oldest = i;
             }
-            const int slot = same >= kSameMax ? oldestSame : freeV >= 0 ? freeV : oldest;
+            // (0.59.70: the title's letter chimes ring on under each other - up to 10 at once)
+            const int sameMax = c.id == int(Sfx::TitleGlyph) ? 10 : kSameMax;
+            const int slot = same >= sameMax ? oldestSame : freeV >= 0 ? freeV : oldest;
             Voice& v = g_voices[slot];
             v.d = d.data();
             v.len = uint32_t(d.size());
@@ -401,6 +406,18 @@ void musicTo(int track, int fadeOutMs, int fadeInMs) {
     g_want = track;
     g_showTrack = track;
 }
+void holdMusic() { g_hold = true; }
+bool musicHeld() { return g_hold.load(); }
+bool soundsReady() { return !g_running.load() || g_ready.load(); }
+void releaseMusic(int fadeInMs, bool fromStart) {
+    if (!g_hold.exchange(false)) return;
+    const int first = g_heldFirst.load();
+    if (fromStart && first >= 0) {  // (0.60.0, owner: the opening blends into the start of the title song)
+        std::lock_guard<std::mutex> lk(g_musicMx);
+        g_trackPos[first] = 0;
+    }
+    if (first >= 0) musicTo(first, 0, fadeInMs);
+}
 void musicFadeOut(int ms) {
     g_fadeOutMs = ms;
     g_want = -2;
@@ -456,7 +473,10 @@ void start(Settings& s) {
         const int first = !g_trackPath[kTrackTitle].empty() ? kTrackTitle : !g_trackPath[kTrackAction].empty() ? kTrackAction
                                                                                                                  : kTrackInfiltration;
         g_fadeInMs = 3000;
-        if (found && openTrack(first)) {
+        if (found && g_hold.load()) {  // 0.59.70: the title's reveal plays first; releaseMusic() starts it
+            g_heldFirst = first;
+            if (g_trackPath[first].empty()) g_heldFirst = -1;
+        } else if (found && openTrack(first)) {
             g_want = first;
             g_showTrack = first;
         } else {

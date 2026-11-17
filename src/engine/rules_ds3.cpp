@@ -73,7 +73,7 @@ int traitDeck(Trait t) {
 bool techPlanet(const Game& G, int x) { return isLegendaryPlanet(G, x) || planetHasSkip(G, x); }
 int secretsScored(const Game& G, int p) {
     int n = 0;
-    for (int16_t o : G.players[size_t(p)].scored) n += kObjectives[o].kind == 3 ? 1 : 0;
+    for (int16_t o : G.players[size_t(p)].scored) n += scoredAsSecret(G, p, o) ? 1 : 0;
     return n;
 }
 int mechsIn(const Game& G, int sys) {
@@ -139,6 +139,11 @@ void Rules::ds3CombatMods(int p, int opp, int sys, int planet, bool space, RollM
 void Rules::ds3SpaceCombatStart(int att, int def, int sys) {
     ds3Vassal_ = 0;
     SystemState& s = G.systems[size_t(sys)];
+    for (int side : {att, def})  // (fixes 28, the Kjalengard review) Glory: "1 of your units that participated in that combat"
+        if (side < G.numPlayers) {
+            ds3Fought_[side] = 0;
+            for (int t : kShipIdx) ds3Fought_[side] |= s.space[size_t(side)].n[t] ? 1u << t : 0u;
+        }
     // Vassalage (the Kjalengard's note): +1 to the holder's fighters; the Kjalengard capture those destroyed
     const int kj = playerOfFaction(G, "kjalengard");
     for (int side : {att, def}) {
@@ -166,7 +171,12 @@ void Rules::ds3SpaceCombatStart(int att, int def, int sys) {
         const int a = fpick(f, Ab::DsMercenaries, "Mercenaries: remove up to 2 of your fighters next door - a side of this combat places as many here?", from, "", true);
         curValue_ = 0;
         if (a < 0) continue;
-        const int k = std::min(2, int(G.systems[size_t(a)].space[size_t(f)].count(UnitType::Fighter)));
+        int k = std::min(2, int(G.systems[size_t(a)].space[size_t(f)].count(UnitType::Fighter)));
+        if (G.fixes >= 28 && k == 2) {  // (fixes 28, the Florzen review) "remove up to 2 fighters"
+            curValue_ = (f == att || f == def) ? 1 : 0;
+            k = fpick(f, Ab::DsMercenaries, "Mercenaries: how many fighters (up to 2)?", {{2, "2 fighters", ""}, {1, "1 fighter", ""}});
+            curValue_ = 0;
+        }
         std::vector<Option> who;
         for (int q : {att, def})
             if (q < G.numPlayers) who.push_back({q, pn(q), q == f ? "You" : ""});
@@ -178,7 +188,9 @@ void Rules::ds3SpaceCombatStart(int att, int def, int sys) {
         removing_ = was;
         const int got = std::min(k, unitsAvailable(G, q, UnitType::Fighter));
         if (got > 0) addUnits(q, UnitType::Fighter, got, sys, -1);
-        ds3Event(E, f, "Mercenaries", pn(f) + " sells " + std::to_string(k) + " fighters' service: " + pn(q) + " places " + std::to_string(got) + " fighters here.", sys);
+        const bool one = G.fixes >= 28;  // (fixes 28: "1 fighter")
+        ds3Event(E, f, "Mercenaries", pn(f) + " sells " + std::to_string(k) + (one && k == 1 ? " fighter's" : " fighters'") + " service: " + pn(q) + " places " +
+                                          std::to_string(got) + (one && got == 1 ? " fighter here." : " fighters here."), sys);
     }
     for (int side : {att, def}) {
         if (side >= G.numPlayers) continue;
@@ -199,7 +211,8 @@ void Rules::ds3SpaceCombatStart(int att, int def, int sys) {
         }
     }
     // Merkismathr Asvand (Kjalengard agent): a Glory token moves here; the active player gains commodities
-    if (kj >= 0 && (kj == att || kj == def) && canUseAgent(kj, "kjalengard") && !gloryIn(G, sys) && !G.dsGlory.empty()) {
+    if (G.fixes >= 28) ds3Merkismathr(att, def, sys);
+    else if (kj >= 0 && (kj == att || kj == def) && canUseAgent(kj, "kjalengard") && !gloryIn(G, sys) && !G.dsGlory.empty()) {
         if (fyes(kj, Ab::DsMerkismathr, "Exhaust Merkismathr Asvand: move a Glory token into this system?",
                  "Then the active player gains 1 commodity for each neighbour.")) {
             spendAgent(kj, "kjalengard");
@@ -223,6 +236,11 @@ void Rules::ds3SpaceCombatStart(int att, int def, int sys) {
 void Rules::ds3GroundCombatStart(int att, int def, int planet) {
     ds3Vassal_ = 0;
     const int sys = G.planets[size_t(planet)].system;
+    for (int side : {att, def})  // (fixes 28) Glory: the units that fought
+        if (side < G.numPlayers) {
+            ds3Fought_[side] = 0;
+            for (int t = 0; t < kUnitTypes; ++t) ds3Fought_[side] |= G.planets[size_t(planet)].units[size_t(side)].n[t] ? 1u << t : 0u;
+        }
     for (int side : {att, def}) {
         if (side >= G.numPlayers) continue;
         // Repairitor (Dih-Mohn mech): repair 1 of their ground forces in the combat
@@ -232,7 +250,8 @@ void Rules::ds3GroundCombatStart(int att, int def, int planet) {
         }
     }
     const int kj = playerOfFaction(G, "kjalengard");
-    if (kj >= 0 && (kj == att || kj == def) && canUseAgent(kj, "kjalengard") && !gloryIn(G, sys) && !G.dsGlory.empty() &&
+    if (G.fixes >= 28) ds3Merkismathr(att, def, sys);
+    else if (kj >= 0 && (kj == att || kj == def) && canUseAgent(kj, "kjalengard") && !gloryIn(G, sys) && !G.dsGlory.empty() &&
         fyes(kj, Ab::DsMerkismathr, "Exhaust Merkismathr Asvand: move a Glory token into this system?", "Then the active player gains 1 commodity for each neighbour.")) {
         spendAgent(kj, "kjalengard");
         dsGlory(kj, sys, true, "Merkismathr Asvand");
@@ -245,6 +264,47 @@ void Rules::ds3GroundCombatStart(int att, int def, int planet) {
             { const int cb_ = apl.commodities; apl.commodities = int8_t(apl.commodities + got); commodityGained(ap, cb_); }
             if (got) say(ap, pn(ap) + " gains " + std::to_string(got) + " commodities (Merkismathr Asvand).", sys);
         }
+    }
+}
+
+// (fixes 28, the Kjalengard review) Merkismathr Asvand: "At the start of a combat: Exhaust this card to move a Glory token to the
+// active system, if able. Then, the active player may gain a number of commodities equal to the number of neighbors they have" - any
+// combat (not only the Kjalengard's), and with no Glory token to move too. A person is asked at other players' combats (Yes / No /
+// not again this round), a bot only at its own or when it promised the agent to the active player.
+void Rules::ds3Merkismathr(int att, int def, int sys) {
+    const int kj = playerOfFaction(G, "kjalengard");
+    if (kj < 0 || !canUseAgent(kj, "kjalengard")) return;
+    const int ap = G.activePlayer;
+    const bool inIt = kj == att || kj == def, human = G.players[size_t(kj)].human;
+    const bool promised = ap >= 0 && ap != kj && G.agentFor[size_t(kj)] == ap;
+    if (!inIt && !promised && !(human && merkQuiet_[kj] != G.round)) return;
+    const bool canMove = !gloryIn(G, sys) && !G.dsGlory.empty();
+    int n = 0, room = 0;
+    if (ap >= 0 && ap < G.numPlayers) {
+        for (int q = 0; q < G.numPlayers; ++q) n += q != ap && areNeighbours(G, ap, q) ? 1 : 0;
+        room = std::max(0, commodityCap(G, G.players[size_t(ap)]) - G.players[size_t(ap)].commodities);
+    }
+    const int got = std::min(n, room);
+    if (!canMove && got <= 0) return;  // (nothing would happen)
+    std::vector<Option> yn = {{1, "Yes", ""}, {0, "No", ""}};
+    if (human && !inIt && !promised) yn.push_back({3, "No, and don't ask again this round", "You'll be asked again next round."});
+    agentFor(kj, ap);
+    const std::string what = ap == kj ? "you gain " + std::to_string(got) : pn(ap) + " gains " + std::to_string(got);
+    const int c = fpick(kj, Ab::DsMerkismathr, canMove ? "Exhaust Merkismathr Asvand: move a Glory token into this system?" : "Exhaust Merkismathr Asvand (no Glory token can move here)?",
+                        yn, "Then " + what + " commodities (1 for each neighbour).");
+    curFor_ = -1;
+    if (c == 3) merkQuiet_[kj] = int16_t(G.round);
+    if (c != 1) return;
+    spendAgent(kj, "kjalengard");
+    agentUsedFor(kj, ap);
+    if (canMove) dsGlory(kj, sys, true, "Merkismathr Asvand");
+    else ds3Event(E, kj, "Merkismathr Asvand", pn(kj) + " exhausts Merkismathr Asvand.", sys);
+    if (got > 0) {
+        Player& apl = G.players[size_t(ap)];
+        const int cb_ = apl.commodities;
+        apl.commodities = int8_t(apl.commodities + got);
+        commodityGained(ap, cb_);
+        say(ap, pn(ap) + " gains " + std::to_string(got) + " commodities (Merkismathr Asvand).", sys);
     }
 }
 
@@ -315,9 +375,12 @@ void Rules::dsAfterCombatRolls(int att, int def, int sys, int planet, RollResult
     if (!space) return;
     for (int i = 0; i < 2; ++i) {
         const int side = i == 0 ? att : def;
-        if (side >= G.numPlayers || !fac(side, "dihmohn") || !heroUnlocked(G, side)) continue;
+        if (side >= G.numPlayers || !(fac(side, "dihmohn") || caged(side, "dihmohnhero")) || !heroUnlocked(G, side)) continue;  // (28: Soul Cage)
         RollResult& incoming = i == 0 ? rD : rA;
-        if (incoming.hits <= 0) continue;
+        // (fixes 28, the Dih-Mohn review - owner 2026-11-15: "every round as the card describes") after every roll, also with
+        // no hits coming - damaging every ship takes the enemy's Sustain Damage away too (AsyncTI4: the button in every space
+        // combat)
+        if (incoming.hits <= 0 && G.fixes < 28) continue;
         curValue_ = incoming.hits;
         const bool use = fyes(side, Ab::DsYpru, "Purge Verrisus Ypru: every ship here becomes damaged, and yours can't be destroyed this round?",
                               std::to_string(incoming.hits) + " hits are coming at your ships.");
@@ -347,6 +410,7 @@ void Rules::ds3SpaceRoundEnd(int att, int def, int sys) {
             while (placed < 2 && capturedCount(G, side, t) > 0 && unitsAvailable(G, side, t) > 0) {
                 returnCaptured(side, t);
                 addUnits(side, t, 1, sys, -1);
+                if (t == UnitType::Fighter) ds3Fought_[side] |= 1u << int(UnitType::Fighter);
                 ++placed;
             }
         (void)pl;
@@ -408,6 +472,7 @@ void Rules::ds3WonCombat(int winner, int loser, int sys, bool space) {
         const Force& f = G.planets[size_t(G.groundCombatPlanet)].units[size_t(winner)];
         for (int t = 0; t < kUnitTypes; ++t) types |= f.n[t] ? 1 << t : 0;
     }
+    if (G.fixes >= 28) types |= int(ds3Fought_[winner]);  // (the Kjalengard review) "that participated": the destroyed ones too
     bool research = false;
     if (pl.strategy > 0)
         for (int t = 0; t < kTechCount && !research; ++t) {
@@ -454,10 +519,17 @@ int Rules::ds3SaveUnits(int p, UnitType t, int k, int sys, int byPlayer) {
             ds3Event(E, p, "Combat Drills", pn(p) + "'s " + unitTypeName(t) + " survives (Combat Drills).", sys);
         }
     }
-    if (saved < k && fac(p, "dihmohn") && t != UnitType::Dreadnought && !std::strncmp(unitDef(G, p, UnitType::Dreadnought).key, "dihmohn_dreadnought", 19)) {
+    // (fixes 28, the Dih-Mohn review - owner 2026-11-15) "When another ship in this system would be destroyed": another
+    // dreadnought too - an undamaged Aegis that is not itself among the ones destroyed (damaged ones go first) takes it
+    const bool dnToo = G.fixes >= 28 && t == UnitType::Dreadnought;
+    auto spare = [&]() {
+        const int n = f.n[int(UnitType::Dreadnought)], dmg = f.dmg[int(UnitType::Dreadnought)];
+        return dnToo ? n - dmg > std::max(0, (k - saved) - dmg) : n > dmg;
+    };
+    if (saved < k && fac(p, "dihmohn") && (t != UnitType::Dreadnought || dnToo) && !std::strncmp(unitDef(G, p, UnitType::Dreadnought).key, "dihmohn_dreadnought", 19)) {
         const bool two = unitDef(G, p, UnitType::Dreadnought).key[19] == '2';  // Aegis II: any game effect; Aegis I: in combat
         if (two || inSpaceCombat_) {
-            while (saved < k && f.n[int(UnitType::Dreadnought)] > f.dmg[int(UnitType::Dreadnought)]) {
+            while (saved < k && spare()) {
                 curValue_ = int(t);
                 const bool use = fyes(p, Ab::DsAegis, std::string("Aegis: one of your dreadnoughts takes the damage so your ") + unitTypeName(t) + " isn't destroyed?", "");
                 curValue_ = 0;
@@ -526,6 +598,10 @@ void Rules::ds3EndTactical(int p, int sys) {
 
 // Sal Gavda (Florzen agent): at the start of a player's turn, one of their attachments moves to a planet next door.
 void Rules::ds3TurnStart(int p) {
+    if (G.fixes >= 28) {
+        salGavda28(p);
+        return;
+    }
     const int user = agentUser(p, "florzen");
     if (user < 0) return;
     std::vector<Option> opts;
@@ -557,6 +633,73 @@ void Rules::ds3TurnStart(int p) {
         for (int16_t y : G.systems[size_t(a)].planets)
             if (G.planets[size_t(y)].owner == p && !isHomePlanet(G, p, y) && !isMecatol(y, G)) to.push_back({y, planetName(y), ""});
     if (to.empty()) return;
+    const int y = to.size() == 1 ? to[0].id : fpick(p, Ab::DsSalGavda, "Sal Gavda: attach it to which planet?", to, "", false, true);
+    spendAgent(user, "florzen");
+    agentDone(user, p);
+    auto& att = G.planets[size_t(x)].attachments;
+    const int16_t card = att[size_t(i)];
+    att.erase(att.begin() + long(i));
+    G.planets[size_t(y)].attachments.push_back(card);
+    ds3Event(E, p, "Sal Gavda", kExploreCards[card].name + std::string(" moves from ") + planetName(x) + " to " + planetName(y) + ".");
+}
+
+// (fixes 28, the Florzen review) Sal Gavda: "allow that player to remove an attachment from a non-home planet they control and
+// attach it to a non-home planet they control other than Mecatol Rex adjacent to that planet's system" - a planet in the same
+// system too (LRR 6.3: a planet is adjacent to the system that contains it); at the start of ANY player's turn: a person
+// Florzen is asked (Yes / No / not again this round), a bot only when promised; the player whose turn it is chooses.
+void Rules::salGavda28(int p) {
+    if (p < 0 || p >= G.numPlayers) return;
+    auto dests = [&](int x) {
+        std::vector<Option> to;
+        const int sx = G.planets[size_t(x)].system;
+        std::vector<int> systems{sx};
+        for (int16_t a : G.systems[size_t(sx)].adj)
+            if (int(a) != sx) systems.push_back(a);
+        for (int s : systems)
+            for (int16_t y : G.systems[size_t(s)].planets)
+                if (int(y) != x && G.planets[size_t(y)].owner == p && !isHomePlanet(G, p, y) && !isMecatol(y, G)) to.push_back({y, planetName(y), sysName(s)});
+        return to;
+    };
+    std::vector<Option> opts;
+    bool dmz = false;  // 0.43.0 (D70): say why a Demilitarized Zone isn't on the list
+    for (int x : controlledPlanets(G, p)) {
+        const PlanetState& ps = G.planets[size_t(x)];
+        for (int16_t a : ps.attachments) dmz = dmz || exKey3(a, "dmz");
+        if (isHomePlanet(G, p, x) || ps.attachments.empty() || dests(x).empty()) continue;
+        for (size_t i = 0; i < ps.attachments.size(); ++i)
+            if (!exKey3(ps.attachments[i], "dmz")) opts.push_back({x * 16 + int(i), std::string(kExploreCards[ps.attachments[i]].name) + " on " + planetName(x), ""});
+    }
+    if (opts.empty()) return;
+    const std::string note = dmz ? std::string(1, kRedNote) + "The Demilitarized Zone can't be moved." : std::string();
+    int user = -1, c = -1;
+    if (canUseAgent(p, "florzen")) {
+        opts.push_back({-1, "Don't", ""});
+        c = fpick(p, Ab::DsSalGavda, "Exhaust Sal Gavda: move one of your attachments to a planet in or next to its system?", opts, note);
+        if (c < 0) return;
+        user = p;
+    } else {
+        const std::string text = leaderText(findLeader("florzenagent"));
+        for (int o : initiativeOrder(G)) {
+            if (o == p || !canUseAgent(o, "florzen")) continue;
+            const bool promised = G.agentFor[o] == p;
+            const bool human = G.players[size_t(o)].human;
+            if (!promised && !(human && salQuiet_[o] != G.round)) continue;
+            agentFor(o, p);
+            std::vector<Option> yn = {{1, "Yes", ""}, {0, "No", ""}};
+            if (human && !promised) yn.push_back({3, "No, and don't ask again this round", "You'll be asked again next round."});
+            const int y = fpick(o, Ab::DsSalGavda, "Exhaust Sal Gavda for " + pn(p) + ": they move one of their attachments to a planet in or next to its system?", yn, text);
+            curFor_ = -1;
+            if (y == 3) salQuiet_[o] = int16_t(G.round);
+            if (y != 1) continue;
+            user = o;
+            break;
+        }
+        if (user < 0) return;
+        c = opts.size() == 1 ? opts[0].id : fpick(p, Ab::DsSalGavda, "Sal Gavda (" + pn(user) + "): move which of your attachments?", opts, note);
+    }
+    const int x = c / 16, i = c % 16;
+    std::vector<Option> to = dests(x);
+    if (to.empty() || i >= int(G.planets[size_t(x)].attachments.size())) return;
     const int y = to.size() == 1 ? to[0].id : fpick(p, Ab::DsSalGavda, "Sal Gavda: attach it to which planet?", to, "", false, true);
     spendAgent(user, "florzen");
     agentDone(user, p);
@@ -607,6 +750,13 @@ void Rules::ds3AttachNotes(int p, const char* only) {
     }
 }
 
+// (fixes 28, the Bentor review - owner 2026-11-14) "The first time you gain a cultural, hazardous, industrial, or unknown relic
+// fragment": the token (and the Auctioneer's mech) the moment a fragment is gained - deals, action cards, other abilities - not
+// only after an exploration or at the end of the Bentor's turn (a fragment traded on before then never counted)
+void Rules::fragmentGained(int p) {
+    if (G.fixes >= 28 && (G.modules & kModDiscordant)) ds3Fragments(p);
+}
+
 // Ancient Blueprints (Bentor): the first fragment of each kind puts a Fragment token on their sheet (Auctioneer: a mech).
 void Rules::ds3Fragments(int p) {
     if (p < 0 || p >= G.numPlayers || !fac(p, "bentor")) return;
@@ -649,7 +799,39 @@ void Rules::ds3Explored(int p, int planet) {
         ds3Fragments(p);
     }
     // Clodho (Augurs agent): a legendary planet or one with a specialty - 2 trade goods for the explorer
-    if (techPlanet(G, planet)) {
+    // (fixes 28, the Augurs review - owner 2026-11-14) "After a player explores a legendary planet or a planet that has a
+    // technology specialty: You may exhaust this card to allow that player to gain 2 trade goods" - any player's exploration;
+    // the Augurs decide (a person is asked - clodhoQuiet_ -, a bot when it promised), as Doctor Sucaban / Dame Briar
+    if (techPlanet(G, planet) && G.fixes >= 28) {
+        int user = -1;
+        const std::string text = leaderText(findLeader("augersagent"));
+        if (canUseAgent(p, "augers")) {
+            if (fyes(p, Ab::DsClodho, "Exhaust Clodho: gain 2 trade goods?", text)) user = p;
+        } else {
+            for (int o : initiativeOrder(G)) {
+                if (o == p || !canUseAgent(o, "augers")) continue;
+                const bool promised = G.agentFor[o] == p;
+                const bool human = G.players[size_t(o)].human;
+                if (!promised && !(human && clodhoQuiet_[o] != G.round)) continue;
+                agentFor(o, p);
+                std::vector<Option> yn = {{1, "Yes", ""}, {0, "No", ""}};
+                if (human && !promised) yn.push_back({3, "No, and don't ask again this round", "You'll be asked again next round."});
+                const int c = fpick(o, Ab::DsClodho, "Exhaust Clodho so " + pn(p) + " gains 2 trade goods?", yn,
+                                    pn(p) + " explored " + planetName(planet) + ". " + text);
+                curFor_ = -1;
+                if (c == 3) clodhoQuiet_[o] = int16_t(G.round);
+                if (c != 1) continue;
+                user = o;
+                break;
+            }
+        }
+        if (user >= 0) {
+            spendAgent(user, "augers");
+            agentDone(user, p);
+            gainTG(p, 2);
+            say(p, pn(p) + " gains 2 trade goods (Clodho).", sys);
+        }
+    } else if (techPlanet(G, planet)) {
         const int user = agentUser(p, "augers");
         if (user >= 0) {
             agentFor(user, p);
@@ -905,12 +1087,43 @@ int Rules::dsProductionBonus(int p, int sys, int capacity) {
     (void)sys;
     int bonus = 0;
     curValue_ = spendable(G, p, false) - capacity;  // (for the AI: how much more could be paid for)
-    const int user = agentUser(p, "gledge");
+    int user = -1;
+    bool use = false;
+    if (G.fixes >= 28) {
+        // (fixes 28, the Gledge review - owner 2026-11-15) Durran: "When 1 or more of a player's units use PRODUCTION: You may exhaust
+        // this card to apply +3 to the total PRODUCTION value of that player's units" - any player: the Gledge decide (a person is
+        // asked - durranQuiet_ -, a bot when it promised the agent, as Becece / Skarvald & Torvar)
+        const std::string text = leaderText(findLeader("gledgeagent"));
+        if (p >= 0 && p < G.numPlayers && canUseAgent(p, "gledge")) {
+            user = p;
+            use = fyes(p, Ab::DsDurran, "Exhaust Durran: +3 to the Production of these units?", text);
+        } else if (p >= 0 && p < G.numPlayers)
+            for (int o : initiativeOrder(G)) {
+                if (o == p || !canUseAgent(o, "gledge")) continue;
+                const bool promised = G.agentFor[o] == p;
+                const bool human = G.players[size_t(o)].human;
+                if (!promised && !(human && durranQuiet_[o] != G.round)) continue;
+                agentFor(o, p);
+                std::vector<Option> yn = {{1, "Yes", ""}, {0, "No", ""}};
+                if (human && !promised) yn.push_back({3, "No, and don't ask again this round", "You'll be asked again next round."});
+                const int c = fpick(o, Ab::DsDurran, "Exhaust Durran: +3 to " + pn(p) + "'s Production now?", yn, text);
+                curFor_ = -1;
+                if (c == 3) durranQuiet_[o] = int16_t(G.round);
+                if (c != 1) continue;
+                user = o;
+                use = true;
+                break;
+            }
+    } else {
+        user = agentUser(p, "gledge");
+        if (user >= 0) {
+            agentFor(user, p);
+            use = fyes(user, Ab::DsDurran, user == p ? "Exhaust Durran: +3 to the Production of these units?" : "Exhaust Durran: +3 to " + pn(p) + "'s Production now?",
+                       leaderText(findLeader("gledgeagent")));
+            curFor_ = -1;
+        }
+    }
     if (user >= 0) {  // Durran (Gledge agent): +3
-        agentFor(user, p);
-        const bool use = fyes(user, Ab::DsDurran, user == p ? "Exhaust Durran: +3 to the Production of these units?" : "Exhaust Durran: +3 to " + pn(p) + "'s Production now?",
-                              leaderText(findLeader("gledgeagent")));
-        curFor_ = -1;
         if (use) {
             spendAgent(user, "gledge");
             agentDone(user, p);
@@ -932,12 +1145,22 @@ int Rules::dsProductionBonus(int p, int sys, int capacity) {
         };
         scanMine(G.systems[size_t(sys)].space[size_t(p)], -1);
         for (int16_t x : G.systems[size_t(sys)].planets) scanMine(G.planets[size_t(x)].units[size_t(p)], x);
+        // (fixes 28, the Bentor review - owner 2026-11-14) "1 of those units ... to match ... the unit on the game board with the
+        // highest PRODUCTION value": a Broker Network planet here produces "as if it were a unit" (Production 1), and the best
+        // unit can be one of ours in this same system
+        std::string mineName = mineT >= 0 ? std::string(unitTypeName(UnitType(mineT))) : std::string();
+        const bool v28 = G.fixes >= 28;
+        if (v28 && owns(p, "dsbentg"))
+            for (int16_t x : G.systems[size_t(sys)].planets)
+                if (G.planets[size_t(x)].owner == p && !isDMZ(G, x) &&
+                    (planetHasSkip(G, x) || !G.planets[size_t(x)].attachments.empty() || x == G.dsKeyPlanet || x == G.dsBasePlanet) && 1 < mine)
+                    mine = 1, mineT = kUnitTypes, mineName = planetName(x) + " (Broker Network)";
         int best = 0, bestQ = -1, bestS = -1, bestT = -1;  // the strongest producer elsewhere
         for (size_t s2 = 0; s2 < G.systems.size() && mineT >= 0; ++s2)
             for (int q = 0; q < G.numPlayers; ++q) {
                 auto scan = [&](const Force& f, int planet) {
                     for (int t = 0; t < kUnitTypes; ++t)
-                        if (f.n[t] && (int(s2) != sys || q != p) && per(q, int(s2), planet, t) > best)
+                        if (f.n[t] && (v28 || int(s2) != sys || q != p) && per(q, int(s2), planet, t) > best)
                             best = per(q, int(s2), planet, t), bestQ = q, bestS = int(s2), bestT = t;
                 };
                 scan(G.systems[s2].space[size_t(q)], -1);
@@ -945,7 +1168,7 @@ int Rules::dsProductionBonus(int p, int sys, int capacity) {
             }
         std::vector<Option> opts = {{2, "+2 Production", "To these units' total."}};
         if (mineT >= 0 && best - mine > 2)
-            opts.push_back({100 + best - mine, "Match Production: your " + std::string(unitTypeName(UnitType(mineT))) + " (" + std::to_string(mine) + ") as " +
+            opts.push_back({100 + best - mine, "Match Production: your " + mineName + " (" + std::to_string(mine) + ") as " +
                                                    pn(bestQ) + "'s " + unitTypeName(UnitType(bestT)) + " in " + sysName(bestS) + " (" + std::to_string(best) + ")",
                             "+" + std::to_string(best - mine) + " this time."});
         opts.push_back({-1, "Don't", ""});
@@ -1048,21 +1271,54 @@ void Rules::dsUnitRolled(int roller, int target, int sys, RollResult& r, const c
 // Maximus (Dih-Mohn flagship): after it moves into the active system, produce up to 2 units with a combined cost of 4 or less.
 void Rules::ds3AfterMovement(int p, int sys, bool flagshipMoved) {
     if (!flagshipMoved || !flagshipAbility(G, p, "dihmohn") || !flagshipIn(G, p, sys)) return;
-    if (!fyes(p, Ab::DsMaximus, "Maximus: produce up to 2 units here with a combined cost of 4 or less?", "")) return;
+    // (fixes 28, the Dih-Mohn review - owner 2026-11-15) LRR 67.6: "A player cannot produce ships in a system that contains other
+    // players' ships" (ground forces still can) - it moves in before the combat (AsyncTI4: "This cannot produce ships if enemy
+    // ships are present")
+    const bool groundOnly = G.fixes >= 28 && otherShipsIn(G, p, sys);
+    if (!fyes(p, Ab::DsMaximus, groundOnly ? "Maximus: produce up to 2 ground forces here with a combined cost of 4 or less (other players' ships are here)?"
+                                           : "Maximus: produce up to 2 units here with a combined cost of 4 or less?", "")) return;
     ds3Event(E, p, "Maximus", pn(p) + "'s Maximus opens its foundry bays.", sys);
+    const int wasMask = dsTypeMask_;
+    if (groundOnly) dsTypeMask_ = (1 << int(UnitType::Infantry)) | (1 << int(UnitType::Mech));
     dsCostCap_ = 4;
     const bool na = notProductionAbility_;  // (0.58.2, fixes 21: "produce", not PRODUCTION - no Sarween Tools)
     if (G.fixes >= 21) notProductionAbility_ = true;
     productionCore(p, sys, 2, false, false);
     notProductionAbility_ = na;
     dsCostCap_ = 0;
+    dsTypeMask_ = wasMask;
 }
 
 // Jgin Faru (Dih-Mohn agent): when a player commits units to a planet, 1 more infantry from their reinforcements.
 void Rules::dsLanded(int p, int sys, const std::vector<int>& landed) {
     // Plague Reservoir (Kyro, 0.43.0 D13): once per action, a ground combat on a planet of the invasion with nobody to
     // fight - theirs to win (Dacxive Animators: 1 more infantry there)
-    if (G.fixes >= 2 && fac(p, "kyro") && !(dsOncePerAction_ & 4) && owns(p, "dxa") && unitsAvailable(G, p, UnitType::Infantry) > 0) {
+    // (fixes 28, the Kyro review - owner 2026-11-16 15:03 "follow the cards") "during invasion on a planet that contains your units" -
+    // any planet of the active system with their ground forces (landed now or there already, LRR 49.4), and without Dacxive Animators too
+    // (a ground combat won; Dacxive's infantry only when they own it)
+    if (G.fixes >= 28 && fac(p, "kyro") && !(dsOncePerAction_ & 4)) {
+        const bool dxa = owns(p, "dxa");
+        std::vector<Option> opts;
+        for (int16_t x : G.systems[size_t(sys)].planets) {
+            if (groundForcesOn(G, p, x) <= 0 || isDMZ(G, x)) continue;
+            bool foes = neutralGroundOn(G, x) > 0;
+            for (int q = 0; q < G.numPlayers; ++q) foes = foes || (q != p && groundForcesOn(G, q, x) > 0);
+            if (!foes) opts.push_back({x, planetName(x), dxa ? "You win it: Dacxive Animators places 1 infantry." : "You win it."});
+        }
+        if (!opts.empty()) {
+            opts.push_back({-1, "No", ""});
+            const int x = fpick(p, Ab::DsPlague, "Plague Reservoir: fight a ground combat with nobody there?", opts,
+                                "Once per action, during an invasion on a planet with your units.", false, true);
+            if (x >= 0) {
+                dsOncePerAction_ = uint8_t(dsOncePerAction_ | 4);
+                ds3Event(E, p, "Plague Reservoir", pn(p) + "'s plague sweeps " + planetName(x) + ": a ground combat won against nobody.", sys);
+                if (dxa && unitsAvailable(G, p, UnitType::Infantry) > 0) {
+                    addUnits(p, UnitType::Infantry, 1, sys, x);
+                    say(p, pn(p) + " places 1 infantry on " + planetName(x) + " (Dacxive Animators).", sys);
+                }
+            }
+        }
+    } else if (G.fixes >= 2 && fac(p, "kyro") && !(dsOncePerAction_ & 4) && owns(p, "dxa") && unitsAvailable(G, p, UnitType::Infantry) > 0) {
         std::vector<Option> opts;
         for (int x : landed) {
             bool foes = neutralGroundOn(G, x) > 0;
@@ -1084,6 +1340,10 @@ void Rules::dsLanded(int p, int sys, const std::vector<int>& landed) {
     ds4Landed(p, sys, landed);  // batch 4: Duuban
     ds6Landed(p, sys, landed);  // batch 6: Minefields
     ds7Landed(p, sys, landed);  // Orbital Defense Grid
+    if (G.fixes >= 28) {
+        jgin28(p, sys, landed);
+        return;
+    }
     const int user = agentUser(p, "dihmohn");
     if (user < 0) return;
     for (int pl : landed) {
@@ -1098,6 +1358,48 @@ void Rules::dsLanded(int p, int sys, const std::vector<int>& landed) {
         curValue_ = 0;
         curFor_ = -1;
         if (!use) continue;
+        spendAgent(user, "dihmohn");
+        agentDone(user, p);
+        addUnits(p, UnitType::Infantry, 1, sys, pl);
+        say(p, pn(p) + " lands 1 more infantry on " + planetName(pl) + " (Jgin Faru).", sys);
+        return;
+    }
+}
+
+// Jgin Faru (Dih-Mohn agent), fixes 28 (the Dih-Mohn review - owner 2026-11-15): "When a player commits 1 or more units to a
+// planet during invasion: You may exhaust this card to allow that player to place 1 infantry from their reinforcements on that
+// planet" - any player: the Dih-Mohn decide (a person is asked - jginQuiet_ -, a bot when it promised the agent, as Garv and Gunn)
+void Rules::jgin28(int p, int sys, const std::vector<int>& landed) {
+    if (p < 0 || p >= G.numPlayers || unitsAvailable(G, p, UnitType::Infantry) <= 0 || landed.empty()) return;
+    const std::string text = leaderText(findLeader("dihmohnagent"));
+    for (int pl : landed) {
+        int defenders = neutralGroundOn(G, pl);
+        for (int q = 0; q < G.numPlayers; ++q) defenders += q != p ? G.planets[size_t(pl)].units[size_t(q)].groundForces() : 0;
+        int user = -1;
+        if (canUseAgent(p, "dihmohn")) {
+            curValue_ = defenders;
+            const bool use = fyes(p, Ab::DsJginFaru, "Exhaust Jgin Faru: 1 more infantry from your reinforcements on " + planetName(pl) + "?", text);
+            curValue_ = 0;
+            if (use) user = p;
+        } else
+            for (int o : initiativeOrder(G)) {
+                if (o == p || !canUseAgent(o, "dihmohn")) continue;
+                const bool promised = G.agentFor[o] == p;
+                const bool human = G.players[size_t(o)].human;
+                if (!promised && !(human && jginQuiet_[o] != G.round)) continue;
+                agentFor(o, p);
+                std::vector<Option> yn = {{1, "Yes", ""}, {0, "No", ""}};
+                if (human && !promised) yn.push_back({3, "No, and don't ask again this round", "You'll be asked again next round."});
+                curValue_ = defenders;
+                const int c = fpick(o, Ab::DsJginFaru, "Exhaust Jgin Faru: 1 more of " + pn(p) + "'s infantry on " + planetName(pl) + "?", yn, text);
+                curValue_ = 0;
+                curFor_ = -1;
+                if (c == 3) jginQuiet_[o] = int16_t(G.round);
+                if (c != 1) continue;
+                user = o;
+                break;
+            }
+        if (user < 0) continue;
         spendAgent(user, "dihmohn");
         agentDone(user, p);
         addUnits(p, UnitType::Infantry, 1, sys, pl);
@@ -1137,6 +1439,15 @@ void Rules::ds3Options(int p, std::vector<Option>& o) {
         if (any) add(Ab::DsImpressAction, "Impressment Programs", "Exhaust it and one of your planets to explore that planet.");
     }
     if (fac(p, "gledge") && heroUnlocked(G, p)) add(Ab::DsGorthrim, "Hero: Gorthrim", "Reveal exploration cards until 3 attachments; attach them to your planets of that type. Purged afterwards.");
+    // (fixes 28, the Augurs review) Read the Fates: "ACTION: Place this face up in your play area"
+    if (G.fixes >= 28)
+        for (int16_t n : pl.notes)
+            if (noteType(n) == kNoteFaction && noteOwner(n) != p && isFaction(G, noteOwner(n), "augers")) {
+                add(Ab::DsReadFates, "Play Read the Fates",
+                    "Place it face up: while it is in your play area, you may look at the public objective card on the Augurs' faction "
+                    "sheet. It goes back if you activate a system that contains their units.");
+                break;
+            }
     if (fac(p, "augers") && heroUnlocked(G, p) && pl.dsSheet >= 0)
         add(Ab::DsAtropha, "Hero: Atropha", "Draw 3 public objectives; one may replace the objective on your sheet (the next one revealed). Purged afterwards.");
     if (fac(p, "kjalengard") && heroUnlocked(G, p) && !G.dsGlory.empty())
@@ -1150,6 +1461,20 @@ void Rules::ds3Options(int p, std::vector<Option>& o) {
 bool Rules::ds3Action(int p, Ab ab) {
     Player& pl = G.players[size_t(p)];
     switch (ab) {
+        case Ab::DsReadFates: {  // (fixes 28, the Augurs review) "ACTION: Place this face up in your play area"
+            const int au = playerOfFaction(G, "augers");
+            if (au < 0 || au == p) return false;
+            const int16_t note = int16_t(makeNote(au, kNoteFaction));
+            auto it = std::find(pl.notes.begin(), pl.notes.end(), note);
+            if (it == pl.notes.end()) return false;
+            pl.notes.erase(it);
+            pl.notesInPlay.push_back(note);
+            ds3Event(E, p, "Read the Fates", pn(p) + " places " + pn(au) + "'s Read the Fates face up.");
+            const int16_t o = G.players[size_t(au)].dsSheet;
+            if (o >= 0 && pl.human)
+                feedNote(p, std::string("Read the Fates: the next public objective will be ") + kObjectives[o].name + " - " + objectiveSummary(o));
+            return true;
+        }
         case Ab::DsEncryptionKey:
         case Ab::DsGledgeBase: {  // 0.43.0 (D60): attached as a component action
             const bool bentor = ab == Ab::DsEncryptionKey;
@@ -1178,6 +1503,7 @@ bool Rules::ds3Action(int p, Ab ab) {
                 if (!G.players[size_t(q)].eliminated) who.push_back({q, pn(q), ""});
             const int q = fpick(p, Ab::DsMgur, "C.O.O. Mgur: which player gains " + std::to_string(n) + " commodities?", who);
             spendAgent(p, "bentor");
+            agentUsedFor(p, q);
             Player& ql = G.players[size_t(q)];
             const int room = std::max(0, commodityCap(G, ql) - ql.commodities), c = std::min(n, room);
             { const int cb_ = ql.commodities; ql.commodities = int8_t(ql.commodities + c); commodityGained(q, cb_); }
@@ -1192,6 +1518,21 @@ bool Rules::ds3Action(int p, Ab ab) {
             std::vector<int> list;
             for (int x : controlledPlanets(G, p))
                 if (explorable3(G, x)) list.push_back(x);
+            // (fixes 28, the Bentor review) "explore each planet you control in any order": a person picks the next one (bots
+            // keep the list order)
+            if (G.fixes >= 28 && pl.human) {
+                while (!list.empty()) {
+                    int x = list[0];
+                    if (list.size() > 1) {
+                        std::vector<Option> opts;
+                        for (int y : list) opts.push_back({y, planetName(y), std::string(traitName(kPlanets[G.planets[size_t(y)].def].trait))});
+                        x = fpick(p, Ab::DsKenTucc, "C.E.O. Ken Tucc: explore which planet next? (" + std::to_string(list.size()) + " left)", opts, "", false, true);
+                    }
+                    list.erase(std::find(list.begin(), list.end(), x));
+                    if (G.planets[size_t(x)].owner == p) explorePlanet(p, x);
+                }
+                return true;
+            }
             for (int x : list) explorePlanet(p, x);
             return true;
         }
@@ -1283,6 +1624,34 @@ bool Rules::ds3Action(int p, Ab ab) {
             if (!heroUnlocked(G, p) || G.dsGlory.empty()) return false;
             purgeHero(p);
             ds3Hero(E, G, p, pn(p) + " calls on Ygegnad, The Thunder: a tale of legends.");
+            if (G.fixes >= 28) {
+                // (fixes 28, the Kjalengard review) "For each system that contains a Glory token, remove up to 1 command token in or
+                // adjacent to that system from the game board and gain 1 command token, if able" - any player's token (option system*16 +
+                // player), and the command token for each Glory token whether one was removed or not
+                std::vector<int> taken;  // system*16 + player already removed
+                for (int16_t gl : std::vector<int16_t>(G.dsGlory)) {
+                    std::vector<Option> opts;
+                    std::vector<int> zone{gl};
+                    for (int16_t a : G.systems[size_t(gl)].adj) zone.push_back(a);
+                    for (int s : zone)
+                        for (int q = 0; q < G.numPlayers; ++q)
+                            if (G.systems[size_t(s)].hasToken(q) && std::find(taken.begin(), taken.end(), s * 16 + q) == taken.end())
+                                opts.push_back({s * 16 + q, sysName(s) + (q == p ? ": your command token" : ": " + pn(q) + "'s command token"),
+                                                std::to_string(G.systems[size_t(s)].space[size_t(p)].ships()) + " of your ships there"});
+                    if (!opts.empty()) {
+                        opts.push_back({-1, "None", ""});
+                        const int c = fpick(p, Ab::DsYgegnad, "Ygegnad: remove up to 1 command token in or next to " + sysName(gl) + "?", opts, "", true);
+                        if (c >= 0) {
+                            const int s = c / 16, q = c % 16;
+                            taken.push_back(c);
+                            G.systems[size_t(s)].tokens = uint16_t(G.systems[size_t(s)].tokens & ~(1u << q));
+                            say(p, pn(p) + " removes " + (q == p ? std::string("its") : pn(q) + "'s") + " command token from " + sysName(s) + " (Ygegnad).", s);
+                        }
+                    }
+                    if (reinforcementTokens(p) > 0) gainTokens(p, 1, false, "Ygegnad: 1 command token.");
+                }
+                return true;
+            }
             std::vector<int> cleared;
             for (int16_t g : std::vector<int16_t>(G.dsGlory)) {
                 std::vector<Option> opts;

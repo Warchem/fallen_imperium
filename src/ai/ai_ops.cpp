@@ -480,7 +480,7 @@ const SaarBall& aiSaarBall(const Game& g, int p) {
         const int steps = (d + ffMove - 1) / ffMove;
         if (steps > maxSteps) continue;
         float v = aiSaarFront(g, p, int(t));
-        if (chaos && (ts.d().anomalies & kAsteroid)) v += aiTune("sbrocks", 1.f);  // (Chaos Mapping: nobody can activate it)
+        if (chaos && (tileAnomalies(g, int(t)) & kAsteroid)) v += aiTune("sbrocks", 1.f);  // (Chaos Mapping: nobody can activate it)
         const float threat = saarThreat(g, p, int(t), ballForce);
         v *= 1.f - std::max(0.f, threat - aiTune("sbthreat", 0.35f));
         v -= aiTune("sbstep", 0.35f) * float(steps);

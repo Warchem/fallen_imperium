@@ -58,7 +58,7 @@ bool besideAnomaly(const Game& G, int sys) {
 }
 bool hasLegendary(const Game& G, int sys) {
     for (int16_t x : G.systems[sys].planets)
-        if (kPlanets[G.planets[x].def].legendary) return true;
+        if (kPlanets[G.planets[x].def].legendary || G.planets[size_t(x)].nanoForge) return true;  // (Nano-Forge, 0.60.0)
     return false;
 }
 }  // namespace
@@ -385,7 +385,7 @@ void Rules::afterMove3(int p, int sys, int wormholeCarriers, bool warSunMoved) {
     // (fixes 26, the Muaat review - owner 2026-11-12: not in the Fracture - the designer's ruling; neutral units are
     // destroyed too; the Muaat's own units on the purged planets return to their reinforcements; a frontier token stays)
     const bool baal26 = G.fixes >= 26;
-    if (warSunMoved && fac(p, "muaat") && heroUnlocked(G, p) && s.space[p].count(UnitType::WarSun) &&
+    if (warSunMoved && (fac(p, "muaat") || caged(p, "muaathero")) && heroUnlocked(G, p) && s.space[p].count(UnitType::WarSun) &&  // (fixes 28: Soul Cage)
         ((s.home < 0 && sys != G.mecatol()) || eventOn(G, kEvWild)) && !s.offBoard && s.home != p &&  // (Wild, Wild Galaxy: anywhere)
         !(baal26 && s.fracture)) {
         bool others = false;
@@ -1246,6 +1246,7 @@ bool Rules::nekroMalleon(int p) {
     if (q < 0) return false;
     spendAgent(p, "nekro");
     if (q != p) say(p, pn(p) + " exhausts Nekro Malleon: " + pn(q) + " is chosen.");
+    agentUsedFor(p, q);
     Player& o = G.players[size_t(q)];
     std::vector<Option> opts;
     for (int16_t c : o.actionCards) opts.push_back({c, std::string("Discard ") + kActionCards[c].name, ""});
@@ -1504,6 +1505,7 @@ bool Rules::factionAction3(int p, Ab ab) {
                 say(p, pn(p) + " calls on Umbat.", s);
             } else {
                 spendAgent(p, "muaat");
+                agentUsedFor(p, q);
                 say(p, pn(p) + " calls on Umbat for " + pn(q) + ".");
                 where.push_back({-1, "Produce nothing", ""});
                 s = fpick(q, Ab::MuaatAgent, "Umbat (" + pn(p) + "): produce in which system?", where, "Up to 2 units that cost 4 or less.", true);

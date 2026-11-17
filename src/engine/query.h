@@ -34,6 +34,8 @@ int stationsOf(const Game& g, int p);
 // Dhonraz Installations (Gledge breakthrough, 0.43.0): their planets with a Core token count as stations too (not for
 // control; units still land there) - the commodity value, station exhausting and Space Cannon 5.
 bool dhonrazStation(const Game& g, int p, int planet);
+std::vector<int> dhonrazTargets(const Game& g, int p);  // (fixes 28) planets the Reference card's Dhonraz Installations can bombard
+int dhonrazDice(const Game& g, int p);                  // its Y: the structures p controls
 bool stationFor(const Game& g, int p, int planet);
 int forgeworldsOf(const Game& g, int p, bool readyOnly);  // (0.44.9) Omni-Forgeworlds: war suns that are space stations too  // isStation, or a Dhonraz one of p's
 int commodityValue(const Game& g, int p);  // the faction's commodities + 1 per space station
@@ -90,6 +92,7 @@ int oceansReady(const Game& g, int p);  // Deepwrought ocean cards ready to spen
 int oceanCards(const Game& g, int p);
 bool bannerhalls(const Game& g, int p);  // (0.44.9) the Kjalengard's Bannerhalls are in play for p   // ocean cards + Bannerhalls (Kjalengard breakthrough, 0.43.0: 1 per Glory token)
 int triadValue(const Game& g, int p);  // The Triad (Thunder's Edge relic), ready: 3 + fragment kinds
+int groveInfluence(const Game& g, int p);  // the Grove's influence (Khrask, fixes 28): planets with p's coexisting units
 int spendableMixed(const Game& g, int p);  // each ready planet's higher value + trade goods
 int xanderCommodities(const Game& g, int p);  // commodities p may spend as trade goods now (Keleres agent)
 // What exhausting a planet is worth for a payment (mixed: the higher of its two values).
@@ -108,6 +111,10 @@ int unitsAvailable(const Game& g, int p, UnitType t);  // in reinforcements (cap
 int capturedCount(const Game& g, int p, UnitType t);  // units of this type the Vuil'raith player p holds captured
 int capturedFrom(const Game& g, int owner, UnitType t);  // owner's non-fighter ships / mechs held captured by anyone
 bool dimensionalTear(const Game& g, int sys);         // a Vuil'raith space dock makes the system a gravity rift
+bool mortheusNebula(const Game& g, int s);  // (fixes 28) the Mortheus home system is a nebula
+bool nivynRift(const Game& g, int s);       // (fixes 29) the Nivyn home system is a gravity rift
+bool zelianAsteroids(const Game& g, int s);  // (fixes 29) the Zelian home system is an asteroid field
+uint8_t tileAnomalies(const Game& g, int s);  // the tile's printed anomalies + the Zelian home's asteroid field (fixes 29)
 bool isAnomaly(const Game& g, int s);                // an anomaly for objectives (incl. Dimensional Tears, the Wound)
 int groundForcesOn(const Game& g, int p, int planet); // ground forces incl. Hel-Titans (Titans PDS)
 int amalgamationSavings(const Game& g, int p, const int counts[kUnitTypes]);  // Vuil'raith: resources captured units pay
@@ -142,6 +149,8 @@ int neutralGroundOn(const Game& g, int planet);
 bool anyNeutralUnits(const Game& g);
 bool metaliSustain(const Game& g, int p, UnitType t, int sys, int planet);  // Metali Void Shielding (one ship per set of hits)
 int extraSustains(const Game& g, int p, int sys, int planet);  // how many ships without Sustain Damage may use it (Metali, Splintering Gale)
+int extraSustainsPooled(const Game& g, int p, int sys, int planet);  // ... of those, the ones any such ship may use (not per type)
+int galeLeft(const Game& g, int p, int sys, UnitType t);  // (rules 28) the Splintering Gale's chosen ships of type t that can sustain
 // Thunder's Edge breakthroughs (0.34.0): on with the module, off with Discordant Stars (owner)
 bool breakthroughsOn(const Game& g);
 bool hasBreakthrough(const Game& g, int p);
@@ -160,6 +169,7 @@ int bestColourCount(const Game& g, int p);
 bool blockaded(const Game& g, int p, int sys);
 std::vector<int> playersWithShips(const Game& g, int sys);
 int productionCapacity(const Game& g, int p, int sys);
+int supremacyCapacity(const Game& g, int p, int sys);  // Supremacy (Celdauri flagship): other players' docks here, for ships
 int singleUnitProduction(const Game& g, int p, int sys);  // (0.44.5) the best PRODUCTION value of one unit there
 bool hasProductionIn(const Game& g, int p, int sys);
 bool custodiaMecatol(const Game& g, int p);  // Keleres breakthrough: they control Mecatol Rex with Custodia Vigilia
@@ -170,6 +180,7 @@ bool tethered(const Game& g, int p, int a, int b);  // Void Tether: p doesn't tr
 int particleSynthesis(const Game& g, int p, int sys);  // Creuss breakthrough: wormholes there (Production 1 / 1 cheaper each)
 bool eventOn(const Game& g, int ev);  // a galactic event is in play (Thunder's Edge, 0.36.0)
 int commodityCap(const Game& g, const Player& pl);  // most commodities it may hold (Age of Commerce: no limit)
+int vadenDebtCap(const Game& g);  // most control tokens of one player on the Vaden's sheet (fixes 29: not limited, LRR 23.2)
 int refreshTo(const Game& g, const Player& pl);     // commodities after a refill (Age of Commerce: + the value)
 // The Firmament / the Obsidian (0.35.0)
 const char* plotName(int plot);
@@ -224,6 +235,7 @@ bool x89Omega(const Game& g, int p);
 // 0.43.4 (owner, RULES-CHECK X1): the Codex's Omega cards are in play with the Codex ticked - or with Thunder's Edge,
 // which comes with the updated Codex (games started with fixes >= 5)
 bool codexOn(const Game& g);
+bool codex2Relic(int r);  // (0.60.0) Dynamis Core, JR-XS455-O, Nano-Forge - in games with the Codex or Thunder's Edge
 // (0.57.1, fixes 20 - tester) Thunder's Edge replaces the Xxcha hero: Xxekir Grom places PDS / mechs and readies planets
 // (the Codex's resources-and-influence passive is off then)
 bool teXxchaHero(const Game& g);
@@ -286,6 +298,7 @@ std::string noteNameOf(const Game& g, int note);
 bool branchNoSpot(const Game& g, int note, int receiver);
 std::string noteTextOf(const Game& g, int note);
 const char* olradinPolicyText(int k, bool minus);  // policy card k (People, Environment, Economy), + or - side (rules_ds4.cpp)
+int favorColour(const Game& g, int p, int tech);  // (fixes 29) the colour Favor of Rhodun adds to, -1 none
 int analyticalWaiver(const Game& g, int p, int tech);           // prerequisites Jol-Nar may ignore (0/1)
 
 // ---- technology -----------------------------------------------------------------
@@ -305,7 +318,12 @@ struct SpendNeed {
 SpendNeed objectiveSpend(int obj);
 // True if p currently meets the objective (for spend objectives: can afford it).
 bool meetsObjective(const Game& g, int p, int obj);
+int mirvedaPdsCap(const Game& g, int p);  // (fixes 28) Privileged Citizenry: the PDS a system can hold (-1: no limit)
 bool hasScored(const Game& g, int p, int obj);
+// (fixes 28, the tester's report) a scored secret objective that is one of the player's secret objectives - not a leaked one
+// (Classified Document Leaks) they scored as a public objective
+bool scoredAsSecret(const Game& g, int p, int obj);
+bool leakedSecret(const Game& g, int obj);  // Classified Document Leaks made it a public objective
 bool canPayBoth(const Game& g, int p, int resources, int influence);  // from ready planets + trade goods
 // How far p is with a counting objective: 'have' of 'need' (planets, ships,
 // technologies, systems...). need == 0 for objectives that aren't counted

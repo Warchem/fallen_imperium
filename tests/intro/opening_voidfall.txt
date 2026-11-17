@@ -1,0 +1,17 @@
+# 0.59.70 (owner 12:45): the Voidfall title's opening (run with TI4_TITLEINTRO=1 and tileset=2 in the settings): the starry sky,
+# the name, then the pan down to the battlefield; the battle and the first bombardment after the menu has come.
+wait 30
+shot void_0500
+wait 200
+shot void_3700
+wait 250
+shot void_7700
+wait 220
+shot void_11200
+wait 110
+shot void_13000
+wait 25
+shot void_13400
+wait 60
+shot void_14400
+quit

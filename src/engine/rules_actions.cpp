@@ -65,7 +65,10 @@ void Rules::drawActionCards(int p, int n, const std::string& why) {
     if (n <= 0 || G.players[p].eliminated) return;
     if (G.modules & kModDiscordant) {  // Autonetic Memory (Cymiae): a card from the discard pile or an infantry instead
         n = dsAutonetic(p, n);
-        if (n <= 0) return;
+        if (n <= 0) {
+            autoneticAfter(p);  // (fixes 28: the card from the discard pile once the draw is done)
+            return;
+        }
     }
     int drawn = 0;
     for (int i = 0; i < n; ++i) {
@@ -80,7 +83,10 @@ void Rules::drawActionCards(int p, int n, const std::string& why) {
         G.actionDeck.pop_back();
         ++drawn;
     }
-    if (!drawn) return;
+    if (!drawn) {
+        autoneticAfter(p);
+        return;
+    }
     E.revealed();
     for (int i = 0; i < drawn; ++i) {  // 0.29.0 (owner): your new cards open large (display only, not in the log)
         Event e;
@@ -110,6 +116,7 @@ void Rules::drawActionCards(int p, int n, const std::string& why) {
         }
     }
     if (why != "Scheming") sharedScheming(p);
+    autoneticAfter(p);
     enforceHandLimit(p);
 }
 
@@ -226,6 +233,7 @@ void Rules::discardActionCard(int p, int card, bool played) {
             G.actionDiscard.erase(it);
             G.players[q].actionCards.push_back(int16_t(card));
             say(q, pn(q) + " takes " + kActionCards[card].name + " from the discard pile.");
+            if (G.modules & kModDiscordant) cyberneticMadness(q);  // (fixes 28)
             enforceHandLimit(q);
         }
         return;
@@ -283,6 +291,8 @@ std::vector<Played> Rules::window(const WinCtx& c) {
         if (!pl.actionCards.empty() && !pl.eliminated) anyCards = true;
     for (const PlanetState& ps : G.planets)
         if (!ps.salvage.empty()) anyCards = true;  // Dok 'N Pic's Salvage Yard (Thunder's Edge)
+    for (const Player& pl : G.players)
+        if (!pl.cordoSalvage.empty()) anyCards = true;  // (fixes 28: ... on Cordo Haved)
     if (!anyCards) return out;
     std::vector<int> order = windowOrder();
     std::vector<int> used;  // player*1000 + card: a player plays a card name once per window (LRR 2.6b)
@@ -314,6 +324,9 @@ std::vector<Played> Rules::window(const WinCtx& c) {
                 d.tag = Tag::PlayActionCard;
                 d.prompt = more == 0 ? "Play an action card?" : "Play another action card?";
                 d.context = winText(c.w);
+                // (the tester's report, 2026-11-14) who chose which card - Public Disgrace makes that player choose another
+                if (c.w == Win::PickStrategy && c.a >= 0 && c.a < G.numPlayers && c.value >= 0 && c.value < kStrategyCards)
+                    d.context = pn(c.a) + " just chose " + strategyName(c.value) + ".";
                 d.options = opts;
                 d.window = int(c.w);
                 d.system = c.sys;
@@ -459,7 +472,7 @@ bool Rules::cardPlayable(int p, int card, const WinCtx& c) const {
                 if (!c.space) return false;
                 if (G.fixes >= 26 && noRetreat_) return false;  // (fixes 26, the Mahact review: Airo Shir Aur's combat - no ability moves ships)
                 for (int16_t a : G.systems[c.sys].adj) {
-                    uint8_t an = G.systems[a].d().anomalies;
+                    uint8_t an = tileAnomalies(G, a);  // (fixes 29: the Zelian home too)
                     if (G.fixes >= 12) {  // (0.44.8: Magmus Reactor allows a supernova)
                         if (!canEndMoveIn(G, p, a)) continue;
                     } else if ((an & kSupernova) || G.systems[a].isHyperlane()) continue;
@@ -888,7 +901,7 @@ void Rules::resolveCard(int p, int card, const WinCtx* c) {
     if (is("s_retreat")) {
         std::vector<Option> opts;
         for (int16_t a : G.systems[sys].adj) {
-            uint8_t an = G.systems[a].d().anomalies;
+            uint8_t an = tileAnomalies(G, a);  // (fixes 29: the Zelian home too)
             if (G.fixes >= 12) {  // (0.44.8: Magmus Reactor allows a supernova)
                 if (!canEndMoveIn(G, p, a)) continue;
             } else if ((an & kSupernova) || G.systems[a].isHyperlane()) continue;
@@ -934,7 +947,7 @@ void Rules::resolveCard(int p, int card, const WinCtx* c) {
         if ((G.modules & kModDiscordant) && breakthroughsOn(G) && dsbtVault(c->b, p, "their commodities")) return;  // (0.43.0)
         int n = lo.commodities;
         lo.commodities = 0;
-        gainTG(p, n);
+        gainTGNotSupply(p, n); // (fixes 28: not from the supply - no Artuno)
         say(p, pn(p) + " salvages " + std::to_string(n) + " commodities from " + pn(c->b) + " (as trade goods).");
         return;
     }
@@ -1126,6 +1139,7 @@ void Rules::resolveCard(int p, int card, const WinCtx* c) {
             }
         }
         say(p, pn(p) + " reveals " + shown + " and keeps " + std::to_string(got) + " relic fragment" + (got == 1 ? "" : "s") + ".");
+        fragmentGained(p);  // (fixes 28)
         return;
     }
     if (is("probe")) {
@@ -1159,6 +1173,7 @@ void Rules::resolveCard(int p, int card, const WinCtx* c) {
         pl.fragments.push_back(f);
         say(p, pn(p) + (std::strchr("AEIOU", kExploreCards[f].name[0]) ? " takes an " : " takes a ") + kExploreCards[f].name + " from " +
                    pn(q) + ".");
+        fragmentGained(p);  // (fixes 28)
         return;
     }
     if (is("cripple")) {
@@ -1743,6 +1758,16 @@ std::vector<Option> Rules::componentActionOptions(int p) {
             opts.push_back({4000 + r, "Relic: Azdel's Key", relicText(r)});
         if (!std::strcmp(k, "throne_of_the_false_emperor") && (!G.relicDeck.empty() || !throneSecrets(p).empty()))
             opts.push_back({4000 + r, "Relic: Forgotten Throne", relicText(r)});
+        // Codex II (0.60.0)
+        if (!std::strcmp(k, "dynamiscore")) opts.push_back({4000 + r, "Relic: Dynamis Core", relicText(r)});
+        if (!std::strcmp(k, "titanprototype") && !pl.relicExhausted(r)) opts.push_back({4000 + r, "Relic: JR-XS455-O", relicText(r)});
+        if (!std::strcmp(k, "nanoforge")) {
+            bool spot = false;
+            for (int x : controlledPlanets(G, p))
+                if (G.planets[size_t(x)].owner == p && !isLegendaryPlanet(G, x) && G.systems[size_t(G.planets[size_t(x)].system)].home < 0 && !isStation(G, x))
+                    spot = true;
+            if (spot) opts.push_back({4000 + r, "Relic: Nano-Forge", relicText(r)});
+        }
     }
     teRelicOptions(p, opts);  // Thunder's Edge relics (0.34.0)
     btOptions(p, opts);       // Thunder's Edge breakthroughs (0.34.0)
@@ -1757,6 +1782,7 @@ std::vector<Option> Rules::componentActionOptions(int p) {
 bool Rules::componentAction(int p, int option) {
     if (option >= 6000 + int(Ab::BtArborec) && option <= 6000 + int(Ab::BtYssaril)) return btAction(p, option - 6000);
     if (option >= 6000 + int(Ab::DsbtAxis) && option <= 6000 + int(Ab::DsbtKyro)) return dsbtAction(p, option - 6000);  // (0.43.0)
+    if (option == 6000 + int(Ab::DsbtGledge)) return dsbtAction(p, option - 6000);  // (fixes 28, the Gledge review)
     if (option >= 6000) return factionAction(p, option);
     if (option >= 5000) return enigmaticAction(p);
     if (option >= 4000) return relicAction(p, option - 4000);
@@ -1970,6 +1996,7 @@ void Rules::endOfTurn(int p) {
     if (G.fixes < 10) bioStims(p);
     legendaryAbilities(p);
     teEndOfTurn(p);  // Thunder's Edge: The Acropolis, The Galactic Council
+    if (G.fixes >= 28 && (G.modules & kModDiscordant)) cordoEndOfTurn(p);  // Cordo Haved (Free Systems agent, the Free Systems review)
     if (G.modules & kModDiscordant) dsTurnEnd(p);  // Emergency Mobilization, Operator Kkavras (Discordant Stars)
     endOfTurn4(p);  // Garv and Gunn, Field Marshal Mercer
     // Predictive Intelligence: rearrange command tokens.

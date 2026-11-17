@@ -37,6 +37,7 @@ std::vector<Option> Rules::agendaOutcomes(int a) const {
                 const PlanetState& ps = G.planets[x];
                 if (ps.owner < 0) continue;
                 if (kAgendas[a].elect == Elect::NonHomePlanet && (isHomePlanetIdx(G, int(x)) || ps.system == mec)) continue;
+                if (G.fixes >= 30 && isStation(G, int(x))) continue;  // (fixes 30, owner: space stations aren't planets to elect)
                 v.push_back({int(x), planetName(int(x)), pn(ps.owner) + "'s planet"});
             }
             break;
@@ -47,7 +48,7 @@ std::vector<Option> Rules::agendaOutcomes(int a) const {
         case Elect::ScoredSecret:
             for (int q = 0; q < G.numPlayers; ++q)
                 for (int16_t o : G.players[q].scored)
-                    if (kObjectives[o].kind == 3) v.push_back({o, kObjectives[o].name, "scored by " + pn(q)});
+                    if (scoredAsSecret(G, q, o)) v.push_back({o, kObjectives[o].name, "scored by " + pn(q)});
             break;
         case Elect::StrategyCard:
             for (int c = 0; c < kStrategyCards; ++c) v.push_back({c, std::to_string(c + 1) + " " + strategyName(c), strategySecondary(c)});
@@ -67,9 +68,9 @@ bool Rules::agendaRevealable(int a) const {
     // "If there are no laws in play, discard this card and reveal another."
     if (agKey(a, "abolishment") || agKey(a, "constitution") || agKey(a, "miscount")) return !G.laws.empty();
     if (agKey(a, "classified")) {
-        for (const Player& pl : G.players)
-            for (int16_t o : pl.scored)
-                if (kObjectives[o].kind == 3) return true;
+        for (int q = 0; q < G.numPlayers; ++q)
+            for (int16_t o : G.players[size_t(q)].scored)
+                if (G.fixes >= 30 ? scoredAsSecret(G, q, o) : kObjectives[o].kind == 3) return true;  // (fixes 30: not a leaked one)
         return false;
     }
     return true;
@@ -211,31 +212,51 @@ void Rules::runAgenda(int a, bool miscount) {
         say(G.speaker, pn(G.speaker) + " secretly draws the agenda everyone votes on.");
     }
     const Elect kind = kAgendas[real].elect;
+    // (fixes 30) Miscount Disclosed: the law voted on again stays in play until its revote resolves (FAQ)
+    auto lift = [&](int ag) {
+        if (miscount && G.fixes >= 30 && miscountLaw_ == ag) {
+            liftLaw(ag);
+            miscountLaw_ = -1;
+        }
+    };
 
-    // Committee Formation: its owner may pick the elected player without a vote.
-    int committee = lawOwner(G, "committee");
-    if (kind == Elect::Player && committee >= 0 && !G.players[committee].eliminated) {
-        int prev = curAgenda_;
+    // Committee Formation: its owner may pick the elected player without a vote (-1: not used). (fixes 30, owner
+    // 2026-11-17: asked after the "after an agenda is revealed" window - riders can be played on that election)
+    const int committee = lawOwner(G, "committee");
+    auto committeeAsk = [&]() -> int {
+        if (kind != Elect::Player || committee < 0 || G.players[committee].eliminated) return -1;
+        const int prev = curAgenda_;
         curAgenda_ = real;
-        bool use = yesNo(committee, Tag::LawAbility, "Discard Committee Formation to choose the elected player?",
-                         std::string(kAgendas[real].name) + ": " + agendaText(real, false));
-        if (use) {
-            int elected = pick(committee, Tag::AgendaChoice, std::string("Committee Formation: who is elected for ") +
-                                                                 kAgendas[real].name + "?",
-                               agendaOutcomes(real));
-            for (size_t i = 0; i < G.laws.size(); ++i)
-                if (agKey(G.laws[i].agenda, "committee")) {
-                    discardLaw(int(i), "used");
-                    break;
-                }
+        // (a covert agenda stays secret from a holder who isn't the speaker: only that it elects a player)
+        const bool hidden = real != a && committee != G.speaker;
+        const bool use = yesNo(committee, Tag::LawAbility, "Discard Committee Formation to choose the elected player?",
+                               hidden ? std::string("Covert Legislation: the secret agenda elects a player.")
+                                      : std::string(kAgendas[real].name) + ": " + agendaText(real, false));
+        if (!use) {
             curAgenda_ = prev;
+            return -1;
+        }
+        const int elected = pick(committee, Tag::AgendaChoice,
+                                 hidden ? std::string("Committee Formation: who is elected?")
+                                        : std::string("Committee Formation: who is elected for ") + kAgendas[real].name + "?",
+                                 agendaOutcomes(real));
+        for (size_t i = 0; i < G.laws.size(); ++i)
+            if (agKey(G.laws[i].agenda, "committee")) {
+                discardLaw(int(i), "used");
+                break;
+            }
+        curAgenda_ = prev;
+        return elected;
+    };
+    if (G.fixes < 30) {
+        const int elected = committeeAsk();
+        if (elected >= 0) {
             if (real != a) G.agendaDiscard.push_back(int16_t(a));
             std::vector<int> none(n, kNoVote), zero(n, 0);
             resolveOutcome(real, elected, none, zero);
             G.covertAgenda = -1;
             return;
         }
-        curAgenda_ = prev;
     }
 
     // "After an agenda is revealed": riders, Assassinate Representative, Hack Election, Insider Information
@@ -251,38 +272,45 @@ void Rules::runAgenda(int a, bool miscount) {
     nekroPredict(real);  // Galactic Threat
     tarrockPredict(real);  // Council Black Site (Uncharted Space, 0.33.0)
 
-    // Voting
-    votingStep(real, G.votedFor, G.voteCount, cannotVote_, lastVoter_);
-    keleresAfterVoting();                // Odlynn Myrr pays out
-    if (G.modules & kModDiscordant) dsAfterVoting(G.votedFor, G.voteCount);  // Silas Deriga (Kyro commander)
-    bloodPact(G.votedFor, G.voteCount);  // Empyrean note: +4 votes
-    persVotes();                         // "vote them down" betrayals
-
-    // Tally (LRR 8.19: ties, or no votes at all, are decided by the speaker)
-    std::vector<Option> outs = agendaOutcomes(a);
-    std::vector<int> totals(outs.size(), 0);
-    for (int q = 0; q < n; ++q)
-        for (size_t i = 0; i < outs.size(); ++i)
-            if (G.votedFor[q] == outs[i].id) totals[i] += G.voteCount[q];
-    int best = 0;
-    for (int t : totals) best = std::max(best, t);
-    std::vector<Option> tied;
-    for (size_t i = 0; i < outs.size(); ++i)
-        if (totals[i] == best) tied.push_back({outs[i].id, outs[i].label, std::to_string(totals[i]) + " votes"});
+    const int committeeElected = G.fixes >= 30 ? committeeAsk() : -1;  // (fixes 30: "before players vote", after the riders)
     int outcome = -1;
-    if (tied.empty()) {
-        if (real != a) G.agendaDiscard.push_back(int16_t(a));
-        G.agendaDiscard.push_back(int16_t(real));
-        say(-1, "Nothing can be chosen for this agenda - it is discarded.");
-        return;
-    }
-    if (tied.size() == 1) {
-        outcome = tied[0].id;
+    if (committeeElected >= 0) {
+        outcome = committeeElected;  // (nobody votes on it)
     } else {
-        outcome = pick(G.speaker, Tag::TieBreak,
-                       best > 0 ? "The vote is tied: you are the speaker, choose the outcome" : "Nobody voted: you are the speaker, choose the outcome",
-                       tied);
-        say(G.speaker, pn(G.speaker) + " (speaker) decides: " + outcomeName(a, outcome) + ".");
+        // Voting
+        votingStep(real, G.votedFor, G.voteCount, cannotVote_, lastVoter_);
+        keleresAfterVoting();                // Odlynn Myrr pays out
+        if (G.modules & kModDiscordant) dsAfterVoting(G.votedFor, G.voteCount);  // Silas Deriga (Kyro commander)
+        // Empyrean note: +4 votes ((fixes 30) not under Representative Government: "Players cannot cast additional votes")
+        if (!(G.fixes >= 30 && lawInPlay(G, "rep_govt"))) bloodPact(G.votedFor, G.voteCount);
+        persVotes();                         // "vote them down" betrayals
+
+        // Tally (LRR 8.19: ties, or no votes at all, are decided by the speaker)
+        std::vector<Option> outs = agendaOutcomes(a);
+        std::vector<int> totals(outs.size(), 0);
+        for (int q = 0; q < n; ++q)
+            for (size_t i = 0; i < outs.size(); ++i)
+                if (G.votedFor[q] == outs[i].id) totals[i] += G.voteCount[q];
+        int best = 0;
+        for (int t : totals) best = std::max(best, t);
+        std::vector<Option> tied;
+        for (size_t i = 0; i < outs.size(); ++i)
+            if (totals[i] == best) tied.push_back({outs[i].id, outs[i].label, std::to_string(totals[i]) + " votes"});
+        if (tied.empty()) {
+            lift(real);
+            if (real != a) G.agendaDiscard.push_back(int16_t(a));
+            G.agendaDiscard.push_back(int16_t(real));
+            say(-1, "Nothing can be chosen for this agenda - it is discarded.");
+            return;
+        }
+        if (tied.size() == 1) {
+            outcome = tied[0].id;
+        } else {
+            outcome = pick(G.speaker, Tag::TieBreak,
+                           best > 0 ? "The vote is tied: you are the speaker, choose the outcome" : "Nobody voted: you are the speaker, choose the outcome",
+                           tied);
+            say(G.speaker, pn(G.speaker) + " (speaker) decides: " + outcomeName(a, outcome) + ".");
+        }
     }
 
     // Elections: Confusing / Confounding Legal Text
@@ -317,7 +345,11 @@ void Rules::runAgenda(int a, bool miscount) {
             E.emit(e);
             for (int x : controlledPlanets(G, plots[0].player)) G.planets[x].exhausted = true;
             if (real != a) G.agendaDiscard.push_back(int16_t(a));
-            if (!miscount) G.agendaDiscard.push_back(int16_t(real));
+            // ((fixes 30) a law voted on again by Miscount Disclosed goes to the discard pile too - it was lost from the game)
+            if (!miscount || (G.fixes >= 30 && miscountLaw_ == real)) {
+                lift(real);
+                G.agendaDiscard.push_back(int16_t(real));
+            }
             G.covertAgenda = -1;
             return;
         }
@@ -335,6 +367,7 @@ void Rules::runAgenda(int a, bool miscount) {
     bool pis[kMaxPlayers];
     std::copy(piUsed_, piUsed_ + kMaxPlayers, pis);
     tarrockCheck(outcome);
+    lift(real);
     resolveOutcome(real, outcome, voted, counts);
     keleresAgendaResolved(outcome);      // Keleres Rider
     if (G.modules & kModDiscordant) dsAgendaResolved(outcome, voted);  // Kyro Rider, Indoctrination Teams
@@ -615,7 +648,7 @@ void Rules::votingStep(int a, std::vector<int>& votedFor, std::vector<int>& vote
                         say(p, pn(p) + " casts 6 more votes (Odlynn Myrr).");
                     }
                 }
-                if (count > 0 && zeal(p) > 0) {  // Zeal: 1 more vote per player in the game
+                if (count > 0 && zeal(p) > 0 && !(G.fixes >= 30 && repGov)) {  // Zeal: 1 more vote per player in the game ((fixes 30) not under Representative Government)
                     count += zeal(p);
                     say(p, pn(p) + " casts " + std::to_string(zeal(p)) + " more votes (Zeal).");
                 }
@@ -704,6 +737,34 @@ void Rules::discardLaw(int i, const std::string& why) {
     }
 }
 
+// A law taken out of play without going to the discard pile: Miscount Disclosed votes on it again (its owner loses
+// Political Censure's point; the wormhole laws' adjacency; a leaked secret stops being public).
+void Rules::liftLaw(int agenda) {
+    for (size_t i = 0; i < G.laws.size(); ++i) {
+        if (G.laws[i].agenda != agenda) continue;
+        const Law l = G.laws[i];
+        G.laws.erase(G.laws.begin() + long(i));
+        if (agKey(l.agenda, "censure") && l.owner >= 0) loseVP(l.owner, 1, "lost Political Censure");
+        if (agKey(l.agenda, "travel_ban") || agKey(l.agenda, "wormhole_recon") || agKey(l.agenda, "nexus")) computeAdjacency(G);
+        if (agKey(l.agenda, "classified") && l.target >= 0) {
+            auto it = std::find(G.publicObjectives.begin(), G.publicObjectives.end(), l.target);
+            if (it != G.publicObjectives.end()) G.publicObjectives.erase(it);
+        }
+        return;
+    }
+}
+
+// (fixes 30) "Gain any 1 technology": the generic ones and, for a Thunder's Edge or Discordant Stars faction, its own (as
+// research offers them); before, only base game and Prophecy of Kings technologies were listed
+bool Rules::gainableTech(int p, int t) const {
+    if (!techAvailableToResearch(G, p, t)) return false;
+    const TechDef& d = kTechs[size_t(t)];
+    if (d.source == Source::Base || d.source == Source::PoK) return true;
+    if (G.fixes < 30 || d.faction < 0) return false;
+    if (d.source == Source::ThundersEdge) return std::strcmp(kFactions[d.faction].key, "obsidian") != 0;
+    return d.source == Source::Discordant;
+}
+
 // ------------------------------------------------------------------ resolving
 void Rules::resolveOutcome(int a, int o, const std::vector<int>& votedFor, const std::vector<int>& votes) {
     const int n = G.numPlayers;
@@ -757,6 +818,7 @@ void Rules::resolveOutcome(int a, int o, const std::vector<int>& votedFor, const
             return;
         }
         if (kAgendas[a].elect == Elect::ScoredSecret) {  // Classified Document Leaks
+            G.leaked.push_back(int16_t(o));
             addLaw(a, -1, o);
             G.publicObjectives.push_back(int16_t(o));
             say(-1, std::string(kObjectives[o].name) + " becomes a public objective.");
@@ -857,14 +919,17 @@ void Rules::resolveOutcome(int a, int o, const std::vector<int>& votedFor, const
         // Vote on the elected law again as if it had just been revealed.
         for (size_t i = 0; i < G.laws.size(); ++i)
             if (G.laws[i].agenda == o) {
-                Law l = G.laws[i];
-                G.laws.erase(G.laws.begin() + int(i));
-                if (agKey(l.agenda, "censure") && l.owner >= 0) loseVP(l.owner, 1, "lost Political Censure");
-                if (agKey(l.agenda, "travel_ban") || agKey(l.agenda, "wormhole_recon") || agKey(l.agenda, "nexus")) computeAdjacency(G);
-                if (agKey(l.agenda, "classified") && l.target >= 0) {
-                    auto it = std::find(G.publicObjectives.begin(), G.publicObjectives.end(), l.target);
-                    if (it != G.publicObjectives.end()) G.publicObjectives.erase(it);
+                if (G.fixes >= 30) {
+                    // (fixes 30, the agenda pass - FAQ: "the law that is being voted on remains active and in play" during the
+                    // revote; runAgenda takes it out when the revote resolves)
+                    const int prevLaw = miscountLaw_;
+                    miscountLaw_ = o;
+                    runAgenda(o, true);
+                    if (miscountLaw_ == o) liftLaw(o);  // (the revote ended early: nothing to resolve)
+                    miscountLaw_ = prevLaw;
+                    break;
                 }
+                liftLaw(o);
                 runAgenda(o, true);
                 break;
             }
@@ -897,10 +962,12 @@ void Rules::resolveOutcome(int a, int o, const std::vector<int>& votedFor, const
             int v = E.rng().d10();
             say(G.speaker, pn(G.speaker) + " rolls " + std::to_string(v) + " for the Ixthian Artifact.");
             if (v >= 6) {
+                optionalResearch_ = true;  // ("each player may research 2 technologies")
                 for (int q : clockwiseFrom(G, G.speaker)) {
                     researchStep(q, 0, "Ixthian Artifact");
                     researchStep(q, 0, "Ixthian Artifact");
                 }
+                optionalResearch_ = false;
             } else {
                 int mec = G.mecatol();
                 for (int q = 0; q < n; ++q) {
@@ -996,7 +1063,15 @@ void Rules::resolveOutcome(int a, int o, const std::vector<int>& votedFor, const
             }
         if (owner >= 0) gainTG(owner, gained);
     } else if (is("economic_equality")) {
-        for (Player& pl : G.players) pl.tradeGoods = int8_t(against ? 0 : 5);
+        if (G.fixes >= 30) {  // (fixes 30) "returns all ... Then, each player gains 5" - gained (Pillage), and not by the eliminated
+            for (Player& pl : G.players)
+                if (!pl.eliminated) pl.tradeGoods = 0;
+            if (!against)
+                for (int q : clockwiseFrom(G, G.speaker))
+                    if (!G.players[size_t(q)].eliminated) gainTG(q, 5);
+        } else {
+            for (Player& pl : G.players) pl.tradeGoods = int8_t(against ? 0 : 5);
+        }
     } else if (is("execution")) {
         discardAllActionCards(o, "Public Execution");
         if (G.speaker == o) {
@@ -1008,8 +1083,7 @@ void Rules::resolveOutcome(int a, int o, const std::vector<int>& votedFor, const
     } else if (is("grant_reallocation")) {
         std::vector<Option> opts;
         for (int t = 0; t < kTechCount; ++t)
-            if (techAvailableToResearch(G, o, t) && (kTechs[t].source == Source::Base || kTechs[t].source == Source::PoK))
-                opts.push_back({t, kTechs[t].name, techSummary(t)});
+            if (gainableTech(o, t)) opts.push_back({t, kTechs[t].name, techSummary(t)});
         if (!opts.empty()) {
             int t = pick(o, Tag::AgendaChoice, "Research Grant Reallocation: gain which technology?", opts,
                          "You lose a fleet token for each of its prerequisites.");
@@ -1135,7 +1209,11 @@ void Rules::resolveOutcome(int a, int o, const std::vector<int>& votedFor, const
                 bool at = false;
                 for (size_t s = 0; s < G.systems.size(); ++s)
                     if (wormholesOf(G, int(s)) && G.systems[s].space[q].ships()) at = true;
-                if (at) researchStep(q, 0, "Wormhole Research");
+                if (at) {
+                    optionalResearch_ = true;  // ("may research 1 technology")
+                    researchStep(q, 0, "Wormhole Research");
+                    optionalResearch_ = false;
+                }
             }
             for (size_t s = 0; s < G.systems.size(); ++s)
                 if (wormholesOf(G, s) & (kAlpha | kBeta))

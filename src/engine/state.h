@@ -75,6 +75,7 @@ struct PlanetState {
     std::vector<int16_t> attachments;  // kExploreCards indices (attach cards)
     std::vector<int16_t> salvage;      // Dok 'N Pic's Salvage Yard (Thunder's Edge): action cards on its card
     bool relicTaken = false;           // Thunder's Edge: its relic icon has given its relic
+    bool nanoForge = false;            // (0.60.0) the Nano-Forge relic attached: +2 resources and influence, a legendary planet
     uint16_t coexist = 0;              // Thunder's Edge: players whose units here coexist (no combat, no control)
     int16_t spoils = 0;                // Total War (galactic event): commodities on the planet
     int8_t monument = -1;              // Monuments to the Ages: commodities under the monument here (-1 = none)
@@ -102,6 +103,9 @@ struct SystemState {
     std::array<Force, kSides> space;  // [kNeutral] = neutral units
     std::vector<int16_t> planets;  // Game::planets indices
     std::vector<int16_t> adj;      // adjacent systems (hex, hyperlane and wormhole links)
+    // (fixes 30) systems in adj only through an alpha / beta wormhole that Enforced Travel Ban or Nexus Sovereignty switch off
+    // for movement - still adjacent for everything else (FAQ: space cannon, neighbours)
+    std::vector<int16_t> adjNoMove;
 
     bool hasToken(int p) const { return (tokens >> p) & 1; }
     const SystemDef& d() const { return kSystems[def]; }
@@ -165,6 +169,7 @@ struct Personality {
     // what each player has done to this bot (evolution paths, attitude)
     std::array<int8_t, 8> attacks{}, broke{}, kept{}, deals{}, refused{}, gifts{};
     std::array<int8_t, 8> lostBig{};  // round a player last lost 3+ ships in one fight (Scavenger)
+    std::array<int8_t, 8> threats{};  // demands this bot paid under a player's threat (owner 2026-11-15: a grudge)
     uint16_t nearTurn = 0;       // bits: players already counted as moving near this turn
     uint8_t flags = 0;           // 1 = Grey Fanatics used (Yin)
 };
@@ -188,6 +193,7 @@ struct Player {
     int8_t vp = 0;
     int16_t vpLost = 0;  // (simulator invariant only) victory points lost - Mutiny, Support for the Throne going back, ...
     std::vector<int16_t> scored;   // objectives scored (public and secret)
+    std::vector<int16_t> scoredAsPublic;  // (fixes 28) secret objectives scored as public ones (Classified Document Leaks)
     std::vector<int16_t> secrets;  // secret objectives in hand, not yet scored
     std::array<int16_t, kUnitTypes> unit{};  // current definition per unit type
     int16_t homeSystem = -1;
@@ -232,6 +238,7 @@ struct Player {
     bool dsOnce = false;               // once-per-action abilities (Scour, War Stories, Scavenger Exos, ...): reset each turn
     bool dsExosOnce = false;           // 0.44.8 (fixes 12): Scavenger Exos's own once-per-action mark (it blocked Scour)
     bool dsUnlock = false;             // a commander's condition met at some moment (Queen Lorena: destroyed a player's last units)
+    std::vector<int16_t> cordoSalvage; // (fixes 28) action cards put on Cordo Haved through Dok 'N Pic's Salvage Yard - p plays them
     int8_t dsHeroSys = -1;             // Spear of Vaylar (Vaylerian hero): +1 move / +1 combat until the end of this turn
     int16_t dsPubSecret = -1;          // Contract Network (Tnelis hero): another player's secret, scored like a public
     std::vector<int16_t> dsTempTechs;  // Blessing of the Ancients (Rhodun hero): all but 1 purged next strategy phase
@@ -407,9 +414,11 @@ struct DealSide {
     std::vector<int> orders;        // Discordant Stars (Arms Dealers): Axis Order cards from the giver's play area (0-7)
     int hire = 0;                   // Discordant Stars (Hired Guns, 0.43.0): up to this many of the Nokar's ships join the
                                     // receiver in the active system (only offered right after a system is activated)
+    std::vector<int> laws;          // Discordant Stars (Encrypted Trade Hub, fixes 28): agendas (laws) the giver holds - their
+                                    // agenda ids
     bool empty() const {
         return !tg && !comm && note < 0 && fragments.empty() && actionCards.empty() && planet < 0 && captured.empty() && relics.empty() &&
-               secrets.empty() && techs.empty() && !debt && orders.empty() && !hire;
+               secrets.empty() && techs.empty() && !debt && orders.empty() && !hire && laws.empty();
     }
 };
 struct Deal {
@@ -488,6 +497,7 @@ struct Game {
     int8_t cardTradeGoods[kStrategyCards] = {};
 
     std::vector<int16_t> publicObjectives;  // revealed, in order
+    std::vector<int16_t> leaked;            // secret objectives Classified Document Leaks made public (fixes 30: no longer secrets)
     std::vector<int16_t> stage1Deck, stage2Deck, secretDeck;
     int stage1Revealed = 0;
 
@@ -539,6 +549,8 @@ struct Game {
     int16_t dsLendTech = -1;           // ... which one
     int8_t dsCapBonus = -1;            // Strike Team Coordinator (Vaylerian commander): this player has +2 capacity this action
     int8_t dsGale = -1;                // Splintering Gale (Khrask flagship): the system of the space combat it fights in
+    int8_t dsGaleOwner = -1;           // (fixes 28, the Khrask review: the card) the player whose ships it chose, and how many
+    int8_t dsGaleShips[kUnitTypes] = {};  // of each type - they have Sustain Damage until the end of that combat
     int16_t dsAutomatons = -1;         // Automatons (the Roh'Dhna's note): the planet it is attached to
     int8_t dsAutomatonsOwner = -1;
     int16_t dsConspired = -1;          // Conspirators (Rhodun): the round it was last used
@@ -570,6 +582,7 @@ struct Game {
     // Faction abilities (Stage 5)
     int8_t naaluToken = -1;           // player holding the Naalu "0" token this round (initiative 0)
     int16_t groundCombatPlanet = -1;  // planet of the ground combat being fought (-1 = none)
+    int16_t dsInvading = -1;          // planet being invaded outside a tactical action (Contagion) - read only by the simulator's checks
     uint16_t zgrav = 0;               // (fixes 27) sides whose Eidolons fight as Z-Grav Eidolons in the current space combat
     std::array<int16_t, 3> creussTokens{{-1, -1, -1}};  // Creuss alpha / beta / gamma wormhole tokens (system, -1 = off the board)
     int16_t adjFlagship = -1;   // system of the Creuss flagship (delta wormhole) when adjacency was last computed

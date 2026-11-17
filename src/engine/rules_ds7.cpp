@@ -93,7 +93,22 @@ void Rules::ds7InvasionStart(int p, int sys) {
         const int k = std::min<int>(f.count(UnitType::Fighter), unitsAvailable(G, p, UnitType::Infantry));
         bool target = false;
         for (int16_t x : G.systems[size_t(sys)].planets) target = target || G.planets[size_t(x)].owner != p;
-        if (k > 0 && target) {
+        if (k > 0 && target && G.fixes >= 28) {
+            // (fixes 28, the Mirveda review) "you may replace each of your fighters in the active system with 1 infantry unit" - fighter
+            // by fighter: how many
+            std::vector<Option> opts;
+            for (int n = k; n >= 1; --n)
+                opts.push_back({n, n == k ? "Replace all " + std::to_string(n) : "Replace " + std::to_string(n), "They don't need capacity during this invasion."});
+            opts.push_back({0, "None", ""});
+            curValue_ = k;
+            const int n = fpick(p, Ab::DsCombatDrones, "Combat Drones: how many of your " + std::to_string(k) + " fighters here become infantry?", opts);
+            curValue_ = 0;
+            if (n > 0) {
+                f.remove(UnitType::Fighter, n, false);
+                f.add(UnitType::Infantry, n);
+                ds7Event(E, p, "Combat Drones", pn(p) + "'s drones land as infantry: " + std::to_string(n) + ".", sys);
+            }
+        } else if (k > 0 && target) {
             curValue_ = k;
             const bool use = fyes(p, Ab::DsCombatDrones, "Combat Drones: turn your " + std::to_string(k) + " fighters here into infantry?",
                                   "They don't need capacity during this invasion.");
@@ -164,8 +179,28 @@ void Rules::ds7Activated(int p, int sys) {
     if (commanderUsable(G, p, "ghoti")) G.fx.dsCeie = int8_t(p);
 }
 
-void Rules::ds7AfterMovement(int p, int sys) {
+void Rules::ds7AfterMovement(int p, int sys, int movedInfantry) {
     ghotiSync();
+    // (fixes 28, the Mirveda review) Assault Machina (commander): "During Movement, for each infantry you transport, you may replace that
+    // unit with 1 fighter" - the infantry that moved into the active system's space area this movement
+    if (G.fixes >= 28 && movedInfantry > 0 && p >= 0 && p < G.numPlayers && commanderUsable(G, p, "mirveda")) {
+        Force& f = G.systems[size_t(sys)].space[size_t(p)];
+        const int k = std::min({movedInfantry, int(f.count(UnitType::Infantry)), unitsAvailable(G, p, UnitType::Fighter)});
+        if (k > 0) {
+            std::vector<Option> opts;
+            for (int n = k; n >= 1; --n) opts.push_back({n, n == k ? "Replace all " + std::to_string(n) : "Replace " + std::to_string(n), ""});
+            opts.push_back({0, "None", ""});
+            curValue_ = k;
+            const int n = fpick(p, Ab::DsAssaultMachina, "Assault Machina: how many of the " + std::to_string(k) + " infantry you moved become fighters?", opts,
+                                leaderText(findLeader("mirvedacommander")));
+            curValue_ = 0;
+            if (n > 0) {
+                f.remove(UnitType::Infantry, n, false);
+                f.add(UnitType::Fighter, n);
+                ds7Event(E, p, "Assault Machina", pn(p) + "'s " + std::to_string(n) + " infantry launch as fighters.", sys);
+            }
+        }
+    }
     // the Ghoti planet card: ships into a system without planets - 1 commodity
     if (fac(p, "ghoti") && G.systems[size_t(sys)].planets.empty()) {
         Player& pl = G.players[size_t(p)];
@@ -192,12 +227,31 @@ void Rules::ds7Produced(int p, int sys, const Force& made) {
     if (fac(p, "ghoti") && sys == pl.homeSystem && made.ships() > 0 && mechAbilities(G)) {
         std::vector<Option> opts;
         for (size_t s = 0; s < G.systems.size(); ++s) {
-            if (int(s) == sys || otherShipsIn(G, p, int(s))) continue;
+            if (int(s) == sys || (G.fixes >= 28 ? blockaded(G, p, int(s)) : otherShipsIn(G, p, int(s)))) continue;
             bool mech = G.systems[s].space[size_t(p)].count(UnitType::Mech) > 0;
             for (int16_t x : G.systems[s].planets) mech = mech || G.planets[size_t(x)].units[size_t(p)].count(UnitType::Mech) > 0;
             if (mech) opts.push_back({int(s), sysName(int(s)), ""});
         }
-        if (!opts.empty()) {
+        if (!opts.empty() && G.fixes >= 28) {
+            // (fixes 28, the Ghoti review) "place up to 1 of those units" - the Ghoti choose which of the new ships (fighters stay:
+            // nothing would carry them there); "This unit can be blockaded" - a mech is blockaded only with no Ghoti ships there
+            std::vector<Option> which;
+            for (const Option& at : opts)
+                for (int t : kShipIdx)
+                    if (t != int(UnitType::Fighter) && made.n[t] && G.systems[size_t(sys)].space[size_t(p)].n[t])
+                        which.push_back({at.id * 16 + t, at.label + ": " + unitTypeName(UnitType(t)), ""});
+            opts = which;
+        }
+        if (!opts.empty() && G.fixes >= 28) {
+            opts.push_back({-1, "Keep them together", ""});
+            const int c = fpick(p, Ab::DsTioleombp, "Tioleombp: which of the new ships appears beside your mech, and where?", opts, "", true);
+            if (c >= 0) {
+                const int s = c / 16, t = c % 16;
+                G.systems[size_t(sys)].space[size_t(p)].remove(UnitType(t), 1, false);
+                G.systems[size_t(s)].space[size_t(p)].add(UnitType(t), 1);
+                ds7Event(E, p, "Tioleombp", pn(p) + "'s " + unitTypeName(UnitType(t)) + " surfaces in " + sysName(s) + ".", s);
+            }
+        } else if (!opts.empty()) {
             opts.push_back({-1, "Keep them together", ""});
             const int s = fpick(p, Ab::DsTioleombp, "Tioleombp: one of the new ships appears beside your mech - where?", opts, "", true);
             if (s >= 0) {
@@ -254,14 +308,43 @@ void Rules::ds7Produced(int p, int sys, const Force& made) {
 }
 
 // Becece (Ghoti agent): a player's production - 2 more units, or 1 trade good.
+// (fixes 28, the Ghoti review - owner 2026-11-15) "When a player produces 1 or more units: You may exhaust this card to allow that
+// player to either produce 2 additional units or gain 1 trade good" - any player: the Ghoti decide (a person is asked - bececeQuiet_
+// -, a bot when it promised the agent, as Skarvald & Torvar)
 int Rules::ds7ProductionBonus(int p, int sys) {
-    const int user = agentUser(p, "ghoti");
-    if (user < 0) return 0;
-    agentFor(user, p);
-    const int c = fpick(user, Ab::DsBecece, user == p ? "Exhaust Becece?" : "Exhaust Becece for " + pn(p) + "?",
-                        {{1, "2 more units in this production", ""}, {2, "1 trade good", ""}, {-1, "Don't", ""}}, leaderText(findLeader("ghotiagent")));
-    curFor_ = -1;
-    if (c < 0) return 0;
+    int user = -1, c = -1;
+    const std::vector<Option> what = {{1, "2 more units in this production", ""}, {2, "1 trade good", ""}, {-1, "Don't", ""}};
+    if (G.fixes >= 28) {
+        if (p < 0 || p >= G.numPlayers) return 0;
+        if (canUseAgent(p, "ghoti")) {
+            user = p;
+            c = fpick(p, Ab::DsBecece, "Exhaust Becece?", what, leaderText(findLeader("ghotiagent")));
+        } else
+            for (int o : initiativeOrder(G)) {
+                if (o == p || !canUseAgent(o, "ghoti")) continue;
+                const bool promised = G.agentFor[o] == p;
+                const bool human = G.players[size_t(o)].human;
+                if (!promised && !(human && bececeQuiet_[o] != G.round)) continue;
+                agentFor(o, p);
+                std::vector<Option> opts = what;
+                if (human && !promised) opts.push_back({3, "No, and don't ask again this round", "You'll be asked again next round."});
+                c = fpick(o, Ab::DsBecece, "Exhaust Becece for " + pn(p) + "?", opts, leaderText(findLeader("ghotiagent")));
+                curFor_ = -1;
+                if (c == 3) bececeQuiet_[o] = int16_t(G.round);
+                if (c == 1 || c == 2) {
+                    user = o;
+                    break;
+                }
+            }
+        if (user < 0 || c < 0 || c == 3) return 0;
+    } else {
+        user = agentUser(p, "ghoti");
+        if (user < 0) return 0;
+        agentFor(user, p);
+        c = fpick(user, Ab::DsBecece, user == p ? "Exhaust Becece?" : "Exhaust Becece for " + pn(p) + "?", what, leaderText(findLeader("ghotiagent")));
+        curFor_ = -1;
+        if (c < 0) return 0;
+    }
     spendAgent(user, "ghoti");
     agentDone(user, p);
     if (c == 2) {
@@ -304,7 +387,25 @@ void Rules::ds7TurnStart(int p) {
         if (!from.empty() && !to.empty()) {
             to.push_back({-1, "Keep the note", ""});
             const int dest = fpick(p, Ab::DsExcavation, "Play " + pn(mv) + "'s Rapid Excavation: move up to 2 of your PDS to which planet?", to, "", false, true);
-            if (dest >= 0) {
+            if (dest >= 0 && G.fixes >= 28) {
+                // (fixes 28, the Mirveda review) "You may move up to 2 PDS units you control" - the holder picks which (1 or 2)
+                returnNote(p, makeNote(mv, kNoteFaction));
+                int moved = 0;
+                while (moved < 2 && G.planets[size_t(dest)].units[size_t(p)].count(UnitType::PDS) < 2) {
+                    std::vector<Option> which;
+                    for (int x : from)
+                        if (x != dest && G.planets[size_t(x)].units[size_t(p)].count(UnitType::PDS)) which.push_back({x, planetName(x), "Its PDS moves to " + planetName(dest) + "."});
+                    if (which.empty()) break;
+                    if (moved > 0) which.push_back({-1, "No more", ""});
+                    const int x = which.size() == 1 ? which[0].id
+                                                    : fpick(p, Ab::DsExcavation, "Rapid Excavation: move the PDS from which planet? (" + std::to_string(moved + 1) + " of 2)", which);
+                    if (x < 0) break;
+                    G.planets[size_t(x)].units[size_t(p)].remove(UnitType::PDS, 1, false);
+                    G.planets[size_t(dest)].units[size_t(p)].add(UnitType::PDS, 1);
+                    ++moved;
+                }
+                ds7Event(E, p, "Rapid Excavation", pn(p) + " moves " + std::to_string(moved) + " PDS to " + planetName(dest) + ".", G.planets[size_t(dest)].system);
+            } else if (dest >= 0) {
                 returnNote(p, makeNote(mv, kNoteFaction));
                 int moved = 0;
                 for (int x : from)
@@ -342,11 +443,45 @@ void Rules::ds7StatusStart() {
 void Rules::ds7Researched(int p, int t) {
     if (p < 0 || p >= G.numPlayers || t < 0 || !kTechs[t].unitUpgrade || inLogic_) return;
     Player& pl = G.players[size_t(p)];
-    const int user = agentUser(p, "mirveda");
-    if (user < 0 || pl.strategy <= 0) return;
     int colours = 0;
     for (int c = 0; c < 4; ++c)
         if (kTechs[t].req[c]) colours |= 1 << c;
+    if (G.fixes >= 28) {
+        // (fixes 28, the Mirveda review) "After a player gains a unit upgrade technology" - any player: the owner of the agent is asked
+        // (a person - logicQuiet_: "don't ask again this round" -, a bot for itself or the player it promised the agent to)
+        if (pl.strategy <= 0 || !colours) return;
+        int user = -1;
+        for (int o : initiativeOrder(G)) {
+            if (!canUseAgent(o, "mirveda")) continue;
+            const bool own = o == p, promised = G.agentFor[size_t(o)] == p, human = G.players[size_t(o)].human;
+            if (!own && !promised && !(human && logicQuiet_[o] != G.round)) continue;
+            agentFor(o, p);
+            std::vector<Option> opts = {{1, "Yes", ""}, {0, "No", ""}};
+            if (!own && human && !promised) opts.push_back({99, "No, and don't ask again this round", "You'll be asked again next round."});
+            const int c = fpick(o, Ab::DsLogicMachina, own ? "Exhaust Logic Machina: spend a strategy token to research a technology of an upgrade's colour?"
+                                                           : "Exhaust Logic Machina so " + pn(p) + " may research another technology?",
+                                opts, leaderText(findLeader("mirvedaagent")));
+            curFor_ = -1;
+            if (c == 99) logicQuiet_[o] = int16_t(G.round);
+            if (c == 1) {
+                user = o;
+                break;
+            }
+        }
+        if (user < 0) return;
+        spendAgent(user, "mirveda");
+        agentUsedFor(user, p);
+        spendStrategy(p, 1);
+        ds7Event(E, p, "Logic Machina", pn(p) + "'s weapon development opens a new line of research.");
+        inLogic_ = true;
+        onlyColours_ = colours;
+        researchStep(p, 0, "Logic Machina");
+        onlyColours_ = 0;
+        inLogic_ = false;
+        return;
+    }
+    const int user = agentUser(p, "mirveda");
+    if (user < 0 || pl.strategy <= 0) return;
     if (!colours) return;
     agentFor(user, p);
     const bool use = fyes(user, Ab::DsLogicMachina, user == p ? "Exhaust Logic Machina: spend a strategy token to research a technology of an upgrade's colour?"
@@ -399,11 +534,34 @@ int Rules::dsGhotiPlanet(int p, int amount, bool influence, const std::string& w
         G.players[size_t(p)].dsGhotiExhausted = true;
         return 2;
     }
+    // (fixes 28, the Khrask review) ... and its influence, the Reference's X: the planets with their coexisting units
+    if (influence && amount > 0 && G.fixes >= 28 && !G.players[size_t(p)].dsGhotiExhausted && dsbtOn(p, "khrask")) {
+        const int x = groveInfluence(G, p);
+        if (x <= 0 || !fyes(p, Ab::DsbtKhrask, "Exhaust The Grove for " + std::to_string(x) + " influence?",
+                            "Toward " + why + " (" + std::to_string(amount) + " needed). Its influence is the number of planets with your coexisting units."))
+            return 0;
+        G.players[size_t(p)].dsGhotiExhausted = true;
+        return x;
+    }
     if (!fac(p, "ghoti") || amount <= 0 || G.players[size_t(p)].dsGhotiExhausted) return 0;
     if (!fyes(p, Ab::DsGhotiPlanet, std::string("Exhaust your Ghoti planet card for 3 ") + (influence ? "influence?" : "resources?"),
               "Toward " + why + " (" + std::to_string(amount) + " needed).")) return 0;
     G.players[size_t(p)].dsGhotiExhausted = true;
     return 3;
+}
+
+// (fixes 28, the Mirveda review) Wrath Machina's BOMBARDMENT follows the bombardment rules: a planet with q's Planetary Shield can't be
+// bombarded (LRR 15.1f / 64), Conventions of War's cultural planets and Arcane Shield Emitter's neither
+bool Rules::wrathShielded(int q, int sys, int x) const {
+    if (arcaneShield(G, x)) return true;
+    if (lawInPlay(G, "conventions") && hasTraitOf(G, x, Trait::Cultural)) return true;
+    bool shield = false;
+    for (int t = 0; t < kUnitTypes; ++t)
+        if (G.planets[size_t(x)].units[size_t(q)].n[t] && unitDef(G, q, UnitType(t)).shield) shield = true;
+    if (q < G.numPlayers && ((G.fx.echoShield >> q) & 1)) shield = true;
+    if (G.fx.dsShieldPlanet == x) shield = true;
+    if (shield && shieldsDown(G, q, sys)) shield = false;
+    return shield;
 }
 
 // ================================================================== component actions
@@ -421,8 +579,14 @@ bool Rules::ds7Action(int p, Ab ab) {
             ds5Hero(p, leaderIndex(G, p, kHero), pn(p) + " wakes the AI Mainframe: Dhor's Hammer falls.");
             for (int i = 0; i < 3 && unitsAvailable(G, p, UnitType::PDS) > 0; ++i) {
                 std::vector<Option> opts;
-                for (int x : controlledPlanets(G, p))
-                    if (!isDMZ(G, x)) opts.push_back({x, planetName(x), ""});
+                for (int x : controlledPlanets(G, p)) {
+                    if (isDMZ(G, x)) continue;
+                    // (fixes 28, the Mirveda review) Privileged Citizenry: only where their system has room for another PDS
+                    const int cap = mirvedaPdsCap(G, p), sy = G.planets[size_t(x)].system;
+                    if (G.fixes >= 28 && cap >= 0 && unitDef(G, p, UnitType::PDS).spaceOnly && sy >= 0 && G.systems[size_t(sy)].space[size_t(p)].count(UnitType::PDS) >= cap)
+                        continue;
+                    opts.push_back({x, planetName(x), ""});
+                }
                 if (opts.empty()) break;
                 opts.push_back({-1, "No more", ""});
                 const int x = fpick(p, Ab::DsWrathMachina, "Wrath Machina: a PDS at which planet?", opts, "", false, true);
@@ -458,7 +622,7 @@ bool Rules::ds7Action(int p, Ab ab) {
             std::vector<Option> planets;
             for (int16_t x : G.systems[size_t(s)].planets)
                 for (int q = 0; q < kSides; ++q)
-                    if (q != p && G.planets[size_t(x)].units[size_t(q)].groundForces() > 0) {
+                    if (q != p && G.planets[size_t(x)].units[size_t(q)].groundForces() > 0 && !(G.fixes >= 28 && wrathShielded(q, s, x))) {
                         planets.push_back({int(x) * 16 + q, planetName(x) + (q < G.numPlayers ? " (" + pn(q) + ")" : std::string()), ""});
                         break;
                     }

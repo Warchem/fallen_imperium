@@ -304,7 +304,7 @@ void Rules::politics(int p, bool primary) {
 }
 
 // ------------------------------------------------------------------ 4 Construction
-void Rules::placeStructure(int p, int sys, bool allowDock, bool allowPds, bool optional) {
+void Rules::placeStructure(int p, int sys, bool allowDock, bool allowPds, bool optional, const std::string& prompt) {
     std::vector<Option> opts;
     const bool dockOk = allowDock && unitsAvailable(G, p, UnitType::SpaceDock) > 0;
     const bool pdsOk = allowPds && unitsAvailable(G, p, UnitType::PDS) > 0;
@@ -339,7 +339,7 @@ void Rules::placeStructure(int p, int sys, bool allowDock, bool allowPds, bool o
     }
     if (opts.empty()) return;
     if (optional) opts.push_back({-1, "Nothing", ""});
-    int c = pick(p, Tag::ConstructionWhere, "Place a structure", opts, "", false, false);
+    int c = pick(p, Tag::ConstructionWhere, prompt.empty() ? std::string("Place a structure") : prompt, opts, "", false, false);
     if (c == -1) return;
     if (c <= -10) {
         int s = -c - 10;
@@ -385,7 +385,7 @@ void Rules::construction(int p, bool primary) {
                       {2, "Produce at 1 space dock", "Use its Production ability now (paid as usual)."}},
                      "Then place 1 structure.");
         if (c == 1) {
-            placeStructure(p, -1, true, true, true);
+            placeStructure(p, -1, true, true, true, "Construction (1 of 2): place a structure");
         } else if (c == 2) {
             const int d = docks.size() == 1 ? docks[0].id : pick(p, Tag::ConstructionDock, "Construction: produce at which space dock?", docks);
             const UnitDef& dock = unitDef(G, p, UnitType::SpaceDock);
@@ -393,13 +393,14 @@ void Rules::construction(int p, bool primary) {
             const int cap = dock.production + (d < 100000 && dock.productionPlusResources ? planetResources(G, d) : 0);
             production(p, s, cap, false);
         }
-        if (brikkOk(1)) placeStructure(p, -1, true, true, true);
+        if (brikkOk(1)) placeStructure(p, -1, true, true, true, "Construction (2 of 2): place 1 more structure");
         return;
     }
     if (primary) {
         // LRR 24.2: may place 1 PDS or 1 space dock, then may place 1 more PDS.
-        if (brikkOk(0)) placeStructure(p, -1, true, true, true);
-        if (brikkOk(1)) placeStructure(p, -1, false, true, true);
+        // (owner 2026-11-15: the two placements are told apart - they shared "Place a structure")
+        if (brikkOk(0)) placeStructure(p, -1, true, true, true, "Construction (1 of 2): place a PDS or space dock");
+        if (brikkOk(1)) placeStructure(p, -1, false, true, true, "Construction (2 of 2): place 1 more PDS");
         return;
     }
     // Secondary (LRR 24.3): the strategy token goes into any system (back to
@@ -492,8 +493,9 @@ void Rules::trade(int p, bool primary) {
     // (no X-1 offers yet: the gentleman's agreement is a free round).
     const bool round1Choice = (G.tradeRules & 2) && G.round == 1;
     std::vector<int> done;
+    bool x1Asked = false;  // (owner 2026-11-15: the two lists of players are told apart - "1 of 2" / "2 of 2")
     if ((G.tradeRules & 8) && !round1Choice) {
-        tradeX1(p, done);  // 0.17.0: the community X-1 (rules_deals.cpp)
+        x1Asked = tradeX1(p, done);  // 0.17.0: the community X-1 (rules_deals.cpp)
     } else if ((G.tradeRules & 1) && !round1Choice) {
         // X-1 trades (as players do at the table): the player refills for free, then
         // sends back all of the new commodities but one - they become our trade goods.
@@ -503,8 +505,9 @@ void Rules::trade(int p, bool primary) {
             if (room(q) && maxOf(q) >= 2 && transactionAllowed(G, p, q))
                 xo.push_back({q, pn(q),
                               "Refills to " + std::to_string(maxOf(q)) + ", sends you " + std::to_string(maxOf(q) - 1) + " (keeps 1)."});
+        x1Asked = !xo.empty();
         if (!xo.empty())
-            for (int q : pickMany(p, Tag::TradeX1Offer, "Trade: offer X-1 trades?", xo, 0, int(xo.size()),
+            for (int q : pickMany(p, Tag::TradeX1Offer, "Trade (1 of 2): offer X-1 trades?", xo, 0, int(xo.size()),
                                   "They refill for free and send you all their commodities but one: those become your trade goods.")) {
                 const int x = maxOf(q);
                 Decision d;
@@ -546,7 +549,9 @@ void Rules::trade(int p, bool primary) {
         if (room(q) && std::find(done.begin(), done.end(), q) == done.end())
             opts.push_back({q, pn(q), "Refill their commodities without spending a strategy token."});
     if (opts.empty()) return;
-    for (int q : pickMany(p, Tag::TradeReplenish, "Trade: let other players refill their commodities?", opts, 0, int(opts.size()),
+    for (int q : pickMany(p, Tag::TradeReplenish,
+                          x1Asked ? "Trade (2 of 2): let other players refill their commodities for free?" : "Trade: let other players refill their commodities?",
+                          opts, 0, int(opts.size()),
                           round1Choice ? "Round 1 house rule: a computer player with Trade refills everyone; you choose as usual." : "")) {
         const int before = G.players[q].commodities;
         G.players[q].commodities = int8_t(eventOn(G, kEvCommerce) || (G.modules & kModDiscordant) || G.fixes >= 14 ? refreshTo(G, G.players[q])
@@ -559,7 +564,7 @@ void Rules::trade(int p, bool primary) {
 
 // After a player replenishes commodities: Minister of Commerce, Trade Agreement.
 void Rules::replenished(int p, int gained) {
-    siphon(p, gained);  // Siphon (the Obsidian's plot)
+    siphon(p, gained, false);  // Siphon (the Obsidian's plot; Military Industrial Complex comes last: dsReplenished)
     if (lawOwner(G, "minister_commerce") == p) {
         int n = 0;
         for (int q = 0; q < G.numPlayers; ++q)
@@ -569,7 +574,7 @@ void Rules::replenished(int p, int gained) {
     }
     tradeAgreement(p);
     replenished4(p);  // The Stillness of Stars
-    if (G.modules & kModDiscordant) dsReplenished(p);  // Military Industrial Complex (Axis)
+    if (G.modules & kModDiscordant) dsReplenished(p, true, gained);  // Military Industrial Complex (Axis)
 }
 
 // ------------------------------------------------------------------ 6 Warfare
@@ -579,13 +584,15 @@ void Rules::warfare(int p, bool primary) {
     // Production of the units in your home system (no token is placed there)
     if (G.modules & kModThundersEdge) {
         if (primary) {
-            if (brikkOk(1)) gainTokens(p, 0, true, "Warfare: rearrange your command tokens before the tactical action.");
+            if (brikkOk(1))
+                gainTokens(p, 0, true, "Warfare: rearrange your command tokens before the tactical action.", "Warfare (1 of 2): arrange your tokens before the tactical action");
             if (brikkOk(0)) {
                 warfareTac_ = true;
                 tacticalAction(p);
                 warfareTac_ = false;
             }
-            if (!G.players[size_t(p)].eliminated && brikkOk(1) && brikkClause_ < 0) gainTokens(p, 0, true, "Warfare: rearrange your command tokens after it.");
+            if (!G.players[size_t(p)].eliminated && brikkOk(1) && brikkClause_ < 0)
+                gainTokens(p, 0, true, "Warfare: rearrange your command tokens after it.", "Warfare (2 of 2): arrange your tokens after the tactical action");
             return;
         }
         const int home = G.players[size_t(p)].homeSystem;
@@ -737,7 +744,7 @@ bool Rules::researchStep(int p, int resourceCost, const std::string& why, int ex
         say(p, pn(p) + " has nothing to research right now.");
         return false;
     }
-    if (resourceCost > 0) opts.push_back({-1, "Don't research", ""});
+    if (resourceCost > 0 || (G.fixes >= 30 && optionalResearch_)) opts.push_back({-1, "Don't research", ""});  // ((fixes 30) "may research")
     int t = pick(p, Tag::Research, "Research a technology" + (why.empty() ? std::string() : " (" + why + ")"), opts);
     if (t < 0) return false;
     int missing[4];
@@ -791,6 +798,22 @@ bool Rules::researchStep(int p, int resourceCost, const std::string& why, int ex
         }
     }
     // Favor of Rhodun / Bishop Ulin (Discordant Stars): more prerequisites ignored when the planets can't cover them
+    // (fixes 29, the Zealots review) Favor of Rhodun only adds to a colour a specialty of theirs ignores (favorColour), then the others
+    if ((G.modules & kModDiscordant) && G.fixes >= 29) {
+        const int z = playerOfFaction(G, "zealots");
+        if (z >= 0 && z != p && holdsNote(G, p, z, kNoteFaction)) {
+            int fc = -1;
+            for (int c = 0; c < 4 && fc < 0; ++c) {
+                const int sk = int(skipPlanets(G, p, TechColor(c)).size());
+                if (sk >= 1 && missing[c] > sk) fc = c;
+            }
+            if (fc >= 0) {
+                --missing[fc];
+                dsWaivers(p, t, true);  // (the note goes first)
+            }
+        }
+        noFavor_ = true;
+    }
     if (G.modules & kModDiscordant)
         for (int w = dsWaivers(p, t, false); w > 0; --w) {
             int pickC = -1;
@@ -800,6 +823,7 @@ bool Rules::researchStep(int p, int resourceCost, const std::string& why, int ex
             --missing[pickC];
             dsWaivers(p, t, true);
         }
+    noFavor_ = false;
     if (G.modules & kModDiscordant) {  // Sdallari Tvungovot (Kjalengard commander): unit upgrades cover shared colours
         int before[4];
         for (int c = 0; c < 4; ++c) before[c] = missing[c];
@@ -1079,6 +1103,9 @@ void Rules::imperial(int p, bool primary) {
     }
     std::vector<int> can = scorablePublic(p);
     if (!brikkOk(0)) can.clear();
+    // (fixes 28, the Edyn review - owner 2026-11-15) Kadryn (Edyn commander): "When any game effect would allow you to score a
+    // public objective: You may instead draw 1 secret objective" - Imperial too
+    if (G.fixes >= 28 && (G.modules & kModDiscordant) && !can.empty() && dsKadryn(p, int(can.size()))) can.clear();
     if (!can.empty()) {
         std::vector<Option> opts;
         for (int o : can)

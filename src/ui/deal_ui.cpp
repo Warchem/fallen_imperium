@@ -138,6 +138,8 @@ std::vector<Item> sideItems(const Game& g, const DealSide& s, int giver, int rec
     if (s.debt)  // Binding Debts (Discordant Stars)
         v.push_back({"faction/vaden", std::to_string(s.debt) + (s.debt == 1 ? " control token" : " control tokens") + " on the sheet",
                      playerName(g, giver) + "'s tokens go on " + playerName(g, receiver) + "'s faction sheet (Binding Debts)."});
+    for (int a : s.laws)  // Encrypted Trade Hub (Discordant Stars, fixes 28): an agenda the giver holds
+        if (a >= 0 && a < kAgendaCount) v.push_back({"agenda", std::string("The agenda ") + kAgendas[a].name, agendaText(a, false)});
     (void)giver;
     return v;
 }
@@ -1021,6 +1023,7 @@ private:
         int ac[2] = {-1, -1};
         std::map<int, int> relics, secrets;  // Thunder's Edge (0.34.0): chosen (1) or not
         std::map<int, int> techs;            // Age of Commerce (galactic event, 0.36.0): shared (1) or not
+        std::map<int, int> laws;             // Encrypted Trade Hub (fixes 28): agendas held, given (1) or not
     };
     struct Slot {
         PromiseKind kind = PromiseKind::None;
@@ -1066,6 +1069,8 @@ private:
         for (auto& o : s.orders)
             if (o.second) d.orders.push_back(o.first);
         d.hire = s.hire;
+        for (auto& l : s.laws)
+            if (l.second) d.laws.push_back(l.first);
         return d;
     }
     SideSt fromSide(const DealSide& d) const {
@@ -1083,6 +1088,7 @@ private:
         s.debt = d.debt;
         for (int o : d.orders) s.orders[o] = 1;
         s.hire = d.hire;
+        for (int l : d.laws) s.laws[l] = 1;
         return s;
     }
     void load(const Deal& d) {
@@ -1280,6 +1286,18 @@ private:
                 r.change = [&v](int, bool) { v = 1 - v; };
                 rows_.push_back(r);
             }
+        if ((d_.dealFlags & kDealHub) && g_.fixes >= 28)  // Encrypted Trade Hub (fixes 28): 1 relic or agenda - a law held
+            for (int a : lawsHeldBy(g_, who)) {
+                DRow r;
+                r.key = pre + "law." + std::to_string(a);
+                r.label = kAgendas[a].name;  // (the agenda icon marks it)
+                r.icon = "agenda";
+                int& v = st.laws[a];
+                r.value = v ? "Yes" : "No";
+                r.cardText = agendaText(a, false);
+                r.change = [&v](int, bool) { v = 1 - v; };
+                rows_.push_back(r);
+            }
         if ((d_.dealFlags & kDealBlackMarket) && giving)
             for (int16_t o : pl.secrets) {
                 DRow r;
@@ -1340,14 +1358,14 @@ private:
             r.change = [&st, max](int step, bool a) { count(st.hire, step, max, a); };
             rows_.push_back(r);
         }
-        if ((g_.modules & kModDiscordant) && isFaction(g_, other, "vaden") && g_.dsDebt[who] < 6) {  // Binding Debts
+        if ((g_.modules & kModDiscordant) && isFaction(g_, other, "vaden") && g_.dsDebt[who] < vadenDebtCap(g_)) {  // Binding Debts
             DRow r;
             r.key = pre + "debt";
             r.label = giving ? "Control tokens on their sheet" : "Their control tokens on your sheet";
             r.icon = "faction/vaden";
             r.value = std::to_string(st.debt);
             r.cardText = "Binding Debts: the Vaden Banking Clans can cash these in later (Collateralized Loans, their mech, their hero).";
-            const int max = 6 - g_.dsDebt[who];
+            const int max = std::min(9, vadenDebtCap(g_) - g_.dsDebt[who]);  // (fixes 29: no cap - 9 at a time)
             r.change = [&st, max](int step, bool a) { count(st.debt, step, max, a); };
             rows_.push_back(r);
         }

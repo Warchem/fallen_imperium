@@ -107,7 +107,7 @@ bool Rules::cannotCaptureFrom(int by, int owner) const {
 }
 
 void Rules::capture(int by, int owner, UnitType t, int k, const char* why) {
-    if (k <= 0 || by < 0 || isStructure(t) || G.players[by].eliminated || cannotCaptureFrom(by, owner)) return;
+    if (k <= 0 || by < 0 || isStructure(t) || G.players[by].eliminated || (!captureAnyway_ && cannotCaptureFrom(by, owner))) return;
     // Mobile Command (Ghoti, owner D132, fixes >= 2): their flagship - their home - can't be captured
     if (t == UnitType::Flagship && G.fixes >= 2 && (G.modules & kModDiscordant) && owner >= 0 && owner < G.numPlayers && fac(owner, "ghoti")) return;
     const bool token = t == UnitType::Fighter || t == UnitType::Infantry;  // LRR 17.3: a token instead
@@ -745,7 +745,7 @@ void Rules::unitDestroyed4(int p, UnitType t, int k, int sys, int planet) {
             } else {
                 m.commodities = int8_t(m.commodities - 1);
                 // (fixes 27, the Mentak review) a commodity turned into a trade good is a trade good gained (Pillage)
-                if (G.fixes >= 27) gainTG(p, 1);
+                if (G.fixes >= 27) gainTGNotSupply(p, 1); // (fixes 28: not from the supply - no Artuno)
                 else m.tradeGoods = int8_t(m.tradeGoods + 1);
             }
         }
@@ -1204,7 +1204,7 @@ void Rules::replenished4(int p) {
     v.commodities = 0;
     if (G.fixes >= 27) {  // (fixes 27, the Mentak review) trade goods gained (Pillage), as every other conversion
         say(p, pn(p) + "'s " + std::to_string(k) + " commodities become trade goods (The Stillness of Stars).");
-        gainTG(p, k);
+        gainTGNotSupply(p, k); // (fixes 28: not from the supply - no Artuno)
     } else {
         v.tradeGoods = int8_t(v.tradeGoods + k);
         say(p, pn(p) + "'s " + std::to_string(k) + " commodities become trade goods (The Stillness of Stars).");

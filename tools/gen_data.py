@@ -489,6 +489,8 @@ if "black_markets" in abil:  # owner (RULES-CHECK D67, 0.43.4): the newest print
     abil["black_markets"] = "Shadow Markets"
 if "nivynhero" in leaders:  # owner (RULES-CHECK D96): the Nivyn hero is Krill Drakkon (the data set spells it Kwill)
     leaders["nivynhero"] = dict(leaders["nivynhero"], name="Krill Drakkon")
+if "lizhocommander" in leaders:  # the Li-Zho review (2026-11-16): the owner's DS Reference names him Dume Tathu (the data set: Dhume)
+    leaders["lizhocommander"] = dict(leaders["lizhocommander"], name="Dume Tathu")
 for n in load("data/promissory_notes/ds.json"):
     notes[n["alias"]] = n["name"]
 LTYPE = {"agent": 0, "commander": 1, "hero": 2}
@@ -687,6 +689,10 @@ pok_keys = {r["alias"] for r in relics}
 for rid in te_decks["relics_pok_te"]["cardIDs"]:
     if rid in te_relic_defs and rid not in pok_keys:
         relics.append(dict(te_relic_defs[rid], src="Source::ThundersEdge"))
+# Codex II relics (0.60.0, owner 2026-11-17: "add those in for codex enabled and thunders edge enabled games"): Dynamis Core,
+# JR-XS455-O, Nano-Forge - appended (the deck takes them only in games with the Codex or Thunder's Edge: codex2Relic)
+for r in load("data/relics/codexii.json"):
+    relics.append(dict(r, src="Source::PoK"))
 emit("// Relics: key, name, source")
 emit(f"const RelicDef kRelics[{len(relics)}] = {{")
 for r in relics:

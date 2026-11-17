@@ -17,7 +17,8 @@
 
 namespace speech {
 
-enum class Cat : int { Offer, Friendly, Threat, Vote, Accept, Decline, Counter, Betray, Betrayed, Count };
+// Yield (owner 2026-11-15): it gives in to a threat - grudging, not pleased
+enum class Cat : int { Offer, Friendly, Threat, Vote, Accept, Decline, Counter, Betray, Betrayed, Yield, Count };
 
 // How other factions address faction f in speech ("Hacan", "Star Kings").
 std::string address(int faction);

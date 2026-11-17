@@ -25,6 +25,7 @@ enum DealFlags {
 };
 bool blackMarketPair(const Game& g, int a, int b);  // Black Market Dealings was played between them
 int encryptedHubOf(const Game& g, int a, int b);    // (0.44.5) a or b with a ready Encrypted Trade Hub, else -1
+std::vector<int> lawsHeldBy(const Game& g, int p);  // (fixes 28) agendas (laws) p holds - tradeable with Encrypted Trade Hub
 
 std::vector<int> encodeDeal(const Deal& d);
 bool decodeDeal(const std::vector<int>& v, Deal& d);

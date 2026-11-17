@@ -194,6 +194,34 @@ int main(int argc, char** argv) {
                 ti::Rng rng(1);
                 ti::Answer an = ti::aiAnswer(e.game(), d, rng);
                 std::printf("== AI answer: %s\n", an.encode().c_str());
+                // (2026-11-16, the tester's "bots stopped responding") TI4_DUMPPLAY=K (test only): is that answer accepted? then K more
+                // answers by the AI for every seat - the new log lines, and the question it stops on if it gets stuck
+                if (const char* dp = std::getenv("TI4_DUMPPLAY")) {
+                    ti::Engine e2;
+                    std::string err2;
+                    e2.loadText(text, &err2);
+                    const size_t logAt = e2.game().log.size();
+                    int steps = 0, refused = 0;
+                    const int most = std::atoi(dp);
+                    std::string lastWhy, lastPrompt;
+                    for (; steps < most && e2.waiting(); ++steps) {
+                        const ti::Decision& dd = e2.decision();
+                        ti::Answer a2 = ti::aiAnswer(e2.game(), dd, rng);
+                        std::string why;
+                        if (!e2.answer(a2, &why)) {
+                            ++refused;
+                            lastWhy = why;
+                            lastPrompt = dd.prompt;
+                            if (refused <= 5) std::printf("== REFUSED at step %d: player %d tag %d \"%s\" answer %s: %s\n", steps, dd.player, int(dd.tag),
+                                                          dd.prompt.c_str(), a2.encode().c_str(), why.c_str());
+                            if (refused >= 50) break;
+                        }
+                    }
+                    const auto& lg = e2.game().log;
+                    for (size_t li = logAt; li < lg.size(); ++li) std::printf("++ %s\n", lg[li].c_str());
+                    std::printf("== played %d answers, %d refused, round %d, %s\n", steps, refused, e2.game().round,
+                                e2.finished() ? "finished" : ("waiting: \"" + e2.decision().prompt + "\" (player " + std::to_string(e2.decision().player) + ")").c_str());
+                }
                 // board state (0.30.0 debugging): units per system, then each player's goods
                 static const char* kU[] = {"Fi", "De", "Cr", "Ca", "Dr", "Fl", "WS", "In", "Me", "PDS", "SD", "Fl2"};
                 const ti::Game& g = e.game();
@@ -334,7 +362,11 @@ int main(int argc, char** argv) {
             e.crashMessage().empty() ? "ok" : e.crashMessage().c_str());
     }
 
-    if (backend != "headless") audio::start(settings);  // sound effects + music (0.27.0)
+    if (backend != "headless") {  // sound effects + music (0.27.0)
+        // 0.59.70 (owner): the title's reveal plays first - the music waits for it (the title scene releases it; TI4_NOINTRO=1 skips it)
+        if (!std::getenv("TI4_NOINTRO")) audio::holdMusic();
+        audio::start(settings);
+    }
 
     int rc = 0;
     for (;;) {

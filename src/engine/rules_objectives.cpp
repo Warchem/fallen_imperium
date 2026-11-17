@@ -70,6 +70,11 @@ bool Rules::payObjectiveCost(int p, int obj) {
 bool Rules::scoreObjective(int p, int obj) {
     Player& pl = G.players[p];
     if (!payObjectiveCost(p, obj)) return false;
+    // (fixes 28, the tester's report) a leaked secret objective (Classified Document Leaks) scored by a player who doesn't hold
+    // it is a public objective for them - not one of their 3 secret objectives (LRR 61.21)
+    if (G.fixes >= 28 && kObjectives[obj].kind == 3 && std::find(pl.secrets.begin(), pl.secrets.end(), int16_t(obj)) == pl.secrets.end() &&
+        leakedSecret(G, obj))
+        pl.scoredAsPublic.push_back(int16_t(obj));
     pl.scored.push_back(int16_t(obj));
     auto bountyPayout = [&]() {  // Bounty Contracts (Uncharted Space)
         for (const auto& b : bounty_)
@@ -96,15 +101,15 @@ bool Rules::scoreObjective(int p, int obj) {
         e.kind = EventKind::ObjectiveScored;
         e.player = int8_t(p);
         e.count = int16_t(obj);
-        if (kObjectives[obj].kind == 3) e.text = pn(p) + " reveals and scores a secret objective: " + kObjectives[obj].name + ".";
+        if (scoredAsSecret(G, p, obj)) e.text = pn(p) + " reveals and scores a secret objective: " + kObjectives[obj].name + ".";
         E.emit(e);
     }
     gainVP(p, kObjectives[obj].points,
-           std::string(kObjectives[obj].kind == 3 ? "secret objective " : "") + kObjectives[obj].name);
+           std::string(scoredAsSecret(G, p, obj) ? "secret objective " : "") + kObjectives[obj].name);
     if (G.fixes >= 2) bountyPayout();
     if (purgeAfter) purgeHero(p);
-    if (kObjectives[obj].kind == 3) orthodoxyCheck(p);  // Zealous Orthodoxy (galactic event)
-    if (kObjectives[obj].kind == 3 && (G.modules & kModDiscordant) && G.players[size_t(p)].dsPubSecret != -2) dsSecretScored(p, obj);  // Turra Sveyar
+    if (scoredAsSecret(G, p, obj)) orthodoxyCheck(p);  // Zealous Orthodoxy (galactic event)
+    if (scoredAsSecret(G, p, obj) && (G.modules & kModDiscordant) && G.players[size_t(p)].dsPubSecret != -2) dsSecretScored(p, obj);  // Turra Sveyar
     if (kObjectives[obj].kind != 3 && (G.modules & kModThundersEdge)) yinAscendant(p);  // Yin Ascendant (Yin breakthrough)
     return true;
 }
@@ -214,7 +219,7 @@ void Rules::drawSecret(int p) {
     // LRR 61.21: at most 3 secret objectives in total, scored ones included.
     int scoredSecrets = 0;
     for (int16_t x : pl.scored)
-        if (kObjectives[x].kind == 3) ++scoredSecrets;
+        if (scoredAsSecret(G, p, x)) ++scoredSecrets;  // (fixes 28: not a leaked one scored as a public objective)
     const int limit = 3 + (holdsRelic(p, "obsidian") ? 1 : 0)                  // The Obsidian: one more
                       + ((G.modules & kModDiscordant) && fac(p, "tnelis") ? 1 : 0);  // Information Brokers (Tnelis)
     if (int(pl.secrets.size()) + scoredSecrets > limit) {

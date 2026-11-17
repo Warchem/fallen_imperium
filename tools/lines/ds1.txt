@@ -19,6 +19,8 @@ decline: That offer wouldn't buy a hull plate. Try again once you've priced a wa
 counter: Close, but the yards have overheads. Here is what the market will bear.
 betray: Nothing personal, {them}. Your rivals made a better offer, and we always sell to the highest bidder.
 betrayed: Breaking a contract with the Shipwrights, {them}? Every yard in the galaxy will hear you're a bad customer.
+yield: Fine, take it. Just know your enemies will get a very good price on our ships this season, {them}.
+yield: Paid in full. We'll add a little threat surcharge to your next order - and give your neighbours a discount.
 
 [bentor]
 name: Bentor
@@ -36,6 +38,8 @@ decline: Pass. We know a dry dig when we see one.
 counter: Promising, but the margins are thin. Our prospectors drew up better terms - have a look.
 betray: The Board has voted to liquidate our arrangement, {them}. Your share has been... reallocated.
 betrayed: A breach of partnership, {them}? The Conglomerate writes off bad debts - but never forgets the debtor.
+yield: Take it. Book it as a hostile acquisition, {them} - and expect our counter-offer to be very hostile too.
+yield: Fine. The Conglomerate takes the loss this quarter. We always recover our losses, with interest.
 
 [kjalengard]
 name: Berserkers
@@ -53,6 +57,8 @@ decline: Refused. Bring us a war, not a ledger - we nearly fell asleep.
 counter: Too soft. Take the Berserkers' terms, or take up arms. We would prefer the arms.
 betray: Our oath is broken, {them}, and our axes are out. Nothing personal - you will make a fine saga.
 betrayed: Oathbreaker! {them}, the skalds will sing of how you fell to us. Arm yourselves.
+yield: Take it, coward. A saga needs a villain, {them}, and you have just been written in.
+yield: Bah! We pay, and we will sing of it - a song about how you fell. Soon.
 
 [celdauri]
 name: Celdauri
@@ -70,6 +76,8 @@ decline: Regrettably, no. Please don't take it personally - and please don't tak
 counter: Not quite workable as written. Our clerks have amended the terms - we think you'll find them fair.
 betray: Our accountants have reassessed you, {them}. You are no longer a client - you are a liability.
 betrayed: A broken contract, {them}. Our ports are closed to you, and our guns are no longer staying in port.
+yield: Very well. The account is settled, {them}, but your client status is revoked. Our docks remember.
+yield: Take it. We had hoped to keep this businesslike. The armed side of our business has taken note.
 
 [cheiran]
 name: Cheiran
@@ -87,6 +95,8 @@ decline: Too thin, like a fresh moult. We refuse.
 counter: Not like this. The Horde snaps your offer in half and sends back the better half.
 betray: The shell turns, {them}. The Horde needs your waters now. Do not take it hard - we never do.
 betrayed: {them} cracked our trust like a shell. But we grow new shells, and we remember. Klk.
+yield: Take it. klk. The Horde is slow, {them}, but the Horde does not forget a poke.
+yield: Fine. Shell cracks a little today. It grows back thicker. klk klk. We come later.
 
 [cymiae]
 name: Cymiae
@@ -104,6 +114,8 @@ decline: Refused! Be glad we answer with words and not with war.
 counter: Grrr... not that. THIS. Take our terms or take our fists.
 betray: We held it in as long as we could, {them}. Now the blood is coming, and it is YOURS!
 betrayed: Liar! {them}, we will hunt you across the galaxy until there is nothing left to hunt!
+yield: FINE! Take it! We will take it BACK from your burning worlds, {them}!
+yield: You think this is over? We PAY now. We remember FOREVER. Count the days!
 
 [dihmohn]
 name: Dih-Mohn
@@ -121,6 +133,8 @@ decline: We will drift on without it. Do not follow us.
 counter: Not quite. The Flotilla has sailed long enough to know a safer course - here it is.
 betray: We are wanderers, {them}. Today the current pulls us away from our word. Forgive us, or don't.
 betrayed: We let you close, {them}. The void remembers broken promises, and so does the Flotilla.
+yield: We let this drift away. The currents always return, {them}... and they remember who stirred them.
+yield: Take it, and pass on. The Flotilla is gentle, but it is wary of you now.
 
 [edyn]
 name: Edyn
@@ -138,6 +152,8 @@ decline: Denied, gently. Return when your offer honours the order of things.
 counter: Your offer is unfinished. The Mandate has completed it - receive the proper terms.
 betray: The law has changed, {them}, and you now stand outside it. Do not resist - it is a mercy.
 betrayed: You broke faith with the Mandate, {them}. The law is patient, but its judgement is certain.
+yield: It is decreed that we yield, this once. It is also decreed that the Mandate remembers, {them}.
+yield: Take it. Our peace is generous. Our judgement, when it comes, is not.
 
 [florzen]
 name: Florzen
@@ -155,6 +171,8 @@ decline: Nah. We've pulled bigger prizes out of wrecks. Try harder.
 counter: Cute offer. Here's the real one - and the price went up while you were talking.
 betray: Sorry, {them}. Pirates, remember? We were always going to rob you. Today's the day.
 betrayed: Double-cross the Florzen, {them}? We'll strip your fleet down to the last bolt!
+yield: Take it, you thieving rat. Robbing pirates? We'll be seeing you, {them} - and your cargo holds.
+yield: Fine! It's yours! Enjoy it while you can - we know where you sleep.
 
 [freesystems]
 name: Free Systems
@@ -172,6 +190,8 @@ decline: We refuse. Come back when you're ready to treat us as equals.
 counter: Almost fair. We have balanced the scales a little - now it serves us both.
 betray: Freedom sometimes means breaking chains, {them} - even the ones we forged with you.
 betrayed: You betrayed free peoples, {them}. Every independent world will hear of this.
+yield: We yield under protest, {them}. Every free world in the Compact will hear how you treat your equals.
+yield: Take it. Solidarity has a long memory, and bullies always run out of friends.
 
 [ghemina]
 name: Ghemina
@@ -189,6 +209,8 @@ decline: Your offer is generous, I suppose... || No. It is not.
 counter: Close, but it lacks something... || ...our terms. Here they are.
 betray: We hold you no ill will, {them}... || ...but raiders raid. Brace yourselves.
 betrayed: You dare break faith with the Ghemina, {them}? || Then we will take our payment in fire.
+yield: Take it, then, and choke on it... || ...we will come to collect the debt ourselves.
+yield: You have bought one more season, {them}... || ...and only one.
 
 [ghoti]
 name: Ghoti
@@ -206,6 +228,8 @@ decline: Too shallow for us. The shoal turns away.
 counter: Not this tide. The All Mother has shaped better terms - let them drift your way.
 betray: Forgive us, {them}, but the shoal must feed. The tide has turned and you are in its path. Swim fast.
 betrayed: You muddied our waters, {them}. The shoal will not forget the taste of it.
+yield: Take it. The current carries it away... and the whole school remembers who stirred the water, {them}.
+yield: The All Mother sighs. We give. But the deep is long, and so is our memory.
 
 [gledge]
 name: Gledge
@@ -223,6 +247,8 @@ decline: Not worth the overtime. Pass.
 counter: Close, but the steward won't sign that. Here's what the Union can live with.
 betray: Sorry, {them}. Times are hard and the Union's got mouths to feed. Contract's off.
 betrayed: We worked honest for you, {them}, and you cheated the Union. The whole crew walks - straight at you.
+yield: Fine. Take it. Filing a grievance with the Union, {them} - and our grievances get settled with drills.
+yield: Yeah, yeah, it's yours. Overtime's coming for you. The whole shift.
 
 [augers]
 name: Augurs
@@ -240,6 +266,8 @@ decline: Declined - as you already knew we would.
 counter: Not these terms. We have seen the version you will truly accept - here it is.
 betray: You did not see this coming, {them}. We did. We always did.
 betrayed: We foresaw your betrayal, {them}. We also foresaw what comes after - for you.
+yield: Take it. We had already seen you take it, {them}. We have also seen what it costs you later.
+yield: As foreseen. Do not feel clever - this thread ends badly for you, and we have read the ending.
 
 [kollecc]
 name: Kollecc
@@ -257,6 +285,8 @@ decline: No, thank you. The Society has seen better offers in shadier places.
 counter: Almost worthy of the collection. We have adjusted the terms - discreetly, of course.
 betray: Did you think you were our partner, {them}? You were our acquisition. The fleet you never saw says hello.
 betrayed: How careless of you, {them}. The Society catalogues every slight... and collects on each one.
+yield: Very well, it is yours. We will simply add you to the collection, {them}... in time.
+yield: Take it. We are patient collectors, and every rare thing comes to us eventually.
 
 [kolume]
 name: Kolume
@@ -274,6 +304,8 @@ decline: Declined, without anger. Let the offer pass, as clouds pass the moon.
 counter: Your offer is almost whole. This one has added what was missing - consider it.
 betray: All bonds are impermanent, {them}. Ours has reached its end. Do not cling to it.
 betrayed: You broke the bond, {them}. This one feels no anger, only clarity - and clarity sees you plainly now.
+yield: This one releases it. Attachment is suffering. Yet the river remembers the stone that dammed it, {them}.
+yield: Take it. Balance will return. Balance always returns... and sometimes it returns in force.
 
 [kortali]
 name: Kortali
@@ -291,3 +323,5 @@ decline: Denied. Your petition has no merit before this court.
 counter: Amended by the court: these are the corrected terms, and the ruling is final.
 betray: Your case has been reviewed, {them}. The verdict is guilty, and the sentence begins now.
 betrayed: Oathbreaker! {them}, you stand accused before the Queen, and the Tribunal will see you punished.
+yield: The Tribunal yields - for now. Your conduct is entered into the record, {them}. Judgement will follow.
+yield: Take it. Extortion is a crime, and the Queen's courts are very patient.

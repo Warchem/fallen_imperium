@@ -51,7 +51,9 @@ bool isLegendary5(const Game& G, int x) { return *legendaryName(G.planets[size_t
 // Rune Bearer (Edyn mech): the systems with their mechs are Sigils
 bool sigilAt(const Game& G, int s) {
     for (int q = 0; q < G.numPlayers; ++q) {
-        if (!isFaction(G, q, "edyn") || !mechAbilities(G)) continue;
+        // (fixes 28, the Edyn review - owner 2026-11-15) "Game effects cannot prevent you from using this ability": not Articles
+        // of War either
+        if (!isFaction(G, q, "edyn") || (!mechAbilities(G) && G.fixes < 28)) continue;
         if (G.systems[size_t(s)].space[size_t(q)].count(UnitType::Mech)) return true;
         for (int16_t x : G.systems[size_t(s)].planets)
             if (G.planets[size_t(x)].units[size_t(q)].count(UnitType::Mech)) return true;
@@ -98,13 +100,16 @@ std::string orderName(int i) {
 }
 }  // namespace
 
-// Player-facing names and texts of the Axis Order cards (deal screen, faction sheet) - our own words.
+// Player-facing names and texts of the Axis Order cards (deal screen, faction sheet) - the card's wording (the Axis review), with
+// the owner's ruling D112 (0.43.0): a used card goes back to the Axis's play area, to be sold again.
 std::string axisOrderName(int i) { return i >= 0 && i < 8 ? orderName(i) : std::string(); }
 std::string axisOrderText(int i) {
     if (i < 0 || i >= 8) return "";
-    const std::string what = i >= 6 ? "2 destroyers" : std::string("1 ") + unitTypeName(orderType(i));
-    return "At the end of your turn: exhaust it to place " + what + " in a system with your ships and one of your command tokens. "
-           "It goes back to the Axis at the start of the status phase once used.";
+    static const char* what[4] = {"1 dreadnought", "1 carrier", "1 cruiser", "2 destroyers"};
+    return std::string("At the end of your turn: Exhaust this card to place ") + what[i / 2] +
+           " from your reinforcements in a system that contains 1 or more of your ships and 1 of your command tokens. At the start of "
+           "the status phase, if this card is exhausted, return it to the Axis player's reinforcements. (In this game it goes back to the "
+           "Axis player's play area, to be sold again.)";
 }
 
 // ================================================================== combat
@@ -130,9 +135,47 @@ void Rules::ds5CombatMods(int p, int opp, int sys, int planet, bool space, RollM
         if (flagshipAbility(G, p, "nokar")) m.perType[int(UnitType::Flagship)] += unitsOnBoard(G, p, UnitType::Destroyer) / 2;
     }
     // Rule of Two (Ghemina): exactly 2 non-fighter ships here, of the same type - +2 to each
-    if (space && fac(p, "ghemina") && f.nonFighterShips() == 2)
+    if (space && fac(p, "ghemina") && f.nonFighterShips() == 2) {
         for (int t : kShipIdx)
             if (t != int(UnitType::Fighter) && f.n[t] == 2) m.perType[t] += 2;
+        // (fixes 28, the Ghemina review) the Lady and the Lord are both flagships - "The Lord flagship token is a second flagship
+        // unit" - so the same unit type, though the game keeps the Lady as her own type since 0.52.0 (fixes 16)
+        if (G.fixes >= 28 && f.n[int(UnitType::Flagship)] == 1 && f.n[int(UnitType::Flagship2)] == 1) {
+            m.perType[int(UnitType::Flagship)] += 2;
+            m.perType[int(UnitType::Flagship2)] += 2;
+        }
+    }
+}
+
+// (fixes 28, the Ghemina review - owner 2026-11-15) Skarvald & Torvar: "When the active player produces 1 or more hits during a round
+// of combat: You may exhaust this card to allow that player to produce 1 additional hit" - any active player: the Ghemina decide (a
+// person is asked - skarvaldQuiet_ -, a bot when it promised the agent, as Jgin Faru / Cordo Haved)
+void Rules::skarvald28(int act, RollResult& r, int sys) {
+    const std::string text = leaderText(findLeader("gheminaagent"));
+    int user = -1;
+    if (canUseAgent(act, "ghemina")) {
+        if (fyes(act, Ab::DsSkarvald, "Exhaust Skarvald & Torvar: 1 more hit?", text)) user = act;
+    } else
+        for (int o : initiativeOrder(G)) {
+            if (o == act || !canUseAgent(o, "ghemina")) continue;
+            const bool promised = G.agentFor[o] == act;
+            const bool human = G.players[size_t(o)].human;
+            if (!promised && !(human && skarvaldQuiet_[o] != G.round)) continue;
+            agentFor(o, act);
+            std::vector<Option> yn = {{1, "Yes", ""}, {0, "No", ""}};
+            if (human && !promised) yn.push_back({3, "No, and don't ask again this round", "You'll be asked again next round."});
+            const int c = fpick(o, Ab::DsSkarvald, "Exhaust Skarvald & Torvar: 1 more hit for " + pn(act) + "?", yn, text);
+            curFor_ = -1;
+            if (c == 3) skarvaldQuiet_[o] = int16_t(G.round);
+            if (c != 1) continue;
+            user = o;
+            break;
+        }
+    if (user < 0) return;
+    spendAgent(user, "ghemina");
+    agentDone(user, act);
+    ++r.hits;
+    ds5Event(E, act, "Skarvald & Torvar", "The raid heralds sound: " + pn(act) + " scores 1 more hit.", sys);
 }
 
 void Rules::ds5SpaceCombatStart(int att, int def, int sys) {
@@ -187,7 +230,24 @@ void Rules::ds5AfterCombatRolls(int att, int def, int sys, int planet, RollResul
         // Psychoactive Armaments: the opponent's misses are rolled again - for us
         if (techReady(side, "dsmykog") && other < kSides) {
             int miss = 0;
-            for (size_t d = 0; d < theirs.dice.size(); ++d) miss += theirs.dice[d] < theirs.need[d] ? 1 : 0;
+            // (fixes 28, the Myko-Mentori review) "for each of their units that did not produce a hit, you may reroll that unit's
+            // combat roll": the dice of a unit with several (a war sun, a flagship) go together - a unit with any hit keeps its roll
+            std::vector<bool> again(theirs.dice.size(), false);
+            if (G.fixes >= 28) {
+                for (size_t d = 0; d < theirs.dice.size();) {
+                    const int t = d < theirs.unit.size() ? theirs.unit[d] : -1;
+                    const int per = t >= 0 ? std::max(1, int(unitDef(G, other, UnitType(t)).combatDice)) : 1;
+                    size_t e = d + 1;
+                    while (e < theirs.dice.size() && int(e - d) < per && (e < theirs.unit.size() ? theirs.unit[e] : -1) == t) ++e;
+                    bool hit = false;
+                    for (size_t k = d; k < e; ++k) hit = hit || theirs.dice[k] >= theirs.need[k];
+                    for (size_t k = d; k < e; ++k) again[k] = !hit;
+                    d = e;
+                }
+            } else {
+                for (size_t d = 0; d < theirs.dice.size(); ++d) again[d] = theirs.dice[d] < theirs.need[d];
+            }
+            for (size_t d = 0; d < theirs.dice.size(); ++d) miss += again[d] ? 1 : 0;
             if (miss >= (G.fixes >= 2 ? 1 : 2)) {  // (0.43.0, D115: the Myko-Mentori decide whenever there is a miss)
                 curValue_ = miss;
                 const bool use = fyes(side, Ab::DsPsychoactive, "Psychoactive Armaments: roll " + pn(other) + "'s " + std::to_string(miss) + " missed dice again, against them?", "");
@@ -196,7 +256,7 @@ void Rules::ds5AfterCombatRolls(int att, int def, int sys, int planet, RollResul
                     exhaustTech(side, "dsmykog");
                     RollResult r;
                     for (size_t d = 0; d < theirs.dice.size(); ++d)
-                        if (theirs.dice[d] < theirs.need[d]) addDice(r, 1, theirs.need[d], d < theirs.unit.size() ? theirs.unit[d] : -1);
+                        if (again[d]) addDice(r, 1, theirs.need[d], d < theirs.unit.size() ? theirs.unit[d] : -1);
                     recount(r);
                     reportRoll(side, sys, "Psychoactive Armaments", r);
                     if (r.hits > 0) assignHits(other, sys, planet, r.hits, space ? kShipMask5 : kGroundMask5, "Psychoactive Armaments", side);
@@ -251,7 +311,9 @@ void Rules::ds5AfterCombatRolls(int att, int def, int sys, int planet, RollResul
     const int act = G.activePlayer;
     if (act >= 0 && act < G.numPlayers && (act == att || act == def)) {
         RollResult& r = act == att ? rA : rD;
-        if (r.hits > 0) {
+        if (r.hits > 0 && G.fixes >= 28) {
+            skarvald28(act, r, sys);
+        } else if (r.hits > 0) {
             if (const int user = agentUser(act, "ghemina"); user >= 0) {
                 agentFor(user, act);
                 const bool use = fyes(user, Ab::DsSkarvald, user == act ? "Exhaust Skarvald & Torvar: 1 more hit?" : "Exhaust Skarvald & Torvar: 1 more hit for " + pn(act) + "?",
@@ -283,7 +345,7 @@ void Rules::ds5RoundEnd(int att, int def, int sys, bool space) {
         if (c == 0) { const int cb_ = pl.commodities; pl.commodities = int8_t(pl.commodities + 1); commodityGained(side, cb_); }
         else {
             pl.commodities = int8_t(pl.commodities - 1);
-            gainTG(side, 1);
+            gainTGNotSupply(side, 1); // (fixes 28: not from the supply - no Artuno)
         }
         ds5Event(E, side, "Necrophage", pn(side) + " feeds on the battle: " + (c == 0 ? "1 commodity." : "1 trade good."), sys);
     }
@@ -338,12 +400,18 @@ void Rules::ds5UnitsDestroyed(int p, UnitType t, int k, int sys, int planet, int
     }
     // Amandia Pholdis (Myko-Mentori mech): on a 6 or better it waits on the card
     if (p < G.numPlayers && t == UnitType::Mech && fac(p, "mykomentori") && mechAbilities(G)) {
-        RollResult r;
-        addDice(r, k, 6, int(UnitType::Mech));
-        recount(r);
-        reportRoll(p, sys, "Amandia Pholdis", r);
-        if (r.hits > 0) {
-            G.players[size_t(p)].dsMykoMechs = int8_t(G.players[size_t(p)].dsMykoMechs + r.hits);
+        int hits = 0;
+        if (G.fixes >= 28) {  // (the Myko-Mentori review) Divination / Lactarius Indigo before the die - it is "a die" too
+            hits = mykoRoll(p, sys, k, 6, int(UnitType::Mech), "Amandia Pholdis");
+        } else {
+            RollResult r;
+            addDice(r, k, 6, int(UnitType::Mech));
+            recount(r);
+            reportRoll(p, sys, "Amandia Pholdis", r);
+            hits = r.hits;
+        }
+        if (hits > 0) {
+            G.players[size_t(p)].dsMykoMechs = int8_t(G.players[size_t(p)].dsMykoMechs + hits);
             ds5Event(E, p, "Amandia Pholdis", pn(p) + "'s mech regrows on its card.", sys);
         }
     }
@@ -422,7 +490,7 @@ void Rules::dsRetreatExtra(int p, int sys, std::vector<int>& out) const {
         if (a == sys || std::find(out.begin(), out.end(), a) != out.end()) continue;
         const SystemState& s = G.systems[size_t(a)];
         if (s.isHyperlane() || otherShipsIn(G, p, a)) continue;
-        const uint8_t an = s.d().anomalies;
+        const uint8_t an = tileAnomalies(G, a);  // (fixes 29: the Zelian home too)
         if ((an & kSupernova) && !owns(p, "mr")) continue;
         if ((an & kAsteroid) && !owns(p, "amd")) continue;
         bool mine = hasUnits(G, p, a);
@@ -436,8 +504,10 @@ int Rules::ds5CancelHits(int victim, int opp, int sys, int planet, int hits) {
     (void)opp;
     if (hits <= 0 || victim < 0 || victim >= G.numPlayers || planet >= 0) return hits;
     Player& pl = G.players[size_t(victim)];
-    if (commanderUsable(G, victim, "mykomentori") && pl.commodities + pl.tradeGoods > 0 &&
-        fyes(victim, Ab::DsAmanita, "Amanita Muscaria: spend 1 commodity or trade good to cancel 1 of the " + std::to_string(hits) + " hits?", "")) {
+    if (G.fixes >= 28) {
+        hits = amanita(victim, sys, hits, false);
+    } else if (commanderUsable(G, victim, "mykomentori") && pl.commodities + pl.tradeGoods > 0 &&
+               fyes(victim, Ab::DsAmanita, "Amanita Muscaria: spend 1 commodity or trade good to cancel 1 of the " + std::to_string(hits) + " hits?", "")) {
         if (pl.commodities > 0) pl.commodities = int8_t(pl.commodities - 1);
         else pl.tradeGoods = int8_t(pl.tradeGoods - 1);
         --hits;
@@ -451,15 +521,42 @@ int Rules::ds5CancelHits(int victim, int opp, int sys, int planet, int hits) {
     return hits;
 }
 
+// Amanita Muscaria (Myko-Mentori commander; fixes 28, the Myko-Mentori review): "After another player produces 1 or more hits against
+// your units during space combat, you may spend 1 commodity or 1 trade good to cancel 1 of those hits" - which of the two is the
+// player's choice; the anti-fighter barrage is a step of the first round of space combat (LRR 10), so its hits too.
+int Rules::amanita(int victim, int sys, int hits, bool barrage) {
+    if (hits <= 0 || victim < 0 || victim >= G.numPlayers || !commanderUsable(G, victim, "mykomentori")) return hits;
+    Player& pl = G.players[size_t(victim)];
+    std::vector<Option> opts;
+    if (pl.commodities > 0) opts.push_back({1, "Spend 1 commodity", std::to_string(pl.commodities) + " on your faction sheet."});
+    if (pl.tradeGoods > 0) opts.push_back({2, "Spend 1 trade good", "You have " + std::to_string(pl.tradeGoods) + "."});
+    if (opts.empty()) return hits;
+    opts.push_back({-1, "Don't", ""});
+    curValue_ = hits;
+    const int c = fpick(victim, Ab::DsAmanita,
+                        "Amanita Muscaria: cancel 1 of the " + std::to_string(hits) + (barrage ? " anti-fighter barrage" : "") + (hits == 1 ? " hit?" : " hits?"), opts,
+                        leaderText(findLeader("mykomentoricommander")));
+    curValue_ = 0;
+    if (c == 1) pl.commodities = int8_t(pl.commodities - 1);
+    else if (c == 2) pl.tradeGoods = int8_t(pl.tradeGoods - 1);
+    else return hits;
+    ds5Event(E, victim, "Amanita Muscaria", pn(victim) + "'s spores soak up 1 hit.", sys);
+    return hits - 1;
+}
+
 // ================================================================== dice: Prescient Memories
 // Divination (Myko-Mentori): one of their dice is an Omen die instead. Lactarius Indigo (their agent): one of another
 // player's dice is an Omen die (the Omen die stays). Called by rollUnits before the hits are counted - the choice
 // doesn't see the dice.
-void Rules::dsOmen(int p, RollKind kind, RollResult& r) {
+void Rules::dsOmen(int p, RollKind kind, RollResult& r, const char* what) {
     (void)kind;
     if (r.dice.empty() || p < 0 || p >= G.numPlayers) return;
     const int my = playerOfFaction(G, "mykomentori");
     if (my < 0) return;
+    if (G.fixes >= 28) {
+        omen28(p, kind, r, what);
+        return;
+    }
     Player& mp = G.players[size_t(my)];
     std::vector<int> vals;
     for (int v : mp.dsOmen)
@@ -515,6 +612,126 @@ void Rules::dsOmen(int p, RollKind kind, RollResult& r) {
     ds5Event(E, my, "Lactarius Indigo", pn(my) + " calls an omen over " + pn(p) + "'s roll: a " + std::to_string(v) + ".");
 }
 
+// (fixes 28, the Myko-Mentori review - the owner's DS Reference; owner 2026-11-16 22:25: "stick with the card and undo D114")
+// Omen dice before a roll, one die at a time:
+// - Divination: "Before you would roll a die, you may instead return 1 Omen die near your faction sheet to your reinforcements to
+//   resolve that roll as if it had the result of that die" - every die of the Myko-Mentori's roll is a die of its own, so one Omen
+//   die each (asked again after each), for any roll of theirs: units, gravity rifts, Amandia Pholdis, Dreamwalkers;
+// - Lactarius Indigo: "Before a player rolls a die, you may instead exhaust this card and choose 1 Omen die near the Myko-Mentori
+//   player's faction sheet; resolve that die roll as if it had the result of that Omen die" - any player's roll, before the dice are
+//   seen (the 0.43.0 version, D114, changed dice already rolled); the Omen die stays. Asked of whoever can use it (the Myko-Mentori,
+//   a Ssruu holder): a person may say "not again this round"; a promise to use it for someone (agentFor) makes that player the one
+//   it is for, and kept when it is used in a roll of theirs or of their opponent's.
+// The dice are rolled already but nobody has seen them: a die chosen here takes the Omen's value instead.
+void Rules::omen28(int p, RollKind kind, RollResult& r, const char* what) {
+    const int my = playerOfFaction(G, "mykomentori");
+    if (my < 0 || r.dice.empty()) return;
+    Player& mp = G.players[size_t(my)];
+    std::vector<bool> fixed(r.dice.size(), false);
+    auto unitOf = [&](size_t i) { return i < r.unit.size() && r.unit[i] >= 0 ? std::string(unitTypeName(UnitType(r.unit[i]))) : std::string("a die"); };
+    auto omenVals = [&]() {
+        std::vector<int> vals;
+        for (int v : mp.dsOmen)
+            if (v > 0 && std::find(vals.begin(), vals.end(), v) == vals.end()) vals.push_back(v);
+        std::sort(vals.begin(), vals.end());
+        return vals;
+    };
+    const std::string roll = what ? std::string(" (") + what + ")" : std::string();
+    // Divination
+    const bool person = mp.human;
+    for (int asked = 0; p == my && !(person && omenQuiet_[size_t(my)] == G.round); ++asked) {
+        std::vector<Option> opts;
+        for (int v : omenVals()) {
+            int die = -1;  // each Omen value on the hardest die it still makes a hit
+            for (size_t i = 0; i < r.dice.size(); ++i)
+                if (!fixed[i] && r.need[i] <= v && (die < 0 || r.need[i] > r.need[size_t(die)])) die = int(i);
+            if (die < 0) continue;
+            opts.push_back({v * 100 + r.need[size_t(die)], "Omen " + std::to_string(v) + " for " + unitOf(size_t(die)),
+                            "It needs " + std::to_string(r.need[size_t(die)]) + ": a sure " + (kind == RollKind::Rift ? "pass." : "hit.")});
+        }
+        if (opts.empty()) break;
+        opts.push_back({-1, asked ? "Roll the rest as usual" : "Roll as usual", ""});
+        if (person) opts.push_back({99999, "Roll as usual, and don't ask again this round", "You'll be asked again next round."});
+        curValue_ = int(kind);
+        const int c = fpick(my, Ab::DsOmen, std::string(asked ? "Divination: another Omen die for another of the dice" : "Divination: use an Omen die instead of rolling") + roll + "?",
+                            opts, "Before you would roll a die, you may return 1 Omen die to resolve that roll as if it had that die's result.");
+        curValue_ = 0;
+        if (c == 99999) omenQuiet_[size_t(my)] = int16_t(G.round);
+        if (c < 0 || c == 99999) break;
+        const int v = c / 100, need = c % 100;
+        for (size_t i = 0; i < r.dice.size(); ++i)
+            if (!fixed[i] && r.need[i] == need) {
+                r.dice[i] = int8_t(v);
+                fixed[i] = true;
+                break;
+            }
+        for (int8_t& o : mp.dsOmen)
+            if (o == v) {
+                o = 0;
+                break;
+            }
+        ds5Event(E, my, "Divination", pn(my) + " spends an Omen die: a " + std::to_string(v) + ".");
+    }
+    // Lactarius Indigo
+    const int sys = combatSys_ >= 0 ? combatSys_ : G.activeSystem;
+    for (int o : initiativeOrder(G)) {
+        if (!canUseAgent(o, "mykomentori")) continue;
+        const bool human = G.players[size_t(o)].human;
+        if (human && lactQuiet_[size_t(o)] == G.round) continue;
+        const std::vector<int> vals = omenVals();
+        if (vals.empty()) return;
+        const int b = G.agentFor[size_t(o)];
+        const bool forB = b >= 0 && b != o && b < G.numPlayers && (b == p || (sys >= 0 && hasUnits(G, b, sys)));
+        std::vector<Option> opts;
+        for (size_t i = 0; i < r.dice.size(); ++i) {
+            if (fixed[i]) continue;
+            bool dup = false;  // (one line per unit type and need)
+            for (size_t j = 0; j < i && !dup; ++j) dup = !fixed[j] && r.need[j] == r.need[i] && unitOf(j) == unitOf(i);
+            if (dup) continue;
+            for (int v : vals) {
+                const bool hit = v >= r.need[i];
+                opts.push_back({int(i) * 16 + v, "Omen " + std::to_string(v) + " for " + (p == o ? std::string("your") : pn(p) + "'s") + " " + unitOf(i) + roll,
+                                std::string(hit ? (kind == RollKind::Rift ? "A sure pass" : "A sure hit") : (kind == RollKind::Rift ? "A sure loss" : "A sure miss")) +
+                                    " - it needs " + std::to_string(r.need[i]) + "."});
+            }
+        }
+        if (opts.empty()) return;
+        opts.push_back({-1, "Don't", ""});
+        if (human) opts.push_back({99999, "No, and don't ask again this round", "You'll be asked again next round."});
+        curValue_ = p;  // (for the AI: whose roll it is)
+        curFor_ = forB ? b : -1;
+        const int c = fpick(o, Ab::DsLactarius,
+                            "Exhaust Lactarius Indigo before " + (p == o ? std::string("you roll") : pn(p) + " rolls") + roll + ": one of the dice becomes an Omen die?",
+                            opts, leaderText(findLeader("mykomentoriagent")));
+        curFor_ = -1;
+        curValue_ = 0;
+        if (c == 99999) lactQuiet_[size_t(o)] = int16_t(G.round);
+        if (c < 0 || c == 99999) continue;
+        spendAgent(o, "mykomentori");
+        if (forB) agentUsedFor(o, b);
+        const size_t i = size_t(c / 16);
+        const int v = c % 16;
+        r.dice[i] = int8_t(v);
+        fixed[i] = true;
+        ds5Event(E, o, "Lactarius Indigo", pn(o) + " calls an omen over " + pn(p) + "'s roll: a " + std::to_string(v) + ".", sys);
+        return;
+    }
+}
+
+// (fixes 28) A Myko-Mentori ability roll (Amandia Pholdis, Dreamwalkers): Omen dice first, then the roll is shown. Returns the hits.
+int Rules::mykoRoll(int p, int sys, int dice, int need, int unit, const char* what) {
+    RollResult r;
+    for (int i = 0; i < dice; ++i) {
+        r.dice.push_back(int8_t(E.rng().d10()));
+        r.need.push_back(int8_t(need));
+        r.unit.push_back(int8_t(unit));
+    }
+    if (G.modules & kModDiscordant) dsOmen(p, RollKind::Ability, r, what);
+    recount(r);
+    reportRoll(p, sys, what, r);
+    return r.hits;
+}
+
 // 0.43.0 (the owner's D114 / D115), after any roll of units (combat in space or on the ground, space cannon,
 // bombardment, anti-fighter barrage), with the dice in view:
 // - Lactarius Indigo (Myko-Mentori agent): one die of anyone's roll takes the value of one of their Omen dice - an
@@ -528,8 +745,8 @@ void Rules::dsAfterRoll(int p, RollKind kind, RollResult& r) {
     Player& mp = G.players[size_t(my)];
     const int sys = combatSys_ >= 0 ? combatSys_ : G.activeSystem;
     auto unitOf = [&](size_t i) { return i < r.unit.size() && r.unit[i] >= 0 ? std::string(unitTypeName(UnitType(r.unit[i]))) : std::string("a die"); };
-    // Lactarius Indigo
-    if (const int user = agentUser(my, "mykomentori"); user >= 0) {
+    // Lactarius Indigo (fixes 28: before the roll - omen28)
+    if (const int user = agentUser(my, "mykomentori"); user >= 0 && G.fixes < 28) {
         std::vector<int> vals;
         for (int v : mp.dsOmen)
             if (v > 0 && std::find(vals.begin(), vals.end(), v) == vals.end()) vals.push_back(v);
@@ -634,7 +851,10 @@ void Rules::ds5Activated(int p, int sys) {
         std::vector<Option> opts;
         for (size_t s = 0; s < G.systems.size(); ++s)
             for (int t : kShipIdx)
-                if (t != int(UnitType::Fighter) && G.systems[s].space[size_t(p)].n[t] > 0 && int(s) != sys)
+                // (fixes 28, the Axis review - owner 2026-11-14 "leave fighters in (for fighters 2)") "choose 1 ship you
+                // control": a fighter too when it has a move value of its own
+                if ((t != int(UnitType::Fighter) || (G.fixes >= 28 && unitDef(G, p, UnitType::Fighter).move > 0)) &&
+                    G.systems[s].space[size_t(p)].n[t] > 0 && int(s) != sys)
                     opts.push_back({int(s) * 16 + t, std::string(unitTypeName(UnitType(t))) + " in " + sysName(int(s)), ""});
         if (!opts.empty()) {
             opts.push_back({-1, "Don't", ""});
@@ -849,7 +1069,9 @@ void Rules::ds5AfterMovement(int p, int sys) {
         }
     }
     // Sal Sparrow (Nokar agent): a destroyer for the active player here, then a trade
-    if (const int user = agentUser(p, "nokar"); user >= 0 && hasShips(G, p, sys) && unitsAvailable(G, p, UnitType::Destroyer) > 0) {
+    if (G.fixes >= 29) {
+        salSparrow29(p, sys);
+    } else if (const int user = agentUser(p, "nokar"); user >= 0 && hasShips(G, p, sys) && unitsAvailable(G, p, UnitType::Destroyer) > 0) {
         agentFor(user, p);
         curValue_ = fleetLimit(G, p) - fleetUseIn(G, p, sys);  // (for the AI: room in the fleet pool)
         const bool use = fyes(user, Ab::DsSalSparrow, user == p ? "Exhaust Sal Sparrow: place 1 destroyer here?" : "Exhaust Sal Sparrow: " + pn(p) + " places 1 destroyer here?",
@@ -869,6 +1091,49 @@ void Rules::ds5AfterMovement(int p, int sys) {
                 G.tradeAnyway &= ~bits;
             }
         }
+    }
+}
+
+// (fixes 29, the Nokar review - the Reference: "After movement: You may exhaust this card to allow 1 player with 1 or more ships in the
+// active system to place 1 destroyer from their reinforcements in that system. Then, you may resolve 1 transaction with that player")
+// after any player's movement, for any player with ships there (the active player or a defender); whoever can use the agent is asked
+// in initiative order - a person may say "not again this round"; a promised agent kept for its beneficiary.
+void Rules::salSparrow29(int p, int sys) {
+    if (sys < 0 || playerOfFaction(G, "nokar") < 0) return;
+    for (int o : initiativeOrder(G)) {
+        if (!canUseAgent(o, "nokar")) continue;
+        const bool human = G.players[size_t(o)].human;
+        if (human && sparrowQuiet_[size_t(o)] == G.round) continue;
+        std::vector<Option> opts;
+        for (int q : initiativeOrder(G))
+            if (!G.players[size_t(q)].eliminated && hasShips(G, q, sys) && unitsAvailable(G, q, UnitType::Destroyer) > 0)
+                opts.push_back({q, (q == o ? std::string("You") : pn(q)) + (q == p ? " (the active player)" : ""),
+                                std::to_string(G.systems[size_t(sys)].space[size_t(q)].ships()) + " ships here."});
+        if (opts.empty()) return;
+        opts.push_back({-1, "Don't", ""});
+        if (human) opts.push_back({99999, "No, and don't ask again this round", "You'll be asked again next round."});
+        const int b = G.agentFor[size_t(o)];
+        curFor_ = b >= 0 && b != o && b < G.numPlayers ? b : -1;
+        curValue_ = p;  // (for the AI: whose action it is)
+        const int q = fpick(o, Ab::DsSalSparrow, "Exhaust Sal Sparrow: which player places 1 destroyer in " + sysName(sys) + "?", opts,
+                            leaderText(findLeader("nokaragent")));
+        curFor_ = -1;
+        curValue_ = 0;
+        if (q == 99999) sparrowQuiet_[size_t(o)] = int16_t(G.round);
+        if (q < 0 || q == 99999) continue;
+        spendAgent(o, "nokar");
+        if (q != o) agentUsedFor(o, q);
+        addUnits(q, UnitType::Destroyer, 1, sys, -1);
+        ds5Event(E, q, "Sal Sparrow", pn(q) + " takes on a privateer destroyer.", sys);
+        enforceFleetLimit(q);
+        if (q != o && canOffer(G, o, q)) {
+            const uint64_t bits = (uint64_t(1) << (o * 8 + q)) | (uint64_t(1) << (q * 8 + o));
+            const uint64_t had = G.tradeAnyway & bits;
+            G.tradeAnyway |= bits;
+            negotiate(o, q);
+            G.tradeAnyway = (G.tradeAnyway & ~bits) | had;
+        }
+        return;
     }
 }
 
@@ -1077,7 +1342,29 @@ void Rules::ds5TurnEnd(int p) {
         enforceFleetLimit(p);
         // Designer TckVsk (Axis commander): that unit's upgrade for 6 resources
         const int ax = playerOfFaction(G, "axis");
-        if (ax >= 0 && commanderUsable(G, ax, "axis")) {
+        // (fixes 28, the Axis review - owner 2026-11-14) "After a player resolves an Axis Order card: You may spend 6 resources
+        // to gain the corresponding unit's unit upgrade technology" - every player who can use the commander (the Axis, the
+        // holder of their Alliance, a Mahact with their token), in initiative order; each gains their own version of it
+        if (ax >= 0 && G.fixes >= 28) {
+            int up = -1;
+            for (int k = 0; k < kTechCount && up < 0; ++k)
+                if (kTechs[k].unitUpgrade && kTechs[k].faction < 0 && upgradeUnitType(k) == int(t) && techImplemented(k) &&
+                    (kTechs[k].source == Source::Base || kTechs[k].source == Source::PoK))
+                    up = k;
+            for (int u : initiativeOrder(G)) {
+                if (up < 0 || !commanderUsable(G, u, "axis")) continue;
+                int mine = up;
+                for (int k = 0; k < kTechCount; ++k)
+                    if (kTechs[k].faction >= 0 && kTechs[k].faction == G.players[size_t(u)].faction && kTechs[k].replaces == up && techImplemented(k)) mine = k;
+                if (G.players[size_t(u)].hasTech(mine) || spendable(G, u, false) < 6) continue;
+                if (fyes(u, Ab::DsTckVsk, std::string("Designer TckVsk: spend 6 resources for ") + kTechs[mine].name + "?",
+                         pn(p) + " called in an " + orderName(i) + ". " + leaderText(findLeader("axiscommander"))) &&
+                    pay(u, 6, false, "Designer TckVsk", true)) {
+                    researchTech(u, mine, false);
+                    ds5Event(E, u, "Designer TckVsk", pn(u) + " reverse-engineers " + kTechs[mine].name + ".");
+                }
+            }
+        } else if (ax >= 0 && commanderUsable(G, ax, "axis")) {
             int up = -1;
             for (int k = 0; k < kTechCount && up < 0; ++k)
                 if (kTechs[k].unitUpgrade && kTechs[k].faction < 0 && upgradeUnitType(k) == int(t) && techImplemented(k) &&
@@ -1106,6 +1393,7 @@ void Rules::ds5Passed(int p) {
     curValue_ = 0;
     if (q < 0) return;
     spendAgent(ed, "edyn");
+    agentUsedFor(ed, q);
     ds5Event(E, ed, "Allant", pn(ed) + "'s Allant grants " + pn(q) + " one more action.");
     extraAction(q);
     if (G.agendaDeck.empty()) return;
@@ -1194,6 +1482,7 @@ int Rules::dsPredictionOf(int p) const {
 
 void Rules::ds5AgendaRevealed(int a) {
     dsEdynGuess_ = -1;
+    dsUnityStaked_ = false;
     for (int& r : dsEdynRider_) r = -1;
     for (int& r : dsUnityGuess_) r = -1;
     const std::vector<Option> outs = agendaOutcomes(a);
@@ -1212,6 +1501,7 @@ void Rules::ds5AgendaRevealed(int a) {
             curAgenda_ = prevA;
             if (gq != -999) {
                 dsUnityGuess_[q] = gq;
+                if (G.fixes >= 28) G.players[size_t(q)].dsUnityRound = int16_t(G.round);  // (fixes 28: once per agenda phase - the prediction)
                 ds5Event(E, q, "Unity Algorithm", pn(q) + " predicts: " + outcomeName(a, gq) + ".");
             }
         }
@@ -1229,13 +1519,23 @@ void Rules::ds5AgendaRevealed(int a) {
     std::vector<Option> guess = outs;
     guess.push_back({-999, "Don't predict", ""});
     const int g = fpick(ed, Ab::DsRadiance, "Radiance: predict the outcome of " + std::string(kAgendas[a].name), guess,
-                        owns(ed, "dsedyng") && G.players[size_t(ed)].dsUnityRound != G.round
+                        owns(ed, "dsedyng") && G.players[size_t(ed)].dsUnityRound != G.round && G.fixes < 28
                             ? "If you are right, another player's command token goes into one of your Sigils - and Unity Algorithm: you may "
                               "score a public objective you fulfil; those who voted for it draw a secret objective."
                             : "If you are right, another player's command token goes into one of your Sigils.");
     if (g != -999) {
         dsEdynGuess_ = g;
         ds5Event(E, ed, "Radiance", pn(ed) + " predicts: " + outcomeName(a, g) + ".");
+        // (fixes 28, the Edyn review - owner 2026-11-15: "use the card's way") Unity Algorithm: "Once per agenda phase, after an
+        // agenda is revealed, you may predict" - the Edyn choose the one agenda a phase it rides on (it paid on the first right
+        // prediction)
+        if (G.fixes >= 28 && owns(ed, "dsedyng") && G.players[size_t(ed)].dsUnityRound != G.round &&
+            fyes(ed, Ab::DsUnity, "Unity Algorithm: stake this prediction on it (once per agenda phase)?",
+                 "If you are right, you may score a public objective you fulfil; each other player who voted for it draws a secret objective.")) {
+            dsUnityStaked_ = true;
+            G.players[size_t(ed)].dsUnityRound = int16_t(G.round);
+            ds5Event(E, ed, "Unity Algorithm", pn(ed) + " stakes the Unity Algorithm on it.");
+        }
     }
     // Edyn Rider (the Edyn's note): no vote, a prediction
     for (int q : clockwiseFrom(G, G.speaker)) {
@@ -1277,11 +1577,13 @@ void Rules::ds5AgendaResolved(int outcome, const std::vector<int>& voted) {
         token(ed, sigils(G), Ab::DsSigilToken, "Radiance: whose command token goes into which Sigil?");
         // Unity Algorithm: once per agenda phase, a public objective - and the voters for it draw a secret
         Player& el = G.players[size_t(ed)];
-        if (owns(ed, "dsedyng") && el.dsUnityRound != G.round) {
+        if (G.fixes >= 28 ? (dsUnityStaked_ && owns(ed, "dsedyng")) : (owns(ed, "dsedyng") && el.dsUnityRound != G.round)) {
             el.dsUnityRound = int16_t(G.round);
             std::vector<Option> opts;
             for (int o : scorablePublic(ed))
                 opts.push_back({o, std::string(kObjectives[o].name) + " - " + std::to_string(kObjectives[o].points) + " VP", objectiveSummary(o)});
+            // (fixes 28, the Edyn review) Kadryn: "When any game effect would allow you to score a public objective"
+            if (G.fixes >= 28 && !opts.empty() && dsKadryn(ed, int(opts.size()))) opts.clear();
             if (!opts.empty()) {
                 opts.push_back({-1, "Don't score", ""});
                 const int o = fpick(ed, Ab::DsUnity, "Unity Algorithm: score a public objective?", opts);
@@ -1298,12 +1600,13 @@ void Rules::ds5AgendaResolved(int outcome, const std::vector<int>& voted) {
         const bool hit = dsUnityGuess_[u] == outcome;
         dsUnityGuess_[u] = -1;
         Player& ul = G.players[size_t(u)];
-        if (!hit || ul.eliminated || !owns(u, "dsedyng") || ul.dsUnityRound == G.round) continue;
+        if (!hit || ul.eliminated || !owns(u, "dsedyng") || (G.fixes < 28 && ul.dsUnityRound == G.round)) continue;
         ul.dsUnityRound = int16_t(G.round);
         say(u, pn(u) + "'s prediction was right.");
         std::vector<Option> opts;
         for (int o : scorablePublic(u))
             opts.push_back({o, std::string(kObjectives[o].name) + " - " + std::to_string(kObjectives[o].points) + " VP", objectiveSummary(o)});
+        if (G.fixes >= 28 && !opts.empty() && dsKadryn(u, int(opts.size()))) opts.clear();  // (fixes 28) Kadryn
         if (!opts.empty()) {
             opts.push_back({-1, "Don't score", ""});
             const int o = fpick(u, Ab::DsUnity, "Unity Algorithm: score a public objective?", opts);
@@ -1352,6 +1655,7 @@ void Rules::ds5AgendaResolved(int outcome, const std::vector<int>& voted) {
         dsEdynRider_[q] = -1;
     }
     dsEdynGuess_ = -1;
+    dsUnityStaked_ = false;
 }
 
 // Envoy Network (Free Systems): +4 votes when the planets spent include a cultural, a hazardous and an industrial one.
@@ -1373,8 +1677,12 @@ void Rules::dsAfterPrimary(int p, int card) {
     if (p < 0 || p >= G.numPlayers || !fac(p, "edyn") || card <= 0) return;
     Player& pl = G.players[size_t(p)];
     if (pl.dsGraceRound == G.round) return;
+    // (fixes 28, the Edyn review - owner 2026-11-15) "You may resolve the secondary ability" - as usual, with its strategy token
+    // (AsyncTI4: "you have to spend a command token from your strategy pool if applicable"); it was free
+    const bool paid = G.fixes >= 28;
     std::vector<Option> opts;
     for (int c = 0; c < card; ++c) {
+        if (paid && c != 0 && pl.strategy <= 0) continue;  // (Leadership's secondary needs no token)
         bool used = false;
         for (const Player& q : G.players)
             for (int8_t x : q.cards) used = used || (x == c && ((q.cardsUsed >> c) & 1));
@@ -1382,22 +1690,37 @@ void Rules::dsAfterPrimary(int p, int card) {
     }
     if (opts.empty()) return;
     opts.push_back({-1, "Don't", ""});
-    const int c = fpick(p, Ab::DsGrace, "Grace: resolve the secondary ability of a lower strategy card?", opts, "Without a command token; once per action phase.");
+    const int c = fpick(p, Ab::DsGrace, "Grace: resolve the secondary ability of a lower strategy card?", opts,
+                        paid ? "Spending a strategy token as usual; once per action phase." : "Without a command token; once per action phase.");
     if (c < 0) return;
     pl.dsGraceRound = int16_t(G.round);
     ds5Event(E, p, "Grace", pn(p) + " extends its grace: the secondary of " + strategyName(c) + ".");
     const bool prevForced = forcedSecondary_, prevGrace = graceFree_;
     forcedSecondary_ = true;
-    graceFree_ = true;
+    graceFree_ = !paid;
     secondaryAbility(p, c);
     forcedSecondary_ = prevForced;
     graceFree_ = prevGrace;
 }
 
 // Military Industrial Complex (Axis): after gaining or refilling commodities, Axis Orders bought with them.
-void Rules::dsReplenished(int p, bool replenish) {
+void Rules::dsReplenished(int p, bool replenish, int gained) {
     if (breakthroughsOn(G) && (replenish || G.fixes < 8)) dsbtReplenished(p);  // Arms Brokerage (0.43.0; 0.44.4: only a replenish)
     if (p < 0 || p >= G.numPlayers || !fac(p, "axis")) return;
+    // (fixes 28, the Axis review - owner 2026-11-14) "After you gain 1 or more commodities": a refill that gained none doesn't
+    // count; every other gain comes through micGained (siphon / commodityGained)
+    if (G.fixes >= 28 && gained <= 0) return;
+    militaryIndustrial(p);
+}
+
+// (fixes 28, the Axis review) Military Industrial Complex after a commodity gain that isn't a refill (exploration, Shipmonger
+// Zsknck, ...): replenished() keeps it for its end (dsReplenished), after "when" effects such as a Trade Agreement.
+void Rules::micGained(int p, int gained) {
+    if (G.fixes < 28 || !(G.modules & kModDiscordant) || gained <= 0 || p < 0 || p >= G.numPlayers || !fac(p, "axis")) return;
+    militaryIndustrial(p);
+}
+
+void Rules::militaryIndustrial(int p) {
     Player& pl = G.players[size_t(p)];
     for (int guard = 0; guard < 8; ++guard) {
         std::vector<Option> opts;
@@ -1451,6 +1774,13 @@ void Rules::dsSoulCaged(int p, int leader) {
     const int my = playerOfFaction(G, "mykomentori");
     if (my < 0) return;
     if (p == my) {
+        // (fixes 28) what the bound heroes left on the card goes with it: ships waiting on a Homesick Phantom (back to the
+        // reinforcements), a Turra Sveyar attached to a secret objective
+        if (G.fixes >= 28 && !fac(my, "crimson") && !phantomGoing_ && !G.players[size_t(my)].phantom.empty()) {
+            G.players[size_t(my)].phantom = Force();
+            say(my, "The ships waiting on " + pn(my) + "'s Soul Cage return to their reinforcements.");
+        }
+        if (G.fixes >= 28 && !fac(my, "tnelis") && G.players[size_t(my)].dsPubSecret >= 0) G.players[size_t(my)].dsPubSecret = -2;
         G.dsSoulCage.clear();
         return;
     }
@@ -1462,6 +1792,21 @@ void Rules::dsSoulCaged(int p, int leader) {
     if (std::find(G.dsSoulCage.begin(), G.dsSoulCage.end(), int16_t(leader)) != G.dsSoulCage.end()) return;
     G.dsSoulCage.push_back(int16_t(leader));
     ds5Event(E, my, "Soul Cage", std::string(kLeaders[leader].name) + " is bound to " + pn(my) + "'s Soul Cage.");
+}
+
+// (fixes 28, the Myko-Mentori review - owner 2026-11-16 22:25: "Pick what makes sense and is closest to the card for Soul Cage")
+// "You may resolve this card as if it instead had the text of any single hero attached to this card" - the heroes whose ability
+// isn't an action too, at their own moment: Harrugh Gefhara, Ipswitch, Adjudicator Ba'al, The Oracle, Sh'val, Odlynn Myrr, Kuuasi
+// Aun Jalatai, Homesick Phantom, Director Nel, Titus Flavius, Verrisus Ypru, Queen Nadalia, Roh'Vhin Dhna mk4, Turra Sveyar, Dyln
+// Harthuul, Zelian R. Not Lyra Keen (only galvanized units - the Last Bastion's - set her off) or Speygh (its text is the Kyro's own
+// strategy-card rule). The hero sites ask the Myko-Mentori as they ask the hero's faction; using one purges their hero - and the cage.
+int Rules::cageHolder(const char* heroKey) const {
+    if (G.fixes < 28 || !(G.modules & kModDiscordant)) return -1;
+    const int my = playerOfFaction(G, "mykomentori");
+    if (my < 0 || !heroUnlocked(G, my)) return -1;
+    for (int16_t l : G.dsSoulCage)
+        if (!std::strcmp(kLeaders[size_t(l)].key, heroKey)) return my;
+    return -1;
 }
 
 // The Lady & The Lord: the Lady's system lost its Ghemina flagships some other way (a retreat...) - follow her.
@@ -1545,6 +1890,149 @@ std::vector<Option> kantrusTargets(const Game& G, int p) {
 }
 }  // namespace
 
+// (fixes 28, the Free Systems review) Cordo Haved: "While ready, this card has the text ability of each legendary planet ability card
+// any player controls, even if that card is exhausted. You may allow another player to use this card's ability" - the legendary
+// cards say "At the end of your turn, you may exhaust this card to ..." (and the owner's Discordant Stars Rules Clarifications:
+// "Cordo Haved may be used to resolve the ability of an exhausted legendary planet ability card"): at the end of a turn, every
+// legendary planet any player controls whose ability comes at the end of a turn (Prophecy of Kings, Uncharted Space, Thunder's Edge:
+// The Acropolis, the Thunder's Edge planet) - not an action any more. Another player's turn: a person Free Systems is asked (Yes /
+// No / not again this round), a bot only when promised; that player chooses the ability.
+void Rules::cordoEndOfTurn(int p) {
+    if (p < 0 || p >= G.numPlayers || G.players[size_t(p)].eliminated) return;
+    Player& pl = G.players[size_t(p)];
+    auto acropolisOpts = [&]() {  // The Acropolis: ready another of your components (not a strategy card)
+        std::vector<Option> o;
+        for (int x : controlledPlanets(G, p))
+            if (G.planets[size_t(x)].exhausted) o.push_back({x, "Ready " + planetName(x), std::to_string(planetResources(G, x)) + " res / " + std::to_string(planetInfluence(G, x)) + " inf"});
+        for (int16_t t : pl.exhaustedTechs) o.push_back({10000 + t, std::string("Ready ") + kTechs[t].name, "technology"});
+        for (int16_t r : pl.exhaustedRelics) o.push_back({20000 + r, std::string("Ready ") + kRelics[r].name, "relic"});
+        for (size_t i = 0; i < pl.leaders.size(); ++i)
+            if (kLeaders[pl.leaders[i].leader].type == kAgent && pl.leaders[i].status == kExhausted)
+                o.push_back({30000 + int(i), std::string("Ready ") + kLeaders[pl.leaders[i].leader].name, "agent"});
+        for (int x : controlledPlanets(G, p))
+            if (G.planets[size_t(x)].abilityExhausted && *legendaryName(G.planets[size_t(x)].def))
+                o.push_back({40000 + x, std::string("Ready ") + legendaryName(G.planets[size_t(x)].def), "legendary planet ability"});
+        return o;
+    };
+    std::vector<Option> opts;
+    for (size_t x = 0; x < G.planets.size(); ++x) {
+        const PlanetState& ps = G.planets[x];
+        if (!cordoLegendary(int(x), p)) continue;
+        const char* k = kPlanets[ps.def].key;
+        // The Galactic Council (Mecatol Rex, a legendary planet with Thunder's Edge)
+        if (!std::strcmp(k, "mr")) {
+            if ((G.modules & kModThundersEdge) && !pl.secrets.empty() && !G.secretDeck.empty())
+                opts.push_back({int(x) * 10 + 1, "The Galactic Council: discard a secret objective to draw another", planetName(int(x))});
+            continue;
+        }
+        if (!*legendaryName(ps.def)) continue;
+        const std::string n = std::string(legendaryName(ps.def)) + ": ";
+        if (!std::strcmp(k, "emelpar")) {
+            if ((G.modules & kModThundersEdge) && !acropolisOpts().empty()) opts.push_back({int(x) * 10 + 1, n + "ready another of your components", planetName(int(x))});
+        } else if (!std::strcmp(k, "thundersedge")) {
+            if ((G.modules & kModThundersEdge) && !pl.passed) opts.push_back({int(x) * 10 + 1, n + "take another action", planetName(int(x))});
+        } else {
+            for (const Option& o : legendaryChoices(p, int(x))) opts.push_back({int(x) * 10 + o.id, n + o.label, planetName(int(x))});
+        }
+    }
+    if (opts.empty()) return;
+    const std::string text = leaderText(findLeader("freesystemsagent"));
+    const int user = cordoUser(p, "they use a legendary planet's ability at the end of their turn");
+    if (user < 0) return;
+    opts.push_back({-1, "Not now", ""});
+    const int c = fpick(p, Ab::DsCordo, user == p ? "Cordo Haved: use a legendary planet's ability?" : "Cordo Haved (" + pn(user) + "): use which legendary planet's ability?",
+                        opts, text);
+    if (c < 0) return;
+    const int x = c / 10, e = c % 10;
+    const char* k = kPlanets[G.planets[size_t(x)].def].key;
+    const std::string name = legendaryName(G.planets[size_t(x)].def);
+    if (!std::strcmp(k, "mr")) {  // The Galactic Council: a secret objective for another
+        std::vector<Option> so;
+        for (int16_t o : pl.secrets) so.push_back({o, std::string("Discard ") + kObjectives[o].name, objectiveSummary(o)});
+        so.push_back({-1, "Not now", ""});
+        const int o = pick(p, Tag::LegendaryAbility, "The Galactic Council (Mecatol Rex, through Cordo Haved): discard a secret objective to draw another?", so,
+                           "Thunder's Edge: Mecatol Rex is a legendary planet.");
+        if (o < 0) return;
+        cordoSpend(user, p);
+        pl.secrets.erase(std::find(pl.secrets.begin(), pl.secrets.end(), int16_t(o)));
+        G.secretDeck.push_back(int16_t(o));
+        E.rng().shuffle(G.secretDeck);
+        say(p, pn(p) + " discards a secret objective (The Galactic Council, through Cordo Haved).");
+        drawSecret(p);
+        return;
+    }
+    if (!std::strcmp(k, "thundersedge")) {  // (exhausted before the action it gives)
+        cordoSpend(user, p);
+        say(p, pn(p) + " takes another action (" + name + ", through Cordo Haved).");
+        takeTurn(p, true, true);
+        return;
+    }
+    if (!std::strcmp(k, "emelpar")) {
+        std::vector<Option> o = acropolisOpts();
+        o.push_back({-1, "Not now", ""});
+        const int r = pick(p, Tag::LegendaryAbility, "The Acropolis (Cordo Haved): ready which component?", o, legendaryText(G.planets[size_t(x)].def));
+        if (r < 0) return;
+        std::string what;
+        if (r >= 40000) {
+            G.planets[size_t(r - 40000)].abilityExhausted = false;
+            what = legendaryName(G.planets[size_t(r - 40000)].def);
+        } else if (r >= 30000) {
+            readyAgent(p, r - 30000);
+            what = kLeaders[pl.leaders[size_t(r - 30000)].leader].name;
+        } else if (r >= 20000) {
+            pl.exhaustedRelics.erase(std::remove(pl.exhaustedRelics.begin(), pl.exhaustedRelics.end(), int16_t(r - 20000)), pl.exhaustedRelics.end());
+            what = kRelics[r - 20000].name;
+        } else if (r >= 10000) {
+            pl.exhaustedTechs.erase(std::remove(pl.exhaustedTechs.begin(), pl.exhaustedTechs.end(), int16_t(r - 10000)), pl.exhaustedTechs.end());
+            what = kTechs[r - 10000].name;
+        } else {
+            G.planets[size_t(r)].exhausted = false;
+            what = planetName(r);
+        }
+        say(p, pn(p) + " readies " + what + " (The Acropolis, through Cordo Haved).");
+    } else {
+        if (!legendaryResolve(p, x, e)) return;  // backed out: the agent stays ready
+        say(p, pn(p) + " used " + name + " through Cordo Haved.");
+    }
+    cordoSpend(user, p);
+}
+
+
+// (fixes 28) who uses Cordo Haved for p now: p itself (their own ready agent), else a Free Systems lending it - a person is asked (Yes
+// / No / not again this round), a bot only when it was promised. -1 = nobody.
+int Rules::cordoUser(int p, const std::string& what) {
+    if (p < 0 || p >= G.numPlayers) return -1;
+    if (canUseAgent(p, "freesystems")) return p;
+    const std::string text = leaderText(findLeader("freesystemsagent"));
+    for (int o : initiativeOrder(G)) {
+        if (o == p || !canUseAgent(o, "freesystems")) continue;
+        const bool promised = G.agentFor[o] == p;
+        const bool human = G.players[size_t(o)].human;
+        if (!promised && !(human && cordoQuiet_[o] != G.round)) continue;
+        agentFor(o, p);
+        std::vector<Option> yn = {{1, "Yes", ""}, {0, "No", ""}};
+        if (human && !promised) yn.push_back({3, "No, and don't ask again this round", "You'll be asked again next round."});
+        const int y = fpick(o, Ab::DsCordo, "Exhaust Cordo Haved for " + pn(p) + ": " + what + "?", yn, text);
+        curFor_ = -1;
+        if (y == 3) cordoQuiet_[o] = int16_t(G.round);
+        if (y == 1) return o;
+    }
+    return -1;
+}
+
+// ... planet x's legendary card can be copied for p: anyone's, p's own only once it is exhausted (else it is offered itself)
+bool Rules::cordoLegendary(int x, int p) {
+    if (x < 0 || x >= int(G.planets.size())) return false;
+    const PlanetState& ps = G.planets[size_t(x)];
+    if (ps.owner < 0 || ps.destroyed || ps.system < 0) return false;
+    return ps.owner != p || ps.abilityExhausted;
+}
+
+void Rules::cordoSpend(int user, int p) {
+    spendAgent(user, "freesystems");
+    if (user != p) agentDone(user, p);
+}
+
 void Rules::ds5Hero(int p, int nth, const std::string& text) {
     (void)nth;
     const auto& ls = G.players[size_t(p)].leaders;
@@ -1568,7 +2056,19 @@ void Rules::ds5Options(int p, std::vector<Option>& o) {
     auto add = [&](Ab ab, const std::string& label, const std::string& detail) { o.push_back({6000 + int(ab), label, detail}); };
     const Player& pl = G.players[size_t(p)];
     // Free Systems
-    if (fac(p, "freesystems") && canUseAgent(p, "freesystems") && !cordoOptions(G, p).empty())
+    // (fixes 28, the Free Systems review: no longer an action - cordoEndOfTurn - but for The Nucleus (Avernus), an ACTION itself:
+    // Star Forge without a command token, for the Free Systems or a player it was promised to)
+    if (G.fixes >= 28) {
+        int av = -1;
+        for (size_t x = 0; x < G.planets.size() && av < 0; ++x)
+            if (!std::strcmp(kPlanets[G.planets[x].def].key, "avernus") && cordoLegendary(int(x), p)) av = int(x);
+        const bool mine = fac(p, "freesystems") && canUseAgent(p, "freesystems");
+        const bool lent = !mine && agentUser(p, "freesystems") >= 0;
+        if (av >= 0 && (mine || lent) && unitsOnBoard(G, p, UnitType::WarSun) > 0 &&
+            (unitsAvailable(G, p, UnitType::Fighter) > 0 || unitsAvailable(G, p, UnitType::Destroyer) > 0))
+            add(Ab::DsCordo, std::string("Agent: Cordo Haved - The Nucleus") + (lent ? " (lent by " + pn(agentUser(p, "freesystems")) + ")" : ""),
+                "Exhaust it: the Embers of Muaat's Star Forge without spending a command token (Avernus's legendary ability).");
+    } else if (fac(p, "freesystems") && canUseAgent(p, "freesystems") && !cordoOptions(G, p).empty())
         add(Ab::DsCordo, "Agent: Cordo Haved", "Exhaust: use the ability of a legendary planet any player controls.");
     else if (G.fixes >= 2 && !fac(p, "freesystems") && agentUser(p, "freesystems") >= 0 && !cordoOptions(G, p).empty())  // 0.43.0 (D102): lent
         add(Ab::DsCordo, "Agent: Cordo Haved (lent by " + pn(agentUser(p, "freesystems")) + ")",
@@ -1669,7 +2169,8 @@ void Rules::ds5Options(int p, std::vector<Option>& o) {
         };
         for (int16_t l : G.dsSoulCage)
             for (const auto& h : kHeroActions)
-                if (!std::strncmp(kLeaders[l].name, h.name, std::strlen(h.name))) {
+                if (!std::strncmp(kLeaders[l].name, h.name, std::strlen(h.name)) ||
+                    (G.fixes >= 28 && h.ab == Ab::DsVehlTikar && !std::strcmp(kLeaders[l].key, "khraskhero"))) {  // (fixes 28: "Vehl-Tikar")
                     add(h.ab, std::string("Soul Cage: ") + kLeaders[l].name,
                         "Resolve that hero's ability as your own. Your hero and everything bound to it are purged.");
                     break;
@@ -1710,6 +2211,28 @@ bool Rules::ds5Action(int p, Ab ab) {
         case Ab::DsCordo: {
             const int user = fac(p, "freesystems") ? (canUseAgent(p, "freesystems") ? p : -1) : agentUser(p, "freesystems");
             if (user < 0) return false;
+            if (G.fixes >= 28) {  // (the Free Systems review) The Nucleus through Cordo Haved
+                std::vector<Option> where;
+                for (size_t s = 0; s < G.systems.size(); ++s)
+                    if (G.systems[s].space[size_t(p)].count(UnitType::WarSun)) where.push_back({int(s), sysName(int(s)), ""});
+                if (where.empty()) return false;
+                where.push_back({-1, "Cancel", ""});
+                const int s = where.size() == 2 ? where[0].id : fpick(p, Ab::BtMuaat, "The Nucleus (Cordo Haved): Star Forge in which system?", where, "", true);
+                if (s < 0) return false;
+                std::vector<Option> what;
+                if (unitsAvailable(G, p, UnitType::Fighter) > 0) what.push_back({int(UnitType::Fighter), "2 fighters", ""});
+                if (unitsAvailable(G, p, UnitType::Destroyer) > 0) what.push_back({int(UnitType::Destroyer), "1 destroyer", ""});
+                what.push_back({-1, "Cancel", ""});
+                const int t = fpick(p, Ab::BtMuaat, "The Nucleus: place what?", what, "No command token needed.");
+                if (t < 0) return false;
+                cordoSpend(user, p);
+                addUnits(p, UnitType(t), t == int(UnitType::Fighter) ? 2 : 1, s, -1);
+                say(p, pn(p) + " forges " + (t == int(UnitType::Fighter) ? "2 fighters" : "a destroyer") + " in " + sysName(s) + " (The Nucleus, through Cordo Haved).", s);
+                emberColossus(p, s);
+                enforceFleetIn(p, s);
+                removeExcessCapacity(p, s);
+                return true;
+            }
             std::vector<Option> opts = cordoOptions(G, p);
             if (opts.empty()) return false;
             const int c = fpick(p, Ab::DsCordo, "Cordo Haved: which legendary ability?", opts);
@@ -1742,7 +2265,7 @@ bool Rules::ds5Action(int p, Ab ab) {
                 if (e == 2) {
                     const int n = pl.commodities;
                     pl.commodities = 0;
-                    gainTG(p, n);
+                    gainTGNotSupply(p, n); // (fixes 28: not from the supply - no Artuno)
                 } else {
                     gainTG(p, 2);
                 }
@@ -1785,10 +2308,31 @@ bool Rules::ds5Action(int p, Ab ab) {
             if (G.fixes >= 2)
                 for (int q = 0; q < G.numPlayers; ++q)
                     if (q != p) silenced_ = decltype(silenced_)(silenced_ | (1 << q));
-            for (size_t i = 0; i < sig.size() && !G.agendaDeck.empty(); ++i) {
-                const int a = G.agendaDeck.back();
-                G.agendaDeck.pop_back();
+            // (fixes 28, the Edyn review - owner 2026-11-15) "Reveal and resolve each agenda in any order": all drawn first, then the
+            // Edyn choose which one goes next
+            std::vector<int> drawn;
+            if (G.fixes >= 28) {
+                for (size_t i = 0; i < sig.size() && !G.agendaDeck.empty(); ++i) {
+                    drawn.push_back(G.agendaDeck.back());
+                    G.agendaDeck.pop_back();
+                }
                 E.revealed();
+            }
+            for (size_t i = 0; i < sig.size() && (G.fixes >= 28 ? !drawn.empty() : !G.agendaDeck.empty()); ++i) {
+                int a = -1;
+                if (G.fixes >= 28) {
+                    if (drawn.size() == 1) a = drawn[0];
+                    else {
+                        std::vector<Option> which;
+                        for (int x : drawn) which.push_back({x, kAgendas[x].name, agendaText(x, false)});
+                        a = fpick(p, Ab::DsMidir, "Midir: which agenda is resolved next?", which);
+                    }
+                    drawn.erase(std::find(drawn.begin(), drawn.end(), a));
+                } else {
+                    a = G.agendaDeck.back();
+                    G.agendaDeck.pop_back();
+                    E.revealed();
+                }
                 std::vector<Option> outs = agendaOutcomes(a);
                 if (outs.empty()) {
                     G.agendaDiscard.push_back(int16_t(a));
@@ -1827,6 +2371,21 @@ bool Rules::ds5Action(int p, Ab ab) {
         }
         case Ab::DsStarsails: {
             if (!heroUnlocked(G, p)) return false;
+            if (G.fixes >= 29) {
+                // (fixes 29, the Nokar review - the Reference: "Place this card near the game board ... At the end of this game round,
+                // purge this card") in play until the round ends - roundEndFactions purges it (the Myko-Mentori's Soul Cage, ...)
+                const int i = leaderIndex(G, p, kHero);
+                pl.leaders[size_t(i)].status = kExhausted;
+                pl.heroRound = int16_t(G.round);
+                Event e;
+                e.kind = EventKind::Leader;
+                e.player = int8_t(p);
+                e.card = int16_t(pl.leaders[size_t(i)].leader);
+                e.label = "hero";
+                e.text = pn(p) + " makes the Irrefutable Offer: every planet of theirs builds ships this round.";
+                E.emit(e);
+                return true;
+            }
             ds5Hero(p, leaderIndex(G, p, kHero), pn(p) + " makes the Irrefutable Offer: every planet of theirs builds ships this round.");
             pl.heroRound = int16_t(G.round);
             return true;
@@ -1864,20 +2423,27 @@ bool Rules::ds5Action(int p, Ab ab) {
             if (opts.empty()) return false;
             const int q = fpick(p, Ab::DsShipmonger, "Shipmonger Zsknck: which player places a ship?", opts);
             spendAgent(p, "axis");
+            agentUsedFor(p, q);
             std::vector<Option> what;
             if (unitsAvailable(G, q, UnitType::Cruiser) > 0) what.push_back({int(UnitType::Cruiser), "1 cruiser", ""});
             if (unitsAvailable(G, q, UnitType::Destroyer) > 0) what.push_back({int(UnitType::Destroyer), "1 destroyer", ""});
             std::vector<Option> where;
             for (size_t s = 0; s < G.systems.size(); ++s)
                 if (hasShips(G, q, int(s))) where.push_back({int(s), sysName(int(s)), ""});
+            // (fixes 28, the Axis review) "that player may place 1 cruiser or 1 destroyer": they may decline
+            if (G.fixes >= 28) what.push_back({-1, "Don't place one", pn(p) + (q == p ? "" : " still gains 2 commodities.")});
             const int t = what.size() == 1 ? what[0].id : fpick(q, Ab::DsShipmonger, "Shipmonger Zsknck: which ship?", what);
-            const int s = fpick(q, Ab::DsShipmonger, "Shipmonger Zsknck: place it where?", where, "", true);
-            addUnits(q, UnitType(t), 1, s, -1);
-            enforceFleetLimit(q);
-            ds5Event(E, p, "Shipmonger Zsknck", pn(q) + " receives a " + unitTypeName(UnitType(t)) + " from the shipmonger.", s);
+            if (t >= 0) {
+                const int s = fpick(q, Ab::DsShipmonger, "Shipmonger Zsknck: place it where?", where, "", true);
+                addUnits(q, UnitType(t), 1, s, -1);
+                enforceFleetLimit(q);
+                ds5Event(E, p, "Shipmonger Zsknck", pn(q) + " receives a " + unitTypeName(UnitType(t)) + " from the shipmonger.", s);
+            } else {
+                ds5Event(E, p, "Shipmonger Zsknck", pn(q) + " turns down the shipmonger's offer.");
+            }
             if (q != p) {
                 { const int cb_ = pl.commodities; pl.commodities = int8_t(std::min(commodityCap(G, pl), pl.commodities + 2)); commodityGained(p, cb_); }
-                dsReplenished(p, false);  // (gained, not replenished)
+                if (G.fixes < 28) dsReplenished(p, false);  // (gained, not replenished; fixes 28: commodityGained does it)
             }
             return true;
         }
@@ -1899,8 +2465,9 @@ bool Rules::ds5Action(int p, Ab ab) {
                 say(p, pn(q) + " receives an " + orderName(i) + ".");
                 Player& ql = G.players[size_t(q)];
                 std::vector<Option> notes;
+                // (fixes 28, the Axis review) "1 promissory note from their hand" - one of the Axis's own too
                 for (int16_t n : ql.notes)
-                    if (noteOwner(n) != p) notes.push_back({n, noteNameOf(G, n), ""});
+                    if (noteOwner(n) != p || G.fixes >= 28) notes.push_back({n, noteNameOf(G, n), ""});
                 if (notes.empty()) continue;
                 const int n = notes.size() == 1 ? notes[0].id : fpick(q, Ab::DsDemiQueen, "Aggressive Marketing: which promissory note do you give " + pn(p) + "?", notes);
                 giveNote(q, p, n);

@@ -10,7 +10,7 @@ import os
 import re
 import sys
 
-CATS = ['offer', 'friendly', 'threat', 'vote', 'accept', 'decline', 'counter', 'betray', 'betrayed']
+CATS = ['offer', 'friendly', 'threat', 'vote', 'accept', 'decline', 'counter', 'betray', 'betrayed', 'yield']
 LAZ_OK = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 !\"'(),-.?")
 
 

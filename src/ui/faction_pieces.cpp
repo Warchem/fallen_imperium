@@ -202,7 +202,7 @@ std::vector<Group> of(const Game& g, int p, int viewer) {
     if (ds && is("mykomentori")) {
         Group gr;
         gr.title = "Omen dice";
-        gr.note = ability(f, "Prescient Memories") + " Divination: spend one instead of rolling a die - the roll takes its result.";
+        gr.note = ability(f, "Prescient Memories") + " Divination: " + ability(f, "Divination");
         for (int k = 0; k < 4; ++k) {
             Piece pc;
             pc.kind = Kind::Die;
@@ -298,6 +298,8 @@ std::vector<Group> of(const Game& g, int p, int viewer) {
         gr.title = "Assimilator tokens";
         gr.note = "Valefar Assimilator X and Y each copy a faction technology another player owns - the token sits on that card and "
                   "the Nekro have its text.";
+        if (breakthroughIs(g, p, "nekro"))
+            gr.note += " Z (their breakthrough) goes on a faction sheet instead: the Nekro flagship gains that faction's flagship abilities.";
         for (char L : {'X', 'Y'}) {
             const int t = L == 'X' ? pl.assimX : pl.assimY;
             const char* key = L == 'X' ? "vax" : "vay";
@@ -327,9 +329,46 @@ std::vector<Group> of(const Game& g, int p, int viewer) {
             pc.detail = "The Nekro flagship has this faction's flagship abilities.";
             gr.pieces.push_back(pc);
         }
+        // (owner 2026-11-15: "the Valefar Z token is not showing") the breakthrough's 3 Z tokens from the moment it is
+        // gained - the ones not placed yet dim, like an X / Y token waiting for a technology
+        if (breakthroughIs(g, p, "nekro"))
+            for (size_t k = pl.nekroZ.size(); k < 3; ++k) {
+                Piece pc;
+                pc.kind = Kind::Assim;
+                pc.letter = 'Z';
+                pc.dim = true;
+                pc.col = theme::dim;
+                pc.label = "free";
+                pc.name = "Valefar Assimilator Z - not placed";
+                pc.detail = "When you would gain another player's technology with a faction ability, you may place it on that player's "
+                            "faction sheet instead: your flagship gains their flagship's abilities.";
+                gr.pieces.push_back(pc);
+            }
         gr.empty = "No technology assimilated yet (Valefar Assimilator X and Y are their faction technologies).";
         out.push_back(gr);
     }
+
+    // ---- (owner 2026-11-15) a Nekro "Z" assimilator token on THIS faction sheet (Valefar Assimilator Z, Thunder's Edge): the
+    // card puts it "on that player's faction sheet"
+    if (!is("nekro"))
+        for (int q = 0; q < g.numPlayers; ++q) {
+            if (q == p) continue;
+            const auto& zs = g.players[size_t(q)].nekroZ;
+            if (std::find(zs.begin(), zs.end(), int8_t(f)) == zs.end()) continue;
+            Group gr;
+            gr.title = "Assimilator token";
+            gr.note = "The Nekro placed a Valefar Assimilator Z token on this faction sheet: their flagship has this faction's flagship abilities too.";
+            Piece pc;
+            pc.kind = Kind::Assim;
+            pc.letter = 'Z';
+            pc.faction = g.players[size_t(q)].faction;
+            pc.col = rgb(200, 60, 70);
+            pc.label = shortOf(g, q);
+            pc.name = std::string("Valefar Assimilator Z (") + playerName(g, q) + ")";
+            pc.detail = playerName(g, q) + "'s flagship has the text abilities of this faction's flagship in addition to its own.";
+            gr.pieces.push_back(pc);
+            out.push_back(gr);
+        }
 
     // ---- the Titans: sleeper tokens (5)
     if (is("titans")) {

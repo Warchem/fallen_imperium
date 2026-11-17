@@ -204,7 +204,7 @@ void Rules::keleresAgendaRevealed(int a) {
     for (int& r : riderGuess_) r = -1;
     const std::vector<Option> outs = agendaOutcomes(a);
     if (outs.empty()) return;
-    const int k = playerOfFaction(G, "keleres");
+    int k = playerOfFaction(G, "keleres");
     if (k < 0) return;
     for (int q : clockwiseFrom(G, G.speaker)) {
         if (q == k || G.players[q].eliminated || !holdsNote(G, q, k, kNoteFaction)) continue;
@@ -223,8 +223,9 @@ void Rules::keleresAgendaRevealed(int a) {
         returnNote(q, makeNote(k, kNoteFaction));
         abilityEvent5(E, q, "Keleres Rider", pn(q) + " plays the Keleres Rider and predicts: " + outcomeName(a, guess) + ".");
     }
-    // Odlynn Myrr (Keleres hero, Xxcha home)
-    if (heroUnlocked(G, k) && tribuniiHero(G, k) == 1 && !G.players[k].eliminated) {
+    // Odlynn Myrr (Keleres hero, Xxcha home) - (fixes 28) or the Myko-Mentori's Soul Cage holding him
+    if (const int cage = cageHolder("keleresheroodlynn"); cage >= 0 && !(heroUnlocked(G, k) && tribuniiHero(G, k) == 1)) k = cage;
+    if (heroUnlocked(G, k) && (tribuniiHero(G, k) == 1 || caged(k, "keleresheroodlynn")) && !G.players[k].eliminated) {
         const int prev = curAgenda_;
         curAgenda_ = a;
         const bool use = fyes(k, Ab::KeleresOdlynn, "Use Odlynn Myrr on " + std::string(kAgendas[a].name) + "?",
@@ -275,7 +276,7 @@ void Rules::keleresAgendaResolved(int outcome) {
 void Rules::kuuasiHero(int att, int def, int sys) {
     for (int k : {att, def}) {
         if (k >= G.numPlayers) continue;  // (Thunder's Edge: neutral units have no abilities)
-        if (!fac(k, "keleres") || !heroUnlocked(G, k) || tribuniiHero(G, k) != 2) continue;
+        if (!((fac(k, "keleres") && tribuniiHero(G, k) == 2) || caged(k, "keleresherokuuasi")) || !heroUnlocked(G, k)) continue;  // (28: Soul Cage)
         bool planet = false;
         for (int16_t x : G.systems[sys].planets)
             if (G.planets[x].owner == k) planet = true;

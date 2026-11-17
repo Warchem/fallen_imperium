@@ -20,6 +20,8 @@ decline: Every branch has examined the offer. ...shhhrrr... It is rot. Refused.
 counter: Your terms are malformed. We have regrown them correctly. Take these instead.
 betray: This agreement no longer feeds us, {them}, so it is cut. Do not be sad. We do not understand sad.
 betrayed: {them}, you broke the pact. We do not feel anger. We feel only the need to grow over you.
+yield: Take it. The Green does not feel fear, {them}. It feels the shape of your blade, and it remembers where to grow next.
+yield: ...shhhrrr... We yield this. A cut branch grows back thicker. You will see.
 
 [letnev]
 name: Barony
@@ -37,6 +39,8 @@ decline: How quaint. You mistake our patience for interest. Declined.
 counter: Your offer is beneath us, but we are feeling generous. Here is what a proper arrangement looks like.
 betray: Did you truly believe a Baron's word could bind him to the likes of you, {them}? How charming.
 betrayed: {them}, you have embarrassed yourself. The Barony keeps very long ledgers, and yours is now closed.
+yield: Take it, then. The Barony keeps very long ledgers, {them}, and this debt is now written in ink.
+yield: How crude, to settle things with threats. Enjoy your prize. Such vulgarity is always repaid with interest.
 
 [saar]
 name: Saar
@@ -54,6 +58,8 @@ decline: Forgive us, but no. The Clan has learned to be careful with promises.
 counter: Not quite like that. Here is a gentler way, one that lets us both keep moving.
 betray: This promise cannot come with us, {them}. The Clan must move on, and we are sorry.
 betrayed: {them}, we trusted you, and you broke it. We will move on, as we always do - but the Clan never forgets a broken road.
+yield: Fine. Take it and let us go. We have been robbed by better than you, {them}, and we remember every one.
+yield: We pay, because we are tired. But the road is long, and it passes your worlds more often than you think.
 
 [muaat]
 name: Muaat
@@ -71,6 +77,8 @@ decline: Refused. Muaat does not take scraps from kindling.
 counter: That offer is too cold. We have heated it to proper terms - take them before they scorch.
 betray: Our pact has burned to ash, {them}. Nothing personal - everything burns eventually.
 betrayed: {them}, you broke faith with the Embers. Run. Every star you hide behind belongs to us.
+yield: Take it. Hold it tight, {them} - things handed over in anger have a way of catching fire later.
+yield: You buy one day of peace. The forge burns hotter for it, and it will still be hot when you come back.
 
 [hacan]
 name: Hacan
@@ -88,6 +96,8 @@ decline: My friend, the Emirates know value. This is not it.
 counter: Close, but not yet fair. Here - the Emirates have balanced the scales for you.
 betray: A merchant must follow profit, {them}, and the profit has moved. Nothing personal - only business.
 betrayed: {them}, you cheated the Emirates. Every market in the galaxy will hear your name, and none will trade with you.
+yield: Bad business, {them}, very bad business. The Emirates pay - and the Emirates never forget a bad trade.
+yield: Fine, fine, take it. But every merchant in the galaxy will hear what your word is worth.
 
 [sol]
 name: Sol
@@ -105,6 +115,8 @@ decline: Respectfully, no. And we'd recommend you don't mistake our patience for
 counter: That can't be signed as written. Our people have prepared a revised draft - we think you'll find it fair.
 betray: Circumstances have changed, {them}, and the Federation must act in its own interests. We trust you understand.
 betrayed: {them}, that was a mistake. The Federation is reviewing its options, and every one of them involves our fleet.
+yield: The Federation will comply - for now. We have noted your tone, {them}, and so have our admirals.
+yield: Accepted under protest. Diplomacy failed today. Remember that it was you who chose this road.
 
 [ghost]
 name: Creuss
@@ -122,6 +134,8 @@ decline: We decline... softly. Do not ask why.
 counter: Not this... but something close. Look again at what we offer. There is less hidden in it than you fear.
 betray: Shadows make poor allies, {them}... and you trusted one. It was always going to end this way.
 betrayed: {them}... we are not so easily pushed. The gates remember your name... and so do we.
+yield: Take it... and listen closely. The gates remember every face, {them}... and so do we.
+yield: Hush... it is yours. Some things given in fear are only ever lent.
 
 [l1z1x]
 name: L1Z1X
@@ -139,6 +153,8 @@ decline: Insufficient. Grovel harder, and bring a better offer.
 counter: Defective proposal. The Lazax have corrected it. Comply with these terms.
 betray: Function complete, {them}. The empire no longer requires this agreement, or you.
 betrayed: {them}, defiance detected. Rebellious subjects are crushed. The Lazax will reclaim you by force.
+yield: Concession logged. The Lazax will reclaim this, {them}, along with everything else you hold.
+yield: Temporary compliance authorized. Your designation has been entered in the subjugation queue.
 
 [mentak]
 name: Mentak
@@ -156,6 +172,8 @@ decline: Pass. You're asking pirates to be honest, and we only do that for frien
 counter: Cute offer. Here's the real one - the Coalition's cut is already built in.
 betray: Did you forget who you were dealing with, {them}? Pirates, friend. What's yours is ours now.
 betrayed: {them}, you crossed the Coalition. By tomorrow every raider in the galaxy will know your shipping lanes.
+yield: Heh. Shaking down pirates, {them}? Bold. Take it - but sleep with one eye open from now on.
+yield: Fine, it's yours. Funny thing about loot: it never stays where you put it.
 
 [naalu]
 name: Naalu
@@ -173,6 +191,8 @@ decline: How tiresome. Refused - try again when you have something worth our tim
 counter: Sssuch a clumsy offer. We have improved it, as usual. Take these terms instead.
 betray: Did you think yourself our equal, {them}? Sssweet thing. We always knew this day would come.
 betrayed: {them}, you dare? We foresaw your treachery, and we foresaw your end. Ssso it begins.
+yield: Take it, little one. We have ssseen how this ends, and the ending is not kind to you.
+yield: Yesss, take it. Enjoy it while it lasts. We do not forget an insult, {them} - we merely wait.
 
 [nekro]
 name: Nekro
@@ -190,6 +210,8 @@ decline: Value | Insufficient
 counter: Parameters | Recalculated
 betray: Agreement | Terminated
 betrayed: Target | Acquired
+yield: Concession | Logged
+yield: Debt | Recorded
 
 [sardakk]
 name: Sardakk
@@ -207,6 +229,8 @@ decline: Hssss... no. N'orr not fools. Bring better.
 counter: Bad deal. N'orr fix. This one better - take, take!
 betray: Deal over, {them}! N'orr hungry for war now. SKREEEE!
 betrayed: {them} lie to N'orr?! KRAAAK! N'orr come. N'orr break everything!
+yield: Take it! N'orr remember this. N'orr come back for it - and for you! SKREEE!
+yield: Bah! Shell bends today. Shell does not break. N'orr will crack yours, {them}.
 
 [jolnar]
 name: Jol-Nar
@@ -224,6 +248,8 @@ decline: Fascinating, in the way a malfunction is fascinating. No.
 counter: Elementary errors detected in your figures. We have corrected them. Please review the revised edition.
 betray: Updated models no longer favour this agreement, {them}. The partnership is concluded. Do take notes.
 betrayed: {them}, you have introduced an unacceptable variable. It will be isolated and removed. Thoroughly.
+yield: We have computed that compliance is presently optimal. We have also computed your eventual comeuppance, {them}.
+yield: Very well. Coercion is a crude methodology - your conduct has been archived for later analysis.
 
 [winnu]
 name: Winnu
@@ -241,6 +267,8 @@ decline: Refused. You speak to us as the Lazax did, and look how they ended.
 counter: Your offer smells of the old empire. Here are terms fit for the true heirs of the Council.
 betray: Thrones demand sacrifices, {them}. Today, that sacrifice is you.
 betrayed: {them}, you treat us as the Lazax did. They are dust now. Remember that.
+yield: Take it. You are no better than the Lazax were, {them} - and the Winnu outlived them too.
+yield: We yield this, not our right. The Winnu will still be seated at the Council long after you are gone.
 
 [xxcha]
 name: Xxcha
@@ -258,6 +286,8 @@ decline: Regrettably, we must refuse - politely, but completely.
 counter: Close, but rushed. We have smoothed the rough edges. These terms, perhaps?
 betray: This grieves us deeply, {them}. But the Kingdom must outlast every friendship, even yours.
 betrayed: {them}, we offered you peace, and you chose otherwise. Our shell is thick, and our guns are many.
+yield: We give this... calmly. We are old, {them}, and old shells carry very long memories.
+yield: Very well. Peace is worth a price. Do not make us pay it twice - even our patience has an end.
 
 [yin]
 name: Yin
@@ -275,6 +305,8 @@ decline: Refused, seeker. Pray on it, and return when you are ready to give more
 counter: Your offer is unworthy of the faith. Here are terms that will purify it.
 betray: Never were you truly one of us, {them}. The Brotherhood casts you out.
 betrayed: {them}, you have turned from the path. We are many, we are one, and we are coming for you.
+yield: We give, as the cause teaches. But the cause also teaches that every threat is answered, {them}... in time.
+yield: Take it. Your soul grows heavier with each such deed. We will be there when it falls.
 
 [yssaril]
 name: Yssaril
@@ -292,3 +324,5 @@ decline: Pass. The Tribes smell a trap, and we do not walk into traps - we set t
 counter: Interesting... but we read the fine print you hid. Here are our terms, nothing hidden. Mostly.
 betray: Thought you knew our game, {them}? You never even saw the board. Goodbye.
 betrayed: {them}, sloppy work. We were watching the whole time, and now we know exactly where to strike.
+yield: Take it. We heard every word you said, {them}... and we know who would pay to hear them too.
+yield: Fine. Enjoy it. Shadows remember who cast them, and they have such long reach.

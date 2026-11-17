@@ -413,6 +413,81 @@ std::vector<float> gameStart() {
     return v;
 }
 
+// ----------------------------------------------------------- 0.59.70: the title screen's reveal
+// a Lazaxian letter appearing: a deep bell with inharmonic partials, a breathy attack and a slow shimmer on top
+std::vector<float> titleGlyph() {
+    Buf b(1.6f);
+    Noise nz(311);
+    OnePole lp, hp;
+    float p[5] = {0, 0, 0, 0, 0}, sh = 0.f;
+    static const float ratio[5] = {1.f, 2.01f, 2.76f, 4.07f, 5.40f};
+    const float base = 146.8f;  // D3
+    for (size_t i = 0; i < b.n(); ++i) {
+        const float t = Buf::t(i);
+        float s = 0.f;
+        for (int k = 0; k < 5; ++k) {
+            p[k] += kTwoPi * base * ratio[k] * (1.f + 0.0015f * std::sin(kTwoPi * (0.7f + 0.3f * float(k)) * t)) / float(R);
+            s += std::sin(p[k]) * fexp(-t / (0.62f - 0.1f * float(k))) / float(1 + k);
+        }
+        const float att = std::min(1.f, t / 0.012f);
+        // a breath of filtered noise at the start
+        const float n = nz.next();
+        const float breath = lp.lp(n - hp.lp(n, 400.f), 2600.f) * env(t, 0.03f, 0.09f) * 0.6f;
+        // a high shimmer that wavers
+        sh += kTwoPi * 1174.7f / float(R);
+        const float shimmer = std::sin(sh) * (0.5f + 0.5f * std::sin(kTwoPi * 6.5f * t)) * env(t, 0.08f, 0.45f) * 0.18f;
+        b.v[i] = s * att * 0.9f + breath + shimmer;
+    }
+    return b.v;
+}
+// a letter turning into English: a falling FM chirp crushed into steps, then a tiny high blip
+std::vector<float> titleDecode() {
+    Buf b(0.34f);
+    float ph = 0.f, mod = 0.f, bl = 0.f;
+    for (size_t i = 0; i < b.n(); ++i) {
+        const float t = Buf::t(i);
+        const float f = glide(2400.f, 520.f, t, 0.16f);
+        mod += kTwoPi * f * 2.5f / float(R);
+        ph += kTwoPi * f * (1.f + 0.6f * std::sin(mod)) / float(R);
+        float s = std::sin(ph);
+        s = std::floor(s * 4.f + 0.5f) / 4.f;  // crushed into a few steps: a digital edge
+        float x = s * env(t, 0.002f, 0.05f) * 0.6f;
+        if (t > 0.07f) {
+            bl += kTwoPi * 1760.f / float(R);
+            x += std::sin(bl) * env(t - 0.07f, 0.002f, 0.05f) * 0.45f;
+        }
+        b.v[i] = x;
+    }
+    return b.v;
+}
+// the name complete: a deep swell into a wide chord (D minor with an added ninth, a fifth below), fading slowly
+std::vector<float> titleReveal() {
+    const int n = int(R * 3.2f);
+    std::vector<float> v(size_t(n), 0.f);
+    Noise nz(313);
+    OnePole lp;
+    float ph[7] = {0, 0, 0, 0, 0, 0, 0}, sub = 0.f;
+    static const float chord[7] = {73.4f, 110.f, 146.8f, 220.f, 293.7f, 349.2f, 659.3f};
+    for (int i = 0; i < n; ++i) {
+        const float t = float(i) / float(R);
+        sub += kTwoPi * 36.7f / float(R);
+        float x = std::sin(sub) * std::min(1.f, t / 0.9f) * fexp(-t * 0.9f) * 0.7f;
+        const float swell = std::min(1.f, t / 1.1f);
+        const float e = swell * swell * fexp(-std::max(0.f, t - 1.1f) * 1.2f);
+        float ch = 0.f;
+        for (int k = 0; k < 7; ++k) {
+            ph[k] += (chord[k] * (1.f + 0.002f * std::sin(kTwoPi * (0.3f + 0.17f * float(k)) * t))) / float(R);
+            if (ph[k] >= 1.f) ph[k] -= 1.f;
+            const float saw = 2.f * ph[k] - 1.f;
+            ch += (saw * 0.3f + std::sin(kTwoPi * ph[k]) * 0.7f) * (k == 6 ? 0.35f : 1.f);
+        }
+        x += lp.lp(ch, 600.f + 2400.f * swell) * e * 0.5f;
+        x += nz.next() * 0.02f * e;  // air
+        v[size_t(i)] = x;
+    }
+    return v;
+}
+
 // ----------------------------------------------------------- 0.44.0: the factions' ground weapons
 float saw01(float ph) { return 2.f * (ph / kTwoPi - std::floor(ph / kTwoPi)) - 1.f; }
 float fadeOut(float t, float dur, float tau) { return t < dur ? 1.f : fexp(-(t - dur) / tau); }
@@ -852,6 +927,21 @@ std::vector<int16_t> synthesise(Sfx s) {
         case Sfx::DroidBlaster: return far(droidBlaster(), 0.3f);
         case Sfx::CrystalLaser: return far(crystalLaser(), 0.34f);
         case Sfx::FirePlasma: return far(firePlasma(), 0.44f);
+        case Sfx::TitleGlyph: {
+            std::vector<float> v = titleGlyph();
+            distance(v, 6000.f, 0.38f);
+            return finish(std::move(v), 0.42f);
+        }
+        case Sfx::TitleDecode: {
+            std::vector<float> v = titleDecode();
+            distance(v, 8000.f, 0.25f);
+            return finish(std::move(v), 0.26f);
+        }
+        case Sfx::TitleReveal: {
+            std::vector<float> v = titleReveal();
+            distance(v, 5000.f, 0.3f);
+            return finish(std::move(v), 0.6f);
+        }
         case Sfx::Count: break;
     }
     return {};

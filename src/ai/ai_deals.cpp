@@ -19,6 +19,16 @@ namespace ti {
 
 namespace {
 
+// (the Axis review, checkpoint 2 - knob secretsale, default 0 = OFF) Industry Secrets comes back at the start of the status
+// phase: the Axis sell it every round for a trade good to a player with a space dock (1: the Shipyards trait - "with Industry
+// Secrets in its customers' hands", 2: every Axis bot). 90 games: sold 6.3 times a game (used 1.5), but 14 wins / 7.01 VP
+// against 14 / 7.30, fresh seeds 13 / 7.26 against 25 / 7.39; the Shipyards trait with it 13 / 6.89 - the buyers gain more
+// than the trade good is worth to us. Left off.
+bool axisSecretSale(const Game& g, int p) {
+    const float fs = aiTune("secretsale", 0.f);
+    return fs > 0.f && (g.modules & kModDiscordant) && isFaction(g, p, "axis") && (fs >= 2.f || fquirkIs(g, p, "axis", 1));
+}
+
 // p's price for a promissory note (its archetype's list; the owner's defaults otherwise).
 float priceOf(const Game& g, int p, int note) {
     const Style& S = aiStyle(g, p);
@@ -116,6 +126,13 @@ float noteValueToReceiver(const Game& g, int p, int note) {
     if (type == kNoteFaction && isFaction(g, owner, "obsidian")) return -3.f;       // Malevolency: a curse
     // (Sardakk review, owner 2026-11-11) Tekklar Legion: +1 to every combat roll of one invasion - a strong card
     if (type == kNoteFaction && isFaction(g, owner, "sardakk") && aiTune("tekklarsell", 1.f) > 0.f) return std::max(price, 2.5f) * pay;
+    // (knob secretsale) Industry Secrets: +4 PRODUCTION and 1 cheaper once - worth a trade good and more to a player with a dock
+    if (type == kNoteFaction && isFaction(g, owner, "axis") && aiTune("secretsale", 0.f) > 0.f && unitsOnBoard(g, p, UnitType::SpaceDock) > 0)
+        return std::max(price, 1.6f) * pay;
+    // (knob tasell) Trade Alliance: the Celdauri commander - a commodity whenever we activate a system with our space dock, and
+    // our dock systems adjacent to each other - while it is unlocked
+    if (type == kNoteFaction && isFaction(g, owner, "celdauri") && aiTune("tasell", 0.f) > 0.f)
+        return (leaderStatus(g, owner, kCommander) == kReady ? std::max(price, 0.8f + 0.5f * float(std::min(3, unitsOnBoard(g, p, UnitType::SpaceDock)))) : 0.2f) * pay;
     switch (type) {
         case kNoteSupportThrone: {
             float v = price + float(std::max(0, g.players[p].vp - (g.vpGoal - 5))) * 0.8f;
@@ -145,6 +162,10 @@ float noteCostToGiver(const Game& g, int p, int q, int note) {
     // (Sardakk review, owner 2026-11-11) Tekklar Legion comes back after one use - lending it costs little (the deal
     // candidate only offers it to players on good terms or bound not to attack)
     if (type == kNoteFaction && isFaction(g, p, "sardakk") && aiTune("tekklarsell", 1.f) > 0.f) return 0.6f;
+    if (type == kNoteFaction && axisSecretSale(g, p)) return 0.4f;  // (knob secretsale) Industry Secrets comes back next status phase
+    // (the Celdauri review, checkpoint 2 - test knob tasell) Trade Alliance comes back when its holder activates a system with
+    // our units, and lends only our commander: cheap to sell (Merchant Princes: "sells its Trade Alliance")
+    if (type == kNoteFaction && isFaction(g, p, "celdauri") && aiTune("tasell", 0.f) > 0.f) return 0.5f;
     // (the Empyrean review, checkpoint 2 - knob bloodpact) Blood Pact comes back when its holder activates a system with
     // our units, and their votes go with ours: handing it out costs nothing (1 trade good clears the offer bar)
     if (type == kNoteFaction2 && isFaction(g, p, "empyrean") && aiTune("bloodpact", 1.f) > 0.f) return 0.f;
@@ -175,6 +196,13 @@ float fragmentValue(const Game& g, int p, int frag, bool receiving) {
     for (int16_t f : g.players[p].fragments)
         if (isRelicFragment(f) && (int(kExploreCards[f].type) == type || kExploreCards[f].type == ExploreType::Frontier)) ++same;
     const float k = aiStyle(g, p).fragment;  // Collector, Scrap Divers
+    // (the Bentor review, checkpoint 2 - knob fragbuy) Ancient Blueprints: a fragment of a kind without its token yet puts one on
+    // the sheet (Mgur +1, Wayfinder +1, Ranc at 3, an Auctioneer mech). 90 games: 17 wins / 7.34 VP against 12 / 6.70, fresh
+    // seeds 14 / 6.93 against 9 / 6.80 (all 4 tokens in 57 / 54 games against 11 / 9). ON since the owner's go (2026-11-14:
+    // "Yea let's turn these on"); fragbuy=0 is the old behaviour
+    if (receiving && aiTune("fragbuy", 1.f) > 0.f && (g.modules & kModDiscordant) && isFaction(g, p, "bentor") &&
+        !(g.players[size_t(p)].dsFrags & (1 << type)))
+        return 3.5f * k;
     if (receiving) return (same == 2 ? 2.f : 1.f) * k;
     return (same == 3 ? 2.f : 1.f) * k;
 }
@@ -187,6 +215,28 @@ float hireWorth(const Game& g, int p, int n) {
         for (int q = 0; q < kSides; ++q)
             if (q != p && !isFaction(g, q, "nokar") && hasUnits(g, q, sys)) fight = true;
     return float(n) * (fight ? 2.6f : 1.1f);
+}
+
+// Encrypted Trade Hub (fixes 28): what holding a law is worth to p, in trade goods (Political Censure and Search Warrant
+// are burdens to whoever holds them)
+float lawWorth(const Game& g, int p, int a) {
+    if (a < 0 || a >= kAgendaCount) return 0.f;
+    auto is = [&](const char* k) { return !std::strcmp(kAgendas[a].key, k); };
+    const float late = g.round >= 6 ? 0.6f : 1.f;
+    if (is("minister_commerce")) {
+        int n = 0;
+        for (int q = 0; q < g.numPlayers; ++q) n += q != p && areNeighbours(g, p, q) ? 1 : 0;
+        return (1.f + 0.8f * float(n)) * late;
+    }
+    if (is("minister_policy") || is("minister_sciences")) return 3.f * late;
+    if (is("minister_exploration")) return 2.5f * late;
+    if (is("minister_industry")) return 2.f * late;
+    if (is("minister_war") || is("arbiter") || is("prophecy")) return 2.f;
+    if (is("minister_peace")) return 2.5f;
+    if (is("committee")) return 1.5f;
+    if (is("censure")) return -2.f;  // no action cards while held
+    if (is("warrant")) return -2.5f;  // secrets played face up
+    return 1.f;
 }
 
 float sideReceived(const Game& g, int p, const DealSide& s) {
@@ -206,6 +256,7 @@ float sideReceived(const Game& g, int p, const DealSide& s) {
     for (int o : s.orders)  // Arms Dealers (the Axis): a ship or two at the end of a turn - nothing to the Axis themselves
         v += isFaction(g, p, "axis") ? 0.3f : (o < 6 ? float(3 - o / 2) + 1.f : 2.5f) * (g.round >= 6 ? 0.7f : 1.f);
     if (s.hire) v += hireWorth(g, p, s.hire);  // Hired Guns (0.43.0)
+    for (int a : s.laws) v += lawWorth(g, p, a);  // Encrypted Trade Hub (fixes 28): an agenda
     return v;
 }
 
@@ -231,6 +282,8 @@ float sideGiven(const Game& g, int p, int q, const DealSide& s) {
     for (int o : s.orders)  // Axis Orders: the Axis can't use them - only the ships they put in someone else's fleet
         v += isFaction(g, p, "axis") ? 0.4f : (o < 6 ? float(3 - o / 2) + 1.f : 2.5f) * 0.8f;
     v += 0.7f * float(s.hire);  // Hired Guns: the Nokar's ships leave the board (they rebuild them)
+    for (int a : s.laws)  // Encrypted Trade Hub (fixes 28): an agenda we hold - giving away Political Censure costs its point
+        v += a >= 0 && a < kAgendaCount && !std::strcmp(kAgendas[a].key, "censure") ? 10.f : std::max(0.3f, lawWorth(g, p, a));
     return v * boostFactor(g, q);
 }
 
@@ -419,6 +472,17 @@ std::vector<Deal> candidates(const Game& g, int p, int q) {
                 out.push_back(d);
             }
         }
+        // (the Axis review, checkpoint 2 - knob secretsale) Industry Secrets for a trade good to a player with a space dock
+        if (axisSecretSale(g, p) && g.phase == Phase::Action && them.tradeGoods >= 1 && unitsOnBoard(g, q, UnitType::SpaceDock) > 0 &&
+            !(aiStyle(g, p).on && aiStyle(g, p).betrayTarget == q)) {
+            const int16_t is = makeNote(p, kNoteFaction);
+            if (std::find(me.notes.begin(), me.notes.end(), is) != me.notes.end()) {
+                Deal d = base();
+                d.give.note = is;
+                d.get.tg = 1;
+                out.push_back(d);
+            }
+        }
         // the Firmament: Black Ops to a neighbour (they gain 2 tokens and 2 trade goods; we plant a plot)
         if (isFaction(g, p, "firmament") && g.phase == Phase::Action && plotCount(me) < kPlotCount && aiTune("firmbo", 1.f) > 0.f) {
             const int16_t bo = makeNote(p, kNoteFaction);
@@ -448,6 +512,17 @@ std::vector<Deal> candidates(const Game& g, int p, int q) {
                 d.give.tg = std::min<int>(me.tradeGoods, 3);
                 out.push_back(d);
             }
+        }
+        // (the Bentor review, checkpoint 2 - knob fragbuy, ON) the Bentor buy a fragment of a kind they have no token for
+        if (aiTune("fragbuy", 1.f) > 0.f && isFaction(g, p, "bentor") && (g.modules & kModDiscordant) && me.tradeGoods >= 1) {
+            for (int16_t fr : them.fragments)
+                if (isRelicFragment(fr) && !(me.dsFrags & (1 << int(kExploreCards[fr].type)))) {
+                    Deal d = base();
+                    d.get.fragments = {int(fr)};
+                    d.give.tg = std::min<int>(me.tradeGoods, 2);
+                    out.push_back(d);
+                    break;
+                }
         }
         // the Axis (Discordant Stars, Arms Dealers): an Axis Order from our play area for its cost in trade goods - or
         // in commodities (one more), so the orders keep moving (owner, D112: the Axis wants them in other fleets)
@@ -603,6 +678,19 @@ std::vector<Deal> candidates(const Game& g, int p, int q) {
                 d.get.tg = std::min<int>(2, them.tradeGoods);
                 out.push_back(d);
             }
+        }
+        // (the Celdauri review, checkpoint 2 - test knob tasell) the Celdauri sell their Trade Alliance once Henry Storcher is
+        // unlocked, to a player on good terms with a trade good or two
+        if (aiTune("tasell", 0.f) > 0.f && isFaction(g, p, "celdauri") && g.phase == Phase::Action && leaderStatus(g, p, kCommander) == kReady &&
+            them.tradeGoods >= 1 && !hostileFlag(g, p, q)) {
+            const int16_t ta = makeNote(p, kNoteFaction);
+            if (std::find(me.notes.begin(), me.notes.end(), ta) != me.notes.end())
+                for (int pay = std::min<int>(2, them.tradeGoods); pay >= 1; --pay) {
+                    Deal d = base();
+                    d.give.note = ta;
+                    d.get.tg = pay;
+                    out.push_back(d);
+                }
         }
         // a loan for a spend objective we are a little short of
         int need = G.keepTg - me.tradeGoods;
@@ -1226,6 +1314,17 @@ float aiPromisePlanValue(const Game& g, int p, int sys, int enemy, bool fight) {
     }
     if (fight && g.urgeAttack[p] == sys) v += kVP * 0.8f;  // they refused our demand
     return v;
+}
+
+// (fixes 28 - owner 2026-11-16) the player p promised its agent to in a deal ("use your agent for me", still open), or -1: the bots
+// that promised one of the agents whose ACTION picks a player use it on them at the next chance (ai_faction / ai_te / ai_ds)
+int aiAgentPromisedTo(const Game& g, int p) {
+    if (g.fixes < 28 || p < 0 || p >= g.numPlayers) return -1;
+    const int q = g.agentFor[size_t(p)];
+    if (q < 0 || q >= g.numPlayers || g.players[size_t(q)].eliminated) return -1;
+    for (const Promise& pr : g.promises)
+        if (pr.state == kPromiseActive && pr.by == p && pr.to == q && pr.kind == PromiseKind::UseAgent) return q;
+    return -1;
 }
 
 bool aiDealAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {

@@ -41,6 +41,8 @@ void Rules::setupExploration() {
     const bool te = (G.modules & kModThundersEdge) != 0;  // Thunder's Edge relics (0.34.0) only with that module
     for (int r = 0; r < kRelicCount; ++r) {
         if (kRelics[r].source == Source::ThundersEdge && !(te && teRelicReady(r))) continue;
+        // (0.60.0, owner: the Codex II relics in games with the Codex or Thunder's Edge - new games only)
+        if (codex2Relic(r) && !(G.fixes >= 30 && codexOn(G))) continue;
         if (us || kRelics[r].source != Source::Uncharted) G.relicDeck.push_back(int16_t(r));
     }
     E.rng().shuffle(G.relicDeck);
@@ -311,7 +313,7 @@ void Rules::resolveExplore(int p, int c, int sys, int planet) {
                 } else {
                     int n = std::min<int>(2, pl.commodities);
                     pl.commodities = int8_t(pl.commodities - n);
-                    gainTG(p, n);
+                    gainTGNotSupply(p, n); // (fixes 28: not from the supply - no Artuno)
                 }
             } else if (exIs(c, "fb") || exIs(c, "lf")) {
                 bool fab = exIs(c, "lf");
@@ -349,7 +351,7 @@ void Rules::resolveExplore(int p, int c, int sys, int planet) {
                 } else {
                     const int conv_ = pl.commodities;
                     pl.commodities = 0;
-                    gainTG(p, conv_);
+                    gainTGNotSupply(p, conv_); // (fixes 28: not from the supply - no Artuno)
                 }
             }
             break;
@@ -367,7 +369,9 @@ void Rules::afterGainControl(int planet, int p, int old) {
     if (old >= 0 && old != p) {
         int shard = findRelic("shard");
         bool home = G.systems[Ps().system].home == old;
-        if (G.players[old].hasRelic(shard) && (kPlanets[Ps().def].legendary || home)) {
+        // ((fixes 30) any legendary planet: Thunder's Edge's Mecatol Rex, a Nano-Forge planet)
+        const bool legendary = G.fixes >= 30 ? isLegendaryPlanet(G, planet) : kPlanets[Ps().def].legendary;
+        if (G.players[old].hasRelic(shard) && (legendary || home)) {
             loseRelic(old, shard, false);
             takeRelic(p, shard);
         }
@@ -525,21 +529,24 @@ bool Rules::relicAction(int p, int r) {
     if (relicIs(r, "codex")) {
         std::vector<Option> opts;
         for (int16_t c : G.actionDiscard) {
-            bool dup = false;
+            int copies = 0;
             for (const Option& o : opts)
-                if (o.id == c) dup = true;
-            if (!dup) opts.push_back({c, kActionCards[c].name, actionCardText(c)});
+                if (o.id % 1000 == c) ++copies;
+            // ((fixes 30, the relic pass) every copy can be taken - 3 Sabotage too: id = card + 1000 x copy)
+            if (copies == 0 || (G.fixes >= 30 && copies < 3)) opts.push_back({c + 1000 * copies, kActionCards[c].name, actionCardText(c)});
         }
         if (!opts.empty()) {
             std::vector<int> picks = pickMany(p, Tag::RelicChoice, "The Codex: take up to 3 action cards from the discard pile", opts, 1,
                                               std::min<int>(3, int(opts.size())));
             loseRelic(p, r, true);
-            for (int c : picks) {
+            for (int id : picks) {
+                const int c = id % 1000;
                 auto it = std::find(G.actionDiscard.begin(), G.actionDiscard.end(), int16_t(c));
                 if (it != G.actionDiscard.end()) G.actionDiscard.erase(it);
                 pl.actionCards.push_back(int16_t(c));
             }
             say(p, pn(p) + " takes " + std::to_string(picks.size()) + " action cards from the discard pile.");
+            if ((G.modules & kModDiscordant) && !picks.empty()) cyberneticMadness(p);  // (fixes 28)
             enforceHandLimit(p);
             done = true;
         }
@@ -549,6 +556,55 @@ bool Rules::relicAction(int p, int r) {
         done = azdelsKey(p);
     } else if (relicIs(r, "throne_of_the_false_emperor")) {
         done = forgottenThrone(p);
+    } else if (relicIs(r, "dynamiscore")) {  // Codex II (0.60.0): trade goods equal to the commodity value, then purged
+        const int n = commodityValue(G, p);
+        gainTG(p, n);
+        say(p, pn(p) + " gains " + std::to_string(n) + " trade goods (Dynamis Core).");
+        loseRelic(p, r, true);
+        done = true;
+    } else if (relicIs(r, "titanprototype")) {  // Codex II: exhaust it; the chosen player may spend 3 resources for a structure
+        std::vector<Option> opts;
+        for (int q = 0; q < G.numPlayers; ++q)
+            if (!G.players[size_t(q)].eliminated) opts.push_back({q, pn(q), q == p ? "You" : ""});
+        const int q = pick(p, Tag::RelicChoice, "JR-XS455-O: choose a player", opts,
+                           "They may spend 3 resources to place a structure on a planet they control; if not, they gain 1 trade good.");
+        G.players[size_t(p)].exhaustedRelics.push_back(int16_t(r));
+        relicUsedEvent(p, r, false);
+        bool spot = false;
+        for (int x : controlledPlanets(G, q))
+            if (!isDMZ(G, x) && !isStation(G, x) && (unitsAvailable(G, q, UnitType::PDS) > 0 || unitsAvailable(G, q, UnitType::SpaceDock) > 0)) spot = true;
+        bool built = false;
+        if (spot && spendable(G, q, false) >= 3) {
+            const int prev2 = curRelic_;
+            curRelic_ = r;
+            const bool yes = yesNo(q, Tag::RelicChoice, "JR-XS455-O: spend 3 resources to place a structure?",
+                                   "On a planet you control. If you don't, you gain 1 trade good.");
+            curRelic_ = prev2;
+            if (yes && pay(q, 3, false, "JR-XS455-O", false)) {
+                placeStructure(q, -1, true, true, false, "JR-XS455-O: place a structure");
+                built = true;
+            }
+        }
+        if (!built) {
+            gainTG(q, 1);
+            say(q, pn(q) + " gains 1 trade good (JR-XS455-O).");
+        }
+        done = true;
+    } else if (relicIs(r, "nanoforge")) {  // Codex II: attached to a non-legendary, non-home planet - +2 / +2, legendary
+        std::vector<Option> opts;
+        for (int x : controlledPlanets(G, p))
+            if (G.planets[size_t(x)].owner == p && !isLegendaryPlanet(G, x) && G.systems[size_t(G.planets[size_t(x)].system)].home < 0 && !isStation(G, x))
+                opts.push_back({x, planetName(x), std::to_string(planetResources(G, x)) + " res / " + std::to_string(planetInfluence(G, x)) + " inf"});
+        if (!opts.empty()) {
+            const int x = pick(p, Tag::RelicChoice, "Nano-Forge: attach it to which planet?", opts,
+                               "Its resources and influence go up by 2 and it becomes a legendary planet.");
+            loseRelic(p, r, false);
+            G.planets[size_t(x)].nanoForge = true;
+            say(p, pn(p) + " attaches the Nano-Forge to " + planetName(x) + ": +2 resources, +2 influence, a legendary planet.",
+                G.planets[size_t(x)].system);
+            relicUsedEvent(p, r, false);
+            done = true;
+        }
     } else if (relicIs(r, "stellarconverter")) {
         std::vector<Option> opts;
         int mec = G.mecatol();
@@ -566,7 +622,7 @@ bool Rules::relicAction(int p, int r) {
             }
             if (!near) continue;
             for (int16_t x : sy.planets)
-                if (!kPlanets[G.planets[x].def].legendary || eventOn(G, kEvWild))
+                if (!(G.fixes >= 30 ? isLegendaryPlanet(G, x) : kPlanets[G.planets[x].def].legendary) || eventOn(G, kEvWild))
                     opts.push_back({x, planetName(x),
                                     G.planets[x].owner >= 0 ? pn(G.planets[x].owner) + "'s planet" : std::string("unclaimed")});
         }
@@ -591,6 +647,9 @@ void Rules::destroyPlanet(int x, int by, const char* how) {
     for (int q = 0; q < G.numPlayers; ++q)
         for (int t = 0; t < kUnitTypes; ++t)
             if (ps.units[q].n[t]) destroyUnits(q, UnitType(t), ps.units[q].n[t], sys, x, by, how);
+    if (G.fixes >= 30)  // ((fixes 30, the relic pass) Thunder's Edge neutral units on it go with it)
+        for (int t = 0; t < kUnitTypes; ++t)
+            if (ps.units[kNeutral].n[t]) destroyUnits(kNeutral, UnitType(t), ps.units[kNeutral].n[t], sys, x, by, how);
     int old = ps.owner;
     ps.owner = -1;
     ps.attachments.clear();
@@ -628,12 +687,31 @@ void Rules::crownOfThalnos(int p, int sys, int planet, RollResult& r) {
     curRelic_ = prev;
     if (picks.empty()) return;
     int lost[kUnitTypes] = {};
+    std::vector<int8_t> rerolled(r.dice.size(), 0);
     for (int i : picks) {
         int v = E.rng().d10();
         bool hit = v + 1 >= r.need[i];
         r.dice[size_t(i)] = int8_t(std::min(10, v + 1));
+        rerolled[size_t(i)] = 1;
         if (hit) ++r.hits;
-        else ++lost[r.unit[size_t(i)]];
+        else if (G.fixes < 30) ++lost[r.unit[size_t(i)]];
+    }
+    if (G.fixes >= 30) {
+        // ((fixes 30, the relic pass) "any units that reroll dice but do not produce at least 1 hit are destroyed": one per unit -
+        // a unit's dice are next to each other in the roll (unitDef dice each); it survives if any of its dice hit)
+        for (size_t i = 0; i < r.dice.size();) {
+            const int type = i < r.unit.size() ? r.unit[i] : -1;
+            const int per = type >= 0 ? std::max(1, int(unitDef(G, p, UnitType(type)).combatDice)) : 1;
+            size_t j = i;
+            bool any = false, hitOne = false;
+            for (int k = 0; k < per && j < r.dice.size() && j < r.unit.size() && r.unit[j] == type; ++k, ++j) {
+                any = any || rerolled[j];
+                hitOne = hitOne || r.dice[j] >= r.need[j];
+            }
+            if (j == i) ++j;
+            if (type >= 0 && any && !hitOne) ++lost[type];
+            i = j;
+        }
     }
     say(p, pn(p) + " rerolls " + std::to_string(picks.size()) + " dice with the Crown of Thalnos.", sys);
     for (int t = 0; t < kUnitTypes; ++t)
@@ -670,8 +748,7 @@ void Rules::mawOfWorlds() {
         if (!holdsRelic(p, "mawofworlds")) continue;
         std::vector<Option> opts;
         for (int t = 0; t < kTechCount; ++t)
-            if (techAvailableToResearch(G, p, t) && (kTechs[t].source == Source::Base || kTechs[t].source == Source::PoK))
-                opts.push_back({t, kTechs[t].name, techSummary(t)});
+            if (gainableTech(p, t)) opts.push_back({t, kTechs[t].name, techSummary(t)});
         if (opts.empty()) continue;
         opts.push_back({-1, "Keep the Maw of Worlds", ""});
         const int prev = curRelic_;
@@ -754,136 +831,151 @@ void Rules::legendaryAbilities(int p) {
     for (int x : controlledPlanets(G, p)) {
         PlanetState& ps = G.planets[x];
         if (ps.abilityExhausted || ps.destroyed || !*legendaryName(ps.def)) continue;
-        const char* k = kPlanets[ps.def].key;
-        auto is = [&](const char* s) { return !std::strcmp(k, s); };
-        std::vector<Option> opts;
-        if (is("hopesend")) {
-            if (unitsAvailable(G, p, UnitType::Mech) > 0) opts.push_back({1, "Place 1 mech on a planet you control", ""});
-            opts.push_back({2, "Draw 1 action card", ""});
-        } else if (is("primor")) {
-            if (unitsAvailable(G, p, UnitType::Infantry) > 0) opts.push_back({1, "Place up to 2 infantry on planets you control", ""});
-        } else if (is("mirage")) {
-            bool ships = false;
-            for (size_t s = 0; s < G.systems.size(); ++s)
-                if (hasShips(G, p, int(s))) ships = true;
-            if (ships) opts.push_back({1, "Place up to 2 fighters with your ships", ""});
-        } else if (is("mallice")) {
-            opts.push_back({1, "Gain 2 trade goods", ""});
-            if (G.players[p].commodities > 0) opts.push_back({2, "Convert all your commodities to trade goods", ""});
-        } else if (is("silence")) {  // Uncharted Space (0.33.0)
-            bool ships = false;
-            for (size_t s = 0; s < G.systems.size() && !ships; ++s) ships = hasShips(G, p, int(s));
-            if (ships && unitsAvailable(G, p, UnitType::Cruiser) > 0) opts.push_back({1, "Place 1 cruiser with your ships", ""});
-        } else if (is("echo")) {
-            if (!echoSystems(p).empty()) opts.push_back({1, "Put a frontier token in a system without planets", ""});
-        } else if (is("prism")) {
-            if (!prismPurgeable(p).empty()) opts.push_back({1, "Swap a technology", ""});
-        } else if (is("domna")) {
-            if (!domnaShips(p).empty()) opts.push_back({1, "Move 1 of your ships to an adjacent system", ""});
-        }
+        std::vector<Option> opts = legendaryChoices(p, x);
         if (opts.empty()) continue;
         opts.push_back({0, "Not now", ""});
         int c = pick(p, Tag::LegendaryAbility, std::string(legendaryName(ps.def)) + " (" + planetName(x) + ")", opts, legendaryText(ps.def));
         if (c == 0) continue;
         ps.abilityExhausted = true;
-        std::vector<Option> mine;
-        for (int y : controlledPlanets(G, p))
-            if (!isDMZ(G, y)) mine.push_back({y, planetName(y), ""});
-        if (is("hopesend")) {
-            if (c == 2) {
-                drawActionCards(p, 1, legendaryName(ps.def));
-            } else if (!mine.empty()) {
-                int y = pick(p, Tag::LegendaryAbility, "Place the mech on which planet?", mine, "", false, true);
-                addUnits(p, UnitType::Mech, 1, G.planets[y].system, y);
-                say(p, pn(p) + " places a mech on " + planetName(y) + " (" + legendaryName(ps.def) + ").", G.planets[y].system);
-            }
-        } else if (is("primor")) {
-            for (int i = 0; i < 2 && !mine.empty(); ++i) {
-                std::vector<Option> o = mine;
-                if (i == 1) o.push_back({-1, "No more", ""});
-                int y = pick(p, Tag::LegendaryAbility, "The Atrament: place an infantry on which planet?", o, "", false, true);
-                if (y < 0) break;
-                addUnits(p, UnitType::Infantry, 1, G.planets[y].system, y);
-                say(p, pn(p) + " places an infantry on " + planetName(y) + " (" + legendaryName(ps.def) + ").", G.planets[y].system);
-            }
-        } else if (is("mirage")) {
-            std::vector<Option> o;
-            for (size_t s = 0; s < G.systems.size(); ++s)
-                if (hasShips(G, p, int(s))) o.push_back({int(s), sysName(int(s)), ""});
-            int s = pick(p, Tag::LegendaryAbility, "Mirage Flight Academy: place up to 2 fighters where?", o, "", true);
-            addUnits(p, UnitType::Fighter, 2, s, -1);
-            removeExcessCapacity(p, s);
-            say(p, pn(p) + " places 2 fighters in " + sysName(s) + " (" + legendaryName(ps.def) + ").", s);
-        } else if (is("silence")) {
-            std::vector<Option> o;
-            for (size_t s = 0; s < G.systems.size(); ++s)
-                if (hasShips(G, p, int(s))) o.push_back({int(s), sysName(int(s)), ""});
-            int s = pick(p, Tag::LegendaryAbility, "Imperial Salvage Yard: place the cruiser where?", o, "", true);
-            addUnits(p, UnitType::Cruiser, 1, s, -1);
-            say(p, pn(p) + " places a cruiser in " + sysName(s) + " (" + legendaryName(ps.def) + ").", s);
-            enforceFleetLimit(p);
-        } else if (is("echo")) {
-            std::vector<Option> o;
-            for (int s : echoSystems(p)) o.push_back({s, sysName(s), ""});
-            int s = pick(p, Tag::LegendaryAbility, "Bi-Phasic Generators: put the frontier token where?", o, "", true);
-            G.systems[size_t(s)].frontier = true;
-            say(p, pn(p) + " puts a frontier token in " + sysName(s) + " (" + legendaryName(ps.def) + ").", s);
-        } else if (is("prism")) {
-            std::vector<Option> o;
-            for (int t : prismPurgeable(p)) o.push_back({t, kTechs[t].name, ""});
-            o.push_back({-1, "Cancel", ""});
-            const int from = pick(p, Tag::LegendaryAbility, "Mystic Library: purge which technology?", o,
-                                  std::string(legendaryText(ps.def)) + " (A technology that isn't a unit upgrade or a faction one becomes another "
-                                                          "with as many prerequisites.)");
-            std::vector<Option> to;
-            if (from >= 0)
-                for (int t : prismTargets(p, from)) to.push_back({t, kTechs[t].name, ""});
-            if (from < 0 || to.empty()) {
-                ps.abilityExhausted = false;  // backed out: nothing spent
-                continue;
-            }
-            const int gain = pick(p, Tag::LegendaryAbility, "Mystic Library: gain which technology?", to, legendaryText(ps.def));
-            Player& pl = G.players[p];
-            pl.techs.erase(std::remove(pl.techs.begin(), pl.techs.end(), int16_t(from)), pl.techs.end());
-            pl.exhaustedTechs.erase(std::remove(pl.exhaustedTechs.begin(), pl.exhaustedTechs.end(), int16_t(from)), pl.exhaustedTechs.end());
-            researchTech(p, gain, false);
-            say(p, pn(p) + " purges " + kTechs[from].name + " and gains " + kTechs[gain].name + " (" + legendaryName(ps.def) + ").");
-            purged(p);
-        } else if (is("domna")) {
-            std::vector<Option> o = domnaShips(p);
-            o.push_back({-1, "Cancel", ""});
-            const int id = pick(p, Tag::LegendaryAbility, "Fractal Gate: move which ship?", o, legendaryText(ps.def));
-            if (id < 0) {
-                ps.abilityExhausted = false;
-                continue;
-            }
-            const int from = id / 16;
-            const UnitType t = UnitType(id % 16);
-            std::vector<Option> to;
-            for (int s : domnaDestinations(p, from)) to.push_back({s, sysName(s), ""});
-            const int dest = pick(p, Tag::LegendaryAbility, "Fractal Gate: to which system?", to, "", true);
-            Force& src = G.systems[size_t(from)].space[p];
-            const bool damaged = src.dmg[int(t)] >= src.n[int(t)];
-            src.remove(t, 1, false);
-            G.systems[size_t(dest)].space[p].add(t, 1);
-            if (damaged) G.systems[size_t(dest)].space[p].dmg[int(t)] = uint8_t(G.systems[size_t(dest)].space[p].dmg[int(t)] + 1);
-            say(p, pn(p) + " moves a " + unitTypeName(t) + " from " + sysName(from) + " to " + sysName(dest) + " (" + legendaryName(ps.def) + ").", dest);
-            removeExcessCapacity(p, from);
-            removeExcessCapacity(p, dest);
-            checkNexus(dest);
-        } else if (is("mallice")) {
-            Player& pl = G.players[p];
-            if (c == 1) {
-                gainTG(p, 2);
-                say(p, pn(p) + " gains 2 trade goods (" + legendaryName(ps.def) + ").");
-            } else {
-                const int conv = pl.commodities;
-                pl.commodities = 0;
-                say(p, pn(p) + " converts " + std::to_string(conv) + " commodities to trade goods (" + legendaryName(ps.def) + ").");
-                gainTG(p, conv);
-            }
+        if (!legendaryResolve(p, x, c)) ps.abilityExhausted = false;  // backed out: nothing spent
+    }
+}
+
+// (the Free Systems review: shared with Cordo Haved) what planet x's end-of-turn legendary ability offers player p
+std::vector<Option> Rules::legendaryChoices(int p, int x) {
+    const PlanetState& ps = G.planets[size_t(x)];
+    const char* k = kPlanets[ps.def].key;
+    auto is = [&](const char* s) { return !std::strcmp(k, s); };
+    std::vector<Option> opts;
+    if (is("hopesend")) {
+        if (unitsAvailable(G, p, UnitType::Mech) > 0) opts.push_back({1, "Place 1 mech on a planet you control", ""});
+        opts.push_back({2, "Draw 1 action card", ""});
+    } else if (is("primor")) {
+        if (unitsAvailable(G, p, UnitType::Infantry) > 0) opts.push_back({1, "Place up to 2 infantry on planets you control", ""});
+    } else if (is("mirage")) {
+        bool ships = false;
+        for (size_t s = 0; s < G.systems.size(); ++s)
+            if (hasShips(G, p, int(s))) ships = true;
+        if (ships) opts.push_back({1, "Place up to 2 fighters with your ships", ""});
+    } else if (is("mallice")) {
+        opts.push_back({1, "Gain 2 trade goods", ""});
+        if (G.players[p].commodities > 0) opts.push_back({2, "Convert all your commodities to trade goods", ""});
+    } else if (is("silence")) {  // Uncharted Space (0.33.0)
+        bool ships = false;
+        for (size_t s = 0; s < G.systems.size() && !ships; ++s) ships = hasShips(G, p, int(s));
+        if (ships && unitsAvailable(G, p, UnitType::Cruiser) > 0) opts.push_back({1, "Place 1 cruiser with your ships", ""});
+    } else if (is("echo")) {
+        if (!echoSystems(p).empty()) opts.push_back({1, "Put a frontier token in a system without planets", ""});
+    } else if (is("prism")) {
+        if (!prismPurgeable(p).empty()) opts.push_back({1, "Swap a technology", ""});
+    } else if (is("domna")) {
+        if (!domnaShips(p).empty()) opts.push_back({1, "Move 1 of your ships to an adjacent system", ""});
+    }
+    return opts;
+}
+
+// ... resolves choice c of planet x's ability for p (the planet card or Cordo Haved exhausted by the caller); false = backed
+// out, nothing spent
+bool Rules::legendaryResolve(int p, int x, int c) {
+    PlanetState& ps = G.planets[size_t(x)];
+    const char* k = kPlanets[ps.def].key;
+    auto is = [&](const char* s) { return !std::strcmp(k, s); };
+    std::vector<Option> mine;
+    for (int y : controlledPlanets(G, p))
+        if (!isDMZ(G, y)) mine.push_back({y, planetName(y), ""});
+    if (is("hopesend")) {
+        if (c == 2) {
+            drawActionCards(p, 1, legendaryName(ps.def));
+        } else if (!mine.empty()) {
+            int y = pick(p, Tag::LegendaryAbility, "Place the mech on which planet?", mine, "", false, true);
+            addUnits(p, UnitType::Mech, 1, G.planets[y].system, y);
+            say(p, pn(p) + " places a mech on " + planetName(y) + " (" + legendaryName(ps.def) + ").", G.planets[y].system);
+        }
+    } else if (is("primor")) {
+        for (int i = 0; i < 2 && !mine.empty(); ++i) {
+            std::vector<Option> o = mine;
+            if (i == 1) o.push_back({-1, "No more", ""});
+            int y = pick(p, Tag::LegendaryAbility, "The Atrament: place an infantry on which planet?", o, "", false, true);
+            if (y < 0) break;
+            addUnits(p, UnitType::Infantry, 1, G.planets[y].system, y);
+            say(p, pn(p) + " places an infantry on " + planetName(y) + " (" + legendaryName(ps.def) + ").", G.planets[y].system);
+        }
+    } else if (is("mirage")) {
+        std::vector<Option> o;
+        for (size_t s = 0; s < G.systems.size(); ++s)
+            if (hasShips(G, p, int(s))) o.push_back({int(s), sysName(int(s)), ""});
+        int s = pick(p, Tag::LegendaryAbility, "Mirage Flight Academy: place up to 2 fighters where?", o, "", true);
+        addUnits(p, UnitType::Fighter, 2, s, -1);
+        removeExcessCapacity(p, s);
+        say(p, pn(p) + " places 2 fighters in " + sysName(s) + " (" + legendaryName(ps.def) + ").", s);
+    } else if (is("silence")) {
+        std::vector<Option> o;
+        for (size_t s = 0; s < G.systems.size(); ++s)
+            if (hasShips(G, p, int(s))) o.push_back({int(s), sysName(int(s)), ""});
+        int s = pick(p, Tag::LegendaryAbility, "Imperial Salvage Yard: place the cruiser where?", o, "", true);
+        addUnits(p, UnitType::Cruiser, 1, s, -1);
+        say(p, pn(p) + " places a cruiser in " + sysName(s) + " (" + legendaryName(ps.def) + ").", s);
+        enforceFleetLimit(p);
+    } else if (is("echo")) {
+        std::vector<Option> o;
+        for (int s : echoSystems(p)) o.push_back({s, sysName(s), ""});
+        int s = pick(p, Tag::LegendaryAbility, "Bi-Phasic Generators: put the frontier token where?", o, "", true);
+        G.systems[size_t(s)].frontier = true;
+        say(p, pn(p) + " puts a frontier token in " + sysName(s) + " (" + legendaryName(ps.def) + ").", s);
+    } else if (is("prism")) {
+        std::vector<Option> o;
+        for (int t : prismPurgeable(p)) o.push_back({t, kTechs[t].name, ""});
+        o.push_back({-1, "Cancel", ""});
+        const int from = pick(p, Tag::LegendaryAbility, "Mystic Library: purge which technology?", o,
+                              std::string(legendaryText(ps.def)) + " (A technology that isn't a unit upgrade or a faction one becomes another "
+                                                      "with as many prerequisites.)");
+        std::vector<Option> to;
+        if (from >= 0)
+            for (int t : prismTargets(p, from)) to.push_back({t, kTechs[t].name, ""});
+        if (from < 0 || to.empty()) {
+            return false;  // backed out: nothing spent
+        }
+        const int gain = pick(p, Tag::LegendaryAbility, "Mystic Library: gain which technology?", to, legendaryText(ps.def));
+        Player& pl = G.players[p];
+        pl.techs.erase(std::remove(pl.techs.begin(), pl.techs.end(), int16_t(from)), pl.techs.end());
+        pl.exhaustedTechs.erase(std::remove(pl.exhaustedTechs.begin(), pl.exhaustedTechs.end(), int16_t(from)), pl.exhaustedTechs.end());
+        researchTech(p, gain, false);
+        say(p, pn(p) + " purges " + kTechs[from].name + " and gains " + kTechs[gain].name + " (" + legendaryName(ps.def) + ").");
+        purged(p);
+    } else if (is("domna")) {
+        std::vector<Option> o = domnaShips(p);
+        o.push_back({-1, "Cancel", ""});
+        const int id = pick(p, Tag::LegendaryAbility, "Fractal Gate: move which ship?", o, legendaryText(ps.def));
+        if (id < 0) {
+            return false;  // backed out: nothing spent
+        }
+        const int from = id / 16;
+        const UnitType t = UnitType(id % 16);
+        std::vector<Option> to;
+        for (int s : domnaDestinations(p, from)) to.push_back({s, sysName(s), ""});
+        const int dest = pick(p, Tag::LegendaryAbility, "Fractal Gate: to which system?", to, "", true);
+        Force& src = G.systems[size_t(from)].space[p];
+        const bool damaged = src.dmg[int(t)] >= src.n[int(t)];
+        src.remove(t, 1, false);
+        G.systems[size_t(dest)].space[p].add(t, 1);
+        if (damaged) G.systems[size_t(dest)].space[p].dmg[int(t)] = uint8_t(G.systems[size_t(dest)].space[p].dmg[int(t)] + 1);
+        say(p, pn(p) + " moves a " + unitTypeName(t) + " from " + sysName(from) + " to " + sysName(dest) + " (" + legendaryName(ps.def) + ").", dest);
+        removeExcessCapacity(p, from);
+        removeExcessCapacity(p, dest);
+        checkNexus(dest);
+    } else if (is("mallice")) {
+        Player& pl = G.players[p];
+        if (c == 1) {
+            gainTG(p, 2);
+            say(p, pn(p) + " gains 2 trade goods (" + legendaryName(ps.def) + ").");
+        } else {
+            const int conv = pl.commodities;
+            pl.commodities = 0;
+            say(p, pn(p) + " converts " + std::to_string(conv) + " commodities to trade goods (" + legendaryName(ps.def) + ").");
+            gainTGNotSupply(p, conv); // (fixes 28: not from the supply - no Artuno)
         }
     }
+    return true;
 }
 
 // ---- Uncharted Space legendary planets (0.33.0)
@@ -966,6 +1058,28 @@ void Rules::tarrockPredict(int agenda) {
             say(p, pn(p) + " predicts \"" + name + "\" (Council Black Site).");
             tarrockPicks_.push_back({p, o});
         }
+    }
+    // (fixes 28, the Free Systems review) Cordo Haved: a Tarrock any player controls
+    if (G.fixes < 28 || !(G.modules & kModDiscordant)) return;
+    for (int p : windowOrder()) {
+        int tx = -1;
+        for (size_t x = 0; x < G.planets.size() && tx < 0; ++x)
+            if (!std::strcmp(kPlanets[G.planets[x].def].key, "tarrock") && cordoLegendary(int(x), p)) tx = int(x);
+        if (tx < 0) continue;
+        std::vector<Option> outs = agendaOutcomes(agenda);
+        if (outs.empty()) continue;
+        const int user = cordoUser(p, "they predict this agenda's outcome (Council Black Site)");
+        if (user < 0) continue;
+        if (user == p && !yesNo(p, Tag::LegendaryAbility, "Council Black Site (Tarrock, through Cordo Haved): predict the outcome of this agenda?",
+                                legendaryText(G.planets[size_t(tx)].def)))
+            continue;
+        const int o = pick(p, Tag::LegendaryAbility, "Council Black Site: which outcome do you predict?", outs, legendaryText(G.planets[size_t(tx)].def));
+        cordoSpend(user, p);
+        std::string name;
+        for (const Option& op : outs)
+            if (op.id == o) name = op.label;
+        say(p, pn(p) + " predicts \"" + name + "\" (Council Black Site, through Cordo Haved).");
+        tarrockPicks_.push_back({p, o});
     }
 }
 void Rules::tarrockCheck(int outcome) {

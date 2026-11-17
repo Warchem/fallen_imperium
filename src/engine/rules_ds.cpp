@@ -163,7 +163,12 @@ void Rules::dsInvade(int p, int planet) {
     if (unitsAvailable(G, p, UnitType::Infantry) <= 0) return;
     const int sys = G.planets[size_t(planet)].system;
     addUnits(p, UnitType::Infantry, 1, sys, planet);
+    const int16_t was = G.dsInvading;  // (the simulator's invariant: two players on the planet until the invasion is resolved)
+    G.dsInvading = int16_t(planet);
+    // (fixes 28, the Kyro review) Contagion: "resolve invasion on that planet" - with its space cannon defense (LRR 49.3)
+    if (G.fixes >= 28 && !owns(p, "l4") && !scarAt(G, sys)) cannonDefense(p, sys, planet, false);
     dsResolvePlanet(p, planet);
+    G.dsInvading = was;
 }
 
 // p's ground forces were put on a planet: ground combats against everyone else's there, then control.
@@ -201,12 +206,15 @@ void Rules::dsSpaceCombatStart(int att, int def, int sys) {
     dsProjection_ = 0;
     for (int& b : dsBlockRetreat_) b = -1;
     G.dsGale = -1;
+    G.dsGaleOwner = -1;
+    for (int8_t& x : G.dsGaleShips) x = 0;
     for (int side : {att, def}) {
         dsShipsAtStart_[side] = G.systems[size_t(sys)].space[size_t(side)].nonFighterShips();
         if (side >= G.numPlayers) continue;
         if (flagshipAbility(G, side, "khrask") && flagshipIn(G, side, sys)) {  // Splintering Gale: 2 ships sustain damage
             G.dsGale = int8_t(sys);
-            dsEvent(E, side, "Splintering Gale", "Two of " + pn(side) + "'s ships can sustain damage in this combat.", sys);
+            if (G.fixes >= 28) dsGaleChoose(side, sys);  // (the card: chosen at the start)
+            else dsEvent(E, side, "Splintering Gale", "Two of " + pn(side) + "'s ships can sustain damage in this combat.", sys);
         }
         const int other = side == att ? def : att;
         // Lost Cause (Vaylerian flagship): one neighbouring system the opponent can't retreat to
@@ -248,6 +256,15 @@ void Rules::dsSpaceCombatStart(int att, int def, int sys) {
 }
 
 // Extra anti-fighter barrage dice at 6 for this side (round 1): Projection of Power, Trade Port docks on planets here.
+// (fixes 28, the Cheiran review - owner 2026-11-15) Lithodax: "When this unit makes a combat or ability roll, it rolls 1
+// additional die if this system is adjacent to or contains 1 of your structures" - its ANTI-FIGHTER BARRAGE too
+int Rules::lithodaxAfbDice(int side, int sys) const {
+    if (G.fixes < 28 || !(G.modules & kModDiscordant) || side < 0 || side >= G.numPlayers || !flagshipAbility(G, side, "cheiran") ||
+        !flagshipIn(G, side, sys) || !structureNear(G, side, sys))
+        return 0;
+    return 1;
+}
+
 int Rules::dsAfbDice(int side, int sys) const {
     if (side < 0 || side >= G.numPlayers || !fac(side, "celdauri")) return 0;
     int n = ((dsProjection_ >> side) & 1) ? 1 : 0;
@@ -296,7 +313,15 @@ void Rules::dsCombatRoundStart(int att, int def, int sys, int planet, bool space
                                       factionNoteText(G.players[size_t(v)].faction, kNoteFaction))) {
                 const int to = opts.size() == 1 ? opts[0].id : fpick(p, Ab::DsClansFavor, "Clan's Favor: move your ships to which system?", opts, "", true);
                 Player& vp = G.players[size_t(v)];
-                if (!vp.actionCards.empty()) {
+                if (!vp.actionCards.empty() && G.fixes >= 29) {
+                    // (fixes 29, the Vaylerian review) "The Vaylerian player discards 1 action card" - of their choice
+                    std::vector<Option> cards;
+                    for (int16_t k : vp.actionCards) cards.push_back({k, kActionCards[k].name, ""});
+                    const int card = cards.size() == 1 ? cards[0].id
+                                                       : fpick(v, Ab::DsClansFavor, "Clan's Favor (" + pn(p) + "): which action card do you discard?", cards);
+                    discardActionCard(v, card, false);
+                    say(v, pn(v) + " discards an action card (Clan's Favor).", sys);
+                } else if (!vp.actionCards.empty()) {
                     const int card = vp.actionCards[size_t(E.rng().below(int(vp.actionCards.size())))];
                     discardActionCard(v, card, false);
                     say(v, pn(v) + " discards an action card (Clan's Favor).", sys);
@@ -392,13 +417,21 @@ void Rules::dsShipsLost(int victim, int opp, int sys, const Force& before) {
 int Rules::dsCancelHits(int victim, int opp, int sys, int planet, int hits) {
     (void)opp;
     if (hits <= 0 || victim >= G.numPlayers) return hits;
-    if (combatRound_ == 1 && commanderUsable(G, victim, "kortali") && !((dsOncePerCombat_ >> (victim + 8)) & 1) &&
-        fyes(victim, Ab::DsLorena, "Queen Lorena: cancel 1 of the " + std::to_string(hits) + " hits against you?", "In the first round of a combat.")) {
-        dsOncePerCombat_ = dsOncePerCombat_ | (1u << (victim + 8));
-        dsEvent(E, victim, "Queen Lorena", pn(victim) + " cancels 1 hit (Queen Lorena).", sys);
-        --hits;
-    }
-    if (planet >= 0 && hits > 0 && victim != G.activePlayer && commanderUsable(G, victim, "cheiran")) {
+    hits = dsLorena(victim, sys, hits, false);
+    if (planet >= 0 && hits > 0 && victim != G.activePlayer && commanderUsable(G, victim, "cheiran") && G.fixes >= 28) {
+        // (fixes 28, the Cheiran review - owner 2026-11-15) "After another player produces 1 or more hits against your units
+        // during ground combat, you may spend 1 commodity or 1 trade good to cancel 1 of those hits" - 1 for each roll
+        Player& pl = G.players[size_t(victim)];
+        if (pl.commodities + pl.tradeGoods > 0 &&
+            fyes(victim, Ab::DsPhquaiset,
+                 "Spc. Phquaiset: spend 1 " + std::string(pl.commodities > 0 ? "commodity" : "trade good") + " to cancel 1 of the " + std::to_string(hits) + " hits?",
+                 leaderText(findLeader("cheirancommander")))) {
+            if (pl.commodities > 0) pl.commodities = int8_t(pl.commodities - 1);
+            else pl.tradeGoods = int8_t(pl.tradeGoods - 1);
+            dsEvent(E, victim, "Spc. Phquaiset", pn(victim) + " cancels 1 hit.", sys);
+            --hits;
+        }
+    } else if (planet >= 0 && hits > 0 && victim != G.activePlayer && commanderUsable(G, victim, "cheiran")) {
         Player& pl = G.players[size_t(victim)];
         const int can = std::min(hits, pl.commodities + pl.tradeGoods);
         if (can > 0) {
@@ -416,6 +449,22 @@ int Rules::dsCancelHits(int victim, int opp, int sys, int planet, int hits) {
     return ds5CancelHits(victim, opp, sys, planet, hits);  // Amanita Muscaria, Jack Hallard (batch 5)
 }
 
+// Queen Lorena (Kortali commander): "During the first round of a combat, you may cancel 1 hit produced against your units" - (fixes
+// 28, the Kortali review) the anti-fighter barrage is step 1 of the first round of a space combat (LRR 78.3): its hits too
+int Rules::dsLorena(int victim, int sys, int hits, bool barrage) {
+    if (hits <= 0 || victim < 0 || victim >= G.numPlayers || combatRound_ != 1 || !commanderUsable(G, victim, "kortali") || ((dsOncePerCombat_ >> (victim + 8)) & 1))
+        return hits;
+    curValue_ = barrage ? 1 : 0;  // (for the AI: a barrage hit costs a fighter - the combat roll's hits may cost more)
+    const bool use = fyes(victim, Ab::DsLorena,
+                          "Queen Lorena: cancel 1 of the " + std::to_string(hits) + (barrage ? " anti-fighter barrage" : "") + " hit" + (hits == 1 ? "" : "s") + " against you?",
+                          G.fixes >= 28 ? leaderText(findLeader("kortalicommander")) : "In the first round of a combat.");
+    curValue_ = 0;
+    if (!use) return hits;
+    dsOncePerCombat_ = dsOncePerCombat_ | (1u << (victim + 8));
+    dsEvent(E, victim, "Queen Lorena", pn(victim) + " cancels 1 hit (Queen Lorena).", sys);
+    return hits - 1;
+}
+
 void Rules::dsGroundCombatStart(int att, int def, int planet) {
     ds3GroundCombatStart(att, def, planet);  // batch 3: Repairitor, Merkismathr Asvand
     ds5GroundCombatStart(att, def, planet);  // batch 5: Covert Strike Teams
@@ -425,7 +474,18 @@ void Rules::dsGroundCombatStart(int att, int def, int planet) {
         fyes(att, Ab::DsRuthless, "Ruthless: produce 1 hit against " + pn(def) + "'s ground forces on " + planetName(planet) + "?",
              "The planet is exhausted.")) {
         dsEvent(E, att, "Ruthless", pn(att) + " strikes first on the exhausted " + planetName(planet) + ".", G.planets[size_t(planet)].system);
-        assignHits(def, G.planets[size_t(planet)].system, planet, 1, kGroundMaskD, "Ruthless", att);
+        // (fixes 28, the Kortali review) "produce 1 hit and assign it to 1 of your opponent's ground forces" - the Kortali choose which kind
+        // (as Deliverance Engine); a mech chosen may still use Sustain Damage
+        int mask = kGroundMaskD;
+        if (G.fixes >= 28) {
+            const Force& on = G.planets[size_t(planet)].units[size_t(def)];
+            std::vector<Option> kinds;
+            for (UnitType t : {UnitType::Infantry, UnitType::Mech})
+                if (on.count(t)) kinds.push_back({int(t), unitTypeName(t), std::to_string(on.count(t)) + " there" + (on.damaged(t) ? " (" + std::to_string(on.damaged(t)) + " damaged)" : "")});
+            if (kinds.size() > 1) mask = 1 << fpick(att, Ab::DsRuthless, "Ruthless: the hit goes to which of " + pn(def) + "'s ground forces?", kinds);
+            else if (kinds.size() == 1) mask = 1 << kinds[0].id;
+        }
+        assignHits(def, G.planets[size_t(planet)].system, planet, 1, mask, "Ruthless", att);
     }
 }
 
@@ -434,18 +494,44 @@ void Rules::dsGroundCombatOver(int att, int def, int planet, int winner) {
     // Tox (Kyro agent): a player who lost or drew a ground combat refills commodities; the Kyro get infantry
     for (int q : {att, def}) {
         if (q >= G.numPlayers || q == winner) continue;
-        const int user = agentUser(q, "kyro");
-        if (user < 0) continue;
         const int k = playerOfFaction(G, "kyro");
         if (k < 0) continue;
-        agentFor(user, q);
-        const bool use = fyes(user, Ab::DsTox, user == q ? "Exhaust Tox: refill your commodities and place infantry?"
-                                                         : "Exhaust Tox for " + pn(q) + ": they refill commodities, you place infantry?",
-                              leaderText(findLeader("kyroagent")));
-        curFor_ = -1;
-        if (!use) continue;
+        int user = -1;
+        bool use = false;
+        if (G.fixes >= 28) {
+            // (fixes 28, the Kyro review) "After a player loses or draws a ground combat" - any player's: a person holding the agent is
+            // asked (toxQuiet_: "don't ask again this round"), a bot for itself or the player it promised the agent to
+            for (int o : initiativeOrder(G)) {
+                if (!canUseAgent(o, "kyro")) continue;
+                const bool own = o == q;
+                const bool promised = G.agentFor[size_t(o)] == q;
+                const bool human = G.players[size_t(o)].human;
+                if (!own && !promised && !(human && toxQuiet_[o] != G.round)) continue;
+                std::vector<Option> opts = {{1, "Yes", ""}, {0, "No", ""}};
+                if (!own && human && !promised) opts.push_back({99, "No, and don't ask again this round", "You'll be asked again next round."});
+                agentFor(o, q);
+                const int c = fpick(o, Ab::DsTox, own ? "Exhaust Tox: refill your commodities and place infantry?"
+                                                      : "Exhaust Tox for " + pn(q) + ": they refill commodities, you place infantry?",
+                                    opts, leaderText(findLeader("kyroagent")));
+                curFor_ = -1;
+                if (c == 99) toxQuiet_[o] = int16_t(G.round);
+                if (c == 1) {
+                    user = o;
+                    use = true;
+                    break;
+                }
+            }
+        } else if ((user = agentUser(q, "kyro")) >= 0) {
+            agentFor(user, q);
+            use = fyes(user, Ab::DsTox, user == q ? "Exhaust Tox: refill your commodities and place infantry?"
+                                                  : "Exhaust Tox for " + pn(q) + ": they refill commodities, you place infantry?",
+                       leaderText(findLeader("kyroagent")));
+            curFor_ = -1;
+        }
+        if (user < 0 || !use) continue;
         spendAgent(user, "kyro");
-        agentDone(user, q);
+        if (G.fixes >= 28) agentUsedFor(user, q);
+        else agentDone(user, q);
         Player& pl = G.players[size_t(q)];
         const int before = pl.commodities;
         pl.commodities = int8_t(refreshTo(G, pl));
@@ -489,24 +575,67 @@ void Rules::dsWonCombat(int winner, int loser, int sys, bool space) {
         }
     }
     // Tempest Drive (Kortali): take your command token back from the system
-    if (techReady(winner, "dskortg") && G.systems[size_t(sys)].hasToken(winner) &&
-        fyes(winner, Ab::DsTempest, "Exhaust Tempest Drive to take your command token back from " + sysName(sys) + "?", "")) {
+    // (fixes 28, the Kortali review) "remove 1 command token from that system" - anyone's: with another player's token there, a choice
+    std::vector<Option> others;
+    if (G.fixes >= 28 && techReady(winner, "dskortg"))
+        for (int q = 0; q < G.numPlayers; ++q)
+            if (q != winner && G.systems[size_t(sys)].hasToken(q)) others.push_back({q, pn(q) + "'s command token", "Back to their reinforcements."});
+    if (!others.empty()) {
+        if (G.systems[size_t(sys)].hasToken(winner)) others.insert(others.begin(), {winner, "Your command token", "Back to your reinforcements."});
+        others.push_back({-1, "Don't", "Keep Tempest Drive ready."});
+        const int q = fpick(winner, Ab::DsTempest, "Exhaust Tempest Drive to remove 1 command token from " + sysName(sys) + "?", others,
+                            techSummary(findTech("dskortg")));
+        if (q >= 0) {
+            exhaustTech(winner, "dskortg");
+            G.systems[size_t(sys)].tokens &= uint16_t(~(1u << q));
+            dsEvent(E, winner, "Tempest Drive", pn(winner) + " removes " + (q == winner ? std::string("its") : pn(q) + "'s") + " command token from " + sysName(sys) + ".", sys);
+        }
+    } else if (techReady(winner, "dskortg") && G.systems[size_t(sys)].hasToken(winner) &&
+               fyes(winner, Ab::DsTempest, "Exhaust Tempest Drive to take your command token back from " + sysName(sys) + "?", "")) {
         exhaustTech(winner, "dskortg");
         G.systems[size_t(sys)].tokens &= uint16_t(~(1u << winner));
         dsEvent(E, winner, "Tempest Drive", pn(winner) + " takes its command token back from " + sysName(sys) + ".", sys);
     }
     // Queen Lucreia (Kortali agent): a ground combat's winner takes a relic fragment from the loser
     if (!space && loser >= 0 && loser < G.numPlayers && fragmentCount(G, loser) > 0) {
-        const int user = agentUser(winner, "kortali");
-        if (user >= 0) {
+        int user = -1;
+        bool use = false;
+        if (G.fixes >= 28) {
+            // (fixes 28, the Kortali review) "When a player wins a ground combat: You may exhaust this card to allow that player..." - any
+            // player's ground combat: a person holding the agent is asked (lucreiaQuiet_: "don't ask again this round"), a bot when it
+            // promised the agent to that player
+            for (int o : initiativeOrder(G)) {
+                if (!canUseAgent(o, "kortali")) continue;
+                const bool own = o == winner;
+                const bool promised = G.agentFor[size_t(o)] == winner;
+                const bool human = G.players[size_t(o)].human;
+                if (!own && !promised && !(human && lucreiaQuiet_[o] != G.round)) continue;
+                std::vector<Option> opts = {{1, "Yes", ""}, {0, "No", ""}};
+                if (!own && human && !promised) opts.push_back({99, "No, and don't ask again this round", "You'll be asked again next round."});
+                agentFor(o, winner);
+                const int c = fpick(o, Ab::DsLucreia, own ? "Exhaust Queen Lucreia: take 1 of " + pn(loser) + "'s relic fragments?"
+                                                          : "Exhaust Queen Lucreia for " + pn(winner) + ": they take a relic fragment from " + pn(loser) + "?",
+                                    opts, leaderText(findLeader("kortaliagent")));
+                curFor_ = -1;
+                if (c == 99) lucreiaQuiet_[o] = int16_t(G.round);
+                if (c == 1) {
+                    user = o;
+                    use = true;
+                    break;
+                }
+            }
+        } else if ((user = agentUser(winner, "kortali")) >= 0) {
             agentFor(user, winner);
-            const bool use = fyes(user, Ab::DsLucreia, user == winner ? "Exhaust Queen Lucreia: take 1 of " + pn(loser) + "'s relic fragments?"
-                                                                      : "Exhaust Queen Lucreia for " + pn(winner) + ": they take a fragment from " + pn(loser) + "?",
-                                  leaderText(findLeader("kortaliagent")));
+            use = fyes(user, Ab::DsLucreia, user == winner ? "Exhaust Queen Lucreia: take 1 of " + pn(loser) + "'s relic fragments?"
+                                                           : "Exhaust Queen Lucreia for " + pn(winner) + ": they take a fragment from " + pn(loser) + "?",
+                       leaderText(findLeader("kortaliagent")));
             curFor_ = -1;
+        }
+        if (user >= 0) {
             if (use) {
                 spendAgent(user, "kortali");
-                agentDone(user, winner);
+                if (G.fixes >= 28) agentUsedFor(user, winner);
+                else agentDone(user, winner);
                 Player& lp = G.players[size_t(loser)];
                 std::vector<size_t> frag;
                 for (size_t i = 0; i < lp.fragments.size(); ++i)
@@ -517,12 +646,13 @@ void Rules::dsWonCombat(int winner, int loser, int sys, bool space) {
                     pl.fragments.push_back(lp.fragments[i]);
                     lp.fragments.erase(lp.fragments.begin() + long(i));
                     dsEvent(E, user, "Queen Lucreia", pn(winner) + " takes a relic fragment from " + pn(loser) + ".", sys);
+                    fragmentGained(winner);  // (fixes 28)
                 }
             }
         }
     }
     // Queen Nadalia (Kortali hero): a relic from the loser, then command tokens
-    if (fac(winner, "kortali") && heroUnlocked(G, winner)) {
+    if ((fac(winner, "kortali") || caged(winner, "kortalihero")) && heroUnlocked(G, winner)) {  // (fixes 28: the Soul Cage too)
         int n = 0;
         for (int x : controlledPlanets(G, winner))
             if (isLegendaryPlanet(G, x) || planetSkips(G, x)) ++n;
@@ -555,10 +685,14 @@ void Rules::dsWonCombat(int winner, int loser, int sys, bool space) {
         drawActionCards(winner, 1, "Scavenger Exos");
     }
     // War Stories (Lanefir): explore one of their planets, or the frontier here (once per action)
-    if (fac(winner, "lanefir") && !(pl.dsOnce && !space)) {
+    // (fixes 28, the Kyro review's neighbour - the Lanefir review) "Once per action": not again after it was used this action (a space and a
+    // ground combat won); "the frontier exploration deck in the active system" - with or without its frontier token
+    const bool ws28 = G.fixes >= 28;
+    if (fac(winner, "lanefir") && (ws28 ? !(dsOncePerAction_ & 64) : !(pl.dsOnce && !space))) {
         std::vector<Option> opts;
         if (G.systems[size_t(sys)].planets.empty()) {
-            if (G.systems[size_t(sys)].frontier) opts.push_back({-2 - sys, "The frontier token in " + sysName(sys), ""});
+            if (G.systems[size_t(sys)].frontier || ws28)
+                opts.push_back({-2 - sys, (G.systems[size_t(sys)].frontier ? "The frontier token in " : "The frontier deck in ") + sysName(sys), ""});
         } else {
             for (int x : controlledPlanets(G, winner))
                 if (dsExplorable(G, x)) opts.push_back({x, planetName(x), ""});
@@ -566,12 +700,14 @@ void Rules::dsWonCombat(int winner, int loser, int sys, bool space) {
         if (!opts.empty()) {
             opts.push_back({-1, "Not now", ""});
             const int x = fpick(winner, Ab::DsWarStories, "War Stories: explore what?", opts, "", false, true);
+            if (ws28 && x != -1) dsOncePerAction_ = uint8_t(dsOncePerAction_ | 64);
             if (x >= 0) {
                 dsEvent(E, winner, "War Stories", pn(winner) + " tells of the battle: it explores " + planetName(x) + ".", sys);
                 explorePlanet(winner, x);
             } else if (x <= -2) {
                 dsEvent(E, winner, "War Stories", pn(winner) + " explores the frontier in " + sysName(sys) + ".", sys);
-                exploreFrontier(winner, sys);
+                if (ws28) exploreFrontierDeck(winner, sys);
+                else exploreFrontier(winner, sys);
             }
         }
     }
@@ -695,6 +831,34 @@ void Rules::dsControl(int planet, int p, int old) {
         }
     }
     // Yvin Korduul (Vaylerian agent): the new owner draws an action card
+    // (fixes 29, the Vaylerian review - the Reference: "After a player gains control of a planet, you may exhaust this card to allow that
+    // player to draw 1 action card") any player gaining a planet; whoever can use the agent is asked in initiative order (a person may say
+    // "not again this round"; a promised agent kept for its beneficiary)
+    if (G.fixes >= 29) {
+        if (playerOfFaction(G, "vaylerian") < 0) return;
+        for (int o : initiativeOrder(G)) {
+            if (!canUseAgent(o, "vaylerian")) continue;
+            const bool human = G.players[size_t(o)].human;
+            if (human && yvinQuiet_[size_t(o)] == G.round) continue;
+            std::vector<Option> opts{{1, "Yes", ""}, {0, "No", ""}};
+            if (human) opts.push_back({99999, "No, and don't ask again this round", "You'll be asked again next round."});
+            const int b = G.agentFor[size_t(o)];
+            const bool forB = b >= 0 && b != o && b < G.numPlayers && b == p;
+            curFor_ = forB ? b : -1;
+            curValue_ = 1000 + p;  // (for the AI: who gained the planet)
+            const int c = fpick(o, Ab::DsYvin, o == p ? "Exhaust Yvin Korduul: draw 1 action card?" : "Exhaust Yvin Korduul so " + pn(p) + " draws 1 action card?",
+                                opts, leaderText(findLeader("vaylerianagent")));
+            curFor_ = -1;
+            curValue_ = 0;
+            if (c == 99999) yvinQuiet_[size_t(o)] = int16_t(G.round);
+            if (c != 1) continue;
+            spendAgent(o, "vaylerian");
+            if (forB) agentUsedFor(o, b);
+            drawActionCards(p, 1, "Yvin Korduul");
+            return;
+        }
+        return;
+    }
     const int user = agentUser(p, "vaylerian");
     if (user >= 0) {
         agentFor(user, p);
@@ -749,14 +913,16 @@ void Rules::dsActivated(int p, int sys) {
         }
     }
     // Spear of Vaylar (Vaylerian hero)
-    if (fac(p, "vaylerian") && heroUnlocked(G, p)) {
+    if ((fac(p, "vaylerian") || caged(p, "vaylerianhero")) && heroUnlocked(G, p)) {  // (fixes 28: the Soul Cage too)
         bool foes = false;
         for (int q = 0; q < G.numPlayers; ++q)
             if (q != p && hasUnits(G, q, sys)) foes = true;
         curValue_ = foes ? 1 : 0;
         std::vector<Option> opts;
+        // (fixes 29, the Vaylerian review) "Remove 1 of your command tokens from the board" - any of them, the active system's too
         for (size_t s = 0; s < G.systems.size(); ++s)
-            if (int(s) != sys && G.systems[s].hasToken(p)) opts.push_back({int(s), sysName(int(s)), ""});
+            if ((int(s) != sys || G.fixes >= 29) && G.systems[s].hasToken(p))
+                opts.push_back({int(s), sysName(int(s)), int(s) == sys ? "The active system (just placed)." : ""});
         const bool use = fyes(p, Ab::DsDyln, "Purge Dyln Harthuul: +1 move and +1 to your ships' combat rolls this tactical action, and a command token back?",
                               leaderText(findLeader("vaylerianhero")));
         curValue_ = 0;
@@ -775,7 +941,9 @@ void Rules::dsActivated(int p, int sys) {
         if (G.players[size_t(q)].eliminated) continue;
         Player& ql = G.players[size_t(q)];
         // Brood Pod (Cheiran): another player activates a system with their structure - produce 1 ship there
-        if (q != p && techReady(q, "dscheir") && structureIn(G, q, sys) && !otherShipsIn(G, q, sys)) {
+        // (fixes 28, the Cheiran review - owner 2026-11-15: the card has no "no other ships" limit, and LRR 14.1 stops
+        // blockaded UNITS from producing ships, not an ability's production)
+        if (q != p && techReady(q, "dscheir") && structureIn(G, q, sys) && (G.fixes >= 28 || !otherShipsIn(G, q, sys))) {
             curValue_ = p;
             const bool use = fyes(q, Ab::DsBroodPod, "Exhaust Brood Pod: produce 1 ship in " + sysName(sys) + " (" + pn(p) + " activated it)?", "");
             curValue_ = 0;
@@ -807,7 +975,10 @@ void Rules::dsActivated(int p, int sys) {
                         discount += 3;
                     }
                 }
+                const bool nb = G.fx.noBlockade;
+                if (G.fixes >= 28) G.fx.noBlockade = true;
                 dsProduceOne(q, sys, discount, "Brood Pod");
+                G.fx.noBlockade = nb;
             }
         }
         // Minuteman (Celdauri mech): 1 trade good or commodity for a mech on a planet with their dock here
@@ -829,24 +1000,35 @@ void Rules::dsActivated(int p, int sys) {
             }
         }
         // Titus Flavius (Celdauri hero): a space dock, commodities to trade goods, and Production here
-        if (fac(q, "celdauri") && heroUnlocked(G, q) && sys != G.mecatol()) {
+        if ((fac(q, "celdauri") || caged(q, "celdaurihero")) && heroUnlocked(G, q) && sys != G.mecatol()) {  // (fixes 28: the Soul Cage too)
             std::vector<Option> opts;
+            bool planet = false;  // (a planet they control here)
             for (int16_t x : G.systems[size_t(sys)].planets)
-                if (G.planets[size_t(x)].owner == q && !G.planets[size_t(x)].units[size_t(q)].count(UnitType::SpaceDock) && !isDMZ(G, x))
-                    opts.push_back({x, planetName(x), ""});
-            if (!opts.empty() && unitsAvailable(G, q, UnitType::SpaceDock) > 0) {
+                if (G.planets[size_t(x)].owner == q && !isDMZ(G, x)) {
+                    planet = true;
+                    if (!G.planets[size_t(x)].units[size_t(q)].count(UnitType::SpaceDock)) opts.push_back({x, planetName(x), ""});
+                }
+            const bool dockOk = unitsAvailable(G, q, UnitType::SpaceDock) > 0;
+            if (!dockOk) opts.clear();
+            // (fixes 28, the Celdauri review - owner 2026-11-15: the card's effects are joined by "and", so with no space dock to
+            // place (their planet here already has one, or none is left) the rest still happens - LRR 1.9; AsyncTI4's
+            // purgeCeldauriHero the same: the hero needs a planet they control here, the dock is a choice there)
+            if (G.fixes >= 28 && planet && opts.empty())
+                opts.push_back({-2, "Use him (no space dock to place)", "Your commodities become trade goods and your units here use Production."});
+            if (!opts.empty() && (dockOk || G.fixes >= 28)) {
                 opts.push_back({-1, "Not now", ""});
                 curValue_ = p;
                 const int x = fpick(q, Ab::DsTitus, "Purge Titus Flavius: a space dock on which planet (then trade goods and Production here)?", opts,
                                     leaderText(findLeader("celdaurihero")), false, true);
                 curValue_ = 0;
-                if (x >= 0) {
+                if (x >= 0 || x == -2) {
                     purgeHero(q);
-                    addUnits(q, UnitType::SpaceDock, 1, sys, x);
+                    if (x >= 0) addUnits(q, UnitType::SpaceDock, 1, sys, x);
                     const int c = ql.commodities;
                     ql.commodities = 0;
-                    if (c > 0) gainTG(q, c);
-                    dsHeroEvent(E, G, q, pn(q) + " founds a trade port on " + planetName(x) + " and converts " + std::to_string(c) + " commodities.");
+                    if (c > 0) gainTGNotSupply(q, c); // (fixes 28: not from the supply - no Artuno)
+                    dsHeroEvent(E, G, q, x >= 0 ? pn(q) + " founds a trade port on " + planetName(x) + " and converts " + std::to_string(c) + " commodities."
+                                                : pn(q) + " converts " + std::to_string(c) + " commodities and uses Production here.");
                     production(q, sys, productionCapacity(G, q, sys), false);
                 }
             }
@@ -854,7 +1036,7 @@ void Rules::dsActivated(int p, int sys) {
     }
     ds2Activated(p, sys);  // batch 2: Sanctification Field, Omniscience Field, Recycled Materials, Ky'vir
     // Fillipo Rois (Tnelis commander): a hit on one of their non-fighter ships for 1 more move on one ship
-    if (commanderUsable(G, p, "tnelis") && fac(p, "tnelis")) {
+    if (commanderUsable(G, p, "tnelis") && (fac(p, "tnelis") || G.fixes >= 29)) {  // (fixes 29, the Tnelis review: an Alliance holder too)
         std::vector<Option> opts;  // id = system * 16 + type
         for (size_t s = 0; s < G.systems.size(); ++s)
             for (int t : kShipIdx)
@@ -903,20 +1085,26 @@ void Rules::dsEndTactical(int p, int sys) {
     ds7EndTactical(p, sys);  // the Ghoti home, Gauss Cannons blockaded
     Player& pl = G.players[size_t(p)];
     // Memory of Dusk (Lanefir flagship): explore one of their planets here
-    if (flagshipAbility(G, p, "lanefir") && flagshipIn(G, p, sys)) {
+    // (fixes 28, the Lanefir review) "At the end of a tactical action in this system" - anyone's tactical action there
+    for (int q = 0; q < G.numPlayers; ++q) {
+        if ((q != p && G.fixes < 28) || !flagshipAbility(G, q, "lanefir") || !flagshipIn(G, q, sys)) continue;
         std::vector<Option> opts;
         for (int16_t x : G.systems[size_t(sys)].planets)
-            if (G.planets[size_t(x)].owner == p && dsExplorable(G, x)) opts.push_back({x, planetName(x), ""});
+            if (G.planets[size_t(x)].owner == q && dsExplorable(G, x)) opts.push_back({x, planetName(x), ""});
         if (!opts.empty()) {
             opts.push_back({-1, "Not now", ""});
-            const int x = fpick(p, Ab::DsMemoryDusk, "Memory of Dusk: explore a planet here?", opts, "", false, true);
+            const int x = fpick(q, Ab::DsMemoryDusk, "Memory of Dusk: explore a planet here?", opts, "", false, true);
             if (x >= 0) {
-                dsEvent(E, p, "Memory of Dusk", pn(p) + "'s flagship explores " + planetName(x) + ".", sys);
-                explorePlanet(p, x);
+                dsEvent(E, q, "Memory of Dusk", pn(q) + "'s flagship explores " + planetName(x) + ".", sys);
+                explorePlanet(q, x);
             }
         }
     }
     // George Nobin (Celdauri agent): 2 trade goods or commodities for a space dock here
+    if (G.fixes >= 28) {
+        nobin28(p, sys);
+        return;
+    }
     const int user = agentUser(p, "celdauri");
     if (user >= 0 && unitsAvailable(G, p, UnitType::SpaceDock) > 0 && pl.tradeGoods + pl.commodities >= 2) {
         std::vector<Option> opts;
@@ -941,6 +1129,56 @@ void Rules::dsEndTactical(int p, int sys) {
             }
         }
     }
+}
+
+// George Nobin (Celdauri agent), fixes 28 (the Celdauri review - owner 2026-11-15): "At the end of a player's tactical
+// action: You may exhaust this card to allow that player to spend 2 trade goods or 2 commodities to place 1 space dock from
+// their reinforcements on a planet they control in the active system" - 2 of one kind (AsyncTI4 CeldauriAgent: commodities
+// >= 2 or trade goods >= 2, commodities first); any player's tactical action: the Celdauri decide (a person is asked -
+// nobinQuiet_ -, a bot when it promised the agent, as Garv and Gunn), then "that player" picks the planet (or none)
+void Rules::nobin28(int p, int sys) {
+    Player& pl = G.players[size_t(p)];
+    if (unitsAvailable(G, p, UnitType::SpaceDock) <= 0 || (pl.commodities < 2 && pl.tradeGoods < 2)) return;
+    std::vector<Option> opts;
+    for (int16_t x : G.systems[size_t(sys)].planets)
+        if (G.planets[size_t(x)].owner == p && !G.planets[size_t(x)].units[size_t(p)].count(UnitType::SpaceDock) && !isDMZ(G, x))
+            opts.push_back({x, planetName(x), std::to_string(planetResources(G, x)) + " res / " + std::to_string(planetInfluence(G, x)) + " inf"});
+    if (opts.empty()) return;
+    const std::string text = leaderText(findLeader("celdauriagent"));
+    const std::string cost = pl.commodities >= 2 ? "2 commodities" : "2 trade goods";
+    int user = canUseAgent(p, "celdauri") ? p : -1;
+    if (user < 0)
+        for (int o : initiativeOrder(G)) {
+            if (o == p || !canUseAgent(o, "celdauri")) continue;
+            const bool promised = G.agentFor[o] == p;
+            const bool human = G.players[size_t(o)].human;
+            if (!promised && !(human && nobinQuiet_[o] != G.round)) continue;
+            agentFor(o, p);
+            std::vector<Option> yn = {{1, "Yes", ""}, {0, "No", ""}};
+            if (human && !promised) yn.push_back({3, "No, and don't ask again this round", "You'll be asked again next round."});
+            const int c = fpick(o, Ab::DsNobin, "Exhaust George Nobin: " + pn(p) + " may pay " + cost + " to place a space dock here?", yn, text);
+            curFor_ = -1;
+            if (c == 3) nobinQuiet_[o] = int16_t(G.round);
+            if (c != 1) continue;
+            user = o;
+            break;
+        }
+    if (user < 0) return;
+    if (user != p) {  // (exhausted to allow it: that player then decides)
+        spendAgent(user, "celdauri");
+        agentDone(user, p);
+    }
+    opts.push_back({-1, user == p ? "No" : "Don't place one", ""});
+    const int x = fpick(p, Ab::DsNobin,
+                        user == p ? "Exhaust George Nobin: pay " + cost + " to place a space dock here?"
+                                  : "George Nobin (" + pn(user) + "): pay " + cost + " to place a space dock on which planet?",
+                        opts, text, false, true);
+    if (x < 0) return;
+    if (user == p) spendAgent(p, "celdauri");
+    if (pl.commodities >= 2) pl.commodities = int8_t(pl.commodities - 2);
+    else pl.tradeGoods = int8_t(pl.tradeGoods - 2);
+    addUnits(p, UnitType::SpaceDock, 1, sys, x);
+    dsEvent(E, user, "George Nobin", pn(p) + " opens a space dock on " + planetName(x) + ".", sys);
 }
 
 void Rules::dsTurnStart(int p) {
@@ -1021,6 +1259,10 @@ void Rules::dsTurnEnd(int p) {
         }
     }
     // Operator Kkavras (Cheiran agent): move one of their command tokens to a neighbouring system with their structure
+    if (G.fixes >= 28) {
+        kkavras28(p);
+        return;
+    }
     const int user = agentUser(p, "cheiran");
     if (user >= 0) {
         std::vector<Option> opts;  // id = from * 1000 + to
@@ -1045,6 +1287,106 @@ void Rules::dsTurnEnd(int p) {
     }
 }
 
+// Thakt Clqua (Cheiran hero), fixes 28 (the Cheiran review - owner 2026-11-15): "Gather units from your reinforcements up to
+// equal to your starting units. Place these units, in any combination, in the space area of any systems that contain 1 of
+// your structures and no other players' ships, or on planets you control" - one place for each unit (AsyncTI4
+// cheiranHeroResolution): ships to such systems, ground forces to such a space area or a planet they control, the space
+// dock (structures) to a planet they control
+bool Rules::thakt28(int p) {
+    Player& pl = G.players[size_t(p)];
+    std::vector<Option> space, planets;
+    for (size_t s = 0; s < G.systems.size(); ++s)
+        if (structureIn(G, p, int(s)) && !otherShipsIn(G, p, int(s))) space.push_back({int(s), sysName(int(s)), ""});
+    for (int x : controlledPlanets(G, p))
+        if (!isDMZ(G, x)) planets.push_back({10000 + x, planetName(x), sysName(G.planets[size_t(x)].system)});
+    if (space.empty() && planets.empty()) return false;
+    purgeHero(p);
+    Force made;
+    std::vector<int> touched;
+    int places = 0;
+    std::vector<int> used;
+    for (const StartUnit& u : kFactions[pl.faction].fleet)
+        for (int i = 0; i < u.count; ++i) {
+            if (unitsAvailable(G, p, u.type) <= 0) break;
+            std::vector<Option> opts;
+            if (isShip(u.type)) opts = space;
+            else if (isGroundForce(u.type)) {
+                opts = space;
+                opts.insert(opts.end(), planets.begin(), planets.end());
+            } else
+                for (const Option& o : planets) {
+                    const PlanetState& ps = G.planets[size_t(o.id - 10000)];
+                    if (u.type == UnitType::SpaceDock && ps.units[size_t(p)].count(UnitType::SpaceDock)) continue;
+                    if (u.type == UnitType::PDS && ps.units[size_t(p)].count(UnitType::PDS) >= 2) continue;
+                    opts.push_back(o);
+                }
+            if (opts.empty()) continue;
+            const int id = opts.size() == 1 ? opts[0].id
+                                            : fpick(p, Ab::DsThakt, "Thakt Clqua: place 1 " + std::string(unitTypeName(u.type)) + " where?", opts, "", false, true);
+            if (id < 0) continue;
+            const int s = id >= 10000 ? G.planets[size_t(id - 10000)].system : id;
+            addUnits(p, u.type, 1, s, id >= 10000 ? id - 10000 : -1);
+            made.add(u.type, 1);
+            if (id < 10000) touched.push_back(s);
+            if (std::find(used.begin(), used.end(), id) == used.end()) {
+                used.push_back(id);
+                ++places;
+            }
+        }
+    std::sort(touched.begin(), touched.end());
+    touched.erase(std::unique(touched.begin(), touched.end()), touched.end());
+    for (int s : touched) removeExcessCapacity(p, s);
+    dsHeroEvent(E, G, p, pn(p) + " calls the Biomass Event: " + unitWords(made) + " gather (" + std::to_string(places) + (places == 1 ? " place)." : " places)."));
+    return true;
+}
+
+// Operator Kkavras (Cheiran agent), fixes 28 (the Cheiran review - owner 2026-11-15): "At the END of a player's turn: Exhaust
+// this card to allow that player to remove 1 of their command tokens from the game board and place that token in an
+// adjacent system that contains 1 or more of their structures and none of their command tokens" - any player's turn: the
+// Cheiran decide (a person is asked - kkavrasQuiet_ -, a bot when it promised the agent, as Garv and Gunn), then "that
+// player" picks the token and where it goes (AsyncTI4 CheiranAgent: the target removes and places it)
+void Rules::kkavras28(int p) {
+    if (p < 0 || p >= G.numPlayers || G.players[size_t(p)].eliminated) return;
+    std::vector<Option> opts;  // id = from * 1000 + to
+    for (size_t s = 0; s < G.systems.size(); ++s) {
+        if (!G.systems[s].hasToken(p)) continue;
+        for (int16_t a : G.systems[s].adj)
+            if (!G.systems[size_t(a)].hasToken(p) && structureIn(G, p, a)) opts.push_back({int(s) * 1000 + a, sysName(int(s)) + " -> " + sysName(a), ""});
+    }
+    if (opts.empty()) return;
+    const std::string text = leaderText(findLeader("cheiranagent"));
+    int user = canUseAgent(p, "cheiran") ? p : -1;
+    if (user < 0)
+        for (int o : initiativeOrder(G)) {
+            if (o == p || !canUseAgent(o, "cheiran")) continue;
+            const bool promised = G.agentFor[o] == p;
+            const bool human = G.players[size_t(o)].human;
+            if (!promised && !(human && kkavrasQuiet_[o] != G.round)) continue;
+            agentFor(o, p);
+            std::vector<Option> yn = {{1, "Yes", ""}, {0, "No", ""}};
+            if (human && !promised) yn.push_back({3, "No, and don't ask again this round", "You'll be asked again next round."});
+            const int c = fpick(o, Ab::DsKkavras, "Exhaust Operator Kkavras: " + pn(p) + " may move 1 of their command tokens?", yn, text);
+            curFor_ = -1;
+            if (c == 3) kkavrasQuiet_[o] = int16_t(G.round);
+            if (c != 1) continue;
+            user = o;
+            break;
+        }
+    if (user < 0) return;
+    if (user != p) {  // (exhausted to allow it: that player then decides)
+        spendAgent(user, "cheiran");
+        agentDone(user, p);
+    }
+    opts.push_back({-1, user == p ? "No" : "Don't move one", ""});
+    const int c = fpick(p, Ab::DsKkavras, user == p ? "Exhaust Operator Kkavras: move a command token?" : "Operator Kkavras (" + pn(user) + "): move which command token?",
+                        opts, text);
+    if (c < 0) return;
+    if (user == p) spendAgent(p, "cheiran");
+    G.systems[size_t(c / 1000)].tokens &= uint16_t(~(1u << p));
+    G.systems[size_t(c % 1000)].tokens = uint16_t(G.systems[size_t(c % 1000)].tokens | (1u << p));
+    dsEvent(E, user, "Operator Kkavras", pn(p) + " moves a command token from " + sysName(c / 1000) + " to " + sysName(c % 1000) + ".");
+}
+
 // ================================================================== exploration, relics
 void Rules::dsExplored(int p, int planet) {
     if (p < 0 || p >= G.numPlayers) return;
@@ -1060,17 +1402,46 @@ void Rules::dsExplored(int p, int planet) {
 }
 
 int Rules::dsRedraw(int p, int type, int c) {
-    const int user = agentUser(p, "lanefir");
-    if (user < 0 || c < 0) return c;
-    agentFor(user, p);
-    curValue_ = c;
-    const bool use = fyes(user, Ab::DsVassa, std::string("Exhaust Vassa Hagi: discard ") + kExploreCards[c].name + " and draw another?",
-                          leaderText(findLeader("lanefiragent")));
-    curValue_ = 0;
-    curFor_ = -1;
-    if (!use) return c;
+    if (c < 0) return c;
+    int user = -1;
+    bool use = false;
+    if (G.fixes >= 28) {
+        // (fixes 28, the Lanefir review) "When a player explores" - any player's exploration: a person holding the agent is asked
+        // (vassaQuiet_: "don't ask again this round"), a bot for itself or the player it promised the agent to
+        for (int o : initiativeOrder(G)) {
+            if (!canUseAgent(o, "lanefir")) continue;
+            const bool own = o == p;
+            const bool promised = G.agentFor[size_t(o)] == p;
+            const bool human = G.players[size_t(o)].human;
+            if (!own && !promised && !(human && vassaQuiet_[o] != G.round)) continue;
+            std::vector<Option> opts = {{1, "Yes", ""}, {0, "No", ""}};
+            if (!own && human && !promised) opts.push_back({99, "No, and don't ask again this round", "You'll be asked again next round."});
+            agentFor(o, p);
+            curValue_ = c;
+            const int k = fpick(o, Ab::DsVassa, std::string(own ? "Exhaust Vassa Hagi: discard " : "Exhaust Vassa Hagi for " + pn(p) + ": they discard ") +
+                                                    kExploreCards[c].name + " and draw another?",
+                                opts, leaderText(findLeader("lanefiragent")));
+            curValue_ = 0;
+            curFor_ = -1;
+            if (k == 99) vassaQuiet_[o] = int16_t(G.round);
+            if (k == 1) {
+                user = o;
+                use = true;
+                break;
+            }
+        }
+    } else if ((user = agentUser(p, "lanefir")) >= 0) {
+        agentFor(user, p);
+        curValue_ = c;
+        use = fyes(user, Ab::DsVassa, std::string("Exhaust Vassa Hagi: discard ") + kExploreCards[c].name + " and draw another?",
+                   leaderText(findLeader("lanefiragent")));
+        curValue_ = 0;
+        curFor_ = -1;
+    }
+    if (user < 0 || !use) return c;
     spendAgent(user, "lanefir");
-    agentDone(user, p);
+    if (G.fixes >= 28) agentUsedFor(user, p);
+    else agentDone(user, p);
     G.exploreDiscard[size_t(type)].push_back(int16_t(c));
     const int n = drawExplore(type);
     say(p, pn(p) + " discards " + kExploreCards[c].name + " and draws again (Vassa Hagi).");
@@ -1122,16 +1493,20 @@ void Rules::dsAfterPolitics(int p) {
     std::vector<Option> opts;
     for (size_t x = 0; x < G.planets.size(); ++x) {
         const PlanetState& ps = G.planets[x];
-        if (ps.system < 0 || !zone[size_t(ps.system)] || ps.destroyed || isDMZ(G, int(x)) || ps.owner == p) continue;
+        // (fixes 28, the Kyro review) "a planet that is in or adjacent to a system that contains a planet you control" - their own
+        // planets and other players' home planets too
+        if (ps.system < 0 || !zone[size_t(ps.system)] || ps.destroyed || isDMZ(G, int(x)) || (ps.owner == p && G.fixes < 28)) continue;
         if (int(x) >= 0 && G.systems[size_t(ps.system)].isHyperlane()) continue;
-        if (ps.system == G.players[size_t(ps.owner >= 0 ? ps.owner : p)].homeSystem && ps.owner >= 0) continue;
+        if (G.fixes < 28 && ps.system == G.players[size_t(ps.owner >= 0 ? ps.owner : p)].homeSystem && ps.owner >= 0) continue;
+        if (G.fixes >= 28 && isStation(G, int(x))) continue;  // (Thunder's Edge: no ground forces committed to a space station)
         int foes = neutralGroundOn(G, int(x));
         for (int q = 0; q < G.numPlayers; ++q)
             if (q != p) foes += groundForcesOn(G, q, int(x));
-        opts.push_back({int(x), planetName(int(x)), foes ? std::to_string(foes) + " ground forces to fight" : "No defenders"});
+        opts.push_back({int(x), planetName(int(x)), ps.owner == p ? "Your planet: 1 more infantry" : foes ? std::to_string(foes) + " ground forces to fight" : "No defenders"});
     }
     if (opts.empty()) return;
-    opts.push_back({-1, "Hold back", ""});
+    // (fixes 28, the Kyro review - owner 2026-11-16 15:03 "follow the cards") "commit 1 infantry" - no "may": no holding back
+    if (G.fixes < 28) opts.push_back({-1, "Hold back", ""});
     const int x = fpick(p, Ab::DsContagion, "Contagion: commit 1 infantry to which planet?", opts, "It invades at once.", false, true);
     if (x < 0) return;
     dsEvent(E, p, "Contagion", pn(p) + " seeds " + planetName(x) + " with 1 infantry.", G.planets[size_t(x)].system);
@@ -1215,6 +1590,8 @@ void Rules::dsStrategyStart() {
 // Kyro Rider (the Kyro's note): no vote, a prediction - 3 infantry if right.
 void Rules::dsAgendaRevealed(int a) {
     for (int& r : dsRiderGuess_) r = -1;
+    if (G.fixes >= 29)  // (the Olradin review) the policies' "once per action": once more for each agenda
+        for (Player& q : G.players) q.dsPolOnce = 0;
     ds3AgendaRevealed();  // Quaxdol Junitas (batch 3)
     ds5AgendaRevealed(a);  // Radiance, Edyn Rider, Encrypted Trade Hub (batch 5)
     // Conspirators (Rhodun): once per agenda phase, vote after the speaker
@@ -1255,7 +1632,8 @@ void Rules::dsAfterVoting(std::vector<int>& voted, std::vector<int>& counts) {
     ds3AfterVoting(voted, counts);  // Lachis (batch 3)
     ds4AfterVoting(voted, counts);  // Illusory Presence (batch 4)
     for (int p = 0; p < G.numPlayers; ++p) {
-        if (size_t(p) >= voted.size() || voted[size_t(p)] == kNoVote || !commanderUsable(G, p, "kyro") || !fac(p, "kyro")) continue;
+        // (fixes 28, the Kyro review) the commander through their Alliance too ("remove up to 4 of your infantry")
+        if (size_t(p) >= voted.size() || voted[size_t(p)] == kNoVote || !commanderUsable(G, p, "kyro") || (!fac(p, "kyro") && G.fixes < 28)) continue;
         const int inf = std::min(4, unitsOnBoard(G, p, UnitType::Infantry));
         if (inf <= 0) continue;
         std::vector<Option> opts;
@@ -1398,6 +1776,7 @@ bool Rules::dsAction(int p, Ab ab) {
         }
         case Ab::DsThakt: {
             if (!heroUnlocked(G, p)) return false;
+            if (G.fixes >= 28) return thakt28(p);
             std::vector<Option> opts;
             for (size_t s = 0; s < G.systems.size(); ++s)
                 if (structureIn(G, p, int(s)) && !otherShipsIn(G, p, int(s))) opts.push_back({int(s), sysName(int(s)), ""});
@@ -1444,6 +1823,47 @@ bool Rules::dsAction(int p, Ab ab) {
             for (int r : revealed) names += (names.empty() ? "" : ", ") + std::string(kRelics[r].name);
             dsHeroEvent(E, G, p, pn(p) + " reveals " + names + " (Resonance Cascade).");
             if (inPlay > 0) gainTokens(p, std::min(inPlay, reinforcementTokens(p)), false, "Resonance Cascade: a command token per relic in play.");
+            if (G.fixes >= 28) {
+                // (fixes 28, the Lanefir review) "For each relic that started this action in a player's play area ... you may swap that relic
+                // for 1 of the revealed relics or a relic in a player's play area" - one question per such relic
+                std::vector<std::pair<int, int>> start;  // (holder, relic)
+                for (int q = 0; q < G.numPlayers; ++q)
+                    for (int16_t r : G.players[size_t(q)].relics) start.push_back({q, r});
+                for (const auto& hr : start) {
+                    const int q = hr.first, r = hr.second;
+                    const auto& held = G.players[size_t(q)].relics;
+                    if (std::find(held.begin(), held.end(), int16_t(r)) == held.end()) continue;  // (swapped away already)
+                    std::vector<Option> opts;
+                    for (int r2 : revealed) opts.push_back({r2, std::string(kRelics[r2].name) + " (revealed)", ""});
+                    for (int q2 = 0; q2 < G.numPlayers; ++q2)
+                        for (int16_t r2 : G.players[size_t(q2)].relics)
+                            if (!(q2 == q && r2 == r)) opts.push_back({100000 + q2 * 1000 + r2, std::string(kRelics[r2].name) + " (" + pn(q2) + ")", ""});
+                    if (opts.empty()) continue;
+                    opts.push_back({-1, "Keep it", ""});
+                    curValue_ = q;  // (for the AI: whose relic it is)
+                    const int c = fpick(p, Ab::DsVenerable, "Resonance Cascade: swap " + pn(q) + "'s " + kRelics[r].name + " for which relic?", opts,
+                                        "A revealed relic (theirs goes back into the relic deck) or one in another player's play area (they trade).");
+                    curValue_ = 0;
+                    if (c < 0) continue;
+                    if (c < 100000) {
+                        loseRelic(q, r, false);
+                        takeRelic(q, c);
+                        revealed.erase(std::find(revealed.begin(), revealed.end(), c));
+                        revealed.push_back(r);
+                        dsEvent(E, p, "Resonance Cascade", pn(q) + "'s " + kRelics[r].name + " becomes " + kRelics[c].name + ".");
+                    } else {
+                        const int q2 = (c - 100000) / 1000, r2 = (c - 100000) % 1000;
+                        loseRelic(q, r, false);
+                        loseRelic(q2, r2, false);
+                        takeRelic(q, r2);
+                        takeRelic(q2, r);
+                        dsEvent(E, p, "Resonance Cascade", pn(q) + "'s " + kRelics[r].name + " and " + pn(q2) + "'s " + kRelics[r2].name + " change hands.");
+                    }
+                }
+                for (int r : revealed) G.relicDeck.push_back(int16_t(r));
+                E.rng().shuffle(G.relicDeck);
+                return true;
+            }
             // swaps: another player's relic for one of the revealed ones
             for (int round = 0; round < 3 && !revealed.empty(); ++round) {
                 std::vector<Option> opts;  // id = holder * 1000 + relic
@@ -1476,7 +1896,8 @@ bool Rules::dsAction(int p, Ab ab) {
 
 // B-Unit 205643a (Roh'Dhna commander): Construction's secondary for a token can be its primary.
 bool Rules::dsConstructionPrimary(int q) {
-    if (!commanderUsable(G, q, "rohdhna") || !fac(q, "rohdhna") || freeSecondary_ ||
+    // (fixes 29, the Roh'Dhna review) a player holding their Alliance may use it too (it was the Roh'Dhna only)
+    if (!commanderUsable(G, q, "rohdhna") || (!fac(q, "rohdhna") && G.fixes < 29) || freeSecondary_ ||
         !fyes(q, Ab::DsBUnit, "B-Unit 205643a: resolve Construction's primary ability instead?", strategyPrimary(3)))
         return false;
     say(q, pn(q) + " resolves Construction's primary ability (B-Unit 205643a).");

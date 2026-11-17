@@ -12,7 +12,7 @@
 #include "gfx/canvas.h"
 #include "platform/platform.h"
 
-#define TI4_VERSION "0.59.30"
+#define TI4_VERSION "0.60.0"
 #if defined(_WIN32) || defined(TI4_SDL2)
 #define TI4_STAGE "Stage 12: PC edition \xC2\xB7 Pre-Beta"
 #else

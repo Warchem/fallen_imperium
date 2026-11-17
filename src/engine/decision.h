@@ -242,12 +242,15 @@ enum class Ab : int16_t {
     ScarTech,  // 0.43.4: an entropic scar at the start of the status phase - a strategy token for a faction technology
     SardakkCommanderUnit,  // 0.44.2: G'hom Sek'kus - infantry or mech from a planet with both (Decision::value = planet)
     DsCelagrom,  // 0.52.1: the Celagrom's hit at the start of a space combat (option = the ship type, -1 = none)
+    DsbtGledge,  // fixes 28 (the Gledge review): Dhonraz Installations, the Reference card - an action (option = the planet)
     CrimsonCommander,  // 0.58.2: Ahk Siever after a combat - 1 gain a commodity, 2 turn one into a trade good, 0 neither
     MoveBreach,        // 0.59.0: all 7 breach tokens are out - the inactive breach to move (option = its system)
     YinCommander,      // (fixes 26, the Yin review) Brother Omar Omega: which infantry goes back (asked of a person)
     PrideOfKenara,     // (fixes 26, the Hacan review) the planet a traded Pride of Kenara planet's units move to (option = planet)
     NaaluMechTE,       // (fixes 27, the Naalu review) Iconoclast (Thunder's Edge): a mech when another player gains a relic
     SaarCommanderCount,  // (fixes 27, the Saar review) Rowl Sarrig: how many of the new fighters / infantry go to that dock
+    DsReadFates,         // (fixes 28, the Augurs review) Read the Fates: "ACTION: Place this face up in your play area"
+    DsSplinteringGale,   // (fixes 28, the Khrask review) Splintering Gale: the up to 2 ships that gain Sustain Damage (option = type*16+i)
     Count
 };
 

@@ -167,7 +167,7 @@ void Rules::btOptions(int p, std::vector<Option>& opts) const {
     if (fac(p, "saar") && spendable(G, p, false) >= 1) {
         bool rocks = false;  // an asteroid field with our ships
         for (size_t s = 0; s < G.systems.size(); ++s)
-            if ((G.systems[s].d().anomalies & kAsteroid) && hasShips(G, p, int(s))) rocks = true;
+            if ((tileAnomalies(G, int(s)) & kAsteroid) && hasShips(G, p, int(s))) rocks = true;  // (fixes 29: the Zelian home too)
         if (rocks && G.fixes >= 8 && saarTargets(p).empty()) rocks = false;  // 0.44.4: only with a planet to hit
         if (rocks) opts.push_back({6000 + int(Ab::BtSaar), std::string("Breakthrough: ") + bt->name, bt->text});
     }
@@ -185,7 +185,7 @@ std::vector<Option> Rules::saarTargets(int p) const {
         if (!target) continue;
         bool inReach = false;  // up to 2 systems from an asteroid field with our ships
         for (size_t s = 0; s < G.systems.size() && !inReach; ++s)
-            if ((G.systems[s].d().anomalies & kAsteroid) && hasShips(G, p, int(s)) && systemDistance(G, int(s), ps.system) <= 2)
+            if ((tileAnomalies(G, int(s)) & kAsteroid) && hasShips(G, p, int(s)) && systemDistance(G, int(s), ps.system) <= 2)
                 inReach = true;
         if (inReach) opts.push_back({int(x), planetName(int(x)), ""});
     }

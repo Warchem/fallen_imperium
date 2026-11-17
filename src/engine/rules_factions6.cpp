@@ -585,7 +585,7 @@ void Rules::alarum(int att, int def, int planet) {
 // Director Nel (hero): after the last player passes, the Ral Nel may un-pass - 2 command tokens and an action card.
 bool Rules::directorNel() {
     for (int p = 0; p < G.numPlayers; ++p) {
-        if (!fac(p, "ralnel") || G.players[size_t(p)].eliminated || !heroUnlocked(G, p)) continue;
+        if (!(fac(p, "ralnel") || caged(p, "ralnelhero")) || G.players[size_t(p)].eliminated || !heroUnlocked(G, p)) continue;  // (28: Soul Cage)
         if (!fyes(p, Ab::RalNelHero, "Director Nel: stop being passed (2 command tokens and 1 action card)?", leaderText(findLeader("ralnelhero"))))
             continue;
         purgeHero(p);
@@ -678,6 +678,7 @@ bool Rules::factionAction6(int p, Ab ab) {
             if (it != pl.actionCards.end()) pl.actionCards.erase(it);
             G.players[size_t(q)].actionCards.push_back(int16_t(give));
             say(p, pn(p) + " draws 2 action cards and gives 1 to " + pn(q) + " (Kan Kip Rel).");
+            agentUsedFor(p, q);
             return true;
         }
         case Ab::DeepwroughtHero:
@@ -815,6 +816,7 @@ bool Rules::carrina(int researcher) {
     curFor_ = -1;
     if (!use) return false;
     spendAgent(d, "deepwrought");
+    agentUsedFor(d, researcher);
     carrinaInfantry(d, researcher);
     return true;
 }
@@ -854,6 +856,7 @@ bool Rules::carrinaSpare(int researcher, int tech) {
     if (c == 3) carrinaQuiet_[d] = int16_t(G.round);
     if (c != 1) return false;
     spendAgent(d, "deepwrought");
+    agentUsedFor(d, researcher);
     curFor_ = d;
     const bool take = fyes(researcher, Ab::DeepwroughtAgent, "Doctor Carrina: ignore 1 prerequisite of " + std::string(kTechs[tech].name) + " (keep a specialty planet ready)?",
                            "If you do, " + pn(d) + " may place 1 infantry, coexisting, on one of your non-home planets.");
@@ -893,7 +896,7 @@ int Rules::aello(int researcher, int cost) {
                 say(d, pn(d) + " gains 1 commodity (Aello).");
             } else if (how == 2) {
                 --dp.commodities;
-                gainTG(d, 1);
+                gainTGNotSupply(d, 1); // (fixes 28: not from the supply - no Artuno)
                 say(d, pn(d) + " turns 1 commodity into a trade good (Aello).");
             }
             --cost;
@@ -909,7 +912,7 @@ int Rules::aello(int researcher, int cost) {
         say(d, pn(d) + " gains 1 commodity (Aello).");
     } else if (dp.commodities > 0) {
         --dp.commodities;
-        gainTG(d, 1);
+        gainTGNotSupply(d, 1); // (fixes 28: not from the supply - no Artuno)
         say(d, pn(d) + " turns 1 commodity into a trade good (Aello).");
     }
     return cost - 1;
@@ -1297,7 +1300,7 @@ void Rules::crimsonCombatEnd(int att, int def, int sys) {
                 say(c, pn(c) + " gains 1 commodity from the fighting (Ahk Siever).");
             } else if (c2 == 2) {
                 --pl.commodities;
-                gainTG(c, 1);
+                gainTGNotSupply(c, 1); // (fixes 28: not from the supply - no Artuno)
                 say(c, pn(c) + " turns 1 commodity into a trade good (Ahk Siever).");
             }
         }
@@ -1422,7 +1425,7 @@ void Rules::subatomicSplicer(int p, UnitType t, int k) {
 // type) or none; and after every way of producing ships - Subatomic Splicer, Salvage Operations, Freelancers,
 // Integrated Economy call this too)
 void Rules::phantomProduced(int p, int sys, const int counts[kUnitTypes]) {
-    if (!fac(p, "crimson") || !heroUnlocked(G, p) || sys < 0) return;
+    if (!(fac(p, "crimson") || caged(p, "crimsonhero")) || !heroUnlocked(G, p) || sys < 0) return;  // (fixes 28: the Soul Cage too)
     int take[kUnitTypes] = {};
     int ships = 0;
     for (int t : kShipIdx) {
@@ -1466,9 +1469,12 @@ void Rules::phantomProducedOne(int p, int sys, UnitType t, int k) {  // (fixes 2
 }
 void Rules::phantomCombat(int att, int def, int sys) {
     for (int p : {att, def}) {
-        if (p < 0 || p >= G.numPlayers || !fac(p, "crimson") || !heroUnlocked(G, p) || G.players[size_t(p)].phantom.empty()) continue;
+        if (p < 0 || p >= G.numPlayers || !(fac(p, "crimson") || caged(p, "crimsonhero")) || !heroUnlocked(G, p) || G.players[size_t(p)].phantom.empty())
+            continue;
         if (!fyes(p, Ab::CrimsonHero, "Homesick Phantom: purge it to bring your waiting ships into " + sysName(sys) + "?", "")) continue;
+        phantomGoing_ = true;  // (the Soul Cage's purge leaves them be: they arrive)
         purgeHero(p);
+        phantomGoing_ = false;
         Player& pl = G.players[size_t(p)];
         for (int t = 0; t < kUnitTypes; ++t)
             if (pl.phantom.n[t]) G.systems[size_t(sys)].space[size_t(p)].add(UnitType(t), pl.phantom.n[t]);
@@ -1596,6 +1602,7 @@ bool Rules::ahkRavin(int p) {
     const int q = fpick(p, Ab::CrimsonAgent, "Ahk Ravin: which player may swap 2 of their ships?", who,
                         "They may also take fighters and ground forces along with the 2 ships.");
     spendAgent(p, "crimson");
+    agentUsedFor(p, q);
     std::vector<Option> ships;  // id = system * 16 + type
     bool token = false;
     for (size_t s = 0; s < G.systems.size(); ++s)

@@ -63,7 +63,9 @@ int deckOf(Trait t) {
 }
 bool isHome4(const Game& G, int p, int x) { return G.planets[size_t(x)].system == G.players[size_t(p)].homeSystem; }
 bool isMecatol4(const Game& G, int x) { return !std::strcmp(kPlanets[G.planets[size_t(x)].def].key, "mr"); }
-bool anomalyIn(const Game& G, int s) { return G.systems[size_t(s)].d().anomalies != 0 || s == G.dsWound; }
+// (fixes 29, the Nivyn review) "contains or is adjacent to an anomaly": every anomaly the rules make (isAnomaly - the Wound, the Nivyn
+// and Mortheus homes, a Dimensional Tear, ...)
+bool anomalyIn(const Game& G, int s) { return G.fixes >= 29 ? isAnomaly(G, s) : G.systems[size_t(s)].d().anomalies != 0 || s == G.dsWound; }
 bool anomalyNear(const Game& G, int s) {
     if (anomalyIn(G, s)) return true;
     for (int16_t a : G.systems[size_t(s)].adj)
@@ -76,12 +78,20 @@ bool policyMinus(const Game& G, int p, int k) { return (G.players[size_t(p)].dsP
 
 // The Olradin policy cards' sides (also shown in their play area, 0.43.4).
 const char* olradinPolicyText(int k, bool minus) {
-    static const char* kPlus[3] = {"Connect (+): after you exhaust a cultural or legendary planet, move 1 of its infantry to another of your planets",
-                                   "Preserve (+): after you exhaust a hazardous or legendary planet, reveal the top exploration card of its kind - a relic fragment is yours",
-                                   "Empower (+): after you exhaust an industrial or legendary planet, gain 1 commodity"};
-    static const char* kMinus[3] = {"Control (-): no transactions in the agenda phase; 2 more votes for each cultural planet you exhaust to vote",
-                                    "Plunder (-): your units produce 2 less; after you explore a hazardous planet, remove 1 unit there to explore it again",
-                                    "Exploit (-): commodity value 2; after you exhaust an industrial planet, 1 fighter in a system with your ships"};
+    // (0.59.50, the Olradin review: the Reference's wording)
+    static const char* kPlus[3] = {
+        "Connect (+): Once per action, after you exhaust a cultural or legendary planet you control, you may move 1 infantry on that planet to "
+        "another planet you control.",
+        "Preserve (+): Once per action, after you exhaust a hazardous or legendary planet you control, you may reveal the top card of the "
+        "exploration deck that matches 1 of those planets; if it is a relic fragment, gain it, otherwise discard that card.",
+        "Empower (+): Once per action, after you exhaust an industrial or legendary planet you control, gain 1 commodity."};
+    static const char* kMinus[3] = {
+        "Control (-): You cannot perform transactions during the agenda phase. During the agenda phase, after you cast votes on an agenda, cast "
+        "2 additional votes for each cultural planet you exhausted.",
+        "Plunder (-): When 1 or more of your units use PRODUCTION, reduce the PRODUCTION value of 1 of those units by 2. Once per action, after "
+        "you explore a hazardous planet, you may remove 1 unit from that planet to explore that planet.",
+        "Exploit (-): Your commodity value is 2. Once per action, after you exhaust an industrial planet you control, place up to 1 fighter "
+        "from your reinforcements in a system that contains 1 or more of your ships."};
     return k < 0 || k > 2 ? "" : minus ? kMinus[k] : kPlus[k];
 }
 
@@ -160,10 +170,14 @@ void Rules::ds4SpaceCombatStart(int att, int def, int sys) {
         }
         // Shrouded Skirmishers (Kollecc): a ship that wasn't here at the start of the action rolls for 1 hit
         // (0.44.7, fixes 11: the card doesn't exhaust - every space combat)
-        if ((G.fixes >= 11 ? owns(side, "dskollb") : techReady(side, "dskollb")) && side == G.activePlayer && s.space[size_t(other)].ships() > 0) {
+        // (fixes 28, the Kollecc review - owner 2026-11-16: Shroud of Lith at other players' moves) "1 of your ships in the active system
+        // that did not begin this action in that system" - the defender too (the ships the Shroud brought)
+        const bool sk28 = G.fixes >= 28;
+        if ((G.fixes >= 11 ? owns(side, "dskollb") : techReady(side, "dskollb")) && (side == G.activePlayer || sk28) && s.space[size_t(other)].ships() > 0) {
+            const Force& began = sk28 ? ds4StartAll_[size_t(side)] : ds4StartForce_;
             int best = -1;
             for (int t : kShipIdx)
-                if (s.space[size_t(side)].n[t] > ds4StartForce_.n[t] && (best < 0 || unitDef(G, side, UnitType(t)).combat < unitDef(G, side, UnitType(best)).combat))
+                if (s.space[size_t(side)].n[t] > began.n[t] && (best < 0 || unitDef(G, side, UnitType(t)).combat < unitDef(G, side, UnitType(best)).combat))
                     best = t;
             if (best >= 0 && fyes(side, Ab::DsSkirmishers, std::string("Shrouded Skirmishers: your ") + unitTypeName(UnitType(best)) + " rolls for 1 hit?",
                                   "It hits on " + std::to_string(unitDef(G, side, UnitType(best)).combat) + " or more.")) {
@@ -186,7 +200,9 @@ void Rules::ds4AfterCombatRolls(int att, int def, int sys, int planet, RollResul
         RollResult& r = i == 0 ? rA : rD;
         Player& pl = G.players[size_t(side)];
         // Voidwake Missiles: one unit with Sustain Damage becomes damaged to reroll its dice
-        if (owns(side, "dsnivyy")) {
+        if (owns(side, "dsnivyy") && G.fixes >= 29) {
+            voidwake29(side, sys, planet, r);
+        } else if (owns(side, "dsnivyy")) {
             Force& f = planet < 0 ? G.systems[size_t(sys)].space[size_t(side)] : G.planets[size_t(planet)].units[size_t(side)];
             int best = -1, bestMiss = 0;
             for (int t = 0; t < kUnitTypes; ++t) {
@@ -232,6 +248,101 @@ void Rules::ds4AfterCombatRolls(int att, int def, int sys, int planet, RollResul
     }
 }
 
+// (fixes 29, the Nivyn review) Voidflare Warden I ("After this system is activated") / II ("After a system is activated"): "you may have
+// this unit become damaged to place or move the Wound token into this system" - the player picks which mech (one on a planet, undamaged;
+// Warden I: in that system); a person may say "not again this round" (Warden II asks at every activation).
+void Rules::warden29(int nv, int p, int sys) {
+    const bool two = !std::strcmp(unitDef(G, nv, UnitType::Mech).key, "nivyn_mech2");
+    const bool human = G.players[size_t(nv)].human;
+    if (human && wardenQuiet_[size_t(nv)] == G.round) return;
+    std::vector<Option> opts;
+    for (size_t x = 0; x < G.planets.size(); ++x) {
+        const Force& f = G.planets[x].units[size_t(nv)];
+        if (f.count(UnitType::Mech) > f.dmg[int(UnitType::Mech)] && (two || G.planets[x].system == sys))
+            opts.push_back({int(x), "Damage the mech on " + planetName(int(x)), G.planets[x].system == sys ? "In this system." : sysName(G.planets[x].system)});
+    }
+    if (opts.empty()) return;
+    std::stable_sort(opts.begin(), opts.end(), [&](const Option& a, const Option& b) {  // (the AI takes the first: the safest mech)
+        return threatAt29(nv, G.planets[size_t(a.id)].system) < threatAt29(nv, G.planets[size_t(b.id)].system);
+    });
+    opts.push_back({-1, "No", ""});
+    if (human) opts.push_back({99999, "No, and don't ask again this round", "You'll be asked again next round."});
+    curValue_ = p == nv ? 1 : (hasUnits(G, nv, sys) ? 2 : 0);
+    const int x = fpick(nv, Ab::DsWarden, "Voidflare Warden: damage one of your mechs to put the Wound token in " + sysName(sys) + "?",
+                        opts, "That system becomes a nebula and a gravity rift.");
+    curValue_ = 0;
+    if (x == 99999) wardenQuiet_[size_t(nv)] = int16_t(G.round);
+    if (x < 0 || x == 99999) return;
+    Force& f = G.planets[size_t(x)].units[size_t(nv)];
+    f.dmg[int(UnitType::Mech)] = uint8_t(f.dmg[int(UnitType::Mech)] + 1);
+    G.dsWound = int16_t(sys);
+    ds4Event(E, nv, "Voidflare Warden", "The Wound opens in " + sysName(sys) + ": a nebula and a gravity rift.", sys);
+}
+// other players' ships in or next to a system (the Voidflare Warden's choice of mech)
+int Rules::threatAt29(int p, int sys) const {
+    int n = 0;
+    auto in = [&](int s) {
+        for (int q = 0; q < G.numPlayers; ++q)
+            if (q != p) n += G.systems[size_t(s)].space[size_t(q)].ships();
+    };
+    in(sys);
+    for (int16_t a : G.systems[size_t(sys)].adj) in(a);
+    return n;
+}
+
+// (fixes 29, the Nivyn review - the Reference: "After 1 or more of your units with SUSTAIN DAMAGE makes a combat roll, you may choose 1
+// of those units to become damaged to reroll its combat roll") the player picks the unit; its whole roll is rolled again - all of its
+// dice, hits too (below 29: only its missed dice, the unit picked for them). A unit's dice are its card's combat dice; of the dice its
+// type rolled, those with the fewest hits are taken as that unit's (the one a player would pick).
+void Rules::voidwake29(int side, int sys, int planet, RollResult& r) {
+    Force& f = planet < 0 ? G.systems[size_t(sys)].space[size_t(side)] : G.planets[size_t(planet)].units[size_t(side)];
+    struct Cand {
+        int t;
+        std::vector<size_t> dice;
+        int hits, gain10;
+    };
+    std::vector<Cand> cands;
+    for (int t = 0; t < kUnitTypes; ++t) {
+        if (!f.n[t] || f.dmg[t] >= f.n[t] || !unitSustains(G, side, UnitType(t))) continue;
+        std::vector<size_t> mine;
+        for (size_t d = 0; d < r.dice.size() && d < r.unit.size(); ++d)
+            if (r.unit[d] == t) mine.push_back(d);
+        if (mine.empty()) continue;
+        std::stable_sort(mine.begin(), mine.end(), [&](size_t a, size_t b) { return (r.dice[a] >= r.need[a]) < (r.dice[b] >= r.need[b]); });
+        const size_t per = size_t(std::max(1, int(unitDef(G, side, UnitType(t)).combatDice)));
+        if (mine.size() > per) mine.resize(per);
+        Cand c{t, mine, 0, 0};
+        float exp = 0.f;
+        for (size_t d : mine) {
+            c.hits += r.dice[d] >= r.need[d] ? 1 : 0;
+            exp += float(std::max(0, std::min(10, 11 - r.need[d]))) / 10.f;
+        }
+        c.gain10 = int((exp - float(c.hits)) * 10.f + (exp >= float(c.hits) ? 0.5f : -0.5f));
+        cands.push_back(c);
+    }
+    if (cands.empty()) return;
+    std::stable_sort(cands.begin(), cands.end(), [](const Cand& a, const Cand& b) { return a.gain10 > b.gain10; });
+    std::vector<Option> opts;
+    for (const Cand& c : cands) {
+        const int k = int(c.dice.size());
+        opts.push_back({c.t, std::string("A ") + unitTypeName(UnitType(c.t)) + ": reroll its " + (k == 1 ? "die" : std::to_string(k) + " dice"),
+                        std::to_string(c.hits) + " of them hit now. It becomes damaged."});
+    }
+    opts.push_back({-1, "No", ""});
+    curValue_ = cands[0].gain10;
+    const int t = fpick(side, Ab::DsVoidwake, "Voidwake Missiles: damage one of your units to reroll its combat roll?", opts, techSummary(findTech("dsnivyy")));
+    curValue_ = 0;
+    if (t < 0) return;
+    for (const Cand& c : cands) {
+        if (c.t != t) continue;
+        f.dmg[t] = uint8_t(f.dmg[t] + 1);
+        for (size_t d : c.dice) r.dice[d] = int8_t(E.rng().d10());
+        recount(r);
+        reportRoll(side, sys, "Rerolled (Voidwake Missiles)", r);
+        return;
+    }
+}
+
 // Start of a ground combat round: Revenant (Cymiae mech) repairs itself.
 void Rules::ds4GroundRoundStart(int att, int def, int planet) {
     for (int side : {att, def}) {
@@ -250,11 +361,18 @@ void Rules::ds4GroundRoundEnd(int att, int def, int planet) {
         if (side >= G.numPlayers || !fac(side, "vaden") || !mechAbilities(G)) continue;
         const int other = side == att ? def : att;
         if (other >= G.numPlayers || G.dsDebt[other] <= 0) continue;
-        if (!G.planets[size_t(planet)].units[size_t(side)].count(UnitType::Mech) || unitsAvailable(G, side, UnitType::Infantry) <= 0) continue;
-        if (!fyes(side, Ab::DsCollector, "Collector: cash in 1 of " + pn(other) + "'s tokens for 1 infantry here?", "")) continue;
-        --G.dsDebt[other];
-        addUnits(side, UnitType::Infantry, 1, G.planets[size_t(planet)].system, planet);
-        ds4Event(E, side, "Collector", pn(side) + " collects on " + pn(other) + "'s debt: 1 infantry.", G.planets[size_t(planet)].system);
+        const int mechs = G.planets[size_t(planet)].units[size_t(side)].count(UnitType::Mech);
+        // (fixes 29, the Vaden review) the ability is on each mech (LRR 1 - every unit of that type has its unit card's abilities): one
+        // token for one infantry per Collector on the planet
+        for (int k = 0; k < (G.fixes >= 29 ? mechs : std::min(1, mechs)); ++k) {
+            if (G.dsDebt[other] <= 0 || unitsAvailable(G, side, UnitType::Infantry) <= 0) break;
+            if (!fyes(side, Ab::DsCollector, "Collector: cash in 1 of " + pn(other) + "'s tokens for 1 infantry here?",
+                      mechs > 1 && G.fixes >= 29 ? "Mech " + std::to_string(k + 1) + " of " + std::to_string(mechs) + "." : ""))
+                break;
+            --G.dsDebt[other];
+            addUnits(side, UnitType::Infantry, 1, G.planets[size_t(planet)].system, planet);
+            ds4Event(E, side, "Collector", pn(side) + " collects on " + pn(other) + "'s debt: 1 infantry.", G.planets[size_t(planet)].system);
+        }
     }
 }
 
@@ -318,6 +436,7 @@ void Rules::ds4UnitsDestroyed(int p, UnitType t, int k, int sys, int planet, int
 void Rules::ds4Activated(int p, int sys) {
     SystemState& s = G.systems[size_t(sys)];
     ds4StartForce_ = s.space[size_t(p)];
+    for (int q = 0; q < kSides; ++q) ds4StartAll_[q] = s.space[size_t(q)];  // (fixes 28: Shrouded Skirmishers for a defender)
     // Particle Sieve (Mortheus flagship): a frontier token in an empty system
     if (flagshipAbility(G, p, "mortheus") && flagshipIn(G, p, sys) && s.planets.empty() && !s.frontier && !s.isHyperlane() &&
         fyes(p, Ab::DsSieve, "Particle Sieve: place a frontier token in " + sysName(sys) + "?", "")) {
@@ -326,7 +445,9 @@ void Rules::ds4Activated(int p, int sys) {
     }
     // Voidflare Warden I (its system activated) / II (any system activated): the Wound token moves into that system
     const int nv = playerOfFaction(G, "nivyn");
-    if (nv >= 0 && mechAbilities(G) && G.dsWound != sys) {
+    if (nv >= 0 && mechAbilities(G) && G.dsWound != sys && G.fixes >= 29) {
+        warden29(nv, p, sys);
+    } else if (nv >= 0 && mechAbilities(G) && G.dsWound != sys) {
         const bool two = !std::strcmp(unitDef(G, nv, UnitType::Mech).key, "nivyn_mech2");
         int mechPlanet = -1;
         for (size_t x = 0; x < G.planets.size() && mechPlanet < 0; ++x) {
@@ -359,7 +480,8 @@ void Rules::ds4Activated(int p, int sys) {
     const bool shake = vd >= 0 && vd != p && holdsNote(G, p, vd, kNoteFaction);
     if ((midas || shake) && G.players[size_t(p)].tradeGoods > 0) {
         std::vector<Option> opts{{0, "None", ""}};
-        for (int k = 1; k <= std::min<int>(G.players[size_t(p)].tradeGoods, 6); ++k) opts.push_back({k, std::to_string(k) + " trade good" + (k > 1 ? "s" : ""), ""});
+        // (fixes 29, the Vaden review) "spend any number of trade goods" - all of them (12 at most on the list)
+        for (int k = 1; k <= std::min<int>(G.players[size_t(p)].tradeGoods, G.fixes >= 29 ? 12 : 6); ++k) opts.push_back({k, std::to_string(k) + " trade good" + (k > 1 ? "s" : ""), ""});
         const int k = fpick(p, Ab::DsMidas, midas ? "Midas Turbine: spend trade goods to move ships 1 further?" : "Play Vaden Handshake: spend trade goods to move ships 1 further?",
                             opts, "1 trade good = 1 non-fighter ship may move 1 further this activation.");
         if (k > 0) {
@@ -399,6 +521,7 @@ void Rules::ds4Activated(int p, int sys) {
 void Rules::ds4EndTactical(int p, int sys) {
     (void)p;
     ds4StartForce_ = Force();
+    for (Force& fo : ds4StartAll_) fo = Force();
     const int ko = playerOfFaction(G, "kollecc");
     if (ko < 0 || !mechAbilities(G)) return;
     for (int16_t x : G.systems[size_t(sys)].planets) {
@@ -431,11 +554,41 @@ void Rules::ds4EndTactical(int p, int sys) {
 void Rules::ds4TurnStart(int p) {
     Player& pl = G.players[size_t(p)];
     pl.dsPolOnce = 0;
+    // (fixes 29, the Olradin review) the policies' "Once per action": every player's turn is another action - an Olradin planet
+    // exhausted in another player's action (a secondary ability) may use them again
+    if (G.fixes >= 29)
+        for (Player& q : G.players) q.dsPolOnce = 0;
     // Treasure Hunters (Kollecc) / AI Survey (their note): a look at the decks - only what a person can use
     const int ko = playerOfFaction(G, "kollecc");
     const bool hunter = fac(p, "kollecc");
     const bool survey = ko >= 0 && ko != p && holdsNote(G, p, ko, kNoteFaction);
-    if ((hunter || survey) && pl.human) {
+    if (survey && !hunter && pl.human && G.fixes >= 28) {
+        // (fixes 28, the Kollecc review) AI Survey: "You may look at either the top card of the cultural, hazardous, and industrial
+        // exploration decks, or the top card of the relic deck. Then, return this card to the Kollecc player"
+        std::vector<Option> opts{{-1, "Don't look", ""}};
+        bool any = false;
+        for (Trait t : {Trait::Cultural, Trait::Hazardous, Trait::Industrial}) any = any || !G.exploreDeck[size_t(deckOf(t))].empty();
+        if (any) opts.push_back({10, "The cultural, hazardous and industrial decks", "The top card of each."});
+        if (!G.relicDeck.empty()) opts.push_back({11, "The relic deck", "Its top card."});
+        if (opts.size() > 1) {
+            const int d = fpick(p, Ab::DsAiSurvey, "Play AI Survey: look at the top cards of which decks?", opts);
+            if (d >= 0) {
+                returnNote(p, makeNote(ko, kNoteFaction));
+                std::string seen;
+                if (d == 10) {
+                    for (Trait t : {Trait::Cultural, Trait::Hazardous, Trait::Industrial}) {
+                        const auto& deck = G.exploreDeck[size_t(deckOf(t))];
+                        if (deck.empty()) continue;
+                        seen += std::string(seen.empty() ? "" : " ") + "Top of the " + exploreTypeName(ExploreType(deckOf(t))) + " deck: " + kExploreCards[deck.back()].name + ".";
+                    }
+                } else {
+                    seen = std::string("Top relic: ") + kRelics[G.relicDeck.back()].name + ".";
+                }
+                E.revealed();  // (a look at hidden cards can't be undone)
+                feedNote(p, seen);
+            }
+        }
+    } else if ((hunter || survey) && pl.human) {
         std::vector<Option> opts{{-1, "Don't look", ""}};
         for (Trait t : {Trait::Cultural, Trait::Hazardous, Trait::Industrial})
             if (!G.exploreDeck[size_t(deckOf(t))].empty()) opts.push_back({deckOf(t), exploreTypeName(ExploreType(deckOf(t))), ""});
@@ -444,45 +597,117 @@ void Rules::ds4TurnStart(int p) {
             if (survey && !hunter) returnNote(p, makeNote(ko, kNoteFaction));
             std::string seen = std::string("Top of the ") + exploreTypeName(ExploreType(d)) + " deck: " + kExploreCards[G.exploreDeck[size_t(d)].back()].name + ".";
             if (hunter && !G.relicDeck.empty()) seen += std::string(" Top relic: ") + kRelics[G.relicDeck.back()].name + ".";
+            if (G.fixes >= 28) E.revealed();  // (a look at hidden cards can't be undone)
             feedNote(p, seen);
         }
     }
-    // Captain Dust (Kollecc agent): reveal 2 exploration cards of a kind they have a planet of - the fragments are theirs
-    if (const int user = agentUser(p, "kollecc"); user >= 0) {
-        std::vector<Option> opts;
+    // Captain Dust (Kollecc agent): reveal 2 exploration cards of a kind they have a planet of - the fragments are theirs.
+    // (fixes 28, the Kollecc review) "At the start of a player's turn: You may exhaust this card to allow that player to reveal the top 2
+    // cards of an exploration deck that matches a planet they control" - any player's turn: the Kollecc decide (a person is asked -
+    // dustQuiet_ -, a bot when it promised the agent to that player, as Becece / Durran)
+    {
+        std::vector<Option> decks;
         for (Trait t : {Trait::Cultural, Trait::Hazardous, Trait::Industrial}) {
             bool mine = false;
             for (int x : controlledPlanets(G, p)) mine = mine || hasTraitOf(G, x, t);
             const int d = deckOf(t);
-            if (mine && G.exploreDeck[size_t(d)].size() + G.exploreDiscard[size_t(d)].size() > 0) opts.push_back({d, exploreTypeName(ExploreType(d)), ""});
+            if (mine && G.exploreDeck[size_t(d)].size() + G.exploreDiscard[size_t(d)].size() > 0) decks.push_back({d, exploreTypeName(ExploreType(d)), ""});
         }
-        if (!opts.empty()) {
-            opts.push_back({-1, "Don't", ""});
-            agentFor(user, p);
-            const int d = fpick(user, Ab::DsCaptainDust, user == p ? "Exhaust Captain Dust: dig 2 cards from which exploration deck for relic fragments?"
-                                                                   : "Exhaust Captain Dust so " + pn(p) + " digs for relic fragments?", opts);
-            curFor_ = -1;
-            if (d >= 0) {
-                spendAgent(user, "kollecc");
-                agentDone(user, p);
-                int got = 0;
-                for (int i = 0; i < 2; ++i) {
-                    const int c = drawExplore(d);
-                    if (c < 0) break;
-                    if (isRelicFragment(c)) {
-                        pl.fragments.push_back(int16_t(c));
-                        ++got;
-                    } else {
-                        G.exploreDiscard[size_t(d)].push_back(int16_t(c));
+        int user = -1, d = -1;
+        if (decks.empty()) {
+        } else if (G.fixes >= 28) {
+            if (canUseAgent(p, "kollecc")) {
+                std::vector<Option> opts = decks;
+                opts.push_back({-1, "Don't", ""});
+                d = fpick(p, Ab::DsCaptainDust, "Exhaust Captain Dust: dig 2 cards from which exploration deck for relic fragments?", opts);
+                user = p;
+            } else
+                for (int o : initiativeOrder(G)) {
+                    if (o == p || !canUseAgent(o, "kollecc")) continue;
+                    const bool promised = G.agentFor[size_t(o)] == p;
+                    const bool human = G.players[size_t(o)].human;
+                    if (!promised && !(human && dustQuiet_[o] != G.round)) continue;
+                    std::vector<Option> opts = decks;
+                    opts.push_back({-1, "Don't", ""});
+                    if (human && !promised) opts.push_back({99, "No, and don't ask again this round", "You'll be asked again next round."});
+                    agentFor(o, p);
+                    const int c = fpick(o, Ab::DsCaptainDust, "Exhaust Captain Dust so " + pn(p) + " digs for relic fragments?", opts,
+                                        leaderText(findLeader("kolleccagent")));
+                    curFor_ = -1;
+                    if (c == 99) dustQuiet_[o] = int16_t(G.round);
+                    if (c >= 0 && c != 99) {
+                        user = o;
+                        d = c;
+                        break;
                     }
                 }
-                ds4Event(E, p, "Captain Dust", pn(p) + " digs through the " + exploreTypeName(ExploreType(d)) + " deck: " + std::to_string(got) + " relic fragment" +
-                                                   (got == 1 ? "" : "s") + ".");
+        } else if ((user = agentUser(p, "kollecc")) >= 0) {
+            std::vector<Option> opts = decks;
+            opts.push_back({-1, "Don't", ""});
+            agentFor(user, p);
+            d = fpick(user, Ab::DsCaptainDust, user == p ? "Exhaust Captain Dust: dig 2 cards from which exploration deck for relic fragments?"
+                                                         : "Exhaust Captain Dust so " + pn(p) + " digs for relic fragments?", opts);
+            curFor_ = -1;
+        }
+        if (user >= 0 && d >= 0) {
+            spendAgent(user, "kollecc");
+            if (G.fixes >= 28) agentUsedFor(user, p);
+            else agentDone(user, p);
+            int got = 0;
+            for (int i = 0; i < 2; ++i) {
+                const int c = drawExplore(d);
+                if (c < 0) break;
+                if (isRelicFragment(c)) {
+                    pl.fragments.push_back(int16_t(c));
+                    ++got;
+                } else {
+                    G.exploreDiscard[size_t(d)].push_back(int16_t(c));
+                }
             }
+            ds4Event(E, p, "Captain Dust", pn(p) + " digs through the " + exploreTypeName(ExploreType(d)) + " deck: " + std::to_string(got) + " relic fragment" +
+                                               (got == 1 ? "" : "s") + ".");
+            fragmentGained(p);  // (fixes 28)
         }
     }
     // Yudri Sukhov (Vaden agent): commodities equal to one of their planets' influence
-    if (const int user = agentUser(p, "vaden"); user >= 0 && pl.commodities < commodityCap(G, pl)) {
+    // (fixes 29, the Vaden review - the Reference: "At the start of a player's turn: You may exhaust this card to allow that player to
+    // choose 1 planet they control; that player gains a number of commodities equal to that planet's influence value") at the start of
+    // ANY player's turn; whoever can use the agent is asked in initiative order (a person may say "not again this round"; a promised
+    // agent kept for its beneficiary); then THAT player chooses the planet
+    if (G.fixes >= 29) {
+        bool any = false;
+        for (int x : controlledPlanets(G, p)) any = any || planetInfluence(G, x) > 0;
+        if (any && pl.commodities < commodityCap(G, pl) && playerOfFaction(G, "vaden") >= 0) {
+            for (int o : initiativeOrder(G)) {
+                if (!canUseAgent(o, "vaden")) continue;
+                const bool human = G.players[size_t(o)].human;
+                if (human && yudriQuiet_[size_t(o)] == G.round) continue;
+                std::vector<Option> opts{{1, "Yes", ""}, {0, "No", ""}};
+                if (human) opts.push_back({99999, "No, and don't ask again this round", "You'll be asked again next round."});
+                const int b = G.agentFor[size_t(o)];
+                const bool forB = b >= 0 && b != o && b < G.numPlayers && b == p;
+                curFor_ = forB ? b : -1;
+                curValue_ = 1000 + p;  // (for the AI: whose turn)
+                const int c = fpick(o, Ab::DsYudri, o == p ? "Exhaust Yudri Sukhov: commodities equal to one of your planets' influence?"
+                                                           : "Exhaust Yudri Sukhov so " + pn(p) + " gains commodities equal to one of their planets' influence?",
+                                    opts, leaderText(findLeader("vadenagent")));
+                curFor_ = -1;
+                curValue_ = 0;
+                if (c == 99999) yudriQuiet_[size_t(o)] = int16_t(G.round);
+                if (c != 1) continue;
+                spendAgent(o, "vaden");
+                if (forB) agentUsedFor(o, b);
+                std::vector<Option> ps;
+                for (int x : controlledPlanets(G, p))
+                    if (planetInfluence(G, x) > 0) ps.push_back({x, planetName(x), std::to_string(planetInfluence(G, x)) + " influence"});
+                const int x = ps.size() == 1 ? ps[0].id : fpick(p, Ab::DsYudri, "Yudri Sukhov: gain commodities equal to which planet's influence?", ps);
+                const int got = std::min(planetInfluence(G, x), commodityCap(G, pl) - pl.commodities);
+                { const int cb_ = pl.commodities; pl.commodities = int8_t(pl.commodities + got); commodityGained(p, cb_); }
+                ds4Event(E, p, "Yudri Sukhov", pn(p) + " gains " + std::to_string(got) + " commodities.");
+                break;
+            }
+        }
+    } else if (const int user = agentUser(p, "vaden"); user >= 0 && pl.commodities < commodityCap(G, pl)) {
         std::vector<Option> opts;
         for (int x : controlledPlanets(G, p))
             if (planetInfluence(G, x) > 0) opts.push_back({x, planetName(x), std::to_string(planetInfluence(G, x)) + " influence"});
@@ -559,6 +784,27 @@ void Rules::ds4Explored(int p, int planet) {
     Player& pl = G.players[size_t(p)];
     if (pl.dsPolOnce & 2) return;
     Force& f = G.planets[size_t(planet)].units[size_t(p)];
+    if (G.fixes >= 29) {
+        // (fixes 29, the Olradin review) "you may remove 1 unit from that planet to explore that planet" - any of their units there
+        std::vector<Option> opts;
+        for (UnitType t : {UnitType::Infantry, UnitType::Mech, UnitType::PDS, UnitType::SpaceDock})
+            if (f.count(t)) opts.push_back({int(t), std::string("Remove 1 ") + unitTypeName(t), ""});
+        if (opts.empty()) return;
+        opts.push_back({-1, "Don't", ""});
+        curValue_ = f.groundForces();
+        const int t = fpick(p, Ab::DsPlunder, "Plunder: remove 1 of your units from " + planetName(planet) + " to explore it again?", opts, "", false, true);
+        curValue_ = 0;
+        if (t < 0) return;
+        pl.dsPolOnce = uint8_t(pl.dsPolOnce | 2);
+        const bool was = removing_;
+        removing_ = true;
+        destroyUnits(p, UnitType(t), 1, G.planets[size_t(planet)].system, planet, -1, "Plunder");
+        removing_ = was;
+        ds4Event(E, p, "Plunder", pn(p) + " strips " + planetName(planet) + " for more.", G.planets[size_t(planet)].system);
+        explorePlanet(p, planet);
+        if (breakthroughsOn(G)) dsbtPolicy(p);
+        return;
+    }
     if (f.count(UnitType::Infantry) == 0) return;
     curValue_ = f.groundForces();
     const bool use = fyes(p, Ab::DsPlunder, "Plunder: remove 1 infantry from " + planetName(planet) + " to explore it again?", "");
@@ -589,6 +835,8 @@ int Rules::dsFrontierRedraw(int p, int c) {
 
 // ================================================================== phases
 void Rules::ds4StatusStart() {
+    if (G.fixes >= 29)  // (the Olradin review: the policies once more outside the actions - the status phase; each agenda: dsAgendaRevealed)
+        for (Player& q : G.players) q.dsPolOnce = 0;
     // Incite Revolution (Olradin's note) goes back
     const int ol = playerOfFaction(G, "olradin");
     if (ol >= 0)
@@ -621,7 +869,7 @@ void Rules::ds4StatusStart() {
         if (!commanderUsable(G, p, "vaden")) continue;
         Player& pl = G.players[size_t(p)];
         int sec = 0, pub = 0;
-        for (int16_t o : pl.scored) (kObjectives[o].kind == 3 ? sec : pub) += 1;
+        for (int16_t o : pl.scored) (scoredAsSecret(G, p, o) ? sec : pub) += 1;
         if (sec) gainTG(p, sec);
         const int c = std::min(pub, commodityCap(G, pl) - pl.commodities);
         if (c > 0) { const int cb_ = pl.commodities; pl.commodities = int8_t(pl.commodities + c); commodityGained(p, cb_); }
@@ -633,13 +881,14 @@ void Rules::ds4StatusStart() {
 // player casts 1 + their influence more.
 void Rules::ds4AfterVoting(std::vector<int>& voted, std::vector<int>& counts) {
     const int mo = playerOfFaction(G, "mortheus");
-    if (mo < 0 || size_t(mo) >= voted.size() || voted[size_t(mo)] == kNoVote) return;
+    // (fixes 28, the Mortheus review) "after another player casts votes" - whether or not the Mortheus voted themselves
+    if (mo < 0 || size_t(mo) >= voted.size() || (voted[size_t(mo)] == kNoVote && G.fixes < 28)) return;
     for (int q = 0; q < G.numPlayers; ++q) {
         if (q == mo || size_t(q) >= voted.size() || voted[size_t(q)] == kNoVote || counts[size_t(q)] <= 0) continue;
         std::vector<Option> opts;
         for (int x : ti::readyPlanets(G, mo)) opts.push_back({x, planetName(x), std::to_string(planetInfluence(G, x)) + " influence"});
         if (opts.empty()) return;
-        curValue_ = voted[size_t(q)] == voted[size_t(mo)] ? 1 : 0;
+        curValue_ = voted[size_t(mo)] != kNoVote && voted[size_t(q)] == voted[size_t(mo)] ? 1 : 0;
         const std::vector<int> picks = fpickMany(mo, Ab::DsIllusory, "Illusory Presence: exhaust up to 2 planets so " + pn(q) + " casts more votes?", opts, 0,
                                                  std::min<int>(2, int(opts.size())), "They cast 1 more than the planets' influence.", true);
         curValue_ = 0;
@@ -688,7 +937,19 @@ void Rules::ds4Control(int planet, int p, int old) {
     (void)old;
     if (p < 0 || p >= G.numPlayers || p != G.activePlayer || G.phase != Phase::Action || !commanderUsable(G, p, "cymiae") || !mechAbilities(G)) return;
     Player& pl = G.players[size_t(p)];
-    if (pl.actionCards.empty() || unitsAvailable(G, p, UnitType::Mech) <= 0 || isDMZ(G, planet)) return;
+    // (fixes 28, the Cymiae review - owner 2026-11-15) "place or move 1 mech onto that planet": one of their mechs on the
+    // board may move there too - from any planet or space area (with every mech out it was never offered)
+    std::vector<Option> from;  // id = planet, or 100000 + system for a mech in a space area
+    if (G.fixes >= 28) {
+        if (unitsAvailable(G, p, UnitType::Mech) > 0) from.push_back({-2, "From your reinforcements", ""});
+        for (size_t x = 0; x < G.planets.size(); ++x)
+            if (int(x) != planet && G.planets[x].units[size_t(p)].count(UnitType::Mech) > 0)
+                from.push_back({int(x), planetName(int(x)), "Move it from there."});
+        for (size_t s = 0; s < G.systems.size(); ++s)
+            if (G.systems[s].space[size_t(p)].count(UnitType::Mech) > 0)
+                from.push_back({100000 + int(s), "Space area of " + sysName(int(s)), "Move it from there."});
+    }
+    if (pl.actionCards.empty() || isDMZ(G, planet) || (G.fixes >= 28 ? from.empty() : unitsAvailable(G, p, UnitType::Mech) <= 0)) return;
     std::vector<Option> opts;
     for (int16_t c : pl.actionCards) opts.push_back({c, kActionCards[c].name, "Discard it for a mech on the planet."});
     opts.push_back({-1, "Keep my cards", ""});
@@ -696,6 +957,14 @@ void Rules::ds4Control(int planet, int p, int old) {
     if (c < 0) return;
     pl.actionCards.erase(std::find(pl.actionCards.begin(), pl.actionCards.end(), int16_t(c)));
     discardActionCard(p, c, false);
+    const int src = G.fixes < 28 ? -2 : from.size() == 1 ? from[0].id : fpick(p, Ab::DsKoryl, "Koryl Ferax: the mech comes from where?", from);
+    if (src >= 100000) G.systems[size_t(src - 100000)].space[size_t(p)].remove(UnitType::Mech, 1, false);
+    else if (src >= 0) G.planets[size_t(src)].units[size_t(p)].remove(UnitType::Mech, 1, false);
+    if (src >= 0) {
+        G.planets[size_t(planet)].units[size_t(p)].add(UnitType::Mech, 1);
+        ds4Event(E, p, "Koryl Ferax", pn(p) + " moves a mech onto " + planetName(planet) + ".", G.planets[size_t(planet)].system);
+        return;
+    }
     addUnits(p, UnitType::Mech, 1, G.planets[size_t(planet)].system, planet);
     ds4Event(E, p, "Koryl Ferax", pn(p) + " drops a mech on " + planetName(planet) + ".", G.planets[size_t(planet)].system);
 }
@@ -725,8 +994,12 @@ void Rules::ds4Landed(int p, int sys, const std::vector<int>& landed) {
 }
 
 // Shroud of Lith (Kollecc): after their movement, up to 2 cloaked ships and 2 cloaked ground forces appear in the active system.
-void Rules::ds4AfterMovement(int p, int sys) {
-    if (!fac(p, "kollecc") || G.systems[size_t(sys)].space[size_t(p)].nonFighterShips() == 0) return;
+// (fixes 28, the Kollecc review - owner 2026-11-16 10:11 "yes it should work at other players' moves as well") "After movement, if the
+// active system contains 1 or more of your non-fighter ships" - after ANY player's movement (another player's move into their system:
+// an ambush), and (owner 2026-11-16 10:27) also when nothing moved (movement()'s nothingMoved).
+void Rules::ds4AfterMovement(int active, int sys) {
+    const int p = G.fixes >= 28 ? playerOfFaction(G, "kollecc") : active;
+    if (p < 0 || !fac(p, "kollecc") || G.systems[size_t(sys)].space[size_t(p)].nonFighterShips() == 0) return;
     Player& pl = G.players[size_t(p)];
     int ships = 0, gf = 0;
     for (int16_t c : pl.captured)
@@ -760,11 +1033,14 @@ void Rules::ds4AfterMovement(int p, int sys) {
 // After production: Cloaked Fleets (Kollecc) - up to 2 new ships onto the sheet; Walik (Mortheus agent) - 1 new unit next door.
 void Rules::ds4Produced(int p, int sys, const Force& made) {
     if (fac(p, "kollecc")) {
-        const int ships = made.nonFighterShips();
+        // (fixes 28, the Kollecc review) "After you produce 1 or more ships, you may place up to 2 of those ships on your faction sheet" -
+        // fighters are ships too (the biggest go first, fighters last); Decision::value bit 1 = home, bit 2 = only fighters (the AI)
+        const bool ff28 = G.fixes >= 28;
+        const int ships = ff28 ? made.ships() : made.nonFighterShips();
         if (ships > 0) {
             std::vector<Option> opts{{0, "None", ""}};
             for (int k = 1; k <= std::min(2, ships); ++k) opts.push_back({k, std::to_string(k), ""});
-            curValue_ = sys == G.players[size_t(p)].homeSystem ? 1 : 0;
+            curValue_ = (sys == G.players[size_t(p)].homeSystem ? 1 : 0) | (ff28 && made.nonFighterShips() == 0 ? 2 : 0);
             const int k = fpick(p, Ab::DsCloaked, "Cloaked Fleets: cloak how many of the new ships (captured on your sheet)?", opts,
                                 "Shroud of Lith brings them back where your ships move.");
             curValue_ = 0;
@@ -779,9 +1055,22 @@ void Rules::ds4Produced(int p, int sys, const Force& made) {
                     --left;
                 }
             }
+            if (ff28) {
+                const int t = int(UnitType::Fighter);
+                int can = std::min<int>(made.n[t], f.n[t]);
+                while (can-- > 0 && left > 0) {
+                    f.remove(UnitType(t), 1, false);
+                    G.players[size_t(p)].captured.push_back(int16_t(p * 16 + t));
+                    --left;
+                }
+            }
             if (k - left > 0) ds4Event(E, p, "Cloaked Fleets", pn(p) + " cloaks " + std::to_string(k - left) + " new ships.", sys);
             removeExcessCapacity(p, sys);
         }
+    }
+    if (G.fixes >= 28) {
+        ds4Walik28(p, sys, made);
+        return;
     }
     const int user = agentUser(p, "mortheus");
     if (user < 0) return;
@@ -806,6 +1095,60 @@ void Rules::ds4Produced(int p, int sys, const Force& made) {
     ds4Event(E, p, "Walik", pn(p) + "'s new " + unitTypeName(UnitType(type)) + " slips into " + sysName(a) + ".", a);
 }
 
+// (fixes 28, the Mortheus review) Walik: "When a player produces 1 or more units in a system: You may exhaust this card to allow that
+// player to place 1 of the produced units in the space area of an adjacent system that does not contain another player's ships" - any
+// player (a person holding the agent is asked - walikQuiet_: "don't ask again this round" -, a bot for itself or the player it promised
+// the agent to); any 1 of the produced units in the space area (fighters too; Decision::value = the non-fighter ships made, for the AI)
+void Rules::ds4Walik28(int p, int sys, const Force& made) {
+    if (p < 0 || p >= G.numPlayers) return;
+    std::vector<Option> to;
+    for (int16_t a : G.systems[size_t(sys)].adj)
+        if (!otherShipsIn(G, p, a) && !G.systems[size_t(a)].isHyperlane()) to.push_back({a, sysName(a), ""});
+    std::vector<Option> types;
+    for (int t = int(UnitType::WarSun); t >= 0; --t)
+        if (made.n[t] && G.systems[size_t(sys)].space[size_t(p)].n[t] && (isShip(UnitType(t)) || isGroundForce(UnitType(t))))
+            types.push_back({t, unitTypeName(UnitType(t)), ""});
+    if (to.empty() || types.empty()) return;
+    for (int o : initiativeOrder(G)) {
+        if (!canUseAgent(o, "mortheus")) continue;
+        const bool own = o == p, promised = G.agentFor[size_t(o)] == p, human = G.players[size_t(o)].human;
+        if (!own && !promised && !(human && walikQuiet_[o] != G.round)) continue;
+        agentFor(o, p);
+        int type = types[0].id;
+        if (types.size() > 1) {
+            std::vector<Option> which = types;
+            which.push_back({-1, "Don't", ""});
+            if (!own && human && !promised) which.push_back({99, "No, and don't ask again this round", "You'll be asked again next round."});
+            curValue_ = made.nonFighterShips();
+            type = fpick(o, Ab::DsWalik, own ? "Exhaust Walik: which of the new units goes to a neighbouring system?"
+                                             : "Exhaust Walik so one of " + pn(p) + "'s new units goes to a neighbouring system - which?",
+                         which, leaderText(findLeader("mortheusagent")));
+            curValue_ = 0;
+        }
+        int a = -1;
+        if (type >= 0 && type != 99) {
+            std::vector<Option> where = to;
+            where.push_back({-1, "Don't", ""});
+            if (types.size() == 1 && !own && human && !promised) where.push_back({99999, "No, and don't ask again this round", "You'll be asked again next round."});
+            curValue_ = made.nonFighterShips();
+            a = fpick(o, Ab::DsWalik, std::string(own ? "Exhaust Walik: " : "Exhaust Walik for " + pn(p) + ": ") + "one of the new " +
+                                          unitTypeName(UnitType(type), true) + " goes to a neighbouring system?",
+                      where, leaderText(findLeader("mortheusagent")), true);
+            curValue_ = 0;
+        }
+        curFor_ = -1;
+        if (type == 99 || a == 99999) walikQuiet_[o] = int16_t(G.round);
+        if (type < 0 || type == 99 || a < 0 || a == 99999) continue;
+        spendAgent(o, "mortheus");
+        agentUsedFor(o, p);
+        G.systems[size_t(sys)].space[size_t(p)].remove(UnitType(type), 1, false);
+        G.systems[size_t(a)].space[size_t(p)].add(UnitType(type), 1);
+        ds4Event(E, p, "Walik", pn(p) + "'s new " + unitTypeName(UnitType(type)) + " slips into " + sysName(a) + ".", a);
+        removeExcessCapacity(p, a);
+        return;
+    }
+}
+
 // ================================================================== action cards
 // Cybernetic Madness (Cymiae): their resolved action cards are purged. Skhot Unit X-12 (agent): a card is drawn instead.
 bool Rules::dsDiscarded(int p, int card, bool played) {
@@ -813,6 +1156,10 @@ bool Rules::dsDiscarded(int p, int card, bool played) {
     if (played && !acCancelled_ && fac(p, "cymiae")) {
         purged = true;
         ds4Event(E, p, "Cybernetic Madness", pn(p) + "'s " + kActionCards[card].name + " is purged, not discarded.");
+    }
+    if (G.fixes >= 28) {
+        skhot28(p);
+        return purged;
     }
     const int user = agentUser(p, "cymiae");
     if (user >= 0 && !G.players[size_t(p)].eliminated && int(G.players[size_t(p)].actionCards.size()) < actionCardLimit(G, p)) {
@@ -829,6 +1176,74 @@ bool Rules::dsDiscarded(int p, int card, bool played) {
     return purged;
 }
 
+// Skhot Unit X-12 (Cymiae agent), fixes 28 (the Cymiae review - owner 2026-11-15): "When a player discards or purges an action
+// card: You may exhaust this card to allow that player to draw 1 action card" - any player: the Cymiae decide (a person is
+// asked - skhotQuiet_ -, a bot when it promised the agent, as Garv and Gunn)
+void Rules::skhot28(int p) {
+    if (p < 0 || p >= G.numPlayers || G.players[size_t(p)].eliminated || int(G.players[size_t(p)].actionCards.size()) >= actionCardLimit(G, p)) return;
+    const std::string text = leaderText(findLeader("cymiaeagent"));
+    int user = -1;
+    if (canUseAgent(p, "cymiae")) {
+        if (!fyes(p, Ab::DsSkhot, "Exhaust Skhot Unit X-12: draw 1 action card?", text)) return;
+        user = p;
+    } else
+        for (int o : initiativeOrder(G)) {
+            if (o == p || !canUseAgent(o, "cymiae")) continue;
+            const bool promised = G.agentFor[o] == p;
+            const bool human = G.players[size_t(o)].human;
+            if (!promised && !(human && skhotQuiet_[o] != G.round)) continue;
+            agentFor(o, p);
+            std::vector<Option> yn = {{1, "Yes", ""}, {0, "No", ""}};
+            if (human && !promised) yn.push_back({3, "No, and don't ask again this round", "You'll be asked again next round."});
+            const int c = fpick(o, Ab::DsSkhot, "Exhaust Skhot Unit X-12 so " + pn(p) + " draws 1 action card?", yn, text);
+            curFor_ = -1;
+            if (c == 3) skhotQuiet_[o] = int16_t(G.round);
+            if (c != 1) continue;
+            user = o;
+            break;
+        }
+    if (user < 0) return;
+    spendAgent(user, "cymiae");
+    agentDone(user, p);
+    drawActionCards(p, 1, "Skhot Unit X-12");
+}
+
+// (fixes 28) Autonetic Memory's card from the discard pile, after the draw; then Cybernetic Madness
+void Rules::autoneticAfter(int p) {
+    if (p < 0 || p >= G.numPlayers || !autoneticLater_[p]) return;
+    autoneticLater_[p] = false;
+    Player& pl = G.players[size_t(p)];
+    if (G.actionDiscard.empty()) return;  // (the draw reshuffled the discard pile into the deck)
+    std::vector<Option> cards;
+    for (int16_t a : G.actionDiscard) {
+        bool dup = false;
+        for (const Option& o : cards) dup = dup || o.id == a;
+        if (!dup) cards.push_back({a, kActionCards[a].name, actionCardText(a)});
+    }
+    const int a = fpick(p, Ab::DsAutonetic, "Autonetic Memory: which card from the discard pile?", cards);
+    G.actionDiscard.erase(std::find(G.actionDiscard.begin(), G.actionDiscard.end(), int16_t(a)));
+    pl.actionCards.push_back(int16_t(a));
+    ds4Event(E, p, "Autonetic Memory", pn(p) + " remembers " + kActionCards[a].name + " from the discard pile.");
+    cyberneticMadness(p);
+}
+
+// Cybernetic Madness (Cymiae), fixes 28 (the Cymiae review): "After you add 1 or more action cards from the discard pile to
+// your hand: Discard 1 action card" - every way, not only Autonetic Memory (Reverse Engineer, The Codex)
+void Rules::cyberneticMadness(int p) {
+    if (G.fixes < 28 || !(G.modules & kModDiscordant) || p < 0 || p >= G.numPlayers || !fac(p, "cymiae")) return;
+    Player& pl = G.players[size_t(p)];
+    if (pl.actionCards.empty()) return;
+    std::vector<Option> drop;
+    for (int16_t x : pl.actionCards) {
+        bool dup = false;
+        for (const Option& o : drop) dup = dup || o.id == x;
+        if (!dup) drop.push_back({x, kActionCards[x].name, actionCardText(x)});
+    }
+    const int d = pick(p, Tag::DiscardActionCard, "Cybernetic Madness: discard 1 action card", drop);
+    pl.actionCards.erase(std::find(pl.actionCards.begin(), pl.actionCards.end(), int16_t(d)));
+    discardActionCard(p, d, false);
+}
+
 // Autonetic Memory (Cymiae): 1 card less - one from the discard pile (then discard 1), or 1 infantry on a planet.
 int Rules::dsAutonetic(int p, int n) {
     if (n <= 0 || !fac(p, "cymiae")) return n;
@@ -838,6 +1253,13 @@ int Rules::dsAutonetic(int p, int n) {
     if (unitsAvailable(G, p, UnitType::Infantry) > 0 && !controlledPlanets(G, p).empty()) opts.push_back({2, "1 infantry on one of your planets", ""});
     if (opts.size() == 1) return n;
     const int c = fpick(p, Ab::DsAutonetic, "Autonetic Memory: draw 1 action card less?", opts);
+    // (fixes 28, the Cymiae review - owner 2026-11-15) the card from the discard pile comes after the other cards are drawn,
+    // then Cybernetic Madness discards 1 (AsyncTI4 autoneticMemoryStep2: draw count - 1, then pick from the discard) - it
+    // discarded at once, before the draw: with an empty hand the card just taken
+    if (c == 1 && G.fixes >= 28) {
+        autoneticLater_[p] = true;
+        return n - 1;
+    }
     if (c == 1) {
         std::vector<Option> cards;
         for (int16_t a : G.actionDiscard) {
@@ -872,9 +1294,17 @@ int Rules::dsAutonetic(int p, int n) {
 // ================================================================== strategy cards, sustain, planets, retreats, rolls
 // Fine Print (Vaden): after a player resolves a secondary of their card, 1 of that player's control tokens on the sheet.
 void Rules::dsSecondaryDone(int q, int card) {
-    (void)card;
-    const int w = strategicPlayer_;
-    if (w < 0 || w == q || q >= G.numPlayers || !fac(w, "vaden") || G.dsDebt[q] >= 6) return;
+    int w = strategicPlayer_;
+    // (fixes 29, the Vaden review) "the secondary ability of 1 of YOUR strategy cards": the Vaden holding that card (whoever's strategic
+    // action it is), and no cap on the tokens (LRR 23.2)
+    if (G.fixes >= 29) {
+        w = -1;
+        for (int v = 0; v < G.numPlayers && w < 0; ++v) {
+            const auto& cs = G.players[size_t(v)].cards;
+            if (fac(v, "vaden") && std::find(cs.begin(), cs.end(), int8_t(card)) != cs.end()) w = v;
+        }
+    }
+    if (w < 0 || w == q || q >= G.numPlayers || !fac(w, "vaden") || G.dsDebt[q] >= vadenDebtCap(G)) return;
     if (!fyes(w, Ab::DsFinePrint, "Fine Print: place 1 of " + pn(q) + "'s control tokens on your faction sheet?", "")) return;
     ++G.dsDebt[q];
     ds4Event(E, w, "Fine Print", pn(q) + " signs the fine print: 1 control token on " + pn(w) + "'s sheet.");
@@ -936,6 +1366,7 @@ void Rules::ds4PlanetsExhausted(int p, const std::vector<int>& planets) {
                     if (isRelicFragment(c)) pl.fragments.push_back(int16_t(c));
                     else G.exploreDiscard[size_t(d)].push_back(int16_t(c));
                     ds4Event(E, p, "Preserve", pn(p) + " surveys a preserve: " + kExploreCards[c].name + (isRelicFragment(c) ? " - kept." : " - discarded."));
+                    fragmentGained(p);  // (fixes 28)
                         if (breakthroughsOn(G)) dsbtPolicy(p);  // Insurrectionist Networking (0.43.0)
                 }
             }
@@ -972,6 +1403,10 @@ void Rules::ds4PlanetsExhausted(int p, const std::vector<int>& planets) {
         }
     }
     // Baggil Wildpaw (Olradin agent): ready one of their planets of another trait
+    if (G.fixes >= 29) {
+        baggil29(p, planets);
+        return;
+    }
     const int user = agentUser(p, "olradin");
     if (user < 0) return;
     int traits = 0;
@@ -998,6 +1433,51 @@ void Rules::ds4PlanetsExhausted(int p, const std::vector<int>& planets) {
     agentDone(user, p);
     G.planets[size_t(x)].exhausted = false;
     ds4Event(E, p, "Baggil Wildpaw", pn(p) + " readies " + planetName(x) + ".");
+}
+
+// (fixes 29, the Olradin review - the Reference: "After a player exhausts a cultural, hazardous, or industrial planet they control, you
+// may exhaust this card to allow that player to ready a planet they control of a different trait than that planet") for any player;
+// whoever can use the agent is asked in initiative order (a person may say "not again this round"; a promised agent kept for its
+// beneficiary).
+void Rules::baggil29(int p, const std::vector<int>& planets) {
+    if (playerOfFaction(G, "olradin") < 0) return;
+    int traits = 0;
+    for (int x : planets)
+        for (Trait t : {Trait::Cultural, Trait::Hazardous, Trait::Industrial})
+            traits |= hasTraitOf(G, x, t) ? 1 << int(t) : 0;
+    if (!traits) return;
+    std::vector<Option> opts;
+    for (int x : controlledPlanets(G, p)) {
+        if (!G.planets[size_t(x)].exhausted || std::find(planets.begin(), planets.end(), x) != planets.end()) continue;
+        bool other = false;
+        for (Trait t : {Trait::Cultural, Trait::Hazardous, Trait::Industrial})
+            other = other || (hasTraitOf(G, x, t) && !((traits >> int(t)) & 1));
+        if (other) opts.push_back({x, planetName(x), std::to_string(planetResources(G, x)) + "/" + std::to_string(planetInfluence(G, x))});
+    }
+    if (opts.empty()) return;
+    opts.push_back({-1, "Don't", ""});
+    for (int o : initiativeOrder(G)) {
+        if (!canUseAgent(o, "olradin")) continue;
+        const bool human = G.players[size_t(o)].human;
+        if (human && baggilQuiet_[size_t(o)] == G.round) continue;
+        std::vector<Option> mine = opts;
+        if (human) mine.push_back({99999, "No, and don't ask again this round", "You'll be asked again next round."});
+        const int b = G.agentFor[size_t(o)];
+        const bool forB = b >= 0 && b != o && b < G.numPlayers && b == p;
+        curFor_ = forB ? b : -1;
+        curValue_ = p;  // (for the AI: whose planet it readies)
+        const int x = fpick(o, Ab::DsBaggil, o == p ? "Exhaust Baggil Wildpaw: ready one of your planets of another trait?" : "Exhaust Baggil Wildpaw: " + pn(p) + " readies a planet of another trait?",
+                            mine, leaderText(findLeader("olradinagent")), false, true);
+        curFor_ = -1;
+        curValue_ = 0;
+        if (x == 99999) baggilQuiet_[size_t(o)] = int16_t(G.round);
+        if (x < 0 || x == 99999) continue;
+        spendAgent(o, "olradin");
+        if (forB) agentUsedFor(o, b);
+        G.planets[size_t(x)].exhausted = false;
+        ds4Event(E, p, "Baggil Wildpaw", pn(p) + " readies " + planetName(x) + (o == p ? "." : " (" + pn(o) + "'s agent)."));
+        return;
+    }
 }
 
 // Nightingale V (Kollecc flagship): when it retreats, every retreating unit may go onto the sheet (captured) instead.
@@ -1027,6 +1507,7 @@ void Rules::ds4UnitRolled(int roller, int target, int sys, RollResult& r, const 
             ds4Event(E, roller, "Aurum Vadra", pn(roller) + " gains 1 trade good from the bombardment.", sys);
         }
     }
+    if (G.fixes >= 29) return;  // (fixes 29: Suldhan Wraeg before the roll - wraegRoll29)
     if (target < 0 || target >= G.numPlayers || target == roller || r.hits <= 0 || !anomalyNear(G, sys)) return;
     const int user = agentUser(target, "nivyn");
     if (user < 0 || user != target) return;
@@ -1061,6 +1542,76 @@ void Rules::ds4UnitRolled(int roller, int target, int sys, RollResult& r, const 
         }
     recount(r);
     ds4Event(E, user, "Suldhan Wraeg", pn(user) + "'s advisor jams a " + unitTypeName(UnitType(best)) + ": " + std::to_string(bestHits) + " hits lost.", sys);
+}
+
+// (fixes 29, the Nivyn review - the Reference: "When a player would use 1 unit's non-PRODUCTION unit ability in a system that contains or
+// is adjacent to an anomaly, you may exhaust this card to prevent that unit from using that unit ability") Suldhan Wraeg before the
+// ability is used, against any player's unit: whoever can use the Nivyn agent is asked, in initiative order (a person may say "not
+// again this round"; a promised agent is used for its beneficiary). `cands` = (unit type, worth) of `owner`'s units about to use
+// `ability` (kind 0 Space Cannon, 1 Anti-Fighter Barrage, 2 Bombardment, 3 Sustain Damage, 4 Planetary Shield); `ben` = the player that
+// stopping it helps (for the AI). Returns the unit type stopped, or -1. Deploy isn't covered (RULES-CHECK).
+int Rules::wraeg29(int owner, int ben, int sys, std::vector<std::pair<int, int>> cands, int kind, const char* ability) {
+    if (G.fixes < 29 || !(G.modules & kModDiscordant) || owner < 0 || owner >= G.numPlayers || sys < 0 || cands.empty()) return -1;
+    if (playerOfFaction(G, "nivyn") < 0 || !anomalyNear(G, sys)) return -1;
+    std::stable_sort(cands.begin(), cands.end(), [](const std::pair<int, int>& a, const std::pair<int, int>& b) { return a.second > b.second; });
+    for (int o : initiativeOrder(G)) {
+        if (o == owner || !canUseAgent(o, "nivyn")) continue;
+        const bool human = G.players[size_t(o)].human;
+        if (human && wraegQuiet_[size_t(o)] == G.round) continue;
+        const int b = G.agentFor[size_t(o)];
+        const bool forB = b >= 0 && b != o && b < G.numPlayers && b == ben;
+        std::vector<Option> opts;
+        for (const auto& c : cands) opts.push_back({c.first, "Stop " + pn(owner) + "'s " + unitTypeName(UnitType(c.first)), ""});
+        opts.push_back({-1, "Don't", ""});
+        if (human) opts.push_back({99999, "No, and don't ask again this round", "You'll be asked again next round."});
+        curValue_ = (ben + 1) * 8 + kind;  // (for the AI: who it helps, and which ability)
+        curFor_ = forB ? b : -1;
+        const int c = fpick(o, Ab::DsSuldhan, "Exhaust Suldhan Wraeg: stop one of " + pn(owner) + "'s units using its " + ability + " in " + sysName(sys) + "?",
+                            opts, leaderText(findLeader("nivynagent")));
+        curFor_ = -1;
+        curValue_ = 0;
+        if (c == 99999) wraegQuiet_[size_t(o)] = int16_t(G.round);
+        if (c < 0 || c == 99999) continue;
+        spendAgent(o, "nivyn");
+        if (forB) agentUsedFor(o, b);
+        ds4Event(E, o, "Suldhan Wraeg", pn(o) + "'s advisor stops " + pn(owner) + "'s " + unitTypeName(UnitType(c)) + " using its " + ability + ".", sys);
+        return c;
+    }
+    return -1;
+}
+// A roll's units (space cannon, anti-fighter barrage, bombardment): the unit Suldhan Wraeg stops leaves `units` before the dice (and
+// its extra dice in `mods` - Galvanize, Lithodax - with it)
+void Rules::wraegRoll29(int owner, int ben, int sys, Force& units, RollKind kind, RollMods* mods) {
+    if (G.fixes < 29 || !(G.modules & kModDiscordant) || units.empty()) return;
+    std::vector<std::pair<int, int>> c;
+    for (int t = 0; t < kUnitTypes; ++t) {
+        if (!units.n[t]) continue;
+        const UnitDef& u = unitDef(G, owner, UnitType(t));
+        const int value = kind == RollKind::Cannon ? u.cannon : kind == RollKind::AFB ? u.afb : u.bombard;
+        const int dice = kind == RollKind::Cannon ? u.cannonDice : kind == RollKind::AFB ? u.afbDice : u.bombardDice;
+        if (value <= 0) continue;
+        c.push_back({t, std::max(1, dice) * 16 + (11 - value)});
+    }
+    const int t = wraeg29(owner, ben, sys, c, kind == RollKind::Cannon ? 0 : kind == RollKind::AFB ? 1 : 2,
+                          kind == RollKind::Cannon ? "Space Cannon" : kind == RollKind::AFB ? "Anti-Fighter Barrage" : "Bombardment");
+    if (t < 0) return;
+    units.remove(UnitType(t), 1);
+    if (mods) mods->extraDice[t] = units.n[t] ? std::min<int>(mods->extraDice[t], units.n[t]) : 0;
+}
+
+// A planet's Planetary Shield against `ben`'s bombardment: Suldhan Wraeg can stop it when one unit gives it (two shields still hold; Echo
+// Shielding and the Orbital Defense Grid aren't units). True when stopped.
+bool Rules::wraegShield29(int owner, int ben, int sys, int planet) {
+    if (G.fixes < 29 || !(G.modules & kModDiscordant) || owner < 0 || owner >= G.numPlayers) return false;
+    if (((G.fx.echoShield >> owner) & 1) || G.fx.dsShieldPlanet == planet) return false;
+    int n = 0, ty = -1;
+    const Force& f = G.planets[size_t(planet)].units[size_t(owner)];
+    for (int t = 0; t < kUnitTypes; ++t)
+        if (f.n[t] && unitDef(G, owner, UnitType(t)).shield && !(UnitType(t) == UnitType::PDS && disabled_)) {
+            n += f.n[t];
+            ty = t;
+        }
+    return n == 1 && wraeg29(owner, ben, sys, {{ty, 1}}, 4, "Planetary Shield") >= 0;
 }
 
 // Eradica (Nivyn flagship): other players' units in its system are removed instead of destroyed (no "when destroyed"
@@ -1133,6 +1684,7 @@ bool Rules::ds4Action(int p, Ab ab) {
             pl.fragments.push_back(int16_t(f));
             gainTG(q, 2);
             ds4Event(E, p, "Seeker Drones", pn(p) + "'s drones bring back a " + kExploreCards[f].name + " from " + pn(q) + " (who gains 2 trade goods).");
+            fragmentGained(p);  // (fixes 28)
             return true;
         }
         case Ab::DsGriphyn: {
@@ -1180,6 +1732,41 @@ bool Rules::ds4Action(int p, Ab ab) {
             ds4Hero(E, G, p, pn(p) + " calls in every debt.");
             for (int q = 0; q < G.numPlayers; ++q) {
                 Player& ql = G.players[size_t(q)];
+                // (fixes 29, the Vaden review) "For each control token that belongs to another player on your faction sheet, you MAY return
+                // that token. If you do, that player must give you 1 of their trade goods, 2 of their commodities, or 1 promissory note
+                // from their hand, if able": the Vaden chooses how many of each player's tokens go back (the rest stay on the sheet), and
+                // any note in their hand pays - the Vaden's own too
+                if (G.fixes >= 29 && q != p && G.dsDebt[q] > 0) {
+                    const int payable = ql.tradeGoods + ql.commodities / 2 + int(ql.notes.size());
+                    std::vector<Option> opts;
+                    for (int k = G.dsDebt[q]; k >= 0; --k)
+                        opts.push_back({k, k == 0 ? "None" : "Return " + std::to_string(k) + " token" + (k > 1 ? "s" : ""),
+                                        k > payable ? "They can pay for " + std::to_string(payable) + "." : ""});
+                    curValue_ = payable;
+                    const int k = fpick(p, Ab::DsPutriv, "Debts Come Due: how many of " + pn(q) + "'s " + std::to_string(G.dsDebt[q]) + " tokens do you return?", opts,
+                                        "Each one returned: they give you 1 trade good, 2 commodities or a promissory note from their hand, if able.");
+                    curValue_ = 0;
+                    for (int n = 0; n < k && G.dsDebt[q] > 0; ++n) {
+                        --G.dsDebt[q];
+                        std::vector<Option> pay;
+                        if (ql.tradeGoods > 0) pay.push_back({0, "1 trade good", ""});
+                        if (ql.commodities >= 2) pay.push_back({1, "2 commodities", ""});
+                        for (int16_t nt : ql.notes) pay.push_back({100 + nt, noteNameOf(G, nt), noteOwner(nt) == p ? "Their own note, back to them." : "A promissory note."});
+                        if (pay.empty()) continue;
+                        const int c = pay.size() == 1 ? pay[0].id : fpick(q, Ab::DsPutrivPay, "Debts Come Due: what do you give " + pn(p) + "?", pay);
+                        if (c == 0) {
+                            ql.tradeGoods = int8_t(ql.tradeGoods - 1);
+                            gainTGNotSupply(p, 1);
+                        } else if (c == 1) {
+                            ql.commodities = int8_t(ql.commodities - 2);
+                            gainTGNotSupply(p, 2);  // (commodities given to another player become trade goods, LRR 21.4)
+                        } else {
+                            giveNote(q, p, c - 100);
+                        }
+                        say(q, pn(q) + " pays " + pn(p) + " what it owes.");
+                    }
+                    continue;
+                }
                 for (; q != p && G.dsDebt[q] > 0; --G.dsDebt[q]) {
                     std::vector<Option> opts;
                     if (ql.tradeGoods > 0) opts.push_back({0, "1 trade good", ""});
@@ -1190,10 +1777,10 @@ bool Rules::ds4Action(int p, Ab ab) {
                     const int c = opts.size() == 1 ? opts[0].id : fpick(q, Ab::DsPutrivPay, "Debts Come Due: what do you give " + pn(p) + "?", opts);
                     if (c == 0) {
                         ql.tradeGoods = int8_t(ql.tradeGoods - 1);
-                        gainTG(p, 1);
+                        gainTGNotSupply(p, 1); // (fixes 28: not from the supply - no Artuno)
                     } else if (c == 1) {
                         ql.commodities = int8_t(ql.commodities - 2);
-                        gainTG(p, 2);  // (commodities given in a transaction become trade goods, LRR 21.4)
+                        gainTGNotSupply(p, 2);  // (commodities given in a transaction become trade goods, LRR 21.4)
                     } else {
                         giveNote(q, p, c - 100);
                     }
@@ -1260,16 +1847,24 @@ bool Rules::ds4Action(int p, Ab ab) {
         }
         case Ab::DsKwill: {
             if (!heroUnlocked(G, p)) return false;
-            purgeHero(p);
+            // (fixes 29, the Nivyn review - the Reference: "Each unit on the game board with SUSTAIN DAMAGE, other than your mechs, becomes
+            // damaged, if able. Place this card near the game board ... At the end of this game round, purge this card") in play until the
+            // end of the round (roundEndFactions purges it), neutral units too, the Nivyn's mechs in space spared as well
+            const bool r29 = G.fixes >= 29;
+            if (r29) pl.leaders[size_t(leaderIndex(G, p, kHero))].status = kExhausted;
+            else purgeHero(p);
             pl.heroRound = int16_t(G.round);
+            const int sides = r29 ? kSides : G.numPlayers;
             for (size_t s = 0; s < G.systems.size(); ++s)
-                for (int q = 0; q < G.numPlayers; ++q) {
+                for (int q = 0; q < sides; ++q) {
+                    if (q >= G.numPlayers && q != kNeutral) continue;
                     Force& f = G.systems[s].space[size_t(q)];
                     for (int t = 0; t < kUnitTypes; ++t)
-                        if (f.n[t] && unitSustains(G, q, UnitType(t))) f.dmg[t] = f.n[t];
+                        if (f.n[t] && unitSustains(G, q, UnitType(t)) && !(r29 && q == p && t == int(UnitType::Mech))) f.dmg[t] = f.n[t];
                 }
             for (PlanetState& ps : G.planets)
-                for (int q = 0; q < G.numPlayers; ++q) {
+                for (int q = 0; q < sides; ++q) {
+                    if (q >= G.numPlayers && q != kNeutral) continue;
                     Force& f = ps.units[size_t(q)];
                     for (int t = 0; t < kUnitTypes; ++t)
                         if (f.n[t] && unitSustains(G, q, UnitType(t)) && !(q == p && t == int(UnitType::Mech))) f.dmg[t] = f.n[t];

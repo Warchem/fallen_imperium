@@ -206,6 +206,14 @@ float aiExploreComponentValue(const Game& g, int p, int option) {
     if (option >= 4000) {
         int r = option - 4000;
         if (relicKey(r, "codex")) return g.actionDiscard.size() >= 3 ? 1.2f : 0.5f;
+        // Codex II (0.60.0): Dynamis Core keeps paying +2 commodities a refill - cashed in late (or for the last push);
+        // JR-XS455-O every round (a structure for us, or a trade good); Nano-Forge at once on our best safe planet
+        if (relicKey(r, "dynamiscore")) {
+            const Endgame& E = aiEndgame(g, p);
+            return g.round >= 6 || E.lastRound ? 0.8f + 0.25f * float(commodityValue(g, p)) : 0.f;
+        }
+        if (relicKey(r, "titanprototype")) return spendable(g, p, false) >= 5 ? 1.1f : 0.7f;
+        if (relicKey(r, "nanoforge")) return 2.6f;
         // Thunder's Edge (0.34.0)
         if (relicKey(r, "bookoflatvinia")) {  // a point if we hold all four specialties, else the speaker token late on
             int skips = 0;
@@ -483,6 +491,31 @@ bool aiExploreAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
                         bv = v;
                         b = o.id;
                     }
+                }
+                out = pick1(b);
+                return true;
+            }
+            // ---- Codex II (0.60.0)
+            if (relicKey(r, "titanprototype")) {
+                if (yesNoDecision(d)) {  // a structure for 3 resources when there's a PDS / dock worth placing, else the trade good
+                    const bool rich = spendable(g, p, false) >= 5;
+                    out = pick1(rich ? 1 : 0);
+                    return true;
+                }
+                out = pick1(hasOpt(d, p) ? p : firstReal(d));  // (ourselves)
+                return true;
+            }
+            if (relicKey(r, "nanoforge")) {  // the planet least exposed, best values
+                int b = firstReal(d);
+                float bv = -1e9f;
+                for (const Option& o : d.options) {
+                    if (o.id < 0) continue;
+                    const int s = g.planets[size_t(o.id)].system;
+                    float v = float(planetResources(g, o.id) + planetInfluence(g, o.id));
+                    for (int16_t a : g.systems[size_t(s)].adj)
+                        for (int q = 0; q < g.numPlayers; ++q)
+                            if (q != p && g.systems[size_t(a)].space[size_t(q)].ships() > 0) v -= 2.f;
+                    if (v > bv) bv = v, b = o.id;
                 }
                 out = pick1(b);
                 return true;

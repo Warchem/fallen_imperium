@@ -1,0 +1,9 @@
+# 0.59.70: any button skips the opening - straight to the menu (the press must not also open "New game")
+wait 120
+press A
+wait 10
+shot skip_menu
+press DOWN
+wait 5
+shot skip_down
+quit

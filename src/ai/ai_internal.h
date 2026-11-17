@@ -44,6 +44,7 @@ bool aiGalaxyAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out);
 
 // Negotiations (ai_deals.cpp)
 bool aiDealAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out);
+int aiAgentPromisedTo(const Game& g, int p);  // (rules 28) the player p promised its agent to (an open promise), or -1
 bool aiWantsToNegotiate(const Game& g, int p);         // the action-choice "Negotiate" option
 float aiTradeConvoysValue(const Game& g, int p);      // 0.32.0: play Trade Convoys (a component action)?
 float aiDarkPactValue(const Game& g, int p);          // 0.32.1: play Dark Pact (a component action)?

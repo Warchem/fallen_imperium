@@ -181,130 +181,165 @@ const KT kAbility[] = {
     {"The Blade's Orchestra", "When this faction comes into play: flip your home system, double-sided faction components, and all of your in-play plot cards. Then, ready Cronos Hollow and Tallin Hollow if you control them."},
     {"Marionettes", "The player or players whose control tokens are on each plot card are the puppeted players for that plot."},
     // Discordant Stars (0.37.0) - Kortali Tribunal
-    {"Zealous", "When you spend a command token on Warfare's secondary ability, you may resolve its primary ability instead."},
-    {"Ruthless", "At the start of a ground combat on an exhausted planet you don't control: 1 hit on one of your opponent's ground forces there."},
+    {"Zealous", "When you spend a command token to resolve the secondary ability of the \"Warfare\" strategy card, you may resolve the primary ability instead."},
+    {"Ruthless", "At the start of a ground combat on an exhausted planet you do not control, you may produce 1 hit and assign it to 1 of your opponent's ground forces on that planet."},
     // Vaylerian Scourge
-    {"Cargo Raiders", "In the first round of a space combat, your opponent can only announce a retreat by spending 1 trade good."},
-    {"Scour", "Once per tactical action, after you gain control of a planet: discard 1 action card to ready it."},
-    {"Raze", "After another player's structures are destroyed on a planet where you have units: you may refill your commodities."},
+    {"Cargo Raiders", "During the first round of a space combat, you may prevent your opponent from declaring a retreat unless they spend 1 trade good."},
+    {"Scour", "Once per tactical action, after you gain control of a planet, you may discard 1 action card to ready that planet."},
+    {"Raze", "After 1 or more of another player's structures are destroyed on a planet that contains your units, you may replenish your commodities."},
     // Lanefir Remnants
-    {"A New Edifice", "You can't use technology specialties. When you would gain a relic, purge it instead and explore up to 3 of your planets."},
-    {"Iconoclasm", "Researching a technology that isn't a unit upgrade, you may purge 1 relic fragment to ignore 1 prerequisite."},
-    {"War Stories", "Once per action, after you win a combat: explore one of your planets - or, if the system has no planets, its frontier token."},
+    {"A New Edifice", "You may not use technology specialties. When you would gain a relic, instead purge it and explore up to 3 planets you control."},
+    {"Iconoclasm", "When researching a non-unit upgrade technology, you may purge 1 of your relic fragments to ignore 1 prerequisite on the technology you are researching."},
+    {"War Stories", "Once per action, after you win a combat, you may explore 1 planet you control, or if the active system does not contain any planets, the frontier exploration deck in the active system."},
     // Kyro Sodality
-    {"Contagion", "After you resolve either ability of Politics: 1 infantry from your reinforcements invades a planet in or next to a system with one of your planets."},
-    {"Plague Reservoir", "Once per action, invading a planet with your units, you may fight a ground combat there even without enemy ground forces. You win it (Dacxive Animators: 1 more infantry)."},
-    {"Subversive", "A combat you take part in that would end in a draw counts as won by you."},
+    {"Contagion", "After you resolve the primary or secondary ability of the \"Politics\" strategy card, commit 1 infantry from your reinforcements to a planet that is in or adjacent to a system that contains a planet you control; resolve invasion on that planet."},
+    {"Plague Reservoir", "Once per action, during invasion on a planet that contains your units, you may resolve ground combat on that planet, even if it does not contain another player's ground forces."},
+    {"Subversive", "When participating in a combat that would end in a draw, you are treated as the winner instead."},
     // Cheiran Hordes
-    {"Teeming", "You have 2 more dreadnoughts and 1 more mech in your reinforcements."},
-    {"Moult", "After you win a space combat as the defender: produce 1 ship there, 1 cheaper for each of your non-fighter ships destroyed in it."},
-    {"Byssus", "Your mechs on planets you control count as structures for your own abilities (not for objectives)."},
+    {"Teeming", "During setup place the 2 Cheiran dreadnought and 1 Cheiran mech tokens in your reinforcements. The Cheiran unit tokens are additional units of their type."},
+    {"Moult", "After you win a space combat as the defender: You may produce 1 ship in the active system, reducing the cost by 1 for each of your non-fighter ships destroyed during that combat."},
+    {"Byssus", "You may treat your mechs on planets you control as structures for any purpose other than scoring objectives."},
     // Celdauri Trade Confederation
-    {"Projection of Power", "At the start of a space combat in or next to a system with your space dock, one of your ships there gains Anti-Fighter Barrage 6."},
-    {"Industrialists", "You have 1 more space dock in your reinforcements."},
+    {"Projection of Power", "At the start of a space combat in a system that is adjacent to or contains 1 or more of your space docks: Choose up to 1 ship in that system to gain ANTI-FIGHTER BARRAGE 6 until the end of that combat."},
+    {"Industrialists", "During setup, place the Celdauri space dock token in your reinforcements; the Celdauri space dock token is a fourth space dock unit."},
     // Discordant Stars batch 2 (0.38.0) - L'tokk Khrask
-    {"Lithoids", "In the agenda phase your planets cast votes equal to their resources instead of their influence."},
-    {"Garden Worlds", "Your planets with no ground forces on them have 1 more resource."},
-    {"Meteor Slings", "Bombarding another player's planet, you may turn any of your hits into infantry from your reinforcements landing there (they fight in the ground combat)."},
+    {"Lithoids", "During the agenda phase, the number of votes you cast is instead equal to the combined resource value of the planets that you exhaust."},
+    {"Garden Worlds", "Apply +1 to the resource values of your planets that do not contain 1 or more ground forces."},
+    {"Meteor Slings", "When your units use BOMBARDMENT against a planet another player controls, you may cancel any number of hits you produce to place that many infantry from your reinforcements onto that planet. Those units participate in ground combat, if able."},
     // Zealots of Rhodun
-    {"Conspirators", "Once per agenda phase, after an agenda is revealed and if you aren't the speaker: you may vote after the speaker."},
-    {"Ancient Knowledge", "Each technology specialty you use ignores 1 more prerequisite of its colour, and exhausting a planet for its specialty gives you 1 commodity."},
+    {"Conspirators", "Once per agenda phase, after an agenda is revealed, if you are not the speaker, you may choose to vote after the speaker on that agenda."},
+    {"Ancient Knowledge", "When you use a technology specialty to ignore a prerequisite on a technology card you are researching, you may ignore 1 "
+                          "additional prerequisite of the same color. After you exhaust a planet to use its technology specialty, you may gain 1 "
+                          "commodity."},
     // Zelian Purifier
-    {"Obsessive Designs", "In the action phase, after you research a unit upgrade: produce units of that type at a space dock in your home system, 2 cheaper in all."},
-    {"Biophobic", "In the agenda phase each planet you exhaust casts exactly 1 vote."},
-    {"Paranoia", "Nothing but your own command tokens can stop you activating, or moving ships into, your home system."},
+    {"Obsessive Designs", "During the action phase, after you research a unit upgrade technology, you may use the PRODUCTION ability of 1 of "
+                          "your space docks in your home system to produce units of that type, reducing the combined cost of the produced units "
+                          "by 2."},
+    {"Biophobic", "During the agenda phase, the number of votes you cast is instead equal to the number of planets you exhaust to cast votes."},
+    {"Paranoia", "Game effects other than your command tokens cannot prevent you from activating, or moving ships into, your home system."},
     // Roh'Dhna Mechatronics
-    {"Industrious", "After you place a space dock in a system without other players' ships: pay 6 resources to replace it with a war sun in space."},
-    {"Recycled Materials", "After you activate a system: return a cruiser, carrier or dreadnought of yours there to your reinforcements for trade goods equal to its cost minus 1."},
-    {"Orbital Foundries", "For objectives, each of your war suns counts as a structure on one of your planets."},
+    {"Industrious", "After you place a space dock in a system that contains no other players' ships, you may spend 6 resources and remove that "
+                    "space dock to place 1 war sun in that system's space area."},
+    {"Recycled Materials", "After you activate a system, you may return 1 cruiser, carrier, or dreadnought you control in that system to your "
+                           "reinforcements to gain a number of trade goods equal to 1 less than that unit's cost value."},
+    {"Orbital Foundries", "For the purpose of scoring objectives, you may treat each of your war sun units as though it is a structure on any "
+                          "planet you control."},
     // Tnelis Syndicate
-    {"Plausible Deniability", "When you draw secret objectives, draw 1 more, then shuffle 1 of yours back into the deck."},
-    {"Information Brokers", "You may hold 1 more unscored secret objective."},
-    {"Stealth Insertion", "Your units put onto a planet with another player's units must fight in its ground combat."},
+    {"Plausible Deniability", "When you draw 1 or more secret objective cards, draw 1 additional secret objective card. Then, return 1 secret "
+                              "objective card to the secret objective deck; shuffle that deck."},
+    {"Information Brokers", "You may have 1 additional unscored secret objective."},
+    {"Stealth Insertion", "If you place units onto the same planet as another player's units, your units must participate in combat during "
+                          "the \"Ground Combat\" step."},
     // Monks of Kolume
-    {"Starfall Gunnery", "On your own actions up to 3 of your non-fighter ships have Space Cannon 8; on other players' actions only 1 of your units fires its space cannon."},
-    {"Deliberate Action", "You can't rearrange your command tokens in the status phase. When you pass, you may put 1 token from your reinforcements into an empty pool."},
-    {"Meditation", "Action: spend 1 strategy token to ready one of your technologies."},
+    {"Starfall Gunnery", "During Movement, while you are not the active player, you may only use 1 of your unit's SPACE CANNON. During each of your actions, up to 3 of your non-fighter ships gain SPACE CANNON 8."},
+    {"Deliberate Action", "You cannot redistribute command tokens during the status phase. When you pass, you may place 1 command token from your reinforcements in 1 pool on your command sheet that contains no command tokens."},
+    {"Meditation", "ACTION: Spend 1 command token from your strategy pool to ready 1 of your technologies."},
     // Bentor Conglomerate
-    {"Secret Maps", "At the end of your tactical action: you may explore 1 planet in the active system that has your unit with Production (or is one) and that you didn't explore during it."},
-    {"Ancient Blueprints", "The first time you gain a cultural, hazardous, industrial and unknown relic fragment, a Fragment token of that kind goes on your faction sheet."},
-    {"Fortune Seekers", "Once per action, after you explore a planet or a frontier token: gain 1 commodity."},
+    {"Secret Maps", "At the end of your tactical actions: You may explore 1 planet in the active system that is or contains 1 of your units with "
+                    "PRODUCTION and that you did not explore during that tactical action."},  // (the Bentor review: the card's wording)
+    {"Ancient Blueprints", "The first time you gain a cultural, hazardous, industrial, or unknown relic fragment: Place the corresponding "
+                           "\"Fragment\" token on your faction sheet."},
+    {"Fortune Seekers", "Once per action, after you explore a planet or frontier token: You may gain 1 commodity."},
     // Dih-Mohn Flotilla
-    {"Capital Fleet", "Your destroyers count as half a ship against your fleet pool."},
-    {"Migrant Fleet", "After you explore a frontier token: you may explore one of your planets in a system next to it."},
-    {"Flotilla", "You can't have more infantry than non-fighter ships in the space area of a system."},
+    {"Capital Fleet", "Destroyers count as 1/2 of a ship against your fleet pool."},
+    {"Migrant Fleet", "After you explore a frontier token in a system: you may explore a planet you control that is adjacent to that system."},
+    {"Flotilla", "You cannot have more infantry than non-fighter ships in the space area of a system."},
     // Florzen Profiteers
-    {"Mercenaries", "At the start of a space combat: you may remove up to 2 of your fighters from a system next to it; a player in the combat places that many fighters there."},
-    {"Data Leak", "When you would gain a relic: draw 1 more, keep 1 and shuffle the other back into the relic deck."},
-    {"Shadow Markets", "When you explore a planet, you may use the deck of a trait one of your other planets has."},
+    {"Mercenaries", "At the start of a space combat: You may remove up to 2 fighters you control in a system adjacent to the active system. Then, choose 1 player participating in that combat; that player places the same number of fighters from their reinforcements in the active system."},
+    {"Data Leak", "When you would gain a relic: You may draw 1 additional card; choose 1 to gain and return the rest to the relic deck. Then, shuffle the relic deck."},
+    {"Shadow Markets", "When you explore a planet: You may treat that planet as if it had the same trait as another planet you control."},
     // Gledge Union
-    {"Mantle Cracking", "Action: put a Core token (3 in all) on one of your non-home planets other than Mecatol Rex and gain 4 trade goods."},
-    {"Celestial Reclamation", "A planet with a Core token has base values of 2 resources and 0 influence; the token never leaves it."},
-    {"Deep Mining", "When you would explore a planet with your mech or structure on it, you may gain 1 trade good instead."},
+    {"Mantle Cracking", "ACTION: Place 1 \"Core\" token on a non-home planet you control other than Mecatol Rex that does not contain a Core token to gain up to 4 trade goods. (3 Core tokens in all.)"},
+    {"Celestial Reclamation", "Planets that contain Core tokens have a base resource value of 2 and influence value of 0. Core tokens cannot be removed from the planet that contains them. (They are not attachments: attachments still modify the planet.)"},
+    {"Deep Mining", "When you would explore a planet that contains 1 of your mechs or structures, you may instead gain 1 trade good."},
     // Augurs of Ilyxum
-    {"Oracle AI", "After the speaker reveals a public objective, the next unrevealed one goes on your faction sheet - you may look at it."},
-    {"Limited Vision", "A stage II objective can go on your sheet only once all stage I objectives are revealed."},
-    {"Probability Algorithms", "The objective on your faction sheet is the next public objective the speaker reveals."},
+    {"Oracle AI", "After the speaker reveals an unrevealed public objective: Choose and look at 1 unrevealed public objective card; place that "
+                  "objective card on your faction sheet. You may look at the card on your faction sheet at any time."},  // (the Augurs review: the card's wording)
+    {"Limited Vision", "You may not place a Stage II objective card on your faction sheet until all Stage I objectives have been revealed."},
+    {"Probability Algorithms", "When the speaker would reveal the next public objective: They instead reveal the objective card on your faction "
+                               "sheet and place that objective card near the public objectives as the next public objective."},
     // Berserkers of Kjalengard
-    {"Heroism", "Your fighters and infantry destroyed in combat are captured. When you pass: for each Glory token on the board, you may return 4 captured units for 1 command token."},
-    {"Glory", "After you win a combat: place or move a Glory token (3 in all) into that system - or spend a strategy token to research a unit upgrade of a unit type that fought."},
-    {"Valor", "In a system with a Glory token, each natural 10 on a combat roll makes 1 more hit."},
+    {"Heroism", "Capture your fighters and infantry that are destroyed during combat. When you pass, for each Glory token on the game board, you may return 4 of your captured units to gain 1 command token."},
+    {"Glory", "After you win a combat, you may place or move a Glory token into the active system, or spend 1 token from your strategy pool to research a unit upgrade technology of the same type as 1 of your units that participated in that combat."},
+    {"Valor", "When units make a combat roll in a system that contains a Glory token, each result of 10, before applying modifiers, produces 1 additional hit."},
     // Kollecc Society
-    {"Cloaked Fleets", "After you produce ships, up to 2 of them may go onto your faction sheet (captured - cloaked)."},
-    {"Shroud of Lith", "After you move into a system with your non-fighter ships: up to 2 cloaked ships and 2 cloaked ground forces appear there."},
-    {"Treasure Hunters", "At the start of your turn you may look at the top card of a cultural, hazardous or industrial deck, and at the top relic."},
+    {"Cloaked Fleets", "After you produce 1 or more ships, you may place up to 2 of those ships on your faction sheet, those ships are captured."},
+    {"Shroud of Lith", "After movement, if the active system contains 1 or more of your non-fighter ships, you may place up to 2 of your captured ships and 2 of your captured ground forces from your faction sheet in that system's space area."},
+    {"Treasure Hunters", "At the start of your turn, you may look at the top card of the cultural, hazardous, or industrial exploration deck. Then, look at the top card of the relic deck."},
     // Glimmer of Mortheus
-    {"Facsimile", "At the start of a space combat you defend: pay influence equal to the cost of one of the attacker's ships to put one of that type in."},
-    {"Illusory Presence", "In the agenda phase, after another player votes: exhaust up to 2 planets - they cast 1 vote more than those planets' influence."},
+    {"Facsimile", "At the start of a space combat while you are the defender, you may spend influence equal to the cost value of 1 of your opponent's "
+                  "ships in the active system to place 1 unit of that type from your reinforcements in that system."},
+    {"Illusory Presence", "During the agenda phase, after another player casts votes, you may exhaust up to 2 planets you control; that player casts an "
+                          "additional number of votes equal to 1 more than the combined influence values of those planets."},
     // Vaden Banking Clans
-    {"Fine Print", "After a player resolves the secondary of your strategy card: 1 of their control tokens goes on your faction sheet."},
-    {"Collateralized Loans", "After an opponent's ship is destroyed in space combat: take back 1 of their tokens to put a ship of that type in the system."},
-    {"Binding Debts", "At the start of the status phase each neighbour may pay you 1 trade good to take back up to 2 of their tokens."},
+    {"Fine Print", "After a player resolves the secondary ability of 1 of your strategy cards, place up to 1 of their control tokens on your faction sheet."},
+    {"Collateralized Loans", "After 1 of your opponent's ships is destroyed during a round of space combat, you may remove 1 of that player's control tokens "
+                             "from your faction sheet to place 1 ship of that type from your reinforcements in the active system."},
+    {"Binding Debts", "Other players may place their control tokens on your faction sheet at any time. At the start of the status phase, each of "
+                      "your neighbors may give you 1 trade good to remove up to 2 of their control tokens from your faction sheet."},
     // Savages of Cymiae
-    {"Autonetic Memory", "When you draw action cards, draw 1 less: take 1 from the discard pile instead, or put 1 infantry on one of your planets."},
-    {"Cybernetic Madness", "After taking a card from the discard pile, discard 1. Your resolved action cards are purged, not discarded."},
+    {"Autonetic Memory", "When you draw 1 or more action cards: you may draw 1 less card to choose 1 card from the action card discard pile and add it to your hand, or to place 1 infantry on a planet you control."},
+    {"Cybernetic Madness", "After you resolve an action card's ability text, purge that card instead of discarding it. After you add 1 or more action cards from the discard pile to your hand: discard 1 action card."},
     // Nivyn Star Kings
-    {"Celestial Guides", "Your units don't roll for gravity rifts; anomalies in or next to systems with your structures don't slow you."},
-    {"Singularity Point", "The system with the Wound token is both a nebula and a gravity rift."},
-    {"Voidsailors", "When you explore a frontier token, draw 1 more card, resolve one and shuffle the other back."},
+    {"Celestial Guides", "Your units do not roll for gravity rifts. You may ignore the movement effects of anomalies in systems that contain or are "
+                         "adjacent to 1 or more of your structures."},
+    {"Singularity Point", "The system that contains the \"Wound\" token is both a nebula and a gravity rift."},
+    {"Voidsailors", "When you explore a frontier token, you may draw 1 additional card; choose 1 to resolve and return the rest to the frontier "
+                    "exploration deck. Then, shuffle that deck."},
     // Olradin League
-    {"Policies", "Three policy cards, each on its + or - side (chosen at the start): The People, The Environment, The Economy."},
+    {"Policies", "When you gather your starting components, place the 3 \"Policy\" cards near your faction sheet, choose which side of each card "
+                 "to place face up. This faction has the abilities and effects listed on the face up side of each Policy card."},
     // Free Systems Compact
-    {"Rally to the Cause", "Once per action, after you produce ships at home: produce up to 2 ships in a system with a cultural, hazardous or industrial planet, no legendary planet and nobody else's units."},
-    {"Diplomats", "Once per action, when you pay: exhaust the card of a planet nobody controls (not Mecatol Rex) for its resources or influence."},
-    {"Free People", "The cards of the planets nobody controls lie face up on the board, ready for your Diplomats."},
+    {"Rally to the Cause", "Once per action, after you produce 1 or more ships in your home system, you may produce up to 2 ships in a system that contains a cultural, hazardous, or industrial planet and does not contain a legendary planet or other players' units."},
+    {"Diplomats", "Once per action, you may exhaust 1 uncontrolled planet's planet card that is on the game board to spend its resources or influence."},
+    {"Free People", "During setup, for each non-home planet other than Mecatol Rex on the game board, place that planet's planet card face up on the game board."},
     // Edyn Mandate
-    {"Grace", "Once per action phase, after a strategy card's primary: resolve the secondary of a lower card nobody has used yet, without a command token."},
-    {"Decree", "Other players' ships can't move through anomalies with your ground forces in them - your Sigils included."},
-    {"Radiance", "After an agenda is revealed you may predict its outcome; if you're right, another player's command token goes into one of your Sigils."},
+    {"Grace", "Once per action phase, after you resolve the primary ability of a strategy card: you may resolve the secondary ability of 1 unexhausted strategy card with a lower printed initiative number than that strategy card."},
+    {"Decree", "You may prevent ships from moving through anomalies that contain your ground forces."},
+    {"Radiance", "After an agenda is revealed: you may predict aloud the outcome of that agenda. If your prediction is correct, place 1 command token from another player's reinforcements in a Sigil."},
     // Nokar Sellships
-    {"Hired Guns", "When another player activates a system with your ships: offer them up to 3 for 1 trade good each - they fight as theirs and may be kept at the end of the action."},
-    {"Private Fleet", "4 more destroyers in your reinforcements."},
-    {"Desperados", "When you produce, 1 destroyer doesn't count against the limit. Your destroyers move 1 further when you aren't the active player."},
+    {"Hired Guns", "After a system is activated, you may choose up to 3 of your ships. Those ships are also treated as the active player's and "
+                   "participate in combat as their units. At the end of this tactical action, that player may replace each of those ships in the "
+                   "active system with their own of the same unit type. Then, remove the rest from the game board."},
+    {"Private Fleet", "During setup, place 4 additional destroyers in your reinforcements."},
+    {"Desperados", "When 1 or more of your units use PRODUCTION, 1 destroyer does not count against your PRODUCTION limit. Apply +1 to your "
+                   "destroyers' move values while you are not the active player."},
     // Shipwrights of Axis
-    {"Military Industrial Complex", "After you gain or refill commodities: spend them to put Axis Order cards in your play area. You can't give commodities in transactions."},
-    {"Arms Dealers", "Axis Order cards change hands in deals; their holders call in the ships at the end of their turn. You can't use them yourself."},
+    {"Military Industrial Complex", "After you gain 1 or more commodities: You may spend a number of commodities equal to the combined cost listed on "
+                                    "any number of Axis Order cards in your reinforcements to place those cards in your play area. You may not give "
+                                    "your commodities to other players as part of a transaction."},  // (the Axis review: the card's wording)
+    {"Arms Dealers", "When a player negotiates a transaction: They may exchange Axis Order cards in their play area as part of that transaction. "
+                     "You cannot resolve the effects of Axis Order cards."},
     // Myko-Mentori
-    {"Prescient Memories", "At the start of each strategy phase, roll your 4 Omen dice."},
-    {"Divination", "Before you roll a die you may spend an Omen die instead: the roll takes its result."},
-    {"Necrophage", "+1 commodity value for each space dock you have. After the first round of a combat: gain 1 commodity or turn 1 into a trade good."},
+    {"Prescient Memories", "You have 4 \"Omen\" dice. At the start of the strategy phase, roll all 4 Omen dice and place them near your faction sheet."},
+    {"Divination", "Before you would roll a die, you may instead return 1 Omen die near your faction sheet to your reinforcements to resolve that "
+                   "roll as if it had the result of that die."},
+    {"Necrophage", "Apply +1 to your commodity value for each space dock you control. After the first round of combat, gain 1 commodity or convert 1 "
+                   "of your commodities to a trade good."},
     // Ghemina Raiders
-    {"The Lady & The Lord", "Two flagships - the Lady and the Lord - and two heroes."},
-    {"Rule of Two", "In a space combat with exactly 2 of your non-fighter ships, both of the same type: +2 to their rolls."},
+    {"The Lady & The Lord", "You have 2 flagships: the Lady and the Lord - a second flagship unit with the abilities and attributes listed on the Lord flagship card. You have 2 heroes."},
+    {"Rule of Two", "During a round of combat in a system that contains exactly 2 of your non-fighter ships, if those ships have the same unit type, apply +2 to the result of each of those units' combat rolls (the Lady and the Lord are both flagships). Infantry and fighters don't stop it."},
     // Veldyr Sovereignty
-    {"Corporate Entity", "You have 4 faction promissory notes: the Branch Offices. They don't count toward objectives."},
-    {"Holding Company", "At the start of the status phase, for each planet with a Branch Office: gain 1 commodity or turn 1 into a trade good."},
-    {"Targeted Acquisition", "At the start of the status phase you may give one of your Branch Offices to a neighbour."},
+    {"Corporate Entity", "During setup, take the additional Veldyr faction promissory notes; you have 4 faction promissory notes. \"Branch Office\" "
+                         "attachments do not count toward scoring objectives."},
+    {"Holding Company", "At the start of the status phase, for each planet that has a Branch Office attachment, you may gain 1 commodity or "
+                        "convert 1 of your commodities to a trade good."},
+    {"Targeted Acquisition", "At the start of the status phase, you may give 1 of your faction promissory notes in your hand to 1 of your neighbors."},
     // Li-Zho Dynasty
-    {"Cunning", "After your tactical action in a system: attach a Trap from your reinforcements to a planet there with your infantry."},
-    {"Subterfuge", "Traps lie face down - only you know which is which. They don't count toward objectives."},
+    {"Cunning", "After you perform a tactical action in a system, you may attach 1 Trap card from your reinforcements to a planet in that "
+                "system that contains 1 or more of your infantry."},
+    {"Subterfuge", "Trap attachments are attached face down and stay hidden until revealed; you may look at them at any time. You don't "
+                   "count Trap attachments toward objectives."},
     // Mirveda Protectorate
-    {"Privileged Citizenry", "Each system holds as many of your PDS as you have fleet tokens; for objectives your PDS count as structures on your planets."},
-    {"Combat Drones", "Your space docks can't produce infantry. At the start of an invasion your fighters there may become infantry (no capacity needed during it)."},
+    {"Privileged Citizenry", "Each system can contain a number of your PDS equal to the number of command tokens in your fleet pool. For the purpose of "
+                             "scoring objectives, you may treat each of your PDS units as though it is a structure on any planet you control."},
+    {"Combat Drones", "Your space docks cannot produce infantry. At the start of invasion, you may replace each of your fighters in the active system "
+                      "with 1 infantry unit. During invasion, your infantry in the space area of the active system do not count against your ships' "
+                      "capacity."},
     // Ghoti Wayfarers
-    {"Abyssal Embrace", "Your home tile is Ghoti Space - an empty system."},
-    {"Mobile Command", "The system with your flagship is your home system. While your flagship is off the board you can't score public objectives."},
-    {"Spawning Grounds", "You hold the Ghoti planet card (3/3) - it isn't on the board and can't be lost. Ships moving into a system without planets: 1 commodity."},
+    {"Abyssal Embrace", "When you create the game board, place the Ghoti Space tile where your home system would normally be placed. The Ghoti Space system is not a home system."},
+    {"Mobile Command", "The system that contains your flagship is your home system. Your flagship cannot be captured and you cannot score public objectives if your flagship is not on the game board."},
+    {"Spawning Grounds", "During setup, gain and ready the Ghoti planet card (3/3) and its planet ability card; you cannot lose those cards. The ability: When you move 1 or more ships into a system that contains no planets, gain 1 commodity. You may score objectives if your home system contains no planets."},
 };
 
 // Leaders, keyed by leader key: what they do.
@@ -438,111 +473,162 @@ const KT kLeaderText[] = {
     {"obsidiancommander", "Apply +1 to the result of each of your units' combat rolls in The Fracture."},
     {"obsidianhero", "ACTION: Ready all of your planets. Then, purge this card."},
     // Discordant Stars (0.37.0)
-    {"kortaliagent", "When a player wins a ground combat: exhaust to let them take 1 of their opponent's relic fragments at random."},
-    {"kortalicommander", "In the first round of a combat, you may cancel 1 hit against your units."},
-    {"kortalihero", "When you win a combat: purge her to take 1 of your opponent's relics, then gain 1 command token for each legendary planet or planet with a technology specialty you control."},
-    {"vaylerianagent", "After a player gains control of a planet: exhaust to let them draw 1 action card."},
-    {"vayleriancommander", "After you activate a system: your ships have 2 more capacity this tactical action."},
-    {"vaylerianhero", "After you activate a system: purge him to take back 1 of your command tokens from the board and gain 1 command token; your ships get +1 move and +1 to combat rolls this tactical action."},
-    {"lanefiragent", "When a player explores: exhaust to let them discard the card they drew and draw another."},
-    {"lanefircommander", "After you explore a planet: you may put 1 infantry from your reinforcements on it."},
-    {"lanefirhero", "Action: reveal 3 relics. Gain 1 command token for each relic in play, and you may swap other players' relics for revealed ones. The rest are shuffled back; purged."},
-    {"kyroagent", "After a player loses or draws a ground combat: exhaust to let them refill their commodities; you put infantry equal to their commodity value minus 1 on one of your planets."},
-    {"kyrocommander", "When you cast votes: remove up to 4 of your infantry from the board for 1 more vote each."},
-    {"kyrohero", "At the start of the status phase: attach it to one of your strategy cards for good - that card has initiative 9, and trade goods placed on it go to you."},
-    {"cheiranagent", "At the end of a player's turn: exhaust to let them move 1 of their command tokens to a neighbouring system with their structure and none of their tokens."},
-    {"cheirancommander", "While defending a ground combat: cancel hits against you for 1 commodity or trade good each."},
-    {"cheiranhero", "Action: your starting units again, from your reinforcements, into a system with your structure and no other ships (ground forces on your planets). Purged afterwards."},
-    {"celdauriagent", "At the end of a player's tactical action: exhaust to let them pay 2 trade goods or commodities for a space dock on their planet in that system."},
-    {"celdauricommander", "After you activate a system with your space dock, gain 1 commodity. Your systems with space docks are next to each other for your ships."},
-    {"celdaurihero", "After a player activates a system other than Mecatol Rex: purge him to place a space dock on your planet there, turn your commodities into trade goods and use Production there."},
+    {"kortaliagent", "When a player wins a ground combat: You may exhaust this card to allow that player to take 1 relic fragment their opponent owns, at random, if able."},
+    {"kortalicommander", "During the first round of a combat, you may cancel 1 hit produced against your units."},
+    {"kortalihero", "When you win a combat: You may purge this card to choose and take up to 1 of your opponent's relics. Then, for each planet you control that is a legendary planet or has a technology specialty, gain 1 command token."},
+    {"vaylerianagent", "After a player gains control of a planet, you may exhaust this card to allow that player to draw 1 action card."},
+    {"vayleriancommander", "After you activate a system: Choose 1 ship you control with a capacity value, apply +2 to that value during this tactical action."},
+    {"vaylerianhero", "After you activate a system: Remove 1 of your command tokens from the board and gain 1 command token. Until the end of this tactical "
+                   "action, apply +1 to the move value of each of your ships and the result of each of your ships' combat rolls. At the end "
+                   "of this turn, purge this card."},
+    {"lanefiragent", "When a player explores, you may exhaust this card to allow that player to discard 1 exploration card they drew and draw another."},
+    {"lanefircommander", "After you explore a planet: You may place 1 infantry from your reinforcements on that planet."},
+    {"lanefirhero", "ACTION: Draw and reveal up to 3 relics. For each relic that started this action in a player's play area, gain 1 command token; you may swap that relic for 1 of the revealed relics or a relic in a player's play area. Then, shuffle the remaining relics into the relic deck and purge this card."},
+    {"kyroagent", "After a player loses or draws a ground combat: You may exhaust this card to allow that player to replenish their commodities; place a number of infantry equal to 1 less than their commodity value on 1 planet you control."},
+    {"kyrocommander", "When you cast votes: You may remove up to 4 of your infantry from the game board to cast 1 additional vote for each unit removed."},
+    {"kyrohero", "At the start of the status phase: You may attach this card to 1 of your strategy cards. Its initiative value is 9. Non-Kyro players may only resolve 1 clause of this strategy card's primary ability. The Kyro player gains any trade goods placed on this card."},
+    {"cheiranagent", "At the end of a player's turn: Exhaust this card to allow that player to remove 1 of their command tokens from the game board and place that token in an adjacent system that contains 1 or more of their structures and none of their command tokens."},
+    {"cheirancommander", "While you are the defender: After another player produces 1 or more hits against your units during ground combat, you may spend 1 commodity or 1 trade good to cancel 1 of those hits."},
+    {"cheiranhero", "ACTION: Gather units from your reinforcements up to equal to your starting units. Place these units, in any combination, in the space area of any systems that contain 1 of your structures and no other players' ships, or on planets you control. Then, purge this card."},
+    {"celdauriagent", "At the end of a player's tactical action: You may exhaust this card to allow that player to spend 2 trade goods or 2 commodities to place 1 space dock from their reinforcements on a planet they control in the active system."},
+    {"celdauricommander", "After you activate a system that contains 1 or more of your space docks, gain 1 commodity. Your ships may treat systems that contain 1 or more of your space docks as adjacent to each other."},
+    {"celdaurihero", "After a player activates a system other than Mecatol Rex: You may place 1 space dock on a planet you control in the active system, convert each of your commodities to a trade good, and use the PRODUCTION ability of each of your units in the active system. Then, purge this card."},
     // Discordant Stars batch 2 (0.38.0)
-    {"khraskagent", "When a player spends influence: exhaust to let them use the resources of 1 of their non-home planets as influence as well."},
-    {"khraskcommander", "At the start of an invasion in a system with planets: put 1 infantry from your reinforcements in its space area, if you have room."},
-    {"khraskhero", "Action: purge it to exhaust or ready up to 4 planets."},
-    {"zealotsagent", "After a player researches a technology: exhaust to let them produce 1 ship at home or in a system with their planet that has a technology specialty."},
-    {"zealotscommander", "Researching, you may use 1 of your planets' technology specialties to ignore any one prerequisite - of any "
-                         "colour, not only its own. (Using a specialty exhausts that planet, as always.)"},
-    {"zealotshero", "Action: gain up to 3 technologies that aren't faction technologies. At the start of the next strategy phase you keep only 1 of them."},
-    {"zelianagent", "At the start of an invasion: exhaust to let the active player swap 1 of their infantry in the space area for a mech."},
-    {"zeliancommander", "Your dreadnoughts and war suns without Anti-Fighter Barrage have Anti-Fighter Barrage 5."},
-    {"zelianhero", "After you move a unit with Bombardment into a non-home system (not Mecatol Rex): gain trade goods equal to its planets' resources, destroy every unit on them and the planets themselves; purged."},
-    {"rohdhnaagent", "After a player's units use Production: exhaust to let them gain 1 command token."},
-    {"rohdhnacommander", "When you spend a command token on Construction's secondary ability, you may resolve its primary ability instead."},
-    {"rohdhnahero", "After you move ships into the active system: purge him to produce ships there with every unit's Production as if it were yours, blockade or not."},
-    {"tnelisagent", "At the start of an invasion: exhaust to let one of the active player's ships use its Anti-Fighter Barrage as Bombardment."},
-    {"tneliscommander", "After you activate a system: you may damage one of your ships to let one ship move 1 further this tactical action."},
-    {"tnelishero", "After another player scores a secret objective: attach it there - you can score that objective like a public one; purged when you do."},
-    {"kolumeagent", "Action: exhaust to let a player move 1 of their command tokens to another pool."},
-    {"kolumecommander", "+1 to your units' unit ability rolls (space cannon, bombardment, anti-fighter barrage)."},
-    {"kolumehero", "Action: this round, after each of your component actions, one of your units fires its space cannon at ships in or next to its system. Purged at the end of the round."},
-    {"bentoragent", "Action: exhaust to give a player 1 commodity for each of your Fragment tokens (any beyond their commodity value become trade goods)."},
-    {"bentorcommander", "Your commodity value is 1 higher."},
-    {"bentorhero", "Action: explore each planet you control, in any order. Then purge him."},
-    {"dihmohnagent", "When a player commits units to a planet: exhaust to let them put 1 infantry from their reinforcements there too."},
-    {"dihmohncommander", "Counts as a red technology prerequisite. At the start of a space combat where you have 3 or more kinds of non-fighter ships: 1 hit on your opponent's ships."},
-    {"dihmohnhero", "After the dice of a space combat round are rolled: purge him - every ship in the system becomes damaged, and your ships can't be destroyed this round."},
-    {"florzenagent", "At the start of a player's turn: exhaust to let them move an attachment from one of their non-home planets to one of theirs in a system next to it (not Mecatol Rex)."},
-    {"florzencommander", "After the second agenda is revealed: ready one of your planets and explore it."},
-    {"florzenhero", "Action: 2 fighters in each system with your planets and no other ships; then move 1 attachment from a planet in a system with your ships to your home system. Purge her."},
-    {"gledgeagent", "When a player's units use Production: exhaust to give them 3 more Production."},
-    {"gledgecommander", "When your units use Production: 1 more for each space dock you control."},
-    {"gledgehero", "Action: reveal exploration cards (not frontier) until 3 attachments; attach each to one of your planets of its type, discard the rest. Then purge him."},
-    {"augersagent", "After a player explores a legendary planet or one with a technology specialty: exhaust to give them 2 trade goods."},
-    {"augerscommander", "Counts as a yellow technology prerequisite. When you cast votes, cast 1 more for every 2 technologies you own."},
-    {"augershero", "Action: draw 3 public objectives; one may replace the objective on your faction sheet, the rest go to the bottom. Then purge her."},
-    {"kjalengardagent", "At the start of a combat: exhaust to move a Glory token into that system; the active player gains 1 commodity per neighbour."},
-    {"kjalengardcommander", "Researching a unit upgrade: each of your unit upgrades covers 1 prerequisite of a colour both ask for."},
-    {"kjalengardhero", "Action: for each Glory token, take back 1 of your command tokens in or next to its system and gain 1 command token. Then purge him."},
-    {"kolleccagent", "At the start of a player's turn: exhaust to let them reveal 2 cards of an exploration deck matching one of their planets - they keep the relic fragments."},
-    {"kollecccommander", "Counts as a blue technology prerequisite. Retreating from a system without your command token places no token."},
-    {"kollecchero", "Action: draw a relic for each player, keep 1, shuffle the rest back. Then purge him."},
-    {"mortheusagent", "When a player produces units: exhaust to let one of the new ships go to a neighbouring system without other players' ships."},
-    {"mortheuscommander", "At the start of a space combat on another player's turn: one of your non-fighter ships has Sustain Damage for the combat."},
-    {"mortheushero", "Action: in each system with your ships, put one more of one of those ship types. Then purge him."},
-    {"vadenagent", "At the start of a player's turn: exhaust to give them commodities equal to one of their planets' influence."},
-    {"vadencommander", "At the start of the status phase: 1 trade good for each secret objective you scored, 1 commodity for each public one."},
-    {"vadenhero", "Action: each token on your sheet goes back - its owner gives you 1 trade good, 2 commodities or a promissory note. Then purge him."},
-    {"cymiaeagent", "When a player discards or purges an action card: exhaust to let them draw 1."},
-    {"cymiaecommander", "After you take a planet in a tactical action: discard an action card to put a mech on it."},
-    {"cymiaehero", "Action: reveal 1 action card more than there are players; give 1 to each other player, keep the rest; they each discard 1. Then purge it."},
-    {"nivynagent", "When a player's unit would use an ability (not Production) in or next to an anomaly: exhaust to stop that unit."},
-    {"freesystemsagent", "While ready, it has the abilities of the legendary planets any player controls: exhaust it to use one."},
-    {"freesystemscommander", "After you take a non-home planet in a tactical action: produce 1 ship in that system if your ships are there."},
-    {"freesystemshero", "Action: ready one of your non-home planets (not Mecatol Rex) and clear every unit from it - no units can be put there again. Then purge him."},
-    {"edynagent", "After a player passes: exhaust to let a player of your choice perform 1 action; then look at the top agenda and you may discard it."},
-    {"edyncommander", "When you could score a public objective, you may draw 1 secret objective instead."},
-    {"edynhero", "Action: for each Sigil, draw an agenda and resolve it as if you alone voted, for the outcome you choose. Then purge him."},
-    {"nokaragent", "After movement: exhaust to let the active player put 1 destroyer in the active system - then you may trade with them."},
-    {"nokarcommander", "In a space combat after you announce a retreat: cancel up to 2 hits. You may retreat to systems next to your home."},
-    {"nokarhero", "Action: until the end of the round, each of your planets has Production 3. Then purge him."},
-    {"axisagent", "Action: exhaust to let a player put a cruiser or destroyer with their ships - another player: you gain 2 commodities."},
-    {"axiscommander", "After a player uses an Axis Order: you may spend 6 resources to gain that unit's upgrade."},
-    {"axishero", "Action: give Axis Orders from your play area to other players; each one gives you a promissory note. Then purge her."},
-    {"mykomentoriagent", "Before another player rolls: exhaust to make one of their dice one of your Omen dice (it stays near your sheet)."},
-    {"mykomentoricommander", "When another player's space combat hits come at you: spend 1 commodity or trade good to cancel 1."},
-    {"mykomentorihero", "Other players' heroes that would be purged are bound to it instead; resolve one of them as your own. Purged with everything bound to it."},
-    {"gheminaagent", "When the active player makes hits in a combat round: exhaust for 1 more hit."},
-    {"gheminacommander", "After you win a space combat where there are no planets, or a ground combat on a planet with a structure: gain 1 trade good."},
-    {"gheminaherolord", "Action: take a non-home planet (not Mecatol Rex) without other players' units, in or next to a system with your flagship; ready it. Then purge him."},
-    {"gheminaherolady", "Action: destroy every unit on a non-home planet (not Mecatol Rex) in or next to a system with your flagship. Then purge her."},
-    {"veldyragent", "When a player researches: exhaust to let them pay with one planet's influence as resources."},
-    {"veldyrcommander", "Researching a technology owned by a player with a Branch Office planet: ignore 1 prerequisite."},
-    {"veldyrhero", "Action: for each Branch Office, gain a unit upgrade of a unit type its planet's owner has upgraded. Then purge him."},
-    {"lizhoagent", "At the end of a player's turn: exhaust to let them put 2 fighters with their ships."},
-    {"lizhocommander", "In a combat round with only 1 of your non-fighter ships (or 1 infantry) fighting: 1 unit rolls 1 more die."},
-    {"lizhohero", "Action: attach or move each Trap to any planet; up to 12 fighters in systems with your Traps and no other ships. Then purge her."},
-    {"mirvedaagent", "After a player gains a unit upgrade: exhaust - they may spend a strategy token to research a technology of one of its prerequisite colours."},
-    {"mirvedacommander", "Your space cannon may also fire at units next to their system."},
-    {"mirvedahero", "Action: up to 3 PDS; then all your PDS fire at one system - space cannon at the ships, bombardment at one planet. Then purge it."},
-    {"ghotiagent", "When a player produces: exhaust for 2 more units, or 1 trade good."},
-    {"ghoticommander", "After you activate a system: systems without planets are next to each other during this action."},
-    {"ghotihero", "Action: in each system with your ships, one of them becomes a ship costing up to 2 more. Then purge her."},
-    {"nivyncommander", "When your damaged units roll for combat, up to 2 of them roll 1 more die."},
-    {"nivynhero", "Action: every unit that can sustain damage becomes damaged (not your mechs); this round your units are next to the Wound. Purged at the end of the round."},
-    {"olradinagent", "After a player exhausts a cultural, hazardous or industrial planet: exhaust to let them ready one of theirs of another trait."},
-    {"olradincommander", "When you pass: exhaust a non-home planet (not Mecatol Rex) for trade goods equal to its resources or influence."},
-    {"olradinhero", "Action: 1 infantry on each planet you control; you may flip 1 policy. Then purge him."},
+    {"khraskagent", "When a player would spend influence: You may exhaust this card to allow that player to spend the resources of 1 non-home planet they control as influence, in addition to its influence."},
+    {"khraskcommander", "At the start of invasion in a system that contains 1 or more planets: You may place 1 infantry unit from your reinforcements in that system's space area if you have unused capacity in that system."},
+    {"khraskhero", "ACTION: Purge this card to choose up to 4 planets; exhaust or ready each of those planets."},
+    {"zealotsagent", "After a player researches a technology: You may exhaust this card to allow that player to produce 1 ship in their home "
+                     "system or a system that contains a planet they control that has a technology specialty."},
+    {"zealotscommander", "When researching a technology, you may use the technology specialty of 1 planet you control to ignore any 1 "
+                         "prerequisite on the technology card you are researching."},
+    {"zealotshero", "ACTION: Place this card and up to 3 non-faction technologies near the game board, you gain those technologies. At the "
+                    "start of the next strategy phase, purge all but 1 of those technologies and this card."},
+    {"zelianagent", "At the start of invasion: You may exhaust this card to allow the active player to replace 1 of their infantry in the "
+                    "space area of the active system with 1 mech from their reinforcements."},
+    {"zeliancommander", "Each of your Dreadnoughts and War Suns without ANTI-FIGHTER BARRAGE gains ANTI-FIGHTER BARRAGE 5."},
+    {"zelianhero", "After you move a unit with BOMBARDMENT into a non-home system other than Mecatol Rex: You may gain trade goods equal to the "
+                   "total combined resource values of planets in that system. If you do, destroy all units on planets in that system and replace "
+                   "that system tile with the Zelian asteroid tile. Then, purge this card and each planet card that corresponds to the replaced "
+                   "system tile."},
+    {"rohdhnaagent", "After 1 or more of a player's units use PRODUCTION: You may exhaust this card to allow that player to gain 1 command token."},
+    {"rohdhnacommander", "When you spend a command token to resolve the secondary ability of the \"Construction\" strategy card, you may resolve "
+                         "the primary ability instead."},
+    {"rohdhnahero", "After you move 1 or more of your ships into the active system: You may purge this card to produce ships using the "
+                    "PRODUCTION abilities of any units in the active system as if they were your own, regardless of whether that system contains "
+                    "another player's ships."},
+    {"tnelisagent", "At the start of invasion: You may exhaust this card to choose 1 ship in the active system. During this invasion, that "
+                    "ship may use its ANTI-FIGHTER BARRAGE as if it were BOMBARDMENT."},
+    {"tneliscommander", "After you activate a system, you may produce and assign 1 hit to a non-fighter ship you control in a system to apply "
+                        "+1 to the move value of 1 of your ships in that system until the end of this tactical action."},
+    {"tnelishero", "After another player scores a secret objective: You may attach, or remove and attach, this card to that secret objective. "
+                   "You treat the attached secret objective as if it were a public objective. After you score the attached objective, purge "
+                   "this card."},
+    {"kolumeagent", "ACTION: Exhaust this card to allow a player to redistribute 1 of their command tokens on their command sheet."},
+    {"kolumecommander", "Apply +1 to each of your unit's ability rolls."},
+    {"kolumehero", "ACTION: Place this card near the game board; during this game round, after you perform a component action, you may use 1 of your unit's SPACE CANNON against ships in or adjacent to that unit's system, without rolling additional dice. At the end of this game round, purge this card."},
+    {"bentoragent", "ACTION: Exhaust this card and choose 1 player. For each Fragment token on your faction sheet, that player gains 1 commodity. "
+                    "For each commodity they would gain in excess of their commodity value, they gain 1 trade good instead."},  // (the Bentor review: the card's wording)
+    {"bentorcommander", "Your commodity value is increased by 1."},
+    {"bentorhero", "ACTION: Purge this card to explore each planet you control in any order."},
+    {"dihmohnagent", "When a player commits 1 or more units to a planet during invasion: you may exhaust this card to allow that player to place 1 infantry from their reinforcements on that planet."},
+    {"dihmohncommander", "This card satisfies a red technology prerequisite. At the start of a space combat in a system that contains 3 or more different types of your non-fighter ships, produce 1 hit against your opponent's ships."},
+    {"dihmohnhero", "After the \"Roll Dice\" step of space combat: you may purge this card. If you do, all ships in the active system become damaged. During this round of space combat your ships cannot be destroyed."},
+    {"florzenagent", "At the start of a player's turn: You may exhaust this card to allow that player to remove an attachment from a non-home planet they control and attach it to a non-home planet they control other than Mecatol Rex adjacent to that planet's system."},
+    {"florzencommander", "After the second agenda is revealed during the agenda phase: You may ready 1 planet you control. Explore that planet, if able."},
+    {"florzenhero", "Action: Place 2 fighters from your reinforcements in each system that contains 1 or more planets you control and no other player's ships. Then, you may remove 1 attachment from any planet in a non-home system that contains 1 or more of your ships and attach it to 1 planet in your home system. Then, purge this card."},
+    {"gledgeagent", "When 1 or more of a player's units use PRODUCTION: You may exhaust this card to apply +3 to the total PRODUCTION value of that player's units."},
+    {"gledgecommander", "When you use the PRODUCTION of 1 or more of your units, you may increase the total PRODUCTION value of those units by 1 for each space dock you control."},
+    {"gledgehero", "ACTION: Reveal cards from any non-frontier exploration decks until you reveal up to 3 attachments, if able; attach those cards to any planets you control of the corresponding planet type, and discard the rest. Then, purge this card."},
+    {"augersagent", "After a player explores a legendary planet or a planet that has a technology specialty: You may exhaust this card to "
+                    "allow that player to gain 2 trade goods."},  // (the Augurs review: the card's wording)
+    {"augerscommander", "This card satisfies a yellow technology prerequisite. When you cast at least 1 vote, cast 1 additional vote for every 2 "
+                        "technologies you own."},
+    {"augershero", "ACTION: Draw 3 objective cards from 1 of the public objective decks. Choose up to 1 of those cards to replace an objective "
+                   "card on a player's faction sheet, and return the others to the bottom of their corresponding decks. Then, purge this card. "
+                   "(The game draws from the deck of the stage revealed next.)"},
+    {"kjalengardagent", "At the start of a combat: Exhaust this card to move a Glory token to the active system, if able. Then, the active player may gain a number of commodities equal to the number of neighbors they have."},
+    {"kjalengardcommander", "When researching a unit upgrade technology, each of your unit upgrade technologies may satisfy 1 prerequisite it shares with the technology you are researching."},
+    {"kjalengardhero", "ACTION: For each system that contains a Glory token, remove up to 1 command token in or adjacent to that system from the game board and gain 1 command token, if able. Then, purge this card."},
+    {"kolleccagent", "At the start of a player's turn: You may exhaust this card to allow that player to reveal the top 2 cards of an exploration deck that matches a planet they control; they gain any relic fragments that they revealed and discard the rest."},
+    {"kollecccommander", "This card satisfies a blue technology prerequisite. When you retreat, if the active system does not contain 1 of your command tokens, you do not place a command token in the system your ships retreated to."},
+    {"kollecchero", "ACTION: Draw a number of relic cards up to an amount equal to the number of players in the game, choose 1 to gain, and return the rest to the relic deck. Then, shuffle that deck and purge this card."},
+    {"mortheusagent", "When a player produces 1 or more units in a system: you may exhaust this card to allow that player to place 1 of the produced "
+                      "units in the space area of an adjacent system that does not contain another player's ships."},
+    {"mortheuscommander", "At the start of a space combat while you are not the active player: choose 1 of your non-fighter ships in the active "
+                          "system to gain SUSTAIN DAMAGE until the end of combat."},
+    {"mortheushero", "Action: purge this card to choose 1 ship you control in each system; for each of those units, you may place 1 unit of that "
+                     "unit type from your reinforcements in the space area of that unit's system, if able."},
+    {"vadenagent", "At the start of a player's turn: You may exhaust this card to allow that player to choose 1 planet they control; that player "
+                   "gains a number of commodities equal to that planet's influence value."},
+    {"vadencommander", "At the start of the status phase: Gain 1 trade good for each secret objective you have scored and 1 commodity for each "
+                       "public objective you have scored."},
+    {"vadenhero", "ACTION: For each control token that belongs to another player on your faction sheet, you may return that token. If you do, "
+                  "that player must give you 1 of their trade goods, 2 of their commodities, or 1 promissory note from their hand, if able. "
+                  "Then, purge this card."},
+    {"cymiaeagent", "When a player discards or purges an action card: you may exhaust this card to allow that player to draw 1 action card."},
+    {"cymiaecommander", "After you gain control of a planet during a tactical action: you may discard 1 action card to place or move 1 mech onto that planet."},
+    {"cymiaehero", "Action: draw and reveal a number of action cards from the action card deck equal to 1 more than the number of players in the game; give 1 to each other player in the game and keep the rest. Each other player must discard 1 action card. Then, purge this card."},
+    {"nivynagent", "When a player would use 1 unit's non-PRODUCTION unit ability in a system that contains or is adjacent to an anomaly, you may "
+                   "exhaust this card to prevent that unit from using that unit ability."},
+    {"freesystemsagent", "While ready, this card has the text ability of each legendary planet ability card any player controls, even if that card is exhausted. You may allow another player to use this card's ability."},
+    {"freesystemscommander", "After you gain control of a non-home planet during a tactical action: If you have 1 or more ships in the active system, you may produce 1 ship in that system."},
+    {"freesystemshero", "Action: Ready a non-home planet other than Mecatol Rex that you control, remove all units on that planet and attach this card to it. Units cannot be committed to, produced on, or placed on this planet."},
+    {"edynagent", "After a player passes: you may exhaust this card to choose 1 player. That player may perform up to 1 action. Then, look at the top card of the agenda deck; you may discard that agenda card."},
+    {"edyncommander", "When any game effect would allow you to score a public objective: you may instead draw 1 secret objective."},
+    {"edynhero", "Action: for each Sigil on the game board, draw 1 agenda. Reveal and resolve each agenda in any order as if you had cast 1 vote for an outcome of your choice. Other players cannot resolve abilities during this action. Then, purge this card."},
+    {"nokaragent", "After movement: You may exhaust this card to allow 1 player with 1 or more ships in the active system to place 1 destroyer "
+                   "from their reinforcements in that system. Then, you may resolve 1 transaction with that player."},
+    {"nokarcommander", "Before you assign hits to your ships during a space combat, if you announced a retreat, cancel up to 2 hits. During "
+                       "combat, you may treat the active system as adjacent to each system adjacent to your home system."},
+    {"nokarhero", "ACTION: Place this card near the game board, until the end of this game round, each of your planets gains the PRODUCTION 3 "
+                  "ability as if it were a unit. At the end of this game round, purge this card."},
+    {"axisagent", "ACTION: Exhaust this card to choose 1 player: that player may place 1 cruiser or 1 destroyer from their reinforcements in a "
+                  "system that contains their ships. Then, if you chose another player, gain 2 commodities."},  // (the Axis review: the card's wording)
+    {"axiscommander", "After a player resolves an Axis Order card: You may spend 6 resources to gain the corresponding unit's unit upgrade "
+                      "technology."},
+    {"axishero", "ACTION: Purge this card and give 1 or more Axis Order cards in your play area to 1 or more other players: for each Axis Order "
+                 "card you give to another player, you may force that player to give you 1 promissory note from their hand."},
+    {"mykomentoriagent", "Before a player rolls a die, you may instead exhaust this card and choose 1 Omen die near the Myko-Mentori player's faction "
+                         "sheet; resolve that die roll as if it had the result of that Omen die."},
+    {"mykomentoricommander", "After another player produces 1 or more hits against your units during space combat, you may spend 1 commodity or 1 "
+                             "trade good to cancel 1 of those hits."},
+    {"mykomentorihero", "When another player's hero would be purged, instead attach it to this card. You may resolve this card as if it instead had "
+                        "the text of any single hero attached to this card. When this card is purged, purge each of its attachments as well."},
+    {"gheminaagent", "When the active player produces 1 or more hits during a round of combat: You may exhaust this card to allow that player to produce 1 additional hit."},
+    {"gheminacommander", "After you win a combat in a system that contains no planets or on a planet that contains a structure, you may gain 1 trade good."},
+    {"gheminaherolord", "ACTION: Purge this card to choose 1 non-home planet other than Mecatol Rex that does not contain another player's units and is adjacent to a system that contains 1 of your flagships (a planet is adjacent to its own system); gain control of that planet. Then, ready that planet."},
+    {"gheminaherolady", "ACTION: Purge this card to destroy all units on a non-home planet other than Mecatol Rex that is adjacent to a system that contains 1 of your flagships (a planet is adjacent to its own system)."},
+    {"veldyragent", "When a player spends resources to research: You may exhaust this card to allow that player to spend the influence of 1 planet "
+                    "they control as resources."},
+    {"veldyrcommander", "When you research a technology that is owned by a player who controls a planet with a Branch Office attachment, you may "
+                        "ignore 1 prerequisite on that technology."},
+    {"veldyrhero", "ACTION: For each planet that has a Branch Office attachment, you may gain 1 unit upgrade technology of the same unit type as 1 "
+                   "owned by the player that controls that planet. Then, purge this card."},
+    {"lizhoagent", "At the end of a player's turn: you may exhaust this card to let that player place 2 fighters from their reinforcements "
+                   "in the space area of a system that contains 1 or more of their ships."},
+    {"lizhocommander", "During a round of combat in which no more than 1 of your non-fighter ships or 1 of your infantry is fighting: choose 1 "
+                       "of your units in that combat - it rolls 1 additional die."},
+    {"lizhohero", "Action: attach, or remove and attach, each Trap to a planet on the game board; place a total of up to 12 fighters in "
+                  "systems that contain 1 or more planets with Traps and no other player's ships. Then purge this card."},
+    {"mirvedaagent", "After a player gains a unit upgrade technology: you may exhaust this card to allow that player to spend 1 command token from "
+                     "their strategy pool to research 1 technology of the same color as any 1 of that unit upgrade's prerequisites."},
+    {"mirvedacommander", "During movement, for each infantry you transport, you may replace that unit with 1 fighter. You may use the SPACE CANNON "
+                         "of 1 of your units against units that are adjacent to that unit's system."},
+    {"mirvedahero", "Action: place up to 3 PDS from your reinforcements on planets you control and choose 1 system; your PDS may use their SPACE "
+                    "CANNON on ships in that system, and BOMBARDMENT against units on 1 planet in that system. Then purge this card."},
+    {"ghotiagent", "When a player produces 1 or more units: You may exhaust this card to allow that player to either produce 2 additional units or gain 1 trade good."},
+    {"ghoticommander", "After you activate a system: You may treat systems that contain no planets as adjacent to each other during this tactical action."},
+    {"ghotihero", "ACTION: For each system that contains 1 or more of your ships, you may replace 1 of your non-fighter ships in that system with a ship from your reinforcements that has a cost value of up to 2 greater than the cost value of that ship. Then, purge this card."},
+    {"nivyncommander", "When 1 or more of your damaged units make a combat roll, up to 2 of those units may roll an additional combat die."},
+    {"nivynhero", "ACTION: Each unit on the game board with SUSTAIN DAMAGE, other than your mechs, becomes damaged, if able. Place this card near the "
+                  "game board; you may treat each unit you control as adjacent to the system that contains the Wound token until the end of this "
+                  "game round. At the end of this game round, purge this card."},
+    {"olradinagent", "After a player exhausts a cultural, hazardous, or industrial planet they control, you may exhaust this card to allow that "
+                     "player to ready a planet they control of a different trait than that planet."},
+    {"olradincommander", "When you pass: You may exhaust 1 non-home planet you control other than Mecatol Rex to gain a number of trade goods "
+                         "equal to that planet's resource or influence value."},
+    {"olradinhero", "ACTION: Place 1 infantry from your reinforcements on each planet you control; you may choose and flip 1 policy card. Then, "
+                    "purge this card."},
 };
 
 // Commander / hero unlock conditions.
@@ -579,39 +665,39 @@ const KT kUnlock[] = {
     {"firmamentcommander", "Have a plot card in play."},
     {"obsidiancommander", "Have units in The Fracture."},
     {"kortalicommander", "Destroy the last of a player's units in a system."},
-    {"vayleriancommander", "Control 3 planets with the same trait."},
-    {"lanefircommander", "7 relic fragments have been purged in this game."},
-    {"kyrocommander", "Have 6 infantry and 6 fighters on the board."},
+    {"vayleriancommander", "Control 3 planets that each have the same trait."},
+    {"lanefircommander", "7 relic fragments have been purged."},
+    {"kyrocommander", "Have 6 infantry and 6 fighters on the game board."},
     {"cheirancommander", "Have 4 structures on non-home planets."},
-    {"celdauricommander", "Have a space dock outside and not next to your home system."},
-    {"khraskcommander", "Win a ground combat on a planet you don't control."},
-    {"zealotscommander", "Own a technology with 2 or more prerequisites."},
-    {"zeliancommander", "Have ships in 2 systems with asteroid fields."},
-    {"rohdhnacommander", "Have units with Production 7 or more in one system."},
-    {"tneliscommander", "Have 6 destroyers on the board."},
-    {"kolumecommander", "Ready one of your technologies in the action phase."},
+    {"celdauricommander", "Have 1 space dock on the game board that is not in or adjacent to your home system."},
+    {"khraskcommander", "Win a ground combat on a planet you do not control."},
+    {"zealotscommander", "Have a technology with 2 or more prerequisites."},
+    {"zeliancommander", "Have 1 or more ships in 2 systems that contain an asteroid field."},
+    {"rohdhnacommander", "Have units with a combined PRODUCTION value of at least 7 in a single system."},
+    {"tneliscommander", "Have 6 of your destroyers on the game board."},
+    {"kolumecommander", "Ready 1 of your technologies during the action phase."},
     {"bentorcommander", "Have 3 Fragment tokens on your faction sheet."},
-    {"dihmohncommander", "Research a ship unit upgrade."},
-    {"florzencommander", "Have the outcome you voted for resolved."},
-    {"gledgecommander", "Have non-fighter ships costing 10 or more in one system."},
-    {"augerscommander", "Win a combat in a system with a legendary planet or one with a technology specialty."},
-    {"kjalengardcommander", "Have 2 Glory tokens on the board."},
+    {"dihmohncommander", "Research a ship unit upgrade technology."},
+    {"florzencommander", "Have the outcome you voted for or predicted on an agenda resolved."},
+    {"gledgecommander", "Control non-fighter ships with a total combined cost value of at least 10 in 1 system."},
+    {"augerscommander", "Win a combat in a system that contains a legendary planet or a planet that has a technology specialty."},  // (the Augurs review: the card's wording)
+    {"kjalengardcommander", "Have 2 Glory tokens on the game board."},
     {"kollecccommander", "Have 4 relic fragments."},
-    {"mortheuscommander", "Have ships in 3 systems that aren't your home or next to it."},
-    {"vadencommander", "Have tokens of different players on your sheet - one for every 2 players in the game."},
-    {"cymiaecommander", "Have 10 infantry on the board."},
-    {"nivyncommander", "Have units in 2 anomalies other than your home."},
-    {"olradincommander", "Control a cultural, a hazardous and an industrial planet."},
-    {"freesystemscommander", "Every non-legendary planet on the board is controlled."},
-    {"edyncommander", "Have a law in play."},
-    {"nokarcommander", "Another player takes over your ships (Hired Guns)."},
-    {"axiscommander", "Have Axis Orders of all 4 kinds in players' play areas."},
-    {"mykomentoricommander", "Have 4 commodities."},
-    {"gheminacommander", "Have both of your flagships on the board."},
-    {"veldyrcommander", "Two other players control planets with Branch Offices."},
-    {"lizhocommander", "Have 4 Traps on the board."},
-    {"mirvedacommander", "Own 2 unit upgrades."},
-    {"ghoticommander", "Have units in 3 systems without planets."},
+    {"mortheuscommander", "Have ships in 3 systems not adjacent to or including your home system."},
+    {"vadencommander", "Have 1 or more different players' control tokens on your faction sheet for every 2 players in this game."},
+    {"cymiaecommander", "Have 10 or more infantry on the board."},
+    {"nivyncommander", "Have units in 2 different non-home anomalies."},
+    {"olradincommander", "Control 1 cultural planet, 1 hazardous planet, and 1 industrial planet."},
+    {"freesystemscommander", "Each non-legendary planet on the game board is controlled."},
+    {"edyncommander", "Have 1 or more laws in play."},
+    {"nokarcommander", "Another player moves 1 of your ships."},
+    {"axiscommander", "Have 4 Axis Order cards of different unit types in 1 or more players' play areas."},  // (the Axis review: the card's wording)
+    {"mykomentoricommander", "Have 4 commodities on your faction sheet."},
+    {"gheminacommander", "Have 2 flagships on the game board."},
+    {"veldyrcommander", "2 other players control 1 or more planets that have Branch Office attachments."},
+    {"lizhocommander", "Have 4 Trap attachments on the game board."},
+    {"mirvedacommander", "Own 2 unit upgrade technologies."},
+    {"ghoticommander", "Have units in 3 systems that do not contain planets."},
 };
 
 // Flagships, mechs and other special units.
@@ -729,116 +815,147 @@ const KT kUnitText[] = {
     {"firmament_mech", "When ground forces are committed to this planet, you may choose for your units to coexist, if they were not already. Flip this card if your faction becomes the Obsidian."},
     {"obsidian_mech", "If this unit was coexisting when this card flipped to this side, gain control of its planet; the other player's units are now coexisting."},
     // Discordant Stars (0.37.0)
-    {"kortali_flagship", "After you win a space combat here: let it become damaged to gain 1 command token."},
-    {"kortali_mech", "Its Planetary Shield can't be taken away (not even by war suns)."},
-    {"vaylerian_flagship", "At the start of a space combat here: choose a neighbouring system your opponent can't retreat to."},
-    {"vaylerian_cruiser", "Raider I - if your opponent can't announce a retreat this round, its hits go to non-fighter ships. It carries ground forces only."},
-    {"vaylerian_cruiser2", "Raider II - if your opponent can't announce a retreat this round, its hits can't be cancelled and go to non-fighter ships."},
-    {"vaylerian_mech", "During your tactical actions, space cannon hits can't be assigned to one of your ships in its system."},
-    {"lanefir_flagship", "At the end of a tactical action here: you may explore one of your planets in this system."},
-    {"lanefir_mech", "Deploy: at the start of your turn, purge 1 relic fragment to put a mech on one of your planets."},
-    {"kyro_flagship", "When you commit units to a planet here, you may commit 1 more infantry from your reinforcements."},
-    {"kyro_mech", "When it would be destroyed while damaged: discard 1 action card to repair it instead."},
-    {"cheiran_flagship", "Rolls 1 more die in combat if its system has or is next to one of your structures."},
-    {"cheiran_dreadnought", "Chitin Hulk I - when it is destroyed, you may put 1 fighter in its system."},
-    {"cheiran_dreadnought2", "Chitin Hulk II - Direct Hit can't destroy it; when it is destroyed, you may put 1 fighter or 1 destroyer in its system."},
-    {"cheiran_mech", "When it is destroyed, you may put 1 infantry on its planet."},
-    {"celdauri_flagship", "You may produce ships with other players' space docks in its system."},
-    {"celdauri_mech", "Deploy: after a player activates a system, pay 1 commodity or trade good to put a mech on your planet with a space dock there."},
-    {"celdauri_spacedock", "Trade Port I - Production = 2 + its planet's resources or influence. Up to 3 fighters here need no capacity. Anti-Fighter Barrage 6 (x2)."},
-    {"celdauri_spacedock2", "Trade Port II - Production = 4 + its planet's resources or influence. Up to 3 fighters need no capacity. Its Anti-Fighter Barrage 6 (x2) fires every round."},
+    {"kortali_flagship", "After you win a space combat in this system, you may have this ship become damaged to gain 1 command token."},
+    {"kortali_mech", "This unit cannot lose its PLANETARY SHIELD."},
+    {"tribune3", "This unit cannot be destroyed by \"Direct Hit\" action cards. When this unit produces a hit, you may repair it. While this unit is not damaged, you may reroll its combat roll."},
+    {"vaylerian_flagship", "At the start of a space combat in this system, you may choose 1 adjacent system. Your opponent cannot retreat to that system."},
+    {"vaylerian_cruiser", "During a round of space combat, if your opponent cannot declare a retreat, hits produced by this ship must be assigned to "
+                          "non-fighter ships, if able. This unit may only transport ground forces."},
+    {"vaylerian_cruiser2", "During a round of space combat, if your opponent cannot declare a retreat, hits produced by this ship cannot be canceled "
+                           "and must be assigned to non-fighter ships, if able."},
+    {"vaylerian_mech", "During your tactical actions, hits produced by SPACE CANNON cannot be assigned to 1 of your ships in this system."},
+    {"lanefir_flagship", "At the end of a tactical action in this system, you may explore 1 planet you control in this system."},
+    {"lanefir_mech", "DEPLOY: At the start of your turn, purge 1 of your relic fragments to place 1 mech on a planet you control, if you do, you may end your turn."},
+    {"kyro_flagship", "When you commit units to a planet in this system, you may commit 1 infantry from your reinforcements to that planet."},
+    {"kyro_mech", "When this unit would be destroyed, if it is damaged, you may discard 1 action card to repair it instead."},
+    {"cheiran_flagship", "When this unit makes a combat or ability roll, it rolls 1 additional die if this system is adjacent to or contains 1 of your structures."},
+    {"cheiran_dreadnought", "Chitin Hulk I - When this unit is destroyed, you may place 1 fighter from your reinforcements in this system's space area."},
+    {"cheiran_dreadnought2", "Chitin Hulk II - This unit cannot be destroyed by \"Direct Hit\" action cards. When this unit is destroyed, you may place 1 fighter or 1 destroyer from your reinforcements in this system's space area."},
+    {"cheiran_mech", "When this unit is destroyed, you may place 1 infantry from your reinforcements on this planet."},
+    {"celdauri_flagship", "You may use the PRODUCTION ability of other players' space docks in this system to produce ships."},
+    {"celdauri_mech", "DEPLOY: After a player activates a system, you may spend 1 trade good or 1 commodity to place 1 mech on a planet in that system that contains 1 of your space docks."},
+    {"celdauri_spacedock", "Trade Port I - PRODUCTION X, ANTI-FIGHTER BARRAGE 6 (x2). This unit's PRODUCTION value is equal to 2 more than the resource or influence value of this planet. Up to 3 fighters in this system do not count against your ships' capacity."},
+    {"celdauri_spacedock2", "Trade Port II - PRODUCTION X, ANTI-FIGHTER BARRAGE 6 (x2). This unit's PRODUCTION value is equal to 4 more than the resource or influence value of this planet. Up to 3 fighters in this system do not count against your ships' capacity. This unit may use its ANTI-FIGHTER BARRAGE during each round of space combat."},
     // Discordant Stars batch 2 (0.38.0)
-    {"khrask_flagship", "At the start of a space combat here: 2 of your ships without Sustain Damage gain it for this combat."},
+    {"khrask_flagship", "At the start of a space combat in this system, choose up to 2 non-fighter ships to gain SUSTAIN DAMAGE until the end of combat."},
     {"khrask_cruiser", "Shattered Sky I - Bombardment 8."},
     {"khrask_cruiser2", "Shattered Sky II - 2 capacity, Bombardment 6."},
-    {"khrask_mech", "In the first round of a ground combat on its planet, only your mechs roll - nobody else."},
-    {"zealots_flagship", "+1 to its combat rolls for each unit upgrade your opponent owns."},
-    {"zealots_mech", "+1 to its combat rolls for each faction technology your opponent owns."},
-    {"zelian_flagship", "Rolls 1 more combat die for each asteroid field next to it."},
-    {"zelian_infantry", "Impactor I - Bombardment 9 (from the space area, before landing)."},
-    {"zelian_infantry2", "Impactor II - Bombardment 8. When destroyed: on 6+ it comes back home at the start of your next turn."},
-    {"zelian_mech", "At the start of an invasion, if it's in the space area: remove it to destroy 1 unit on a planet there."},
-    {"rohdhna_flagship", "Deploy: after you activate a system, pay 4 resources to replace 1 of your non-fighter ships there with it."},
-    {"rohdhna_warsun", "Terrafactory I - Production 5; it can't move and can't be produced (Industrious makes it)."},
-    {"rohdhna_warsun2", "Terrafactory II - moves 2, Production 5, Bombardment 3 (x3); other players' units here lose Planetary Shield."},
-    {"rohdhna_mech", "Deploy: after Recycled Materials, put a mech in that system's space area or on your planet there."},
-    {"tnelis_flagship", "At the start of each combat round: one of your opponent's ships rolls 1 die less."},
-    {"tnelis_destroyer", "Blockade Runner I - Anti-Fighter Barrage 9 (x3)."},
-    {"tnelis_destroyer2", "Blockade Runner II - Anti-Fighter Barrage 6 (x4); it moves through systems with other players' ships."},
-    {"tnelis_mech", "Deploy: after you move a destroyer into a non-home system (not Mecatol Rex), pay 3 resources to put a mech on a planet there."},
-    {"kolume_flagship", "Space Cannon 7; your units' space cannon hits in its system can't be cancelled."},
-    {"kolume_mech", "Space Cannon 8 (x2), but its hits only destroy fighters. When you spend a strategy token, it is repaired."},
-    {"bentor_flagship", "+1 to its combat and unit ability rolls for each Fragment token on your sheet."},
-    {"bentor_mech", "Deploy: when a Fragment token goes on your sheet, put a mech on one of your planets."},
-    {"dihmohn_flagship", "After it moves into the active system: produce up to 2 units there with a combined cost of 4 or less."},
-    {"dihmohn_dreadnought", "Aegis I - when another of your ships here would be destroyed in combat, this ship may become damaged instead."},
-    {"dihmohn_dreadnought2", "Aegis II - combat 4, move 2; when another of your ships here would be destroyed by anything, this ship may become damaged instead."},
-    {"dihmohn_mech", "At the start of a combat in its system: repair 1 of your units in that combat."},
-    {"florzen_flagship", "Other players can't play action cards during a space combat in its system."},
-    {"florzen_fighter", "Corsair I - moves on its own (move 1); those beyond your ships' capacity count against your fleet pool. Anti-Fighter Barrage 9."},
-    {"florzen_fighter2", "Corsair II - combat 8, move 3, moves on its own; those beyond capacity count against your fleet pool. Anti-Fighter Barrage 8."},
-    {"florzen_mech", "You may pay for it with influence instead of resources."},
-    {"gledge_flagship", "1 more die on its combat and ability rolls for each mech in or next to its system."},
-    {"gledge_mech", "When you exhaust its planet for resources, 1 of its influence counts as a resource too."},
-    {"gledge_pds", "Orion Platform I - when its space cannon rolls a natural 9 or 10 against another player, explore its planet."},
-    {"gledge_pds2", "Orion Platform II - Space Cannon 5, also at ships next door; when it hits another player's units, explore its planet."},
-    {"augers_flagship", "1 more die on its combat rolls for each secret objective you have scored."},
-    {"augers_mech", "Deploy: after you research a technology, put a mech on one of your legendary or specialty planets."},
-    {"kjalengard_flagship", "After the first round of a combat in its system: put up to 2 of your captured units back into the fight."},
-    {"kjalengard_carrier", "Star Dragon I - it may ignore the movement effects of anomalies (not supernovas)."},
-    {"kjalengard_carrier2", "Star Dragon II - move 2, capacity 6, combat 7; it may ignore the movement effects of all anomalies."},
-    {"kjalengard_mech", "When you pass: 1 infantry from your reinforcements on its planet if a Glory token is in or next to its system."},
-    {"kollecc_flagship", "When it retreats, every retreating unit may go onto your faction sheet (cloaked) instead."},
-    {"kollecc_mech", "At the end of a tactical action in its system: up to 2 ground forces from its planet go onto your faction sheet (cloaked)."},
-    {"mortheus_flagship", "After you activate its system: a frontier token there if it has no planets."},
-    {"mortheus_mech", "When a player lands on a planet of yours next to its system: it may swap places with 1 of your infantry there."},
-    {"vaden_flagship", "After its bombardment hits: gain 1 trade good."},
-    {"vaden_mech", "At the end of a ground combat round: take back 1 of your opponent's tokens to put 1 infantry on its planet."},
-    {"cymiae_flagship", "After you win a combat in its system: take 1 of your opponent's action cards at random."},
+    {"khrask_mech", "Units other than your mechs do not make combat rolls during the first round of ground combat on this planet."},
+    {"zealots_flagship", "For each unit upgrade technology your opponent owns, apply +1 to the results of this unit's combat rolls."},
+    {"zealots_mech", "Apply +1 to this unit's combat rolls for each faction technology your opponent owns."},
+    {"zelian_flagship", "When this unit makes a combat or unit ability roll, it rolls 1 additional die for each asteroid field adjacent to this "
+                        "unit."},
+    {"zelian_infantry", "During invasion, this unit must commit to a planet it bombards."},
+    {"zelian_infantry2", "After this unit is destroyed, roll 1 die. If the result is 6 or greater, place the unit on this card. At the start of "
+                         "your next turn, place each unit that is on this card on a planet you control in your home system."},
+    {"zelian_mech", "At the start of invasion, if this unit is in the space area of the active system, you may remove this unit from the game "
+                    "board to destroy 1 unit on a planet in that system."},
+    {"rohdhna_flagship", "DEPLOY: After you activate a system, you may spend 4 resources to replace 1 of your non-fighter ships in that system "
+                         "with your flagship."},
+    {"rohdhna_warsun", "Terrafactory I - This unit produces only 1 fighter or infantry for their cost instead of 2. This unit cannot move or be "
+                       "produced."},
+    {"rohdhna_warsun2", "Terrafactory II - Other player's units in this system lose PLANETARY SHIELD. This unit produces only 1 fighter or "
+                        "infantry for their cost instead of 2."},
+    {"rohdhna_mech", "DEPLOY: After you use your RECYCLED MATERIALS faction ability in a system, you may place 1 mech in that system's space "
+                     "area or on a planet you control in that system."},
+    {"tnelis_flagship", "At the start of a round of combat, choose 1 ship in this system, during this combat round, that ship rolls 1 less "
+                        "combat die."},
+    {"tnelis_destroyer", "Blockade Runner I - ANTI-FIGHTER BARRAGE 9 (x3)."},
+    {"tnelis_destroyer2", "Blockade Runner II - This ship can move through systems that contain other players' ships. ANTI-FIGHTER BARRAGE 6 (x4)."},
+    {"tnelis_mech", "DEPLOY: After you move a destroyer into a non-home system other than Mecatol Rex, you may spend 3 resources to place 1 mech "
+                    "on a planet in that system."},
+    {"kolume_flagship", "Hits produced by the SPACE CANNON abilities of your units in this system cannot be canceled."},
+    {"kolume_mech", "Hits produced by this unit cannot be assigned to non-fighter ships. After you spend a command token from your strategy pool, repair this unit."},
+    {"bentor_flagship", "Apply +1 to the results of this ship's combat and ability rolls for each Fragment token on your faction sheet."},  // (the Bentor review: the card's wording)
+    {"bentor_mech", "DEPLOY: When you place a Fragment token on your faction sheet, you may place 1 mech on a planet you control."},
+    {"dihmohn_flagship", "After this unit moves into the active system, you may produce up to 2 units that have a combined cost of 4 or less in that system."},
+    {"dihmohn_dreadnought", "Aegis I - when another ship in this system would be destroyed during combat, you may have this ship become damaged instead."},
+    {"dihmohn_dreadnought2", "Aegis II - combat 4, move 2; when another ship in this system would be destroyed by a game effect, you may have this ship become damaged instead."},
+    {"dihmohn_mech", "At the start of a combat in this system, you may repair 1 unit you control that is participating in that combat."},
+    {"florzen_flagship", "Other players cannot play action cards during a space combat in this system."},
+    {"florzen_fighter", "Corsair I - move 1, Anti-Fighter Barrage 9. This unit may move without being transported. Fighters in excess of your ships' capacity count against your fleet pool."},
+    {"florzen_fighter2", "Corsair II - combat 8, move 3, Anti-Fighter Barrage 8. This unit may move without being transported. Fighters in excess of your ships' capacity count against your fleet pool."},
+    {"florzen_mech", "You may spend influence as resources to produce this unit."},
+    {"gledge_flagship", "When this unit makes a combat or ability roll, it rolls 1 additional die for each mech in or adjacent to this system."},
+    {"gledge_mech", "When you exhaust this planet to spend resources, you may also spend 1 of its influence as a resource."},
+    {"gledge_pds", "Orion Platform I: When this unit makes a SPACE CANNON roll against another player's units, if it rolls at least 1 result of 9 or 10, explore this planet."},
+    {"gledge_pds2", "Orion Platform II: When this unit produces 1 or more hits against another player's units, explore this planet. You may use this unit's SPACE CANNON against ships that are adjacent to this unit's system."},
+    {"augers_flagship", "When this unit makes a combat roll, it rolls 1 additional die for each secret objective you have scored."},  // (the Augurs review: the card's wording)
+    {"augers_mech", "DEPLOY: After researching a technology, you may place 1 mech on a legendary planet, or a planet that has a technology "
+                    "specialty, that you control."},
+    {"kjalengard_flagship", "After the first round of a combat in this system, place up to 2 of your captured units in this system or on that planet."},
+    {"kjalengard_carrier", "This unit may ignore the movement effects of non-supernova anomalies."},
+    {"kjalengard_carrier2", "This unit may ignore the movement effects of anomalies."},
+    {"kjalengard_mech", "When you pass, place 1 infantry from your reinforcements on this planet if there is a Glory token in or adjacent to this system."},
+    {"kollecc_flagship", "When this unit retreats, you may capture each of your units that retreat."},
+    {"kollecc_mech", "At the end of a tactical action in this system, you may place up to 2 ground forces from this planet onto your faction sheet, those units are captured."},
+    {"mortheus_flagship", "After you activate this system, if it does not contain any planets, you may place 1 frontier token in this system."},
+    {"mortheus_mech", "When a player commits 1 or more units to a planet you control adjacent to this system, you may swap this unit with 1 of your "
+                      "infantry on that planet."},
+    {"vaden_flagship", "After this unit produces 1 or more hits during a BOMBARDMENT roll, gain 1 trade good."},
+    {"vaden_mech", "At the end of a round of ground combat, you may remove 1 of your opponent's control tokens from your faction sheet to place "
+                   "1 infantry unit from your reinforcements on this planet."},
+    {"cymiae_flagship", "After you win a combat in this system, you may take 1 of your opponent's action cards, at random."},
     {"cymiae_infantry", "Unholy Abomination I - combat 5."},
-    {"cymiae_infantry2", "Unholy Abomination II - combat 4; destroyed, it comes back on a 6+ at the start of your turn, onto any of your planets."},
-    {"cymiae_mech", "At the start of each ground combat round: repaired, if it is your only mech on the planet."},
-    {"nivyn_flagship", "Other players' units in its system are removed instead of destroyed."},
-    {"nivyn_mech", "Voidflare Warden I - after its system is activated: become damaged to put the Wound token there."},
-    {"nivyn_mech2", "Voidflare Warden II - combat 4; after any system is activated: become damaged to put the Wound token there."},
-    {"olradin_flagship", "When it moves into the active system, your other ships move 1 further this action."},
-    {"olradin_mech", "Exemplar - a lone one on a planet: +1 resource (2+ \"+\" policies) or +1 influence (2+ \"-\" policies)."},
-    {"olradin_mech_positive", "Exemplar Bonum - a lone one on a planet: +1 resource."},
-    {"olradin_mech_negative", "Exemplar Malus - a lone one on a planet: +1 influence."},
-    {"freesystems_flagship", "1 more die on its combat rolls for each planet in its system of the most common trait there."},
-    {"freesystems_mech", "Deploy: after Rally to the Cause, 1 trade good for a mech on one of your planets in or next to that system."},
-    {"edyn_flagship", "+1 to its combat rolls for each law in play."},
-    {"edyn_mech", "Its system is a Sigil - an anomaly."},
-    {"nokar_flagship", "+1 to its combat rolls for every 2 destroyers you have on the board."},
-    {"nokar_destroyer", "Sabre I - destroyed in combat: roll a die, 9+ makes 1 hit on your opponent's ships."},
-    {"nokar_destroyer2", "Sabre II - combat 7; destroyed in combat: roll a die, 7+ makes 1 hit on your opponent's ships."},
-    {"nokar_mech", "For your retreats, its system counts as next to the active system."},
-    {"axis_flagship", "After it hits in a round of space combat: repair 1 of your ships in its system."},
-    {"axis_mech", "A space dock on its planet has Production 5."},
-    {"mykomentori_flagship", "Once per round of space combat, when a non-fighter ship in its system is destroyed: gain 1 commodity."},
-    {"mykomentori_mech", "Destroyed: on a 6+ it waits on its card; at the start of your turn it may replace one of your infantry."},
-    {"mykomentori_spacedock", "Mycelium Ring I - Production: planet's resources + 2. Deploy: when you take a planet, 4 infantry there may become a space dock."},
-    {"mykomentori_spacedock2", "Mycelium Ring II - Production: planet's resources + 5. Deploy: 3 infantry may become a space dock."},
-    {"ghemina_flagship_lord", "The Lord: capacity 7; after a planet in its system is explored, the explorer puts 1 infantry there. The Lady: capacity 3, Bombardment 5 (x4); 1 trade good when someone else's structure in her system is destroyed."},
-    {"celdauri_celagrom", "The Celagrom: at the start of a space combat it may produce 1 hit on one of the opponent's ships (you pick the ship type). It rolls 1 more die while you have another flagship on the board."},
-    {"ghemina_flagship_lady", "The Lady: capacity 3, Bombardment 5 (x4); 1 trade good when someone else's structure in her system is destroyed."},
-    {"ghemina_mech", "After you win a ground combat on its planet with exactly 1 other mech there: explore the planet."},
+    {"cymiae_infantry2", "Unholy Abomination II - combat 4. After this unit is destroyed, roll 1 die. If the result is 6 or greater, place the unit on this card. At the start of your turn, place each unit that is on this card on a planet you control, if able."},
+    {"cymiae_mech", "At the start of each ground combat round, if this planet contains no more than 1 of your mechs, repair this unit."},
+    {"nivyn_flagship", "When a unit in this system would be destroyed, you may remove it from the game board instead."},
+    {"nivyn_mech", "Voidflare Warden I - After this system is activated, you may have this unit become damaged to place or move the Wound token "
+                   "into this system."},
+    {"nivyn_mech2", "Voidflare Warden II - combat 4. After a system is activated, you may have this unit become damaged to place or move the "
+                    "Wound token into this system."},
+    {"olradin_flagship", "When you move this ship, apply +1 to the move value of each of your other ships during this tactical action."},
+    {"olradin_mech", "Exemplar - If you have at least 2 \"+\" policies, and if this planet contains no more than 1 of your mechs, apply +1 to its "
+                     "influence value. If you have at least 2 \"-\" policies, and if this planet contains no more than 1 of your mechs, apply +1 "
+                     "to its resource value."},
+    {"olradin_mech_positive", "Exemplar Bonum - If this planet contains no more than 1 of your mechs, apply +1 to its influence value."},
+    {"olradin_mech_negative", "Exemplar Malus - If this planet contains no more than 1 of your mechs, apply +1 to its resource value."},
+    {"freesystems_flagship", "When this unit makes a combat roll, it rolls 1 additional die for each planet in this system of any single trait."},
+    {"freesystems_mech", "Deploy: After you use your Rally to the Cause faction ability in a system, you may spend 1 trade good to place 1 mech on a planet you control adjacent to that system."},
+    {"edyn_flagship", "Apply +1 to the results of this unit's combat rolls for each law in play."},
+    {"edyn_mech", "This system is a Sigil anomaly. Place an Edyn Sigil token beneath this unit as a reminder. Game effects cannot prevent you from using this ability."},
+    {"nokar_flagship", "Apply +1 to the results of this unit's combat rolls for every 2 destroyers you control."},
+    {"nokar_destroyer", "Sabre I - After this unit is destroyed during combat, roll a die, on a result of 9 or 10, produce up to 1 hit against "
+                        "your opponent's ships."},
+    {"nokar_destroyer2", "Sabre II - combat 7. After this unit is destroyed during combat, roll a die, on a result equal to or greater than 7, "
+                         "produce up to 1 hit against your opponent's ships."},
+    {"nokar_mech", "You may treat this system as adjacent to the active system for the purposes of declaring and resolving retreats."},
+    {"axis_flagship", "After this ship produces 1 or more hits during a round of space combat, you may repair 1 ship you control in this system."},  // (the Axis review: the card's wording)
+    {"axis_mech", "You may treat a spacedock on this planet as if it has PRODUCTION 5."},
+    {"mykomentori_flagship", "Once per round of space combat, when a non-fighter ship in this system is destroyed, you may gain 1 commodity."},
+    {"mykomentori_mech", "After this unit is destroyed, roll a die. If the result is 6 or greater, place the unit on this card. At the start of your "
+                         "turn, you may replace 1 infantry you control with a unit that is on this card."},
+    {"mykomentori_spacedock", "This unit's PRODUCTION value is equal to 2 more than the resource value of this planet. DEPLOY: When you gain control "
+                              "of a planet, you may replace 4 infantry on that planet with 1 space dock."},
+    {"mykomentori_spacedock2", "This unit's PRODUCTION value is equal to 5 more than the resource value of this planet. DEPLOY: When you gain control "
+                               "of a planet, you may replace 3 infantry on that planet with 1 space dock."},
+    {"ghemina_flagship_lord", "The Lord: After a player explores a planet in this system, place 1 infantry from their reinforcements on that planet."},
+    {"celdauri_celagrom", "The Celagrom: At the start of space combat, you may produce 1 hit and assign it to 1 of your opponent's ships. While you control another flagship, this unit rolls 1 additional combat die."},
+    {"ghemina_flagship_lady", "The Lady: When a structure you do not control in this system is destroyed, gain 1 trade good."},
+    {"ghemina_mech", "After you win a ground combat on this planet, if this planet contains exactly 1 other mech, explore this planet. (Infantry and fighters don't stop it.)"},
     {"ghemina_carrier", "Combat Transport I - move 2."},
-    {"ghemina_carrier2", "Combat Transport II - move 2, capacity 6; in a ground combat on a planet in its system with 2 or fewer of your infantry: 1 of your dice rolls again."},
-    {"veldyr_flagship", "1 more die on its combat rolls for each round of the combat already fought."},
-    {"veldyr_dreadnought", "Lancer Dreadnought I - Bombardment 5, Space Cannon 8."},
-    {"veldyr_dreadnought2", "Lancer Dreadnought II - move 2, Bombardment 5, Space Cannon 5; Direct Hit can't destroy it."},
-    {"veldyr_mech", "After its system is activated: remove it to put a PDS on its planet."},
-    {"lizho_flagship", "Only a hit assigned to it can destroy it."},
+    {"ghemina_carrier2", "Combat Transport II: You may reroll 1 of your unit's combat dice during each round of ground combat on a planet in this system that contains 2 or fewer of your infantry."},
+    {"veldyr_flagship", "When this ship makes a combat roll, it rolls 1 additional die for each round of combat that has been resolved this combat."},
+    {"veldyr_dreadnought", "Lancer Dreadnought I - SUSTAIN DAMAGE, BOMBARDMENT 5, SPACE CANNON 8."},
+    {"veldyr_dreadnought2", "This unit cannot be destroyed by \"Direct Hit\" action cards. SUSTAIN DAMAGE, BOMBARDMENT 5, SPACE CANNON 5."},
+    {"veldyr_mech", "After a player activates this system, you may remove this unit from the game board to place 1 PDS from your reinforcements "
+                    "on this planet."},
+    {"lizho_flagship", "This unit can only be destroyed by an uncanceled hit being assigned to it."},
     {"lizho_fighter", "Heavy Bomber I - combat 9, Bombardment 9."},
-    {"lizho_fighter2", "Heavy Bomber II - combat 8, move 2, Bombardment 8; moves on its own (beyond capacity they count against the fleet pool)."},
-    {"lizho_mech", "At the start of your turn: move a Trap from the board onto its planet."},
-    {"mirveda_flagship", "After each round of space combat in its system: 1 fighter."},
-    {"mirveda_pds", "Gauss Cannon I - in the space area; moves and retreats like a ship (move 1); Space Cannon 6, Bombardment 6. Blockaded, it is destroyed."},
-    {"mirveda_pds2", "Gauss Cannon II - move 2, capacity 1, Space Cannon 4, Bombardment 4; blockaded, it is destroyed."},
-    {"mirveda_mech", "+1 to its combat rolls for every 2 unit upgrades you own."},
-    {"ghoti_flagship", "It is also a space dock with Production equal to your fleet tokens."},
-    {"ghoti_mech", "When you produce ships at home: 1 of them may appear in its system (unless blockaded)."},
+    {"lizho_fighter2", "Heavy Bomber II - combat 8, move 2, Bombardment 8. This unit may move without being transported. Fighters in excess "
+                       "of your ships' capacity count against your fleet pool."},
+    {"lizho_mech", "At the start of your turn, you may remove 1 Trap from the game board and attach it to this planet, or swap any Trap with 1 "
+                   "on this planet."},
+    {"mirveda_flagship", "After each round of space combat in this system, place 1 fighter from your reinforcements in this system."},
+    {"mirveda_pds", "Gauss Cannon I - move 1, Space Cannon 6, Bombardment 6. This unit is placed in a space area instead of on a planet. This unit can "
+                    "move and retreat as if it were a ship. This unit can be blockaded; if it is blockaded, it is destroyed."},
+    {"mirveda_pds2", "Gauss Cannon II - move 2, capacity 1, Space Cannon 4, Bombardment 4. This unit is placed in a space area instead of on a planet. "
+                     "This unit can move and retreat as if it were a ship. This unit can be blockaded; if it is blockaded, it is destroyed."},
+    {"mirveda_mech", "For every 2 unit upgrade technologies you own, apply +1 to the result of this unit's combat rolls."},
+    {"mirveda_fighter3", "Eye of the Curator - combat 8, move 3. This unit may move without being transported. Fighters in excess of your ships' "
+                         "capacity count against your fleet pool. Your fighters count as 1/2 a ship for the purposes of capacity and transportation."},
+    {"ghoti_flagship", "While in play, this unit is also treated as a space dock with a PRODUCTION value equal to the number of tokens in your fleet pool."},
+    {"ghoti_mech", "This unit can be blockaded. When producing ships in your home system, place up to 1 of those units in this system's space area if it is not blockaded."},
 };
 
 // Faction promissory notes, keyed by faction key.
@@ -909,39 +1026,59 @@ const KT kNoteText[] = {
     {"crimson", "Action: play it face up and pick a system with your units: its wormholes do nothing during movement until the end of the status phase; then the note goes back."},
     {"firmament", "When you receive this card, if you are not the Firmament: The Firmament player may place 1 facedown plot card in their play area with your control token on it. Then, gain 2 command tokens, gain 2 trade goods, and purge this card."},
     {"obsidian", "At the end of one of your tactical actions: Spend 1 influence to give this card to one of your neighbors; you can use this ability even if you are the Obsidian player. At the end of the status phase, if you are not the Obsidian player, you must remove 1 command token from your fleet pool and return it to your reinforcements."},
-    {"kortali", "Action: play it face up and take 1 of your command tokens back from the board. It goes back to the Kortali at the start of the status phase."},
-    {"vaylerian", "At the start of a space combat round: the Vaylerian discard 1 action card; your ships move to a neighbouring system without other ships (a command token there) and the combat is a draw. The note goes back."},
-    {"lanefir", "After you win a combat: play it face up to explore one of your planets. It goes back at the start of the Lanefir's turn."},
-    {"kyro", "After an agenda is revealed: you don't vote on it, but predict its outcome. If you're right, put 3 infantry on one of your planets. The note goes back to the Kyro."},
-    {"cheiran", "When one of your non-fighter ships is destroyed in a combat: put 2 fighters in that system. The note goes back to the Cheiran."},
-    {"celdauri", "Goes face up: you can use the Celdauri commander (once unlocked). It goes back if you activate a system with Celdauri units."},
-    {"khrask", "During your tactical action, when your bombardment hits: turn any of those hits into infantry landing on that planet. The note goes back to the Khrask."},
-    {"zealots", "When you ignore a prerequisite while researching: ignore 1 more of the same colour. The note goes back to the Rhodun."},
-    {"zelian", "When your bombardment makes hits: 1 hit more. The note goes back to the Zelian."},
-    {"rohdhna", "At the end of your turn: attach it for good to one of your non-home planets (not Mecatol Rex) - that planet has Production 3."},
-    {"tnelis", "When you draw secret objectives: draw 1 more, then shuffle 1 of yours back into the deck. The note goes back to the Tnelis."},
-    {"kolume", "At the start of an invasion: play it - in this invasion other players' units lose Space Cannon and Planetary Shield. It goes back at the start of your next turn."},
-    {"bentor", "At the end of your turn: attach it for good to one of your non-home planets - that planet has a technology specialty of the colour you choose."},
-    {"dihmohn", "When one of your ships would be destroyed: it isn't - the note goes face up instead, and back to the Dih-Mohn at the start of the status phase."},
-    {"florzen", "When you would gain a relic: draw 1 more, keep 1, shuffle the other back. The note goes back to the Florzen."},
-    {"gledge", "At the end of your turn: attach it for good to one of your non-home planets - that planet has 2 more resources."},
-    {"augers", "Goes face up: you know the objective on the Augurs' faction sheet. It goes back if you activate a system with their units."},
-    {"kjalengard", "At the start of a space combat: +1 to your fighters' combat rolls this combat; the Kjalengard capture your fighters destroyed in it. The note goes back."},
-    {"kollecc", "At the start of your turn: look at the top card of an exploration deck. The note goes back to the Kollecc."},
-    {"mortheus", "At the start of a space combat you defend: pay influence equal to the cost of one of the attacker's ships to put one of that type in. The note goes back."},
-    {"vaden", "After you activate a system: each trade good you spend lets one of your non-fighter ships move 1 further. The note goes back."},
-    {"cymiae", "Action: take 1 action card from the discard pile. Then the note is purged."},
-    {"nivyn", "After you activate a system: ignore every anomaly during this activation. The note goes back."},
-    {"olradin", "Action: play it face up - exhaust one of your planets and ready one of your non-home planets (not Mecatol Rex). It goes back at the start of the status phase."},
-    {"freesystems", "When you take a planet in a tactical action with no other ships there: produce up to 2 ships in that system. The note goes back."},
-    {"edyn", "After an agenda is revealed: you don't vote on it, but predict its outcome. If you're right, another player's command token goes into a system with your units. The note goes back."},
-    {"nokar", "At the start of a space combat: this combat you may retreat to any system with a planet you control. The note goes back."},
-    {"axis", "When your units produce: +4 Production and 1 cheaper. It goes back at the start of the status phase."},
-    {"mykomentori", "Action: play it face up - once per turn you may roll one of your dice again. It goes back if you activate a system with their units."},
-    {"ghemina", "After you activate a system: one of your non-fighter ships gains capacity 2 and Bombardment 5 (x2) this action. The note goes back."},
-    {"lizho", "At the start of a space combat you take part in: 2 fighters into the active system. The note goes back."},
-    {"mirveda", "At the start of your turn: move up to 2 of your PDS to a planet you control. The note goes back."},
-    {"ghoti", "At the start of your turn: produce up to 2 ships in a system with your ships. It goes back at the start of the status phase."},
+    {"kortali", "ACTION: Place this card face up in your play area and remove 1 of your command tokens from the game board. At the start of the status phase, return this card to the Kortali player."},
+    {"vaylerian", "At the start of a round of space combat: The Vaylerian player discards 1 action card. Then, move all of your ships from the "
+                  "active system to an adjacent system that does not contain another player's ships; the space combat ends in a draw. Then, place "
+                  "a command token from your reinforcements in that system and return this card to the Vaylerian player."},
+    {"lanefir", "After you win a combat: Place this card face-up in your play area to explore 1 planet you control. At the start of the Lanefir player's turn, return this card to the Lanefir player."},
+    {"kyro", "After an agenda is revealed: You cannot vote on this agenda. Predict aloud an outcome of this agenda. If your prediction is correct, place 3 infantry from your reinforcements on a planet you control. Then, return this card to the Kyro player."},
+    {"cheiran", "When 1 of your non-fighter ships is destroyed during combat: You may place 2 fighters from your reinforcements in the space area of the active system. At the end of that combat, return this card to the Cheiran Hordes player."},
+    {"celdauri", "When you receive this card, if you are not the Celdauri player, you must place it face up in your play area. While this card is in your play area, you can use the Celdauri player's commander ability, if it is unlocked. If you activate a system that contains 1 or more of the Celdauri player's units, return this card to the Celdauri player."},
+    {"khrask", "During a tactical action, when you produce 1 or more hits during a BOMBARDMENT roll: For each hit you produced, you may instead place 1 infantry from your reinforcements on the planet being bombarded. Then, return this card to the L'Tokk Khrask player."},
+    {"zealots", "When you ignore a prerequisite on a technology card you are researching: You may ignore 1 additional prerequisite of the "
+                "same color. Then, return this card to the Rhodun player."},
+    {"zelian", "When 1 or more of your units would make a BOMBARDMENT roll: If you produce 1 or more hits during this BOMBARDMENT roll, "
+               "produce 1 additional hit for that roll. Then, return this card to the Zelian player."},
+    {"rohdhna", "At the end of your turn, you may attach this card to a non-home planet you control other than Mecatol Rex. This planet has "
+                "PRODUCTION 3 as if it were a unit."},
+    {"tnelis", "When you draw 1 or more secret objective cards: Draw 1 additional secret objective card. Then, return 1 secret objective card to "
+               "the secret objective deck; shuffle that deck. Then, return this card to the Tnelis player."},
+    {"kolume", "At the start of invasion, place this card in your play area. During this invasion, all other player's units lose SPACE CANNON and PLANETARY SHIELD. At the start of your next turn, return this card to the Kolume player."},
+    {"bentor", "ACTION: Attach this card to a non-home planet you control. This planet has 1 technology specialty of any color."},  // (the Bentor review: the card's wording)
+    {"dihmohn", "When 1 of your ships would be destroyed: instead of destroying that ship, place this card face up in your play area. Return this card to the Dih-Mohn player at the start of the status phase."},
+    {"florzen", "When you would gain a relic: You may draw 1 additional card. Choose 1 to gain and return the rest to the relic deck. Then, shuffle the relic deck. Then, return this card to the Florzen player."},
+    {"gledge", "ACTION: Attach this card to a non-home planet you control. This planet's resource value is increased by 2."},
+    {"augers", "ACTION: Place this face up in your play area. While this card is in your play area, you may look at the public objective card "
+               "on the Ilyxum player's faction sheet. If you activate a system that contains 1 or more of the Ilyxum player's units, return "
+               "this card to the Ilyxum player."},  // (the Augurs review: the card's wording)
+    {"kjalengard", "At the start of combat: Apply +1 to the results of each of your fighters' combat rolls during this combat. The Kjalengard player captures each of your fighters destroyed during this combat. Then, return this card to the Kjalengard player."},
+    {"kollecc", "At the start of your turn: You may look at either the top card of the cultural, hazardous, and industrial exploration decks, or the top card of the relic deck. Then, return this card to the Kollecc player."},
+    {"mortheus", "At the start of a space combat while you are the defender: you may spend influence equal to the cost value of 1 of your "
+                 "opponent's ships in the active system to place 1 unit of that type from your reinforcements in that system. Then return this "
+                 "card to the Mortheus player."},
+    {"vaden", "After you activate a system: You may spend any number of trade goods; for each trade good spent, apply +1 to the move value of 1 "
+              "non-fighter ship you control during this activation. Return this card to the Vaden player at the end of this activation."},
+    {"cymiae", "Action: choose 1 action card from the action card discard pile and add it to your hand. Then, purge this card."},
+    {"nivyn", "After you activate a system: During this activation, you may ignore the effects of each anomaly. Return this card to the Nivyn "
+              "player at the end of this activation."},
+    {"olradin", "ACTION: Place this card face up in your play area to choose and exhaust 1 planet you control. Then, ready 1 non-home planet you "
+                "control other than Mecatol Rex. At the start of the status phase, return this card to the Olradin player."},
+    {"freesystems", "When you gain control of a planet during a tactical action: If the active system does not contain another player's ships, you may produce up to 2 ships in that system. Then, return this card to the Free Systems player."},
+    {"edyn", "After an agenda is revealed: you cannot vote on this agenda. Predict aloud an outcome of this agenda. If your prediction is correct, place 1 command token from another player's reinforcements in a system that contains your units. Then, return this card to the Edyn player."},
+    {"nokar", "At the start of a space combat: During this combat, the active system is adjacent to each system that contains a planet you "
+              "control for the purposes of announcing and resolving retreats. At the end of this combat, return this card to the Nokar player."},
+    {"axis", "When 1 or more of your units use PRODUCTION: Place this card face up in your play area to apply +4 to the PRODUCTION value of "
+             "those units and reduce the combined cost of the produced units by 1 for this use of PRODUCTION. At the beginning of the status "
+             "phase, return this card to the Axis player."},  // (the Axis review: the card's wording)
+    {"mykomentori", "ACTION: Place this card face up in your play area. While this card is in your play area, once per turn, after you roll a die, "
+                    "you may reroll that die. If you activate a system that contains 1 or more of the Myko-Mentori player's units, return this "
+                    "card to the Myko-Mentori player."},
+    {"ghemina", "After you activate a system: Choose 1 non-fighter ship you control. During this action, that unit gains BOMBARDMENT 5 (x2) and a capacity value of 2. Return this card to the Ghemina player at the end of this action."},
+    {"lizho", "At the start of a space combat you are participating in: you may place up to 2 fighters from your reinforcements into the "
+              "space area of the active system. Then return this card to the Li-Zho player."},
+    {"mirveda", "At the start of your turn: you may move up to 2 PDS units you control to a planet you control. Then return this card to the "
+                "Mirveda player."},
+    {"ghoti", "At the start of your turn: Place this card in your play area to produce up to 2 ships in a system that contains 1 or more of your ships. At the start of the status phase, return this card to the Ghoti player."},
 };
 
 }  // namespace
@@ -1070,8 +1207,10 @@ const char* factionNoteText(int faction, int type) {
     }
     if (!std::strcmp(kFactions[faction].key, "veldyr") && type >= kNoteFaction && type <= kNoteFaction4)  // Discordant Stars (0.42.0)
         return type <= kNoteFaction2
-                   ? "When you receive it: attach it to one of your non-home planets (not Mecatol Rex) without a Branch Office - +1 influence."
-                   : "When you receive it: attach it to one of your non-home planets (not Mecatol Rex) without a Branch Office - +1 resource.";
+                   ? "When you receive this card, you must attach it to a non-home planet you control other than Mecatol Rex that does not have a "
+                     "Branch Office attachment. Its influence value is increased by 1."
+                   : "When you receive this card, you must attach it to a non-home planet you control other than Mecatol Rex that does not have a "
+                     "Branch Office attachment. Its resource value is increased by 1.";
     if (type == kNoteFaction) return FIND(kNoteText, kFactions[faction].key);
     if (type == kNoteFaction2 && !std::strcmp(kFactions[faction].key, "empyrean"))
         return "ACTION: Place this card faceup in your play area. When you and the Empyrean player cast votes for the same outcome, cast 4 "

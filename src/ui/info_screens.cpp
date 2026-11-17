@@ -2083,7 +2083,7 @@ public:
         drawText(c, FONT_MDB, lx, y, "Secret objectives", theme::gold);
         y += 20;
         std::vector<int> scoredSecrets, scoredPublic;
-        for (int16_t o : pl.scored) (kObjectives[o].kind == 3 ? scoredSecrets : scoredPublic).push_back(o);
+        for (int16_t o : pl.scored) (scoredAsSecret(g_, p, o) ? scoredSecrets : scoredPublic).push_back(o);
         auto objective = [&](int o, uint32_t tc, const char* tag) {
             drawText(c, FONT_SMB, lx + 4, y, fitText(FONT_SMB, kObjectives[o].name, lw - 60), tc);
             drawTextAligned(c, FONT_XS, lx, y + 2, lw, Align::Right, tag, theme::faint);

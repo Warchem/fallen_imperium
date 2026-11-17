@@ -271,60 +271,80 @@ const KeyText kTechText[] = {
     {"planesplitter-obs", "When you perform a strategic action, you may move an ingress token into a system that contains or is adjacent to your units. This technology cannot be researched.", true},
     {"parasite-obs", "At the start of your turn, destroy 1 of another player's infantry in or adjacent to a system that contains your infantry. This technology cannot be researched.", true},
     // Discordant Stars batch 1 (0.37.0)
-    {"dskortg", "After you win a combat: exhaust it to take your command token back from that system.", true},
-    {"dskortr", "Once per space combat, after one of your non-fighter ships is destroyed: 1 hit on one of your opponent's ships that isn't a carrier.", true},
-    {"dsvaylr", "Once per action, after you win a ground combat: draw 1 action card.", true},
-    {"dslaneb", "Action: spend a strategy token (and exhaust it) or purge a relic fragment to move 1 ship to a neighbouring system without other players' ships.", true},
-    {"dslaner", "After you explore or purge relic fragments, a token goes on it. At the start of a combat round, take tokens off to reroll that many missed dice.", true},
-    {"dskyrog", "In the agenda phase, after an outcome you voted for is resolved: put 2 infantry on one of your planets.", true},
-    {"dskyroy", "At the start of the strategy phase: put any of your trade goods on strategy cards, then 2 from the supply on one.", true},
-    {"dscheir", "After another player activates a system with your structure: exhaust to produce 1 ship there; each of your structures there you remove makes it 3 cheaper.", true},
-    {"dsceldr", "At the end of your turn: exhaust it and spend a strategy token to remove your command token from a system with your space dock (you may activate it again).", true},
+    {"dskortg", "After you win a combat in a system, you may exhaust this card to remove 1 command token from that system.", true},
+    {"dskortr", "Once per space combat, after 1 of your non-fighter ships is destroyed, you may produce 1 hit and assign it to 1 of your opponent's non-carrier ships.", true},
+    {"dsvaylr", "Once per action, after you win a ground combat, you may draw 1 action card.", true},
+    {"dslaneb", "ACTION: Spend 1 command token from your strategy pool or purge 1 relic fragment to move 1 of your ships to an adjacent system that contains no other player's ships. If you spent a command token, exhaust this card.", true},
+    {"dslaner", "After you explore, or purge 1 or more relic fragments, place 1 commodity token on this card. At the start of a round of combat, remove any number of tokens from this card to reroll up to that many of your dice during this round of combat.", true},
+    {"dskyrog", "During the agenda phase, after an outcome you voted for is resolved, place 2 infantry from your reinforcements on a planet you control.", true},
+    {"dskyroy", "At the start of the strategy phase, you may place any number of your trade goods on any combination of strategy cards. Then, place 2 trade goods from the supply on 1 strategy card.", true},
+    {"dscheir", "After another player activates a system that contains 1 of your structures, you may exhaust this card to produce 1 ship in the active system. For each of your structures in the active system, you may remove that unit from the game board to reduce the cost of the produced ship by 3.", true},
+    {"dsceldr", "At the end of your turn, you may exhaust this card and spend 1 token from your strategy pool to remove a command token from a system that contains 1 or more of your space docks.", true},
     // Discordant Stars batch 2 (0.38.0)
-    {"dskhrag", "When you would spend a strategy token, you may exhaust one of your planets instead.", true},
-    {"dsrhodb", "Once during your turn, when you exhaust planets with technology specialties: produce 1 ship in a system with one of them.", true},
-    {"dsrhody", "When you activate a system, or one with your units is activated: one technology of another player there has no text until the end of the tactical action.", true},
-    {"dszelir", "When your bombardment hits a planet, it makes 1 more hit.", true},
-    {"dsrohdy", "At the start of the agenda phase: for each of your unit upgrades, choose a player - they must produce 1 ship at a space dock or war sun of theirs.", true},
-    {"dstnely", "After a round of space combat in a system with your mech: damage it to make 1 hit on a cruiser, dreadnought or destroyer there.", true},
-    {"dskolug", "When you pass, gain 1 commodity for each other player who has passed. Action: exhaust it.", true},
-    {"dskolur", "After a system is activated: exhaust to give one player +1 or -1 to all their rolls this tactical action.", true},
+    {"dskhrag", "When you would spend a token from your strategy pool, you may exhaust 1 planet you control to spend 1 token from your reinforcements instead.", true},
+    {"dsrhodb", "Once during your turn, when you exhaust 1 or more planets you control that have a technology specialty, you may produce 1 ship "
+                "in 1 system that contains 1 of those planets.", true},
+    {"dsrhody", "When you activate a system, or a system that contains 1 or more of your units is activated, you may choose 1 technology or "
+                "non-fighter, non-structure unit upgrade technology another player controls; until the end of this tactical action, that card is "
+                "treated as though it had no ability text.", true},
+    {"dszelir", "When 1 or more of your units produce 1 or more hits during a BOMBARDMENT roll against a planet, produce 1 additional hit "
+                "for that roll.", true},
+    {"dsrohdy", "At the start of the agenda phase, for each unit upgrade technology you control, you may choose 1 player. Each of those players "
+                "must produce 1 ship in a system that contains 1 or more of their space docks or war suns.", true},
+    {"dstnely", "After a round of space combat in a system that contains 1 or more of your mechs, you may have 1 of those units become damaged "
+                "to produce 1 hit and assign it to a cruiser, dreadnought, or destroyer you do not control in that system.", true},
+    {"dskolug", "When you pass, you may gain 1 commodity for each other player who has already passed. ACTION: Exhaust this card.", true},
+    {"dskolur", "After a system is activated, you may exhaust this card to choose 1 player. Apply +1 or -1 to all rolls that player makes during this tactical action.", true},
     // Discordant Stars batch 3 (0.39.0)
-    {"dsbentg", "Each of your planets with a technology specialty or an attachment has Production 1, as if it were a unit.", true},
-    {"dsbenty", "When your units use Production: exhaust it - one of them matches the best Production on the board, or +2 to the total.", true},
-    {"dsdihmy", "When you explore a planet: you may produce 1 ship in its system. Action: exhaust it and one of your planets to explore that planet.", true},
-    {"dsflorg", "When another player would perform a strategic action: exhaust it and spend a strategy token - their turn ends, the action doesn't happen and the card stays ready.", true},
-    {"dsgledb", "When you move: your non-fighter ships that carry no fighters or infantry may move 1 further.", true},
-    {"dsaugug", "In the status phase you may score a second public objective instead of a secret objective.", true},
-    {"dsauguy", "At the start of the status phase: you may spend 3 trade goods to research a technology.", true},
-    {"dskjalg", "Once per action, after any hits in a combat round in a system with a Glory token: gain 1 trade good. After any player rolls combat dice: exhaust it to let them reroll their misses.", true},
+    {"dsbentg", "Each planet you control that has a technology specialty or an attachment gains the PRODUCTION 1 ability as if it were a unit.", true},  // (the Bentor review)
+    {"dsbenty", "When 1 or more of your units use PRODUCTION, you may exhaust this card to increase the PRODUCTION value of 1 of those units to "
+                "match the PRODUCTION value of the unit on the game board with the highest PRODUCTION value, or apply +2 to the total PRODUCTION "
+                "value of those units.", true},
+    {"dsdihmy", "When you explore a planet, you may produce 1 ship in that planet's system. Action: exhaust this card and 1 planet you control to explore that planet.", true},
+    {"dsflorg", "When a player would perform a strategic action, you may exhaust this card and spend 1 token from your strategy pool to end that player's turn; the strategic action is not resolved and the strategy card is not exhausted.", true},
+    {"dsgledb", "During movement, you may increase the move value of each of your non-fighter ships not transporting any fighters or infantry by 1.", true},
+    {"dsaugug", "During the status phase, you may score 1 additional public objective instead of a secret objective.", true},  // (the Augurs review)
+    {"dsauguy", "At the start of the status phase, you may spend 3 trade goods to research 1 technology.", true},
+    {"dskjalg", "Once per action, after a player produces 1 or more hits during a round of combat in a system that contains a Glory token, gain 1 trade good. After a player rolls combat dice, you may exhaust this card to allow that player to reroll any number of those dice.", true},
     // Discordant Stars batch 4 (0.40.0)
-    {"dskollb", "At the start of a space combat on your turn: a ship of yours that wasn't in the system at the start of the action rolls 1 die - a hit on its combat value or more.", true},
-    {"dskolly", "Action: exhaust it - a neighbour with relic fragments gains 2 trade goods and gives you the fragment you choose.", true},
-    {"dsmortr", "After one of your units is destroyed: exhaust it to put one of that type in a neighbouring system with your ships.", true},
-    {"dsmorty", "Each system with your ships and no planets has Production 2, as if it were a unit.", true},
-    {"dsvadeb", "After you activate a system: exhaust it - each trade good you spend lets one of your non-fighter ships move 1 further.", true},
-    {"dsvadey", "After your hit is cancelled by Sustain Damage: exhaust to destroy that unit. After you make hits in a combat round: 1 trade good for 1 more hit.", true},
-    {"dscymiy", "At the start of your turn: exhaust it to put another player's command token in a non-home system with your units (not Mecatol Rex).", true},
-    {"dsnivyy", "After your units roll for combat: one of them with Sustain Damage becomes damaged to reroll its dice.", true},
-    {"dsolrab", "After you activate a system: exhaust one of your planets sharing a trait with a planet there - +1 move to all your ships this action.", true},
-    {"dsolrar", "At the start of your turn: exhaust it and one of your planets to ready a non-home planet (not Mecatol Rex).", true},
+    {"dskollb", "At the start of a space combat, you may choose 1 of your ships in the active system that did not begin this action in that system; roll a die. On a result equal to or greater than that ship's combat value, produce 1 hit; your opponent must assign it to 1 of their ships.", true},
+    {"dskolly", "ACTION: Exhaust this card to choose 1 of your neighbors that has 1 or more relic fragments. That player gains 2 trade goods and must give you 1 of those relic fragments of your choice.", true},
+    {"dsmortr", "After a unit you control in a system is destroyed, you may exhaust this card to place 1 unit of that type from your "
+                "reinforcements in the space area of a system adjacent to that system that contains 1 or more of your ships.", true},
+    {"dsmorty", "Each system that contains 1 or more of your ships and no planets gains PRODUCTION 2 as if it were a unit you control.", true},
+    {"dsvadeb", "After you activate a system, you may exhaust this card and spend any number of trade goods; for each trade good you spent, apply "
+                "+1 to the move value of 1 non-fighter ship you control.", true},
+    {"dsvadey", "After another player's unit uses SUSTAIN DAMAGE to cancel a hit produced by your units or abilities, you may exhaust this card to "
+                "destroy that unit. After you produce 1 or more hits during a round of combat, you may spend 1 trade good to produce 1 additional "
+                "hit.", true},
+    {"dscymiy", "At the start of your turn, you may exhaust this card to choose 1 non-home system other than Mecatol Rex that contains 1 or more of your units; place 1 other player's command token from their reinforcements in that system.", true},
+    {"dsnivyy", "After 1 or more of your units with SUSTAIN DAMAGE makes a combat roll, you may choose 1 of those units to become damaged to "
+                "reroll its combat roll.", true},
+    {"dsolrab", "After you activate a system, you may exhaust a planet you control of the same type as a planet in that system to apply +1 to the "
+                "move value of each of your ships during this tactical action.", true},
+    {"dsolrar", "At the start of your turn, you may exhaust this card and 1 planet you control to ready 1 non-home planet other than Mecatol Rex.", true},
     // Discordant Stars batch 5 (0.41.0)
-    {"dsfreeg", "At the start of the agenda phase you may exhaust a cultural, a hazardous and an industrial planet (anyone's). When you cast votes with a cultural, a hazardous and an industrial planet among those you exhaust: 4 more votes.", true},
-    {"dsfreey", "At the start of a ground combat: up to 2 of your ground forces there fire first; each hit lands on the opponent's ground forces.", true},
-    {"dsedyng", "Once per agenda phase, when your prediction comes true: you may score a public objective you qualify for; every other player who voted for it draws a secret objective.", true},
-    {"dsedyny", "You vote last. When an outcome you voted for or predicted is resolved, each player who voted for it gains 1 commodity. Exhaust it to let 1 relic change hands in your transaction.", true},
-    {"dsnokay", "In the action phase (not an action): exhaust it to use the Production of 1 of your units, then put a command token from your reinforcements in its system.", true},
-    {"dsaxisb", "After you activate a system: exhaust it - one of your ships rolls: 1-3 it is lost, 4-10 it moves 2 further this action.", true},
-    {"dsaxisy", "Action: exhaust it to place or move one of your space docks onto a planet you control without one.", true},
-    {"dsmykog", "After an opponent's combat roll: exhaust it to roll their misses again - any hits land on their own units.", true},
-    {"dsghemg", "After you win a space combat: ready 1 of your planets.", true},
+    {"dsfreeg", "At the start of the agenda phase, you may choose and exhaust 1 cultural, 1 hazardous, and 1 industrial planet. When you cast 1 or more votes, if you exhaust at least 1 cultural, 1 hazardous, and 1 industrial planet to cast votes, you may cast 4 additional votes.", true},
+    {"dsfreey", "At the start of a ground combat, you may roll 1 die for each of up to 2 of your ground forces on that planet. For each result equal to or greater than that unit's combat value, produce 1 hit; your opponent must assign it to 1 of their units on that planet.", true},
+    {"dsedyng", "Once per agenda phase, after an agenda is revealed, you may predict aloud an outcome of that agenda. If your prediction is correct, you may score 1 public objective if you fulfill its requirements; each other player who voted for that outcome draws 1 secret objective.", true},
+    {"dsedyny", "You may exhaust this card to allow a player to exchange 1 of their relics or agendas as part of a transaction. You always vote last during the agenda phase. When an outcome you voted for or predicted is resolved, each player who voted for that outcome gains 1 commodity.", true},
+    {"dsnokay", "During the action phase: You may exhaust this card to use the PRODUCTION ability of 1 of your units. Then, place 1 command "
+                "token from your reinforcements in that unit's system.", true},
+    {"dsaxisb", "After you activate a system, you may exhaust this card to choose 1 ship you control and roll a die. On a result of 1-3, remove "
+                "that ship from the game board; on a result of 4-10, apply +2 to that ship's move value during this tactical action.", true},  // (the Axis review)
+    {"dsaxisy", "ACTION: Exhaust this card to place or move 1 of your space docks onto a planet you control.", true},
+    {"dsmykog", "After your opponent makes a combat roll, you may exhaust this card. If you do, for each of their units that did not produce a hit, "
+                "you may reroll that unit's combat roll; any hits that roll produces are produced against your opponent's units instead.", true},
+    {"dsghemg", "After you win a space combat, you may ready 1 planet you control.", true},
     // Discordant Stars batch 6 (0.42.0)
-    {"dsveldr", "After each round of space combat: one of your units in the system fires its space cannon at the opponent's ships.", true},
-    {"dslizhb", "After you activate a non-home system: exhaust it - one of your ships counts as next to the active system this action.", true},
-    {"dsmirvr", "At the start of an invasion of your system: one of your planets there gains Planetary Shield. When units land on your planet: exhaust it to destroy one.", true},
-    {"dsghotg", "Up to 3 ships in your home system don't count against your fleet pool. When you vote: exhaust it for as many votes as your fleet tokens.", true},
-    {"dsghoty", "When you produce: 1 more unit in each of up to 2 systems with your ships and your command token.", true},
+    {"dsveldr", "At the end of each round of space combat, you may use the SPACE CANNON of 1 of your units in the active system against your "
+                "opponent's ships, without rolling additional dice.", true},
+    {"dslizhb", "After you activate a non-home system, you may exhaust this card to choose 1 ship you control; treat that ship as adjacent "
+                "to the active system until the end of this tactical action.", true},
+    {"dsmirvr", "At the start of invasion, choose up to 1 unit you control in the active system; that unit gains PLANETARY SHIELD. When a player "
+                "commits a unit to land on a planet you control, you may exhaust this card to destroy that unit.", true},
+    {"dsghotg", "Up to 3 ships in your home system do not count against your fleet pool. When you cast 1 or more votes, you may exhaust this card to cast an additional number of votes equal to the number of command tokens in your fleet pool.", true},
+    {"dsghoty", "When you produce 1 or more units, you may produce 1 additional unit in each of 2 systems that contain 1 or more of your ships and 1 of your command tokens.", true},
 };
 }  // namespace
 

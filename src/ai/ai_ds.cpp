@@ -245,6 +245,17 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
                 out = yes(spaceOdds(g, p) < 0.3f && g.systems[size_t(std::max(0, int(g.activeSystem)))].space[size_t(p)].nonFighterShips() >= 2);
                 return true;
             }
+            if (g.fixes >= 29 && d.prompt.find("which action card") != std::string::npos) {  // (the Vaylerian review) the card we need least
+                out = one(bestBy(d, [&](int c) { return -aiCardKeepValue(c); }, true));
+                return true;
+            }
+            return false;
+        case Ab::DsYvin:
+            if (g.fixes >= 29 && d.value >= 1000) {  // (the Vaylerian review) another player's planet: only for the player it was promised to
+                const int b = d.value - 1000;
+                out = yes(b == p || (d.targetPlayer >= 0 && b == d.targetPlayer));
+                return true;
+            }
             return false;
         case Ab::DsAts: {  // rerolls: a couple per round, all of them in a close fight
             const int m = maxOption(d);
@@ -252,6 +263,38 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
             return true;
         }
         case Ab::DsPhquaiset: out = one(maxOption(d)); return true;
+        case Ab::DsZealous:  // (the Kortali review, checkpoint 2 - test knob kozeal, OFF) Thunder's Edge: the primary only with a plan
+            // worth the token (aiFreeTacticalValue), else the secondary's Production at home - unless there is nothing to spend
+            if (yn && aiTune("kozeal", 0.f) > 0.f && (g.modules & kModThundersEdge)) {
+                out = yes(aiFreeTacticalValue(g, p) >= aiTune("kozeal", 0.f) || spendable(g, p, false) < 3);
+                return true;
+            }
+            return false;
+        case Ab::DsRuthless:  // (fixes 28, the Kortali review) the kind that dies: a damaged mech, else infantry, else the mech
+            if (yn) return false;
+            out = one(bestBy(d, [&](int t) {
+                const int pl = g.groundCombatPlanet;
+                int dmg = 0;
+                for (int q = 0; q < g.numPlayers && pl >= 0; ++q)
+                    if (q != p) dmg += g.planets[size_t(pl)].units[size_t(q)].damaged(UnitType(t));
+                return t == int(UnitType::Mech) ? (dmg > 0 ? 3.f : 1.f) : 2.f;
+            }));
+            return true;
+        case Ab::DsTempest:  // (fixes 28) with another player's token there: only our own token (removing theirs frees their system)
+            if (yn) return false;
+            out = one(has(d, p) ? p : -1);
+            return true;
+        case Ab::DsLorena:  // (fixes 28) a barrage hit costs a fighter: kept for the combat roll unless only fighters fight here
+            if (yn && d.value == 1) {
+                const int s = g.activeSystem;
+                out = yes(s < 0 || g.systems[size_t(s)].space[size_t(p)].nonFighterShips() == 0);
+                return true;
+            }
+            return false;
+        case Ab::DsLucreia:  // (fixes 28: Yes / No / don't ask again) - a bot is asked only for itself or the player it promised it to
+            if (yn) return false;
+            out = one(1);
+            return true;
         case Ab::DsNadalia:
             if (yn) {
                 out = yes(d.value >= 3 || g.round >= 6 || me.vp >= g.vpGoal - 3);
@@ -260,6 +303,14 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
             return false;
         case Ab::DsPustule:
         case Ab::DsScour: {
+            // (the Vaylerian review, checkpoint 2 - test switch vyscour) Scour never came up in 270 games: a planet worth 2 for a card worth
+            // less than 3.5. REVISIT (checkpoint 2, 90 forced games each): planets readied +15 / +43 in 90 games - 19 wins / 7.19 VP against
+            // 18 / 7.04, second sample 14 / 6.81 against 15 / 7.11: not clear in both - off
+            if (ab == Ab::DsScour && aiTune("vyscour", 0.f) > 0.f) {
+                const int c = d.value >= 2 ? cheapestCard(d) : -1;
+                out = one(c >= 0 && aiCardKeepValue(c) < 3.5f ? c : -1);
+                return true;
+            }
             if (ab == Ab::DsScour && d.value < (fquirkIs(g, p, "vaylerian", 1) ? 2 : 3)) {  // a planet worth a card (Card Sharp: cheaper)
                 out = one(-1);
                 return true;
@@ -282,13 +333,28 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
             }
             out = Answer();  // keep the structures
             return true;
-        case Ab::DsTitus:
-            if (d.value != p || g.round < 3 || spendable(g, p, false) < 4) {
+        case Ab::DsTitus: {
+            // (the Celdauri review, checkpoint 2 - test knob titusdef) the hero as a defence: another player activates a
+            // system with our planet and has warships next to it or in it - a dock and Production before they move in
+            bool defend = false;
+            if (aiTune("titusdef", 0.f) > 0.f && d.value != p && d.value >= 0 && d.value < g.numPlayers && g.round >= 2 && g.activeSystem >= 0 &&
+                spendable(g, p, false) >= 3) {
+                int foes = g.systems[size_t(g.activeSystem)].space[size_t(d.value)].nonFighterShips();
+                for (int16_t a : g.systems[size_t(g.activeSystem)].adj) foes += g.systems[size_t(a)].space[size_t(d.value)].nonFighterShips();
+                defend = foes >= 2;
+            }
+            if (!defend && (d.value != p || g.round < 3 || spendable(g, p, false) < 4)) {
                 out = one(-1);
                 return true;
             }
-            out = one(bestBy(d, [&](int x) { return float(planetResources(g, x) + planetInfluence(g, x)); }));
+            {
+                const int x = bestBy(d, [&](int x) { return float(planetResources(g, x) + planetInfluence(g, x)); });
+                bool bare = false;  // (fixes 28) "Use him (no space dock to place)"
+                for (const Option& o : d.options) bare = bare || (o.id == -2 && o.enabled);
+                out = one(x >= 0 ? x : bare ? -2 : -1);
+            }
             return true;
+        }
         case Ab::DsMinuteman:
             if (d.value == p && threatNear(g, p, std::max(0, int(g.activeSystem))) == 0) {  // our own move with nobody about
                 out = one(-1);
@@ -296,9 +362,25 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
             }
             out = one(bestBy(d, [&](int x) { return float(planetResources(g, x) + planetInfluence(g, x)); }));
             return true;
-        case Ab::DsNobin:
-            out = one(bestBy(d, [&](int x) { return float(planetResources(g, x) + planetInfluence(g, x)); }));
+        case Ab::DsNobin: {
+            // (fixes 28) "exhaust George Nobin so that player may place a dock?" - a bot only when it promised (kept in
+            // ai_deals; here a lapsed promise or the bare promise list)
+            if (g.fixes >= 28 && d.targetPlayer >= 0 && d.targetPlayer != p) {
+                out = one(g.agentFor[size_t(p)] == d.targetPlayer ? 1 : 0);
+                return true;
+            }
+            // (the Celdauri review, checkpoint 2 - test knob celdock) the strategy guide: the agent's dock goes on a good
+            // non-home planet, ideally one away from home that unlocks Henry Storcher - not a second dock at home while
+            // the commander is still locked
+            if (aiTune("celdock", 0.f) > 0.f && isFaction(g, p, "celdauri") && g.activeSystem >= 0 && g.systems[size_t(g.activeSystem)].home == p &&
+                leaderStatus(g, p, kCommander) == kLocked) {
+                out = one(-1);
+                return true;
+            }
+            const int x = bestBy(d, [&](int x) { return float(planetResources(g, x) + planetInfluence(g, x)); });
+            out = one(x >= 0 ? x : -1);
             return true;
+        }
         case Ab::DsEmergencyMob: {
             // (0.44.8) a dock system to activate again - home or one with enemies near - while we still have turns, a
             // tactic token and money to build (it used to wait for home with 2 strategy and at most 1 tactic: never)
@@ -315,6 +397,10 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
             return true;
         }
         case Ab::DsUdosh:  // a resource planet pays for influence: worth it when it carries 2+ resources
+            if (isYesNo(d) && g.fixes >= 28 && d.targetPlayer >= 0 && d.targetPlayer != p) {  // (the Khrask review) asked for another
+                out = yes(g.agentFor[p] == d.targetPlayer);                                   // player only when promised: keep it
+                return true;
+            }
             if (isYesNo(d)) {
                 int best = 0;
                 for (int x : readyPlanets(g, p))
@@ -324,8 +410,35 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
                 out = one(bestBy(d, [&](int x) { return x < 0 ? 0.f : float(planetResources(g, x) * 2 + planetInfluence(g, x)) - 3.f; }, true));
             }
             return true;
+        case Ab::DsThakt: {
+            // (fixes 28) Thakt Clqua places each unit on its own: everything where enemies are nearest our structures, home
+            // first - the ships together (the scores don't change between the questions), ground forces on planets
+            if (d.prompt.rfind("Thakt Clqua: place 1 ", 0) != 0) return false;
+            const bool structure = d.prompt.find("Space Dock") != std::string::npos || d.prompt.find("PDS") != std::string::npos;
+            const bool ground = d.prompt.find("Infantry") != std::string::npos || d.prompt.find("Mech") != std::string::npos;
+            auto sysScore = [&](int s) {
+                if (s < 0 || s >= int(g.systems.size())) return -100.f;
+                return 2.f * float(threatNear(g, p, s)) + (g.systems[size_t(s)].home == p ? 1.5f : 0.f);
+            };
+            out = one(bestBy(d, [&](int id) {
+                if (id >= 10000) {
+                    const int x = id - 10000;
+                    const float base = float(planetResources(g, x) + planetInfluence(g, x)) * 0.2f;
+                    if (structure) return float(planetResources(g, x)) + (g.systems[size_t(g.planets[size_t(x)].system)].home == p ? 0.f : 1.f) +
+                                          0.5f * sysScore(g.planets[size_t(x)].system);
+                    return sysScore(g.planets[size_t(x)].system) + base;
+                }
+                return ground ? sysScore(id) - 5.f : sysScore(id);
+            }));
+            return true;
+        }
         case Ab::DsKkavras: {  // (0.43.0 debug passes: asked ~600 times, always no) our own token off a system whose
             // fleet or dock we'd use again this round, onto one that doesn't matter
+            // (fixes 28) "exhaust Operator Kkavras so that player may move a token?" - a bot only when it promised
+            if (g.fixes >= 28 && d.targetPlayer >= 0 && d.targetPlayer != p) {
+                out = one(g.agentFor[size_t(p)] == d.targetPlayer ? 1 : 0);
+                return true;
+            }
             if (g.activePlayer != p || g.players[size_t(p)].tactic < 1) {  // (only for our own token, at our turn's end)
                 out = one(-1);
                 return true;
@@ -371,14 +484,25 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
             const int a = archNow(g, p);
             const bool bold = a == int(Arch::Warlord) || a == int(Arch::Betrayer) || a == int(Arch::Rusher) || a == int(Arch::Chaotic) ||
                               a == int(Arch::Opportunist);
-            const int allowed = bold && g.fixes >= 2 ? 1 : 0;
+            // (the Kyro review, checkpoint 2 - test knob kycontag, OFF) every personality goes for a single defender (Subversive: 1 infantry
+            // against 1 wins ~59% of the time, a draw being theirs)
+            const int allowed = (bold || aiTune("kycontag", 0.f) > 0.f) && g.fixes >= 2 ? 1 : 0;
             out = one(bestBy(d, [&](int x) {
                 const PlanetState& ps = g.planets[size_t(x)];
                 int foes = neutralGroundOn(g, x);
                 for (int q = 0; q < g.numPlayers; ++q)
                     if (q != p) foes += groundForcesOn(g, q, x);
                 if (foes > allowed) return -10.f;
+                // (fixes 28, the Kyro review) their own planets are targets now: an infantry more there only when nothing else is
+                if (ps.owner == p) return 0.2f;
                 float v = float(planetResources(g, x) + planetInfluence(g, x)) + 1.f;
+                // (fixes 28) the planet's space cannon defense fires at the infantry: worth less
+                if (g.fixes >= 28) {
+                    bool guns = false;
+                    for (int q = 0; q < g.numPlayers; ++q)
+                        if (q != p && g.planets[size_t(x)].units[size_t(q)].count(UnitType::PDS)) guns = true;
+                    if (guns) v *= 0.4f;
+                }
                 if (ps.owner >= 0 && ps.owner != p) {
                     const float rel = float(me.pers.bf[size_t(ps.owner)]);
                     v += 1.f - 0.05f * rel;  // a rival's empty planet is a fine prize
@@ -386,12 +510,13 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
                 if (!std::strcmp(kPlanets[ps.def].key, "mr")) v += 4.f;
                 return foes ? v * 0.6f : v;
             }));
-            if (out.picks[0] >= 0) {
+            // (fixes 28: no "Hold back" any more - then the best of what is offered, their own planet first)
+            if (out.picks[0] >= 0 && has(d, -1)) {
                 int foes = neutralGroundOn(g, out.picks[0]);
                 for (int q = 0; q < g.numPlayers; ++q)
                     if (q != p) foes += groundForcesOn(g, q, out.picks[0]);
                 if (foes > allowed) out = one(-1);
-            } else {
+            } else if (out.picks[0] < 0 && has(d, -1)) {
                 out = one(-1);
             }
             return true;
@@ -401,6 +526,10 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
             d2.ability = int(Ab::KeleresRider);
             return aiFactionAnswer(g, d2, rng, out);
         }
+        case Ab::DsTox:  // (fixes 28: Yes / No / don't ask again) a bot is asked for itself or the player it promised it to
+            if (yn || d.prompt.find("which planet") != std::string::npos) return false;
+            out = one(1);
+            return true;
         case Ab::DsSilas: {
             const int m = maxOption(d);
             out = one(g.round >= 5 || me.vp >= g.vpGoal - 3 || fquirkIs(g, p, "kyro", 1) ? m : 0);  // (Pale Rider: always)
@@ -414,6 +543,20 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
             out = one(bestBy(d, [&](int c) { return aiStrategyCardValue(g, p, c); }));
             return true;
         case Ab::DsVenerable:
+            if (d.prompt.find("for which relic") != std::string::npos) {  // (fixes 28: one question per relic in play) the leader's for a revealed one
+                int leader = -1;
+                for (int q = 0; q < g.numPlayers; ++q)
+                    if (q != p && (leader < 0 || g.players[size_t(q)].vp > g.players[size_t(leader)].vp)) leader = q;
+                int pickId = -1;
+                if (d.value == leader && leader >= 0 && g.players[size_t(leader)].vp >= g.vpGoal - 4)
+                    for (const Option& o : d.options)
+                        if (o.enabled && o.id >= 0 && o.id < 100000) {
+                            pickId = o.id;
+                            break;
+                        }
+                out = one(pickId);
+                return true;
+            }
             if (d.prompt.find("swap") != std::string::npos) {  // a swap only to hurt the leader
                 int leader = -1;
                 for (int q = 0; q < g.numPlayers; ++q)
@@ -437,6 +580,14 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
             const int m = maxOption(d);
             int hits = m;
             for (const Option& o : d.options) hits = std::max(hits, o.id);
+            // (the Khrask review, checkpoint 2 - test switch khgrove, OFF) with Mended Grove, against more defenders than hits: every hit
+            // an infantry, coexisting (the Grove's influence grows by 1 for each planet with coexisting units). 270 games: 63 wins / 7.42
+            // against 61 / 7.33, coexistence 0.5 a game (1 in 270 without) - within the noise
+            if (d.ability == int(Ab::DsMeteorSlings) && aiTune("khgrove", 0.f) > 0.f && breakthroughIs(g, p, "khrask") && breakthroughsOn(g) &&
+                defenders > 0 && defenders >= hits && m == hits) {
+                out = one(m);
+                return true;
+            }
             out = one(std::max(0, std::min(m, hits - defenders)));
             return true;
         }
@@ -450,6 +601,19 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
                             if (q != p && (g.planets[size_t(x)].units[size_t(q)].count(UnitType::PDS) || g.planets[size_t(x)].units[size_t(q)].count(UnitType::Mech)))
                                 guns = true;
                 out = yes(guns);
+                return true;
+            }
+            return false;
+        case Ab::DsZelianAgent:
+            if (g.fixes >= 29 && d.value >= 1000) {  // (the Zelian review) another player's invasion: only for the player it was promised to
+                const int b = d.value - 1000;
+                out = yes(b == p || (d.targetPlayer >= 0 && b == d.targetPlayer));
+                return true;
+            }
+            return false;
+        case Ab::DsHyperkinetic:
+            if (yn && g.fixes >= 29) {  // (the Zelian review) played before the dice: with 2+ dice, or late in the game
+                out = yes(d.value >= 2 || g.round >= 5);
                 return true;
             }
             return false;
@@ -484,6 +648,14 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
             return false;
         case Ab::DsCataclysm:
             if (yn) {
+                // (the Zelian review, checkpoint 2 - test switch zlcata) the guide: "Use the hero on a system a rival needs" - a lower bar
+                // (3 trade goods, or from round 5) instead of 4 / round 6; used in 58-70% of their games at the table's bar. REVISIT
+                // (checkpoint 2, 90 forced games each): used in 0.79-0.82 of their games (0.66-0.70) - 15 wins / 7.49 VP against 19 /
+                // 7.51, second sample 12 / 6.90 against 14 / 6.93: worse in both - off
+                if (aiTune("zlcata", 0.f) > 0.f) {
+                    out = yes(d.value >= 3 || g.round >= 5);
+                    return true;
+                }
                 out = yes(d.value >= 4 || g.round >= 6);
                 return true;
             }
@@ -502,6 +674,15 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
                 return float(availableVotes(g, q)) + (g.players[size_t(q)].vp >= me.vp ? 3.f : 0.f);
             }));
             return true;
+        case Ab::DsSplinteringGale: {  // (the Khrask review) the dearest ships first
+            std::vector<std::pair<int, int>> c;
+            for (const Option& o : d.options)
+                if (o.enabled) c.push_back({unitCost2(g, p, UnitType(o.id / 16)) * 4 - o.id % 16, o.id});
+            std::sort(c.rbegin(), c.rend());
+            out = Answer();
+            for (size_t i = 0; i < c.size() && int(i) < d.maxPick; ++i) out.picks.push_back(c[i].second);
+            return true;
+        }
         case Ab::DsVehlTikar: {  // wake our own spent planets, best first
             std::vector<std::pair<float, int>> c;
             for (const Option& o : d.options)
@@ -523,8 +704,23 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
         }
         case Ab::DsSaintKeep:
         case Ab::DsMeditation: out = one(bestBy(d, [&](int t) { return aiTechWant(g, p, t); })); return true;
-        case Ab::DsFran: out = one(has(d, p) ? p : maxOption(d)); return true;
+        case Ab::DsFran: {
+            const int prom = aiAgentPromisedTo(g, p);  // (rules 28) the promised player
+            out = one(prom >= 0 && has(d, prom) ? prom : has(d, p) ? p : maxOption(d));
+            return true;
+        }
         case Ab::DsSanctification: out = one(bestBy(d, [&](int c) { return sanctifyValue(g, p, c); }, 0.5f)); return true;
+        case Ab::DsPriestess:
+            if (g.fixes >= 29 && d.value >= 1000) {  // (the Zealots review) another player's research: only for the player it was promised to
+                const int b = d.value - 1000;
+                out = yes(b == p || (d.targetPlayer >= 0 && b == d.targetPlayer));
+                return true;
+            }
+            if (g.fixes >= 29) {  // the system: home, or where a threat is near
+                out = one(bestBy(d, [&](int s) { return s < 0 ? -1.f : 1.f + float(threatNear(g, p, s)) + (g.systems[size_t(s)].home == p ? 0.5f : 0.f); }));
+                return true;
+            }
+            return false;
         case Ab::DsOmniscience: {
             const int act = d.value;
             // (0.44.8) only when there will be rolls this action: other units in the active system, or ours bombarding /
@@ -564,6 +760,13 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
             return true;
         }
         case Ab::DsKyvir:
+            // (the Roh'Dhna review, checkpoint 2 - test switch rhkyvir) the flagship for 4 resources (it costs 8 to build): from round 2 with
+            // 4 to spend - used in 48-56% of their games. REVISIT (90 forced games each): used 0.61 a game instead of 0.43-0.48 - 7 / 6.62 against
+            // 8 / 6.68, second sample 12 / 6.93 against 13 / 6.98 - no gain, off
+            if (aiTune("rhkyvir", 0.f) > 0.f) {
+                out = one(g.round >= 2 && spendable(g, p, false) >= 4 ? (has(d, int(UnitType::Destroyer)) ? int(UnitType::Destroyer) : has(d, int(UnitType::Cruiser)) ? int(UnitType::Cruiser) : -1) : -1);
+                return true;
+            }
             out = one(g.round >= 3 && spendable(g, p, false) >= 6 ? (has(d, int(UnitType::Destroyer)) ? int(UnitType::Destroyer) : has(d, int(UnitType::Cruiser)) ? int(UnitType::Cruiser) : -1) : -1);
             return true;
         case Ab::DsFillipo: {  // 0.43.0 (D51): sparingly - only when one more move brings a ship into a fight or a landing
@@ -621,7 +824,11 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
             }
             out = one(bestBy(d, [&](int x) { return x < 0 ? -1.f : (planetHasSkip(g, x) ? 0.f : 5.f) + planetWorth(g, x) * 0.1f; }));
             return true;
-        case Ab::DsMgur: out = one(has(d, p) ? p : maxOption(d)); return true;
+        case Ab::DsMgur: {
+            const int prom = aiAgentPromisedTo(g, p);  // (rules 28) the promised player
+            out = one(prom >= 0 && has(d, prom) ? prom : has(d, p) ? p : maxOption(d));
+            return true;
+        }
         case Ab::DsReplicators:
             if (d.prompt == "Exhaust Merged Replicators?") {  // 0.43.0: the biggest gain we can pay for
                 out = one(d.value >= 2 ? bestBy(d, [&](int c) { return c < 0 ? 0.f : float(c >= 100 ? std::min(c - 100, d.value) : 2); }) : -1);
@@ -639,13 +846,47 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
         case Ab::DsYpru: {
             const int sys = g.activeSystem;
             const int mine = sys >= 0 ? g.systems[size_t(sys)].space[size_t(p)].nonFighterShips() : 0;
-            out = yes(d.value >= 3 || (d.value >= 2 && mine <= d.value + 1));
+            bool use = d.value >= 3 || (d.value >= 2 && mine <= d.value + 1);
+            // test switch dmnypru (the Dih-Mohn review, checkpoint 2: off; the owner made him "every round"): also to take
+            // the enemy's Sustain Damage away - their undamaged sustaining ships outnumber ours by the knob (2: used 0.52 -> 0.56
+            // a game, 12 / 6.50 vs 12 / 6.51, fresh 8 / 6.59 vs 9 / 6.58 - no effect)
+            if (!use && sys >= 0 && aiTune("dmnypru", 0.f) > 0.f) {
+                int ours = 0, theirs = 0;
+                for (int q = 0; q < g.numPlayers; ++q) {
+                    const Force& fo = g.systems[size_t(sys)].space[size_t(q)];
+                    for (int t : kShipIdx)
+                        if (fo.n[t] > fo.dmg[t] && unitSustains(g, q, UnitType(t))) (q == p ? ours : theirs) += fo.n[t] - fo.dmg[t];
+                }
+                use = float(theirs) >= float(ours) + aiTune("dmnypru", 0.f);
+            }
+            out = yes(use);
             return true;
         }
         case Ab::DsMercenaries: {  // only into our own fights
-            if (d.value == 0) {
-                out = one(-1);
+            if (d.prompt.find("how many") != std::string::npos) {  // (fixes 28: "up to 2") - all of them
+                out = one(maxOption(d));
                 return true;
+            }
+            if (d.value == 0) {
+                // (test switch flzmerc, the Florzen review, checkpoint 2: off) someone else's fight against a leader this many
+                // points ahead of us and of their opponent: fighters for the underdog (DsMercTarget gives them to the lower score)
+                const float lead = aiTune("flzmerc", 0.f);
+                bool sell = false;
+                const int sys = g.activeSystem, a = g.activePlayer;
+                if (lead > 0.f && sys >= 0 && a >= 0 && a < g.numPlayers) {
+                    int b = -1;
+                    for (int q = 0; q < g.numPlayers; ++q)
+                        if (q != a && g.systems[size_t(sys)].space[size_t(q)].ships()) b = q;
+                    if (b >= 0 && b != p && a != p) {
+                        const int va = g.players[size_t(a)].vp, vb = g.players[size_t(b)].vp;
+                        const int top = std::max(va, vb), low = std::min(va, vb);
+                        sell = float(top) >= float(std::max(int(me.vp), low)) + lead;
+                    }
+                }
+                if (!sell) {
+                    out = one(-1);
+                    return true;
+                }
             }
             out = one(bestBy(d, [&](int s) { return s < 0 ? -1.f : float(g.systems[size_t(s)].space[size_t(p)].count(UnitType::Fighter)) - 2.f * float(threatNear(g, p, s)); }));
             return true;
@@ -669,7 +910,37 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
             return true;
         }
         case Ab::DsUnderground: out = yes(true); return true;
+        case Ab::DsCordo: {  // (fixes 28: at the end of a turn)
+            if (d.prompt.find("Exhaust Cordo Haved for") != std::string::npos) {  // (asked only when promised)
+                out = yes(true);
+                return true;
+            }
+            out = one(bestBy(d, [&](int c) {
+                if (c < 0) return 1.0f;  // (the bar: keep it for a better turn)
+                const int x = c / 10, e = c % 10;
+                if (x < 0 || x >= int(g.planets.size())) return 0.f;
+                const char* k = kPlanets[size_t(g.planets[size_t(x)].def)].key;
+                auto is = [&](const char* s) { return !std::strcmp(k, s); };
+                if (is("mallice")) return e == 1 ? 2.f : 0.9f * float(me.commodities);
+                if (is("hopesend")) return e == 1 ? 2.f : 1.5f;
+                if (is("silence")) return 2.5f;
+                if (is("primor")) return 1.5f;
+                if (is("mirage")) return 1.1f;
+                if (is("thundersedge")) return me.tactic >= 1 && !me.passed ? 3.f : 0.f;
+                if (is("emelpar")) {
+                    for (const LeaderState& ls : me.leaders)
+                        if (kLeaders[ls.leader].type == kAgent && ls.status == kExhausted) return 2.5f;
+                    return 1.2f;
+                }
+                return 0.8f;  // (Bi-Phasic Generators, Mystic Library, Fractal Gate: rarely worth an agent)
+            }));
+            return true;
+        }
         case Ab::DsSalGavda:
+            if (d.prompt.find("Exhaust Sal Gavda for") != std::string::npos) {  // (fixes 28: asked only when promised)
+                out = yes(true);
+                return true;
+            }
             if (d.onPlanets) {
                 out = one(bestBy(d, [&](int x) { return -float(threatNear(g, p, g.planets[size_t(x)].system)); }));
                 return true;
@@ -691,7 +962,28 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
             out = one(bestBy(d, [&](int k) { return k == 0 ? 0.5f : (inf - k >= 4 ? float(k) : -1.f); }));
             return true;
         }
-        case Ab::DsMantle: out = one(bestBy(d, [&](int x) { return x < 0 ? -9.f : 2.f - float(planetResources(g, x)) - 0.6f * float(planetInfluence(g, x)); })); return true;
+        case Ab::DsMantle: {
+            // (the Gledge review, checkpoint 2 - switch glfront, test) the Reference card's Dhonraz Installations bombards planets next
+            // to a Core token's system: a Core on the border (other players' ground forces next door) is worth more. OFF: glfront=0.5 won
+            // 34 of 270 (three seed sets) against 32 off, VP 6.59 against 6.61 - no effect
+            const float front = aiTune("glfront", 0.f);
+            out = one(bestBy(d, [&](int x) {
+                if (x < 0) return -9.f;
+                float v = 2.f - float(planetResources(g, x)) - 0.6f * float(planetInfluence(g, x));
+                if (front > 0.f && g.planets[size_t(x)].system >= 0) {
+                    int foes = 0;
+                    const int cs = g.planets[size_t(x)].system;
+                    for (int16_t a : g.systems[size_t(cs)].adj) {
+                        if (a == cs) continue;
+                        for (int16_t y : g.systems[size_t(a)].planets)
+                            for (int q = 0; q < g.numPlayers; ++q) foes += q != p ? groundForcesOn(g, q, y) : 0;
+                    }
+                    v += front * float(std::min(foes, 4));
+                }
+                return v;
+            }));
+            return true;
+        }
         case Ab::DsDeepMining: out = yes(d.value == 0); return true;
         case Ab::DsGorthrim:
             if (d.onPlanets) {  // a harmful attachment goes on the least valuable planet
@@ -702,7 +994,23 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
             out = one(maxOption(d));
             return true;
         case Ab::DsPsychographics: out = one(bestBy(d, [&](int o) { return float(kObjectives[o].points); })); return true;
-        case Ab::DsUnity: out = one(bestBy(d, [&](int o) { return float(kObjectives[o].points); })); return true;  // (0.44.6: the most points)
+        case Ab::DsUnity:
+            if (d.prompt.find("stake this prediction") != std::string::npos) {  // (fixes 28) once a phase: when a public is ready now
+                bool ready = false;
+                for (int16_t o : g.publicObjectives) ready = ready || (!hasScored(g, p, o) && meetsObjective(g, p, o));
+                // (TEST switch "edstake", the Edyn checkpoint 2 - off: 0) on the first agenda of the phase, stake only a
+                // prediction we are this sure of; else wait for the second
+                const float sure = aiTune("edstake", 0.f);
+                if (ready && sure > 0.f && g.agendaNumber == 0 && g.currentAgenda >= 0) {
+                    float conf = 0.f;
+                    aiPredictOutcome(g, g.currentAgenda, &conf);
+                    if (conf < sure) ready = false;
+                }
+                out = yes(ready);
+                return true;
+            }
+            out = one(bestBy(d, [&](int o) { return o < 0 ? 0.f : float(kObjectives[o].points); }));  // (0.44.6: the most points)
+            return true;
         case Ab::DsDatapool: out = yes(me.tradeGoods - 3 >= aiGoals(g, p).keepTg); return true;  // (0.44.5: spend objectives first)
         case Ab::DsClodho: out = yes(true); return true;
         case Ab::DsAtropha: {
@@ -716,20 +1024,55 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
                 out = one(bestBy(d, [&](int s) { return hasUnits(g, p, s) ? 0.f : 1.f; }));
                 return true;
             }
+            {
+                // (the Kjalengard review, checkpoint 2 - test knob kjglory, OFF) the research with only 1 strategy token left when a
+                // unit upgrade it can research now is worth the knob's value or more (a full technology for 1 token)
+                const float kg = aiTune("kjglory", 0.f);
+                if (kg > 0.f && has(d, 2) && me.strategy >= 1) {
+                    float best = 0.f;
+                    for (int t = 0; t < kTechCount; ++t)
+                        if (upgradeUnitType(t) >= 0 && !me.hasTech(t) && canResearchNow(g, p, t)) best = std::max(best, aiTechWant(g, p, t));
+                    if (best >= kg) {
+                        out = one(2);
+                        return true;
+                    }
+                }
+            }
             out = one(has(d, 2) && me.strategy >= 2 ? 2 : has(d, 1) ? 1 : -1);
             return true;
-        case Ab::DsHeroism:
-        case Ab::DsMerkismathr: out = yes(true); return true;
+        case Ab::DsHeroism: out = yes(true); return true;
+        case Ab::DsMerkismathr:
+            // (fixes 28, the Kjalengard review) asked at another player's combat only when promised (aiDealAnswer keeps it); with no
+            // Glory token to move, only for our own commodities
+            if (g.fixes >= 28 && d.prompt.find("no Glory token") != std::string::npos) {
+                out = yes(g.activePlayer == p);
+                return true;
+            }
+            out = yes(true);
+            return true;
         case Ab::DsZhrgar: out = yes(d.value >= 2 && (d.targetPlayer < 0 || d.targetPlayer == p)); return true;  // (0.44.6: not for others)
         case Ab::DsVassalage: out = yes(d.value >= 3); return true;
-        case Ab::DsYgegnad: out = one(bestBy(d, [&](int s) { return s < 0 ? -1.f : 1.f + float(g.systems[size_t(s)].space[size_t(p)].ships()); })); return true;
+        case Ab::DsYgegnad:
+            if (g.fixes >= 28) {  // (the Kjalengard review: system*16 + player) our own tokens, where our ships are; never another player's
+                out = one(bestBy(d, [&](int c) { return c < 0 || c % 16 != p ? -1.f : 1.f + float(g.systems[size_t(c / 16)].space[size_t(p)].ships()); }));
+                return true;
+            }
+            out = one(bestBy(d, [&](int s) { return s < 0 ? -1.f : 1.f + float(g.systems[size_t(s)].space[size_t(p)].ships()); }));
+            return true;
         // ---- batch 4 (0.40.0)
         case Ab::DsCloaked: {  // keep a reserve of 2 cloaked ships for ambushes; home ships stay when threatened
             int held = 0;
             for (int16_t c : me.captured)
                 if (c / 16 == p && !isGroundForce(UnitType(c % 16))) ++held;
-            const int want = std::max(0, 2 - held);
-            out = one(d.value == 1 && threatNear(g, p, me.homeSystem) > 0 ? 0 : std::min(want, maxOption(d)));
+            // (the Kollecc review, checkpoint 2 - knob kocloak, ON at 4 - owner 2026-11-16 11:29 "Let's keep the switches on"; it was 2)
+            // the reserve of cloaked ships kept for Shroud of Lith (tested 20 / 6.93 vs 18 / 6.98)
+            const int want = std::max(0, int(aiTune("kocloak", 4.f)) - held);
+            // (fixes 28, the Kollecc review) bit 1 = produced at home, bit 2 = only fighters (they may be cloaked now: the bot keeps them)
+            if (d.value & 2) {
+                out = one(0);
+                return true;
+            }
+            out = one((d.value & 1) && threatNear(g, p, me.homeSystem) > 0 ? 0 : std::min(want, maxOption(d)));
             return true;
         }
         case Ab::DsShroud: out = yes(true); return true;  // units on the sheet do nothing; bring them out whenever the fleet moves
@@ -784,12 +1127,26 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
             out = one(bestBy(d, [&](int s) { return s < 0 ? -1.f : float(g.systems[size_t(s)].space[size_t(p)].ships()); }));
             return true;
         case Ab::DsWalik: {
-            if (d.value < 2) {
+            // (fixes 28) for the player it was promised to: keep the promise; "which unit": the biggest ship
+            const bool other = g.fixes >= 28 && d.targetPlayer >= 0 && d.targetPlayer != p;
+            // (the Mortheus review, checkpoint 2 - test knob mowalik, OFF) their home is a nebula (fixes 28): a ship made there leaves it
+            // at move 1 - Walik already for 1 new non-fighter ship, not 2
+            const int need = aiTune("mowalik", 0.f) > 0.f && g.fixes >= 28 ? 1 : 2;
+            if (d.prompt.find("which") != std::string::npos) {
+                if (d.value < need && !(other && g.agentFor[size_t(p)] == d.targetPlayer)) {
+                    out = one(-1);
+                    return true;
+                }
+                out = one(bestBy(d, [&](int t) { return t < 0 || t == 99 ? -1.f : float(unitCost2(g, d.targetPlayer >= 0 ? d.targetPlayer : p, UnitType(t))); }));
+                return true;
+            }
+            if (d.value < need && !(other && g.agentFor[size_t(p)] == d.targetPlayer)) {
                 out = one(-1);
                 return true;
             }
             out = one(bestBy(d, [&](int s) {
                 if (s < 0) return 0.f;
+                if (s >= int(g.systems.size())) return -1.f;  // (fixes 28: 99999 = "don't ask again this round", for a person)
                 float v = 0;
                 for (int16_t x : g.systems[size_t(s)].planets) v += g.planets[size_t(x)].owner < 0 ? planetWorth(g, x) : 0.f;
                 return v - 2.f * float(threatNear(g, p, s));
@@ -797,6 +1154,13 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
             return true;
         }
         case Ab::DsBayan: out = one(bestBy(d, [&](int t) { return t < 0 ? -1.f : float(unitCost2(g, p, UnitType(t))); })); return true;
+        case Ab::DsPutriv: {  // (the Vaden review, rules 29) as many tokens as they can pay for; the rest stay for Collateralized Loans / Collector
+            int k = 0;
+            for (const Option& o : d.options)
+                if (o.enabled && o.id <= d.value) k = std::max(k, o.id);
+            out = one(k);
+            return true;
+        }
         case Ab::DsCollateral: out = yes(d.value != int(UnitType::Fighter)); return true;
         case Ab::DsBindingDebts: out = yes(me.tradeGoods >= 2); return true;
         case Ab::DsMidas: {  // (0.44.7) the trade goods that make the move worth the most more than they cost
@@ -820,8 +1184,29 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
             return true;
         }
         case Ab::DsKrovozHit: out = yes(d.value >= 2); return true;
-        case Ab::DsYudri: out = one(bestBy(d, [&](int x) { return x < 0 ? -1.f : float(planetInfluence(g, x)); })); return true;
-        case Ab::DsPutrivPay: out = one(has(d, 1) ? 1 : has(d, 0) ? 0 : maxOption(d)); return true;
+        case Ab::DsYudri:
+            if (g.fixes >= 29 && d.value >= 1000) {  // (the Vaden review) another player's turn: only for the player it was promised to
+                const int b = d.value - 1000;
+                out = yes(b == p || (d.targetPlayer >= 0 && b == d.targetPlayer));
+                return true;
+            }
+            out = one(bestBy(d, [&](int x) { return x < 0 ? -1.f : float(planetInfluence(g, x)); }));
+            return true;
+        case Ab::DsPutrivPay:
+            if (g.fixes >= 29) {  // (the Vaden review) the cheapest: a Vaden note back, 2 commodities, 1 trade good, then the cheapest other note
+                const int vd = playerOfFaction(g, "vaden");
+                out = one(bestBy(d, [&](int c) {
+                    if (c == 1) return 8.f;
+                    if (c == 0) return 7.f;
+                    const int n = c - 100;
+                    if (noteOwner(n) == vd) return 9.f;
+                    if (noteType(n) == kNoteSupportThrone || noteType(n) == kNoteAlliance) return -5.f;
+                    return 6.f - noteDefaultValue(g, n);
+                }, true));
+                return true;
+            }
+            out = one(has(d, 1) ? 1 : has(d, 0) ? 0 : maxOption(d));
+            return true;
         case Ab::DsAutonetic:
             if (d.prompt.find("which card") != std::string::npos) {
                 out = one(bestBy(d, [&](int c) { return aiCardKeepValue(c); }));
@@ -854,6 +1239,21 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
             return true;
         }
         case Ab::DsKoryl: {
+            if (d.prompt.find("comes from where") != std::string::npos) {  // (fixes 28, the Cymiae review) reinforcements first,
+                // else the mech least needed where it stands: far from enemies, not the only mech on its planet
+                if (has(d, -2)) {
+                    out = one(-2);
+                    return true;
+                }
+                out = one(bestBy(d, [&](int id) {
+                    const int s = id >= 100000 ? id - 100000 : g.planets[size_t(id)].system;
+                    float v = -float(threatNear(g, p, s));
+                    if (id < 100000 && g.planets[size_t(id)].units[size_t(p)].count(UnitType::Mech) > 1) v += 1.f;
+                    if (id < 100000 && g.systems[size_t(s)].home == p) v -= 0.5f;
+                    return v;
+                }));
+                return true;
+            }
             const int c = cheapestCard(d);
             out = one(c >= 0 && aiCardKeepValue(c) < 2.f ? c : -1);
             return true;
@@ -861,10 +1261,42 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
         case Ab::DsVoiceUnited: out = one(bestBy(d, [&](int c) { return -aiCardKeepValue(c); })); return true;
         case Ab::DsAlgorithmic: out = one(bestBy(d, [&](int c) { return aiCardKeepValue(c); })); return true;
         case Ab::DsVoidsailors: out = one(bestBy(d, [&](int c) { return exploreWorth(c); })); return true;
-        case Ab::DsVoidwake: out = yes(d.value >= 2 || (d.value >= 1 && commanderUsable(g, p, "nivyn"))); return true;  // (0.44.5: the commander rewards damage)
-        case Ab::DsWarden: out = yes(d.value == 2); return true;
+        case Ab::DsVoidwake:
+            if (g.fixes >= 29) {  // (the Nivyn review) value = the best unit's expected gain x10 (it is first): 1 hit, or half with the commander
+                out = one(d.value >= 10 || (d.value >= 5 && commanderUsable(g, p, "nivyn")) ? d.options[0].id : -1);
+                return true;
+            }
+            out = yes(d.value >= 2 || (d.value >= 1 && commanderUsable(g, p, "nivyn")));  // (0.44.5: the commander rewards damage)
+            return true;
+        case Ab::DsWarden:
+            if (g.fixes >= 29) {  // (the Nivyn review) the mech to damage is picked: the first is the safest
+                // (checkpoint 2 - test knob nvwound) another player's activation next to our units: the Wound there makes their ships
+                // roll for a gravity rift when they leave it (we never do) and their attack out of it starts from a nebula.
+                // REVISIT (the Nivyn review, checkpoint 2, 90 forced games each): the Wound moved 4.4 a game instead of 2.1 - 14 wins /
+                // 7.36 VP against 14 / 7.47, second sample 19 / 7.44 against 19 / 7.46: no gain - off
+                bool harass = false;
+                if (d.value == 0 && aiTune("nvwound", 0.f) > 0.f && g.activeSystem >= 0 && g.activePlayer >= 0 && g.activePlayer != p &&
+                    !d.options.empty() && d.options[0].id >= 0 && d.options[0].id < 99999)
+                    for (int16_t a : g.systems[size_t(g.activeSystem)].adj) harass = harass || hasUnits(g, p, a);
+                out = one(d.value == 2 || harass ? d.options[0].id : -1);
+                return true;
+            }
+            out = yes(d.value == 2);
+            return true;
         case Ab::DsGuidance: out = yes(false); return true;
-        case Ab::DsSuldhan: out = yes(d.value >= 1); return true;
+        case Ab::DsSuldhan:
+            if (g.fixes >= 29) {  // (the Nivyn review) before the ability is used: value = (who it helps + 1) * 8 + ability, options best first
+                const int ben = d.value / 8 - 1, kind = d.value % 8;
+                const bool mine = ben >= 0 && (ben == p || ben == d.targetPlayer);
+                const int t = d.options.empty() ? -1 : d.options[0].id;
+                // a roll or a shield: always worth the agent (it comes back each round); Sustain Damage: a dreadnought or bigger
+                const bool big = t == int(UnitType::Dreadnought) || t == int(UnitType::WarSun) || t == int(UnitType::Flagship) || t == int(UnitType::Flagship2);
+                const bool worth = t >= 0 && t < kUnitTypes && (kind != 3 || big);
+                out = one(mine && worth ? t : -1);
+                return true;
+            }
+            out = yes(d.value >= 1);
+            return true;
         case Ab::DsPolicy: {  // Control (votes), Preserve (fragments), Empower (commodities) - by temperament
             // (0.43.0 debug passes: every bot set the same three, so Connect / Plunder / Exploit never came up)
             const Style& S = aiStyle(g, p);
@@ -881,7 +1313,13 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
             }, true));
             return true;
         case Ab::DsExploit: out = one(bestBy(d, [&](int s) { return s < 0 ? -1.f : float(g.systems[size_t(s)].space[size_t(p)].ships()); })); return true;
-        case Ab::DsPlunder: out = yes(d.value >= 2); return true;
+        case Ab::DsPlunder:
+            if (g.fixes >= 29) {  // (the Olradin review) which unit: an infantry when 2+ ground forces stand there
+                out = one(d.value >= 2 && has(d, int(UnitType::Infantry)) ? int(UnitType::Infantry) : -1);
+                return true;
+            }
+            out = yes(d.value >= 2);
+            return true;
         case Ab::DsFalseFlag:
             if (d.prompt.find("ready which") != std::string::npos) {
                 // (0.44.8) a real gain: our planet worth 2 or more than the cheapest ready one we'd exhaust for it (it
@@ -914,6 +1352,12 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
                                                                          : bestBy(d, [&](int x) { return -planetWorth(g, x); }));
             return true;
         case Ab::DsBaggil:
+            if (g.fixes >= 29 && d.value != p && d.value != d.targetPlayer) {  // (the Olradin review) another player's planet: only when promised
+                out = one(-1);
+                return true;
+            }
+            out = one(bestBy(d, [&](int x) { return x < 0 || x >= 99999 ? -1.f : float(std::max(planetResources(g, x), planetInfluence(g, x))); }));
+            return true;
         case Ab::DsKnak: out = one(bestBy(d, [&](int x) { return x < 0 ? -1.f : float(std::max(planetResources(g, x), planetInfluence(g, x))); })); return true;
         case Ab::DsPahn: out = one(-1); return true;
         // ---- batch 5 (0.41.0)
@@ -1026,6 +1470,15 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
             else out = one(me.commodities + 2 <= commodityCap(g, me) ? 0 : 1);
             return true;
         case Ab::DsbtZealots: out = one(has(d, 0) ? 0 : has(d, 1) ? 1 : -1); return true;  // (0.44.4: the free technology first)
+        case Ab::DsbtGledge:  // (the Gledge review) Dhonraz Installations: the planet with the most of other players' ground forces (the leaders' first)
+            out = one(bestBy(d, [&](int x) {
+                if (x < 0) return 0.f;
+                float n = 0.f;
+                for (int q = 0; q < g.numPlayers; ++q)
+                    if (q != p) n += float(groundForcesOn(g, q, x)) * (1.f + 0.05f * float(g.players[size_t(q)].vp));
+                return n + planetWorth(g, x) * 0.1f;
+            }));
+            return true;
         case Ab::DsbtKyro: out = one(bestBy(d, [&](int c) { return -aiCardKeepValue(c); })); return true;
         case Ab::DsbtBentor:
             // 0.44.4: the frontier deck while Ancient Blueprints still wants the unknown fragment (only that deck has them)
@@ -1070,11 +1523,25 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
                         if (q != p) theirs += g.planets[x].units[size_t(q)].groundForces();
                     (mine > theirs ? good : bad) += 1;
                 }
-                out = yes(good >= 1 && good >= bad && (good >= 2 || g.round >= 5));
+                // (the Olradin review, checkpoint 2 - test switch olrise) from round 3: rose in 0.03-0.11 of their games. REVISIT (90 forced
+                // games each): 19 / 7.31 and 20 / 7.49 against 19 / 7.32 and 20 / 7.48 - no effect, off
+                if (aiTune("olrise", 0.f) > 0.f) out = yes(good >= 1 && good >= bad && g.round >= 3);
+                else out = yes(good >= 1 && good >= bad && (good >= 2 || g.round >= 5));
             }
             else out = one(me.tradeGoods >= 3 ? bestBy(d, [&](int c) { return c < 0 ? 0.f : 0.5f + planetWorth(g, c % 1000) * 0.1f; }) : -1);
             return true;
-        case Ab::DsbtKhrask: out = yes(true); return true;  // (coexisting keeps the infantry alive)
+        case Ab::DsbtKhrask:
+            // (fixes 28, the Khrask review) Mended Grove's coexistence: when the infantry would lose the fight - not on a planet they can
+            // take (Meteor Slings now reach undefended planets); the Grove's payments: yes
+            if (g.fixes >= 28 && d.prompt.rfind("Mended Grove:", 0) == 0 && d.value >= 0 && d.value < int(g.planets.size())) {
+                int them = 0, mine = int(g.planets[size_t(d.value)].units[size_t(p)].groundForces());
+                for (int q = 0; q < kSides; ++q)
+                    if (q != p) them += g.planets[size_t(d.value)].units[size_t(q)].groundForces();
+                out = yes(them > 0 && them >= mine);
+                return true;
+            }
+            out = yes(true);
+            return true;  // (coexisting keeps the infantry alive)
         case Ab::DsbtDihmohn:  // (ships in the middle of the fight if we can pay for 2; else the frontier token)
             out = one(has(d, 1) && spendable(g, p, false) >= 3 && aiFreeSpend(g, p, false) >= 2 ? 1 : has(d, 0) ? 0 : -1);
             return true;
@@ -1150,7 +1617,13 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
                 out = one(bestBy(d, [&](int o) { return float(objectiveProgress(g, p, o).missing()); }));
             else out = one(bestBy(d, [&](int x) { return planetWorth(g, x); }));
             return true;
-        case Ab::DsPlague: out = one(bestBy(d, [&](int x) { return x < 0 ? 0.f : 1.f + planetWorth(g, x) * 0.1f; })); return true;  // a free infantry
+        case Ab::DsPlague:  // a free infantry (fixes 28: offered without Dacxive Animators too - then nothing to gain)
+            if (!ownsTechKey(g, p, "dxa") || unitsAvailable(g, p, UnitType::Infantry) <= 0) {
+                out = one(-1);
+                return true;
+            }
+            out = one(bestBy(d, [&](int x) { return x < 0 ? 0.f : 1.f + planetWorth(g, x) * 0.1f; }));
+            return true;
         case Ab::DsEnvoy:  // 0.43.0: the biggest vote another player has on that trait (the points leader's first)
             out = one(bestBy(d, [&](int x) {
                 if (x < 0) return 0.5f;
@@ -1174,7 +1647,14 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
             return true;
         case Ab::DsGrace: {  // the secondary worth most now
             static const float kPref[8] = {0.2f, 0.6f, 0.5f, 1.2f, 0.9f, 1.f, 1.5f, 0.7f};
-            out = one(bestBy(d, [&](int c) { return c < 0 ? -1.f : kPref[c & 7]; }));
+            // ("edgrace", the Edyn checkpoint 2 - ON, owner 2026-11-15 14:33; 0 = off) with 2 or fewer strategy tokens, a
+            // token only for a secondary worth at least this much (Construction, Warfare, Technology; Leadership's needs none)
+            const float bar = aiTune("edgrace", 1.f);
+            out = one(bestBy(d, [&](int c) {
+                if (c < 0) return -1.f;
+                if (bar > 0.f && c != 0 && me.strategy <= 2 && kPref[c & 7] < bar) return -2.f;
+                return kPref[c & 7];
+            }));
             return true;
         }
         case Ab::DsRadiance: {
@@ -1188,10 +1668,20 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
             d2.ability = int(Ab::KeleresRider);
             return aiFactionAnswer(g, d2, rng, out);
         }
-        case Ab::DsAllant: out = one(has(d, p) && me.tactic >= 1 ? p : -1); return true;  // (an extra action of our own)
+        case Ab::DsAllant: {  // (an extra action of our own; rules 28: the promised player's)
+            const int prom = aiAgentPromisedTo(g, p);
+            out = one(prom >= 0 && has(d, prom) ? prom : has(d, p) && me.tactic >= 1 ? p : -1);
+            return true;
+        }
         case Ab::DsAllantPeek: out = yes(false); return true;
         case Ab::DsKadryn: out = yes(d.value == 0); return true;
-        case Ab::DsMidir: out = one(bestBy(d, [&](int o) { return aiOutcomeValue(g, p, d.agenda, o); }, true)); return true;
+        case Ab::DsMidir:
+            if (d.prompt.find("which agenda") != std::string::npos) {  // (fixes 28: the order - as drawn)
+                out = one(d.options.empty() ? -1 : d.options[0].id);
+                return true;
+            }
+            out = one(bestBy(d, [&](int o) { return aiOutcomeValue(g, p, d.agenda, o); }, true));
+            return true;
         case Ab::DsSigilToken: {  // lock the leader out
             out = one(bestBy(d, [&](int c) { return c < 0 ? -1.f : float(g.players[size_t(c % 16)].vp) + 0.1f * float(threatNear(g, c % 16, c / 16)); }));
             return true;
@@ -1219,8 +1709,31 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
             }));
             return true;
         case Ab::DsNavigator: out = yes(spaceOdds(g, p) < 0.45f); return true;
-        case Ab::DsSalSparrow: out = yes(p == g.activePlayer && d.value > 0); return true;  // (room in the fleet pool)
-        case Ab::DsSkarvald: out = yes(p == g.activePlayer); return true;
+        case Ab::DsDavish:
+            if (g.fixes >= 29) {  // (the Tnelis review) another player's invasion: only for the player it was promised to
+                const bool mine = d.value == p || (d.targetPlayer >= 0 && d.value == d.targetPlayer);
+                out = one(mine && !d.options.empty() ? d.options[0].id : -1);  // (the first ship offered)
+                return true;
+            }
+            return false;
+        case Ab::DsRondBriay:
+            if (g.fixes >= 29) {  // (the Roh'Dhna review) another player's production: only for the player it was promised to
+                out = yes(d.value == p || (d.targetPlayer >= 0 && d.value == d.targetPlayer));
+                return true;
+            }
+            return false;
+        case Ab::DsSalSparrow:
+            if (g.fixes >= 29) {  // (the Nokar review) the promised player, else ourselves with room in the fleet pool
+                const int act = g.activeSystem;
+                const bool room = act >= 0 && fleetLimit(g, p) - fleetUseIn(g, p, act) > 0;
+                out = one(d.targetPlayer >= 0 && has(d, d.targetPlayer) ? d.targetPlayer : has(d, p) && room ? p : -1);
+                return true;
+            }
+            out = yes(p == g.activePlayer && d.value > 0);  // (room in the fleet pool)
+            return true;
+        case Ab::DsSkarvald:  // (the Ghemina review) their own hits; another player's only when promised - then keep the promise
+            out = yes(p == g.activePlayer || (g.activePlayer >= 0 && g.agentFor[p] == g.activePlayer));
+            return true;
         case Ab::DsOrderBuy: {  // the dearest order first: they sell for more
             int best = -1;
             for (const Option& o : d.options)
@@ -1262,14 +1775,50 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
         }
         case Ab::DsTckVsk: out = yes(spendable(g, p, false) >= 8); return true;
         case Ab::DsOmen: {  // a sure hit on a die that would usually miss; the smallest Omen that does it
+            // (fixes 28: one Omen die per die - a second one in the same roll only for a die that needs 8 or more; a gravity rift
+            // roll (value 4): an Omen of 4+ keeps a dreadnought, a flagship or a war sun)
+            const bool again = d.prompt.find("another Omen") != std::string::npos;
+            const bool rift = d.value == 4;
             int best = -1;
-            for (const Option& o : d.options)
-                if (o.enabled && o.id >= 0 && o.id % 100 >= 6 && (best < 0 || o.id / 100 < best / 100)) best = o.id;
-            out = one(fquirkIs(g, p, "mykomentori", 1) && best >= 0 && best % 100 < 8 ? -1 : best);
+            for (const Option& o : d.options) {
+                if (!o.enabled || o.id < 0 || o.id >= 99999) continue;
+                const bool big = o.label.find("Dreadnought") != std::string::npos || o.label.find("Flagship") != std::string::npos ||
+                                 o.label.find("War Sun") != std::string::npos;
+                const bool worth = rift ? big : o.id % 100 >= (again ? 8 : 6);
+                if (worth && (best < 0 || o.id / 100 < best / 100)) best = o.id;
+            }
+            out = one(fquirkIs(g, p, "mykomentori", 1) && best >= 0 && best % 100 < 8 && !rift ? -1 : best);
             return true;
         }
         case Ab::DsLactarius:
-            if (d.prompt.find("change one of") != std::string::npos) {  // 0.43.0: any roll, dice in view
+            if (d.prompt.find("Exhaust Lactarius Indigo before") != std::string::npos) {  // (fixes 28) before the roll, no dice in view
+                const int q = d.value, b = d.targetPlayer, act = g.activeSystem;
+                const bool rift = d.prompt.find("gravity rift") != std::string::npos;
+                auto fights = [&](int x) { return act >= 0 && x != q && hasUnits(g, x, act) && hasUnits(g, q, act); };
+                int lead = 0;
+                for (int r = 0; r < g.numPlayers; ++r) lead = std::max(lead, int(g.players[size_t(r)].vp));
+                const bool leader = q != p && q < g.numPlayers && g.players[size_t(q)].vp == lead && lead >= g.vpGoal - 3;
+                // a roll to spoil: someone fighting us (or the one we promised it to), the leader; a roll to make: ours, or the promised one's
+                const bool spoil = q != p && q != b && (fights(p) || (b >= 0 && fights(b)) || leader);
+                const bool help = q == p || q == b;
+                out = one(bestBy(d, [&](int c) {
+                    if (c < 0 || c >= 99999) return c < 0 ? 0.f : -1.f;
+                    for (const Option& o : d.options) {
+                        if (o.id != c) continue;
+                        const size_t k = o.detail.find("needs ");
+                        const int need = k == std::string::npos ? 10 : std::atoi(o.detail.c_str() + k + 6);
+                        const bool sure = o.detail.find("A sure hit") != std::string::npos || o.detail.find("A sure pass") != std::string::npos;
+                        const bool big = o.label.find("Dreadnought") != std::string::npos || o.label.find("Flagship") != std::string::npos ||
+                                         o.label.find("War Sun") != std::string::npos;
+                        if (rift) return (spoil && !sure && big) || (help && sure && big) ? 1.f : -1.f;  // a ship lost / kept
+                        // (the agent comes back each round: worth it on a die likely to hit for them, or to miss for us)
+                        if (spoil && !sure) return need <= 6 ? float(11 - need) / 10.f : -1.f;
+                        if (help && sure) return need >= 7 ? float(need - 1) / 10.f : -1.f;
+                        return -1.f;
+                    }
+                    return -1.f;
+                }, true));
+            } else if (d.prompt.find("change one of") != std::string::npos) {  // 0.43.0: any roll, dice in view
                 const int q = d.value, act = g.activeSystem;
                 const bool facing = act >= 0 && q != p && hasUnits(g, p, act) && hasUnits(g, q, act);  // they fight us
                 int lead = 0;
@@ -1324,6 +1873,10 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
                 return false;
             };
             if (d.prompt.find("which player") != std::string::npos) {  // ourselves if it fits, else the commodities
+                if (const int prom = aiAgentPromisedTo(g, p); prom >= 0 && has(d, prom)) {  // (rules 28) the promised player
+                    out = one(prom);
+                    return true;
+                }
                 if (has(d, p) && anyRoom(p)) {
                     out = one(p);
                     return true;
@@ -1335,6 +1888,11 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
                 return true;
             }
             if (d.prompt.find("which ship") != std::string::npos) {
+                // (fixes 28: the chosen player may decline) no room anywhere in the fleet pool - the ship would go straight back
+                if (has(d, -1) && !anyRoom(p)) {
+                    out = one(-1);
+                    return true;
+                }
                 out = one(has(d, int(UnitType::Cruiser)) ? int(UnitType::Cruiser) : int(UnitType::Destroyer));
                 return true;
             }
@@ -1366,7 +1924,14 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
             }
             out = one(maxOption(d) >= 0 ? bestBy(d, [&](int n) { return n < 0 ? -1.f : 1.f; }) : -1);
             return true;
-        case Ab::DsSolis: out = one(bestBy(d, [&](int x) { return x < 0 ? -1.f : float(planetInfluence(g, x)) - 0.6f * float(planetResources(g, x)); })); return true;
+        case Ab::DsSolis:
+            if (g.fixes >= 29 && d.value >= 1000) {  // (the Veldyr review) another player's research: only for the player it was promised to
+                const int b = d.value - 1000;
+                out = yes(b == p || (d.targetPlayer >= 0 && b == d.targetPlayer));
+                return true;
+            }
+            out = one(bestBy(d, [&](int x) { return x < 0 ? -1.f : float(planetInfluence(g, x)) - 0.6f * float(planetResources(g, x)); }));
+            return true;
         case Ab::DsAurora: out = yes(d.value == 1); return true;  // (when someone else comes)
         case Ab::DsAuberon: out = one(bestBy(d, [&](int t) { return t < 0 ? -1.f : aiTechWant(g, p, t); })); return true;
         case Ab::DsTrapPlace: {  // the nastiest trap first
@@ -1406,7 +1971,24 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
             return true;
         }
         case Ab::DsCounselor: out = yes(true); return true;
-        case Ab::DsVasra: out = one(p == g.activePlayer ? bestBy(d, [&](int s) { return s < 0 ? -1.f : 1.f + float(threatNear(g, p, s)); }) : -1); return true;
+        case Ab::DsVasra: {
+            // (fixes 28, the Li-Zho review) for the player it promised the agent to as well (d.targetPlayer): their ships' systems
+            const int b = g.fixes >= 28 && d.targetPlayer >= 0 && d.targetPlayer < g.numPlayers ? int(d.targetPlayer) : p;
+            // (checkpoint 2 - lzvasra ON, owner 2026-11-16 18:12 "let's get those switches on") about half the fighters the Li-Zho lose
+            // over the fleet pool came straight from Vasra Ivo (Heavy Bomber II: fighters beyond capacity count against the fleet pool):
+            // only where the 2 fit, else keep her (lost fighters 3.2 -> 1.5-1.7 a game)
+            const bool fitOnly = aiTune("lzvasra", 1.f) > 0.f;
+            out = one(b == g.activePlayer ? bestBy(d, [&](int s) {
+                if (s < 0 || s == 99999) return -1.f;
+                if (fitOnly) {
+                    Force f = g.systems[size_t(s)].space[size_t(b)];
+                    f.add(UnitType::Fighter, 2);
+                    if (overflowOf(g, b, s, f) > 0 || fleetUse(g, b, s, f) > fleetLimit(g, b)) return -2.f;
+                }
+                return 1.f + float(threatNear(g, b, s));
+            }) : -1);
+            return true;
+        }
         case Ab::DsKhazRin:
             if (d.prompt.find("where does") != std::string::npos) {  // keep a Trap where it is unless it sits in reserve
                 if (has(d, -1) && d.options[0].label.rfind("Leave it on", 0) == 0) {
@@ -1422,11 +2004,24 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
             }
             return false;
         case Ab::DsOroZhin: out = one(-1); return true;
-        case Ab::DsCombatDrones: out = yes(true); return true;
+        case Ab::DsCombatDrones: out = isYesNo(d) ? yes(true) : one(maxOption(d)); return true;  // (fixes 28: how many - all)
+        case Ab::DsAssaultMachina: out = one(0); return true;  // (fixes 28: transported infantry stay infantry)
         case Ab::DsOrbitalGrid:
         case Ab::DsOrbitalShield: out = d.options.size() == 2 && isYesNo(d) ? yes(true) : one(bestBy(d, [&](int x) { return planetWorth(g, x); })); return true;
-        case Ab::DsExcavation: out = one(-1); return true;
-        case Ab::DsLogicMachina: out = yes(me.strategy >= 2); return true;
+        case Ab::DsExcavation:  // (fixes 28: which PDS - only asked once the note is played)
+            out = one(d.prompt.find("from which planet") != std::string::npos ? d.options[0].id : -1);
+            return true;
+        case Ab::DsLogicMachina:
+            // (fixes 28, the Mirveda review) for another player only when promised (d.targetPlayer): keep it; their token
+            if (g.fixes >= 28 && d.targetPlayer >= 0 && d.targetPlayer != p) {
+                out = one(g.agentFor[size_t(p)] == d.targetPlayer ? 1 : 0);
+                return true;
+            }
+            // (the Mirveda review, checkpoint 2 - test knob mvlogic, OFF: on 2026-11-16 19:38, off again 20:49 - owner "keep the Gauss Cannon
+            // switch on instead, you can turn off the other"; with both on 34 wins in 180 games against 39) used once in 90 games with "2+
+            // strategy tokens"; with 1+ 0.8-0.9 a game
+            out = yes(me.strategy >= (aiTune("mvlogic", 0.f) > 0.f ? 1 : 2));
+            return true;
         case Ab::DsWrathMachina:
             if (d.prompt.find("which system") != std::string::npos) {
                 out = one(bestBy(d, [&](int s) {
@@ -1503,7 +2098,7 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
         }
         case Ab::DsParallel: out = one(spendable(g, p, false) >= 3 ? bestBy(d, [&](int s) { return s < 0 ? -1.f : 1.f + float(threatNear(g, p, s)); }) : -1); return true;
         case Ab::DsGhotiRelay: out = one(bestBy(d, [&](int s) { return s < 0 ? -1.f : 1.f + float(threatNear(g, p, s)); })); return true;
-        case Ab::DsBecece: out = one(d.player == g.activePlayer || has(d, 1) ? (spendable(g, p, false) >= 4 ? 1 : 2) : -1); return true;
+        case Ab::DsBecece: out = one(d.player == g.activePlayer || has(d, 1) ? (spendable(g, p, false) >= 4 ? 1 : 2) : -1); return true;  // (a bot is asked for others only when promised)
         case Ab::DsNmenmede: out = one(bestBy(d, [&](int c) { return c < 0 ? -1.f : float(unitCost2(g, p, UnitType(c % 16)) - unitCost2(g, p, UnitType(c / 16))); })); return true;
         case Ab::DsTioleombp: out = one(-1); return true;
         case Ab::DsNetworked:
@@ -1541,8 +2136,24 @@ bool aiDsComponentValue(const Game& g, int p, int ab, float& v) {
             v = (token || fragmentCount(g, p) >= 5) && sparkBest(g, p) > 0.f ? 0.45f : 0.f;
             return true;
         }
-        case Ab::DsbtCymiae: v = 0.f; return true;   // (milling the action deck: rarely worth an action)
+        case Ab::DsbtCymiae:  // cymmill (the Cymiae review, checkpoint 2; owner 2026-11-15: "let them use their breakthrough
+            // action when it suits them" - ON): 3 more cards in the discard pile for Autonetic Memory to pick from
+            v = aiTune("cymmill", 0.6f) > 0.f && g.actionDeck.size() >= 3 ? aiTune("cymmill", 0.6f) : 0.f;
+            return true;
         case Ab::DsbtBentor: v = g.round >= 3 ? 0.2f : 0.f; return true;  // (the others explore too: a foothold late, before passing)
+        case Ab::DsbtGledge: {  // (the Gledge review) Dhonraz Installations: worth it when the dice can kill 1+ ground forces somewhere
+            float best = 0.f;
+            const float hits = 0.6f * float(dhonrazDice(g, p));
+            for (int x : dhonrazTargets(g, p)) {
+                int n = 0;
+                for (int q = 0; q < g.numPlayers; ++q) n += q != p ? groundForcesOn(g, q, x) : 0;
+                best = std::max(best, std::min(hits, float(n)));
+            }
+            // (checkpoint 2 - test knob dhonval, default 0.4) the weight of an expected kill. 1.0 tested: 3.2 uses a game against 3.1,
+            // 11 wins / 6.80 VP of 90 against 15 / 6.76 - kept at 0.4
+            v = best >= 1.f ? aiTune("dhonval", 0.4f) * best : 0.f;
+            return true;
+        }
         case Ab::DsbtEdyn: v = g.round >= 3 ? 0.6f : 0.f; return true;
         case Ab::DsbtKolume: v = me.tactic + me.fleet + me.strategy < 8 ? 1.0f : 0.6f; return true;
         case Ab::DsbtNokar: {  // 0.44.4: only with a good spot for the neutral fleet
@@ -1567,6 +2178,13 @@ bool aiDsComponentValue(const Game& g, int p, int ab, float& v) {
         }
         case Ab::DsSaintBinal: v = g.round >= 3 ? 4.f : 0.5f; return true;
         case Ab::DsMeditation:  // (0.43.0: it also unlocks Issac of Sinci - 0 unlocks in 18 games before)
+            // (the Kolume review, checkpoint 2 - knob kumed, ON at 2.5 - owner 2026-11-16 12:57 "turn the meditation switch on") never used in
+            // 270 games (Issac unlocked in 1-4%): worth the knob while the commander is locked, with 1 strategy token left too (tested:
+            // Meditation in 21 of 90 games, Issac unlocked 23%, 21 / 7.39 vs 19 / 7.30)
+            if (aiTune("kumed", 2.5f) > 0.f && leaderStatus(g, p, kCommander) == kLocked) {
+                v = me.strategy >= 1 ? aiTune("kumed", 2.5f) : 0.f;
+                return true;
+            }
             v = me.strategy >= 2 ? (leaderStatus(g, p, kCommander) == kLocked && g.round >= 2 ? 1.1f : 0.6f) : 0.f;
             return true;
         case Ab::DsBiothermics: {  // (0.43.0) a stall instead of passing: Applied Biothermics pays for each player who
@@ -1580,6 +2198,7 @@ bool aiDsComponentValue(const Game& g, int p, int ab, float& v) {
             int fleetNeed = 0;
             for (const SystemState& s : g.systems) fleetNeed = std::max(fleetNeed, s.space[size_t(p)].nonFighterShips());
             v = me.tactic == 0 && (me.fleet > fleetNeed + 1 || me.strategy >= 2) ? 0.9f : 0.f;
+            if (aiAgentPromisedTo(g, p) >= 0) v = 2.5f;  // (rules 28) a promised Disciple Fran
             return true;
         }
         case Ab::DsWonell: v = g.round >= 4 ? 1.0f : 0.f; return true;
@@ -1614,6 +2233,25 @@ bool aiDsComponentValue(const Game& g, int p, int ab, float& v) {
                         if (s.space[size_t(q)].n[t] > s.space[size_t(q)].dmg[t] && unitSustains(g, q, UnitType(t)))
                             (q == p ? mine : foe) += s.space[size_t(q)].n[t] - s.space[size_t(q)].dmg[t];
             v = g.round >= 3 ? std::max(0.f, 0.4f * float(foe - 2 * mine)) : 0.f;
+            // (the Nivyn review, checkpoint 2 - test knob nvkrill) before an attack: an enemy fleet with ships that can sustain damage next
+            // to 2+ of our non-fighter ships - cracked hulls there for the rest of the round (the hero stays out until it ends, rules 29).
+            // REVISIT (checkpoint 2, 90 forced games each): Krill Drakkon used 0.90 a game either way (the board value already decides) -
+            // 15 wins / 7.48 against 14 / 7.47, second sample 18 / 7.44 against 19 / 7.46: no gain - off
+            if (aiTune("nvkrill", 0.f) > 0.f && g.round >= 2) {
+                int best = 0;
+                for (size_t s = 0; s < g.systems.size(); ++s) {
+                    if (g.systems[s].space[size_t(p)].nonFighterShips() < 2) continue;
+                    for (int16_t a : g.systems[s].adj)
+                        for (int q = 0; q < g.numPlayers; ++q) {
+                            if (q == p) continue;
+                            int n = 0;
+                            for (int t : kShipIdx)
+                                if (unitSustains(g, q, UnitType(t))) n += g.systems[size_t(a)].space[size_t(q)].n[t] - g.systems[size_t(a)].space[size_t(q)].dmg[t];
+                            best = std::max(best, n);
+                        }
+                }
+                if (best >= 2) v = std::max(v, 1.5f + 0.5f * float(best));
+            }
             return true;
         }
         case Ab::DsPahn: v = g.round >= 3 ? 0.25f * float(controlledPlanets(g, p).size()) : 0.f; return true;
@@ -1629,13 +2267,21 @@ bool aiDsComponentValue(const Game& g, int p, int ab, float& v) {
             return true;
         }
         case Ab::DsLocalContracts: v = spendable(g, p, false) >= 4 ? 1.f : 0.f; return true;
-        case Ab::DsStarsails: v = g.round >= 3 && controlledPlanets(g, p).size() >= 5 && spendable(g, p, false) >= 6 ? 2.5f : 0.f; return true;
+        case Ab::DsStarsails:
+            // (the Nokar review, checkpoint 2 - test knob nksails) earlier: from round 2 with 4 planets and 4 to spend - a fleet from every
+            // planet while it can still take ground. REVISIT (checkpoint 2, 90 forced games each): used 0.89 a game instead of 0.83 - 14
+            // wins / 7.11 against 15 / 7.17, second sample 11 / 6.70 against 11 / 6.70: no gain - off
+            if (aiTune("nksails", 0.f) > 0.f)
+                v = g.round >= 2 && controlledPlanets(g, p).size() >= 4 && spendable(g, p, false) >= 4 ? 3.f : 0.f;
+            else
+                v = g.round >= 3 && controlledPlanets(g, p).size() >= 5 && spendable(g, p, false) >= 6 ? 2.5f : 0.f;
+            return true;
         case Ab::DsEmergency: {  // (0.44.5: worth it for a new dock on a good planet; not for moving one around)
             const float spot = unitsAvailable(g, p, UnitType::SpaceDock) > 0 ? bestDockSpot(g, p) : -1.f;
             v = spot >= 2.f ? 1.5f + 0.25f * std::min(spot, 4.f) : 0.f;
             return true;
         }
-        case Ab::DsShipmonger: v = 0.9f; return true;
+        case Ab::DsShipmonger: v = aiAgentPromisedTo(g, p) >= 0 ? 2.5f : 0.9f; return true;  // (rules 28: a promised one)
         case Ab::DsDemiQueen: v = g.round >= 3 ? 2.f : 0.f; return true;
         case Ab::DsInsight: v = 0.8f; return true;
         case Ab::DsKorela: v = g.round >= 3 ? 2.5f : 0.5f; return true;
@@ -1659,24 +2305,41 @@ bool aiDsComponentValue(const Game& g, int p, int ab, float& v) {
             int n = 0;
             for (unsigned b = me.dsFrags; b; b &= b - 1) ++n;
             v = n >= 2 ? 0.5f * float(n) : 0.f;
+            if (n >= 1 && aiAgentPromisedTo(g, p) >= 0) v = 2.5f;  // (rules 28) a promised C.O.O. Mgur
             return true;
         }
         case Ab::DsKenTucc: {
             int n = 0;
             for (int x : controlledPlanets(g, p))
                 n += hasTraitOf(g, x, Trait::Cultural) || hasTraitOf(g, x, Trait::Hazardous) || hasTraitOf(g, x, Trait::Industrial) ? 1 : 0;
-            v = n >= 5 ? 0.8f * float(n) : 0.f;
+            // (the Bentor review, checkpoint 2 - knob kentucc: the fewest planets worth it, default 5) used in 53 of 83 games
+            // where he unlocked; kentucc=3: used in 75 games, 11 wins / 6.66 VP against 12 / 6.70 - no gain, left at 5
+            v = n >= int(aiTune("kentucc", 5.f)) ? 0.8f * float(n) : 0.f;
             return true;
         }
         case Ab::DsImpressAction: v = 0.9f; return true;
         case Ab::DsGorthrim: v = g.round >= 3 ? 4.f : 1.f; return true;
-        case Ab::DsAtropha: v = g.round >= 2 ? 2.5f : 0.5f; return true;
+        case Ab::DsAtropha:
+            // (the Augurs review, checkpoint 2 - knob atrophawait, default 0 = off) a third of the uses kept the card already on
+            // the sheet (the hero spent on a look): only when that card fits us poorly (less than half done, not met). Wasted
+            // uses 29 -> 14 (fresh seeds 25 -> 15) but wins 14 / 6.96 against 13 / 6.99 (fresh 11 / 6.73 against 10 / 6.76) -
+            // no real gain: OFF (owner 2026-11-14 kept only the objective planning). REVISIT with a better test of the
+            // drawn cards' worth (e.g. use her the turn before the status phase, or to deny the leader the next objective)
+            if (aiTune("atrophawait", 0.f) > 0.f) {
+                v = g.round >= 2 && objectiveFit(g, p, me.dsSheet) < 2.5f ? 2.5f : 0.f;
+                return true;
+            }
+            v = g.round >= 2 ? 2.5f : 0.5f;
+            return true;
+        // (fixes 28, the Augurs review) Read the Fates is played face up as an action now: the bots never use the
+        // objective it shows, and face up it goes back when they activate a system with Augurs units - kept in hand
+        case Ab::DsReadFates: v = 0.f; return true;
         case Ab::DsYgegnad: {
             int n = 0;
             for (int16_t gl : g.dsGlory) {
                 bool tok = g.systems[size_t(gl)].hasToken(p);
                 for (int16_t a : g.systems[size_t(gl)].adj) tok = tok || g.systems[size_t(a)].hasToken(p);
-                n += tok ? 1 : 0;
+                n += tok || g.fixes >= 28 ? 1 : 0;  // (rules 28: 1 command token for each Glory token anyway)
             }
             v = n >= 2 ? 1.2f * float(n) : 0.f;
             return true;

@@ -116,6 +116,12 @@ void Rules::dsbtTurnStart(int q) {
 
 // End of p's turn: the loan goes back; Reverie Implants (Florzen).
 void Rules::dsbtTurnEnd(int p) {
+    if (G.fixes >= 29 && insurgentTurn_ == p) {  // Insurrectionist Networking (the Olradin review): a policy ability resolved this turn
+        insurgentTurn_ = -1;
+        insurgentAsk_ = true;
+        dsbtPolicy(p);
+        insurgentAsk_ = false;
+    }
     if (G.dsLendP >= 0) {
         const int q = G.dsLendP;
         G.dsLendP = -1;
@@ -273,7 +279,7 @@ void Rules::dsbtWonCombat(int winner, int loser, int sys, bool space) {
                     ++gained;
                 } else if (pl.commodities > 0) {
                     pl.commodities = int8_t(pl.commodities - 1);
-                    gainTG(winner, 1);
+                    gainTGNotSupply(winner, 1); // (fixes 28: not from the supply - no Artuno)
                     ++converted;
                 }
             }
@@ -436,6 +442,21 @@ void Rules::dsbtPurged(int q) {
     for (int l = 0; l < G.numPlayers; ++l) {
         if (l == q || !dsbtOn(l, "lanefir")) continue;
         Player& pl = G.players[size_t(l)];
+        if (G.fixes >= 28) {
+            // (fixes 28, the Lanefir review) the owner's Reference: "gain 2 commodities or ready this card" (AsyncTI4: 1 command token)
+            const int room = std::max(0, commodityCap(G, pl) - pl.commodities);
+            if (pl.btExhausted && fyes(l, Ab::DsbtLanefir, "Erasure Corps: " + pn(q) + " purged something - ready your breakthrough?",
+                                       "Otherwise you gain 2 commodities.")) {
+                pl.btExhausted = false;
+                say(l, pn(l) + " readies Erasure Corps.");
+            } else if (room > 0) {
+                const int cb = pl.commodities;
+                pl.commodities = int8_t(pl.commodities + std::min(2, room));
+                commodityGained(l, cb);
+                say(l, pn(l) + " gains " + std::to_string(std::min(2, room)) + " commodit" + (std::min(2, room) == 1 ? "y" : "ies") + " (Erasure Corps).");
+            }
+            continue;
+        }
         if (pl.btExhausted && fyes(l, Ab::DsbtLanefir, "Erasure Corps: " + pn(q) + " purged something - ready your breakthrough?",
                                    "Otherwise you gain 1 command token.")) {
             pl.btExhausted = false;
@@ -454,6 +475,9 @@ void Rules::dsbtOptions(int p, std::vector<Option>& o) const {
     if (fac(p, "kolume")) add(Ab::DsbtKolume, "Breakthrough: Synchronicity VI", "Exhaust it: gain 1 command token, or research a technology of an exhausted one's colour.");
     if (fac(p, "nokar")) add(Ab::DsbtNokar, "Breakthrough: Mercenary Captains", "Exhaust it: 1 neutral cruiser and 2 neutral destroyers in a system without other ships.");
     if (fac(p, "bentor")) add(Ab::DsbtBentor, "Breakthrough: Historian Conclave", "Exhaust it: each other player explores 1 of their planets; 1 of your infantry may coexist on one.");
+    if (fac(p, "gledge") && G.fixes >= 28 && !dhonrazTargets(G, p).empty())  // (the Reference card)
+        add(Ab::DsbtGledge, "Breakthrough: Dhonraz Installations",
+            "Exhaust it: Bombardment 5 (x" + std::to_string(dhonrazDice(G, p)) + ", your structures) against each player's units on a planet next to a system with a Core token.");
     if (fac(p, "edyn") && !G.players[size_t(p)].secrets.empty())
         add(Ab::DsbtEdyn, "Breakthrough: Celestial Ambassadors", "Exhaust it: show a player one of your secrets - they show you one of theirs, or let 1 of your ground forces coexist on their planet.");
 }
@@ -461,6 +485,36 @@ void Rules::dsbtOptions(int p, std::vector<Option>& o) const {
 bool Rules::dsbtAction(int p, int ab) {
     Player& pl = G.players[size_t(p)];
     switch (Ab(ab)) {
+        case Ab::DsbtGledge: {  // (fixes 28) Dhonraz Installations, the Reference card - see query dhonrazTargets
+            const std::vector<int> xs = dhonrazTargets(G, p);
+            if (xs.empty() || !dsbtReady(p, "gledge")) return false;
+            std::vector<Option> opts;
+            for (int x : xs) {
+                int n = 0;
+                for (int q = 0; q < G.numPlayers; ++q) n += q != p ? groundForcesOn(G, q, x) : 0;
+                opts.push_back({x, planetName(x), std::to_string(n) + " ground forces"});
+            }
+            const int x = fpick(p, Ab::DsbtGledge, "Dhonraz Installations: bombard which planet?", opts, "", false, true);
+            pl.btExhausted = true;
+            const int sys = G.planets[size_t(x)].system, y = dhonrazDice(G, p);
+            dsbtEvent(E, p, "Dhonraz Installations", pn(p) + "'s installations shell " + planetName(x) + ".", sys);
+            for (int q = 0; q < G.numPlayers; ++q) {
+                if (q == p || groundForcesOn(G, q, x) <= 0) continue;
+                bool shield = false;
+                for (int t = 0; t < kUnitTypes; ++t)
+                    if (G.planets[size_t(x)].units[size_t(q)].n[t] && unitDef(G, q, UnitType(t)).shield) shield = true;
+                if (shield) {
+                    say(p, pn(q) + "'s Planetary Shield holds on " + planetName(x) + ".", sys);
+                    continue;
+                }
+                RollResult r;
+                addDice(r, y, 5);
+                reportRoll(p, sys, "Dhonraz Installations (bombardment)", r);
+                r.hits = proximaCancel(q, sys, x, r.hits);
+                if (r.hits > 0) assignHits(q, sys, x, r.hits, (1 << int(UnitType::Infantry)) | (1 << int(UnitType::Mech)), "Dhonraz Installations", p);
+            }
+            return true;
+        }
         case Ab::DsbtCymiae: {
             if (G.actionDeck.empty()) return false;
             pl.btExhausted = true;
@@ -668,6 +722,21 @@ void Rules::dsbtTribune(int p, RollResult& r) {
                                               (fixed ? "repair " + std::to_string(fixed) : "") + ".", combatSys_);
 }
 
+// (fixes 28, the Kortali review) "When this unit produces a hit, you may repair it" - its BOMBARDMENT 5 too: the damaged Tribunes roll
+// first, each of their hits repairs one
+void Rules::dsbtTribuneBombard(int p, int sys, const RollResult& r) {
+    if (p < 0 || p >= G.numPlayers || sys < 0 || std::strcmp(unitDef(G, p, UnitType::Dreadnought).key, "tribune3")) return;
+    Force& f = G.systems[size_t(sys)].space[size_t(p)];
+    int damaged = f.dmg[int(UnitType::Dreadnought)], fixed = 0;
+    for (size_t i = 0; i < r.dice.size() && i < r.unit.size() && damaged > 0; ++i) {
+        if (r.unit[i] != int(UnitType::Dreadnought)) continue;
+        --damaged;
+        if (r.dice[i] >= r.need[i]) ++fixed;
+    }
+    if (fixed <= 0) return;
+    f.dmg[int(UnitType::Dreadnought)] = uint8_t(f.dmg[int(UnitType::Dreadnought)] - fixed);
+    dsbtEvent(E, p, "Tribune", pn(p) + "'s Tribune" + (fixed > 1 ? "s repair " + std::to_string(fixed) : " repairs") + " (a bombardment hit).", sys);
+}
 
 // ================================================================== batch 2
 // The frontier deck in a system, whether or not it has a frontier token (Historian Conclave, Aurora Research Base).
@@ -830,10 +899,19 @@ bool Rules::dsbtGroundRoundEnd(int att, int def, int planet) {
         return true;
     }
     const int my = G.planets[size_t(planet)].owner;
-    if (my >= 0 && (my == att || my == def) && dsbtOn(my, "mykomentori") && unitsAvailable(G, my, UnitType::Infantry) > 0) {
+    // (fixes 28, the Myko-Mentori review) "After each round of ground combat on a planet you control, if that combat has not ended"
+    auto stillOn = [&](int side) { return side < G.numPlayers ? groundForcesOn(G, side, planet) > 0 : neutralGroundOn(G, planet) > 0; };
+    const bool goesOn = G.fixes < 28 || (stillOn(att) && stillOn(def));
+    if (goesOn && my >= 0 && (my == att || my == def) && dsbtOn(my, "mykomentori") && unitsAvailable(G, my, UnitType::Infantry) > 0) {
         auto& cap = G.players[size_t(my)].captured;
         auto it = std::find_if(cap.begin(), cap.end(), [](int16_t c) { return c % 16 == int(UnitType::Infantry); });
-        if (it != cap.end()) {
+        if (it != cap.end() && G.fixes >= 28) {  // (Divination / Lactarius Indigo before the die)
+            if (mykoRoll(my, sys, 1, 7, int(UnitType::Infantry), "Dreamwalkers") > 0) {
+                cap.erase(it);
+                addUnits(my, UnitType::Infantry, 1, sys, planet);
+                dsbtEvent(E, my, "Dreamwalkers", pn(my) + " rolls a hit: a captured soldier walks out of the dream as theirs.", sys);
+            }
+        } else if (it != cap.end()) {
             const int v = E.rng().d10();
             if (G.fixes >= 8) {  // 0.44.4: the roll is shown, hit or miss
                 RollResult r;
@@ -858,7 +936,9 @@ void Rules::dsbtInfantryDied(int owner, int planet, int k) {
     const int my = G.planets[size_t(planet)].owner;
     if (my < 0 || my == owner || !dsbtOn(my, "mykomentori")) return;
     if (G.fixes >= 8) {  // 0.44.4: through capture() (the blockade rule, LRR 17.6)
+        captureAnyway_ = G.fixes >= 28;  // (fixes 28, the Myko-Mentori review: "even if you are blockaded")
         capture(my, owner, UnitType::Infantry, k, "Dreamwalkers");
+        captureAnyway_ = false;
         return;
     }
     for (int i = 0; i < k; ++i) G.players[size_t(my)].captured.push_back(int16_t(kCapturedToken * 16 + int(UnitType::Infantry)));
@@ -868,6 +948,12 @@ void Rules::dsbtInfantryDied(int owner, int planet, int k) {
 // Insurrectionist Networking (Olradin): once per action, after a policy ability - 1 trade good: 1 of their infantry
 // moves, coexisting, onto a planet next door.
 void Rules::dsbtPolicy(int p) {
+    // (fixes 29, the Olradin review - the Reference: "At the end of your turn, if you resolved a policy ability that turn") noted now,
+    // asked at the end of their own turn (dsbtTurnEnd)
+    if (G.fixes >= 29 && !insurgentAsk_) {
+        if (dsbtOn(p, "olradin") && G.phase == Phase::Action && G.activePlayer == p) insurgentTurn_ = int8_t(p);
+        return;
+    }
     if (!dsbtOn(p, "olradin") || (dsOncePerAction_ & 16) || G.players[size_t(p)].tradeGoods < 1) return;
     std::vector<Option> opts;  // id = from * 1000 + to
     for (int y : controlledPlanets(G, p)) {
@@ -905,6 +991,9 @@ void Rules::dsbtAfterMovement(int p, int sys) {
     std::vector<Option> opts;  // id = to * 16 + type
     for (int t : kShipIdx) {
         if (t == int(UnitType::Fighter) || !G.systems[size_t(sys)].space[size_t(p)].n[t]) continue;
+        // (fixes 29, the Vaylerian review) "move 1 of THOSE ships" - one that moved in, not one that was there before (the fleet at the
+        // activation: ds4StartForce_)
+        if (G.fixes >= 29 && G.systems[size_t(sys)].space[size_t(p)].n[t] <= ds4StartForce_.n[t]) continue;
         for (int16_t a : G.systems[size_t(sys)].adj)
             if (!G.systems[size_t(a)].isHyperlane() && !otherShipsIn(G, p, a) && shipsMayEnter(G, p, a))
                 opts.push_back({a * 16 + t, std::string(unitTypeName(UnitType(t))) + " to " + sysName(a), ""});
@@ -969,9 +1058,11 @@ void Rules::dsbtSpaceCombatStart(int att, int def, int sys) {
 // Mended Grove (Khrask): Meteor Slings with every hit cancelled - the infantry may coexist instead (not committed).
 bool Rules::dsbtSlingsCoexist(int p, int planet, int n) {
     if (!dsbtOn(p, "khrask") || n <= 0) return false;
-    if (!fyes(p, Ab::DsbtKhrask, "Mended Grove: your " + std::to_string(n) + " infantry on " + planetName(planet) + " coexist instead of fighting?",
-              "They can't be committed in this action."))
-        return false;
+    curValue_ = planet;  // (for the AI)
+    const bool yes = fyes(p, Ab::DsbtKhrask, "Mended Grove: your " + std::to_string(n) + " infantry on " + planetName(planet) + " coexist instead of fighting?",
+                          "They can't be committed in this action.");
+    curValue_ = 0;
+    if (!yes) return false;
     startCoexisting(p, planet);
     groveNoCommit_ = planet;  // (0.44.4: not committed again this action)
     groveTurn_ = G.turnCount;
@@ -989,9 +1080,13 @@ void Rules::dsbtShipsLost(int victim, int opp, int sys, const Force& before) {
     if (before.nonFighterShips() <= G.systems[size_t(sys)].space[size_t(victim)].nonFighterShips()) return;
     const bool ready = !G.players[size_t(opp)].btExhausted;
     std::vector<Option> opts;
-    if (ready && !G.systems[size_t(sys)].frontier && G.systems[size_t(sys)].planets.empty())
+    // (fixes 28, the Dih-Mohn review - owner 2026-11-15) "exhaust this card to place 1 frontier token in the active system, or
+    // produce 1 or 2 non-fighter ship in that system to ready this card" (AsyncTI4: ready - the frontier token, exhausted - the
+    // production): the token also where there are planets, the production only to ready an exhausted card
+    const bool fx28 = G.fixes >= 28;
+    if (ready && !G.systems[size_t(sys)].frontier && (fx28 || G.systems[size_t(sys)].planets.empty()))
         opts.push_back({0, "Exhaust it: a frontier token here", ""});
-    if (spendable(G, opp, false) >= 1)
+    if (spendable(G, opp, false) >= 1 && (!fx28 || !ready))
         opts.push_back({1, "Produce 1 or 2 non-fighter ships here", ready ? "Paid as usual." : "Paid as usual; the card readies."});
     if (opts.empty()) return;
     opts.push_back({-1, "No", ""});

@@ -1,11 +1,173 @@
 FALLEN IMPERIUM - Windows version
 (an unofficial fan project of Twilight Imperium)
-Version 0.59.30 - Pre-Beta (what is new in each version: GUIDE.txt)
+Version 0.60.0 - Pre-Beta (what is new in each version: GUIDE.txt)
 
 The same game as the Miyoo Mini Plus version (Fourth Edition + Prophecy of
 Kings, Codex, Uncharted Space, Thunder's Edge and Discordant Stars, 3 to 8
 players against the computer, every faction), on your PC,
 played with the keyboard and mouse or a controller. Unofficial fan project.
+
+NEW IN 0.60.0 - the Voidfall title, the agenda and relic passes
+  The Voidfall title: with the Voidfall tileset the opening ends on a
+  battlefield instead of a planet - a neon twilight of orange and purple
+  over a dead, cratered plain full of ruins, warships and dreadnoughts
+  above. Human troopers in grey-blue armour fight blue-skinned warriors in
+  gilded armour from cover; walkers trade Gatling lasers and 3-second blue
+  beams and blow up in a flash, a fireball and a shockwave, leaving burning
+  wrecks; now and then the Sol dreadnought's bombardment lands anywhere on
+  the field. The fallen stay for minutes. The Voidfall opening plays at
+  start-up whenever Voidfall was the last tileset used.
+  The opening's closing swell now blends into the title song, which starts
+  from its beginning after the opening (not where it stopped last time).
+  The agenda pass: all 50 agendas were checked outcome by outcome against
+  their cards (99 checks); their texts are now the cards' wording. Fixed
+  (games started with 0.60.0 - older saves keep the old rules):
+  - Enforced Travel Ban and Nexus Sovereignty only stop MOVEMENT through
+    those wormholes; space cannon still fires through them and players
+    joined by them are still neighbours (the official FAQ).
+  - Miscount Disclosed: the law stays in play during its revote (FAQ).
+  - Representative Government: no extra votes (Zeal, Blood Pact).
+  - Wormhole Research and Ixthian Artifact: you may decline to research.
+  - Research Grant Reallocation offers Thunder's Edge and Discordant
+    Stars factions their own technologies.
+  - Economic Equality: the 5 trade goods are gained (Pillage can follow);
+    eliminated players get none.
+  - Classified Document Leaks: a leaked secret no longer counts toward its
+    scorer's secret objectives (FAQ).
+  - Committee Formation is used after the riders, just before the vote.
+  - Space stations can't be elected as planets.
+  The relic pass: all 27 relics checked; their texts are now the cards'
+  wording. Fixed: The Codex takes several copies of one card; Neuraloop
+  draws its objective from the unused ones (the game no longer runs out of
+  objectives a round early); Maw of Worlds offers a faction's own
+  technologies; the Crown of Thalnos destroys each unit that rerolled
+  without a hit (not one unit per missed die); the Stellar Converter
+  destroys neutral units too.
+  New relics: the three Codex II relics - Dynamis Core, JR-XS455-O and
+  Nano-Forge - join the relic deck in games with the Codex or Thunder's
+  Edge.
+
+NEW IN 0.59.70 - a new title screen, and the last ten Discordant Stars
+factions
+  A new opening: the game starts on a black screen with scrolling stars;
+  "Fallen Imperium" appears letter by letter in the Lazaxian alphabet, each
+  letter turning into English a moment later, each with its own sound - the
+  title music waits until the name is complete. The view then pans down to a
+  nuclear-battered world whose night side glows with the web of its one
+  great city, a space station above it and ships coming and going. Any
+  button skips the opening.
+  With the Retrowave tileset (the default) this animated world stays behind
+  the title and its menus, which take a see-through neon look; with
+  Simplistic or Voidfall the title keeps its Simplistic background.
+  The faction debug pass, part 6: the Nivyn Star Kings, the Nokar Sellships,
+  the Olradin League, the Roh'Dhna Mechatronics, the Tnelis Syndicate, the
+  Vaden Banking Clans, the Vaylerian Scourge, the Veldyr Sovereignty, the
+  Zealots of Rhodun and the Zelian Purifier, checked card by card against
+  the Discordant Stars Reference - all 64 factions are now through the pass
+  (the calls made on the way are in RULES-CHECK.txt, N1-N49). Agents that
+  work "for any player" now ask each player who can use them. Games started
+  before 0.59.70 keep the old rules, so their saves replay the same.
+  - Nivyn: the home system is a gravity rift; Suldhan Wraeg before the
+    ability, for any player; Krill Drakkon stays until the end of the round.
+  - Nokar: Sal Sparrow after any player's movement; Starsails stays until
+    the end of the round.
+  - Olradin: Exemplar's two sides the right way round; Baggil Wildpaw for
+    any player; Rallypoint needs the flagship to move.
+  - Roh'Dhna: Rond Bri'ay after any player's production; B-Unit 205643a with
+    the Alliance too.
+  - Tnelis: Davish S'Norri at any player's invasion; Fillipo Rois with the
+    Alliance too.
+  - Vaden: no limit on control tokens on their sheet; Fine Print by your own
+    strategy cards; Yudri Sukhov at any player's turn.
+  - Vaylerian: Yvin Korduul when any player gains a planet; Clan's Favor,
+    Dyln Harthuul and Gravitic Disruption as their cards.
+  - Veldyr: Solis Morden when any player spends resources; each Aurora
+    Stormcaller mech has the ability.
+  - Zealots: Priestess Tuh after any player researches; Bishop Ulin with the
+    Alliance too; Favor of Rhodun and Sanctification Field as their cards.
+  - Zelian: the home system is an asteroid field; World-Cracker, Impactor I,
+    Hyperkinetic Ordnance, Zelian A and the Collider as their cards.
+  - Crimson Rebellion: they start the game with Resonance Generator and
+    roll for the Fracture before the first round.
+  - Bots: Sardakk bots research Valkyrie Particle Weave more often and
+    Creuss bots place wormhole tokens to unlock Sai Seravus (both won more
+    in the tests).
+
+NEW IN 0.59.40 - the faction debug pass, part 5: twenty-four Discordant
+Stars factions
+  The Augurs of Ilyxum, the Shipwrights of Axis, the Bentor Conglomerate,
+  the Celdauri Trade Confederation, the Cheiran Hordes, the Savages of
+  Cymiae, the Dih-Mohn Flotilla, the Edyn Mandate, the Florzen Profiteers,
+  the Free Systems Compact, the Ghemina Raiders, the Ghoti Wayfarers, the
+  Gledge Union, the L'tokk Khrask, the Berserkers of Kjalengard, the
+  Kollecc Society, the Monks of Kolume, the Kortali Tribunal, the Kyro
+  Sodality, the Lanefir Remnants, the Li-Zho Dynasty, the Mirveda
+  Protectorate, the Glimmer of Mortheus and the Myko-Mentori: every card
+  checked against the Discordant Stars Reference, one at a time (the
+  game's texts now follow the cards). Games started before 0.59.40 keep
+  the old rules, so their saves replay the same.
+  Agents and other abilities that work "for any player" now ask a person
+  each time, with "No, and don't ask again this round"; a bot that
+  promised its agent to someone in a deal keeps that promise.
+  - Augurs: Clodho for any player; Read the Fates is an action.
+  - Axis: Military Industrial Complex, TckVsk, Demi-Queen, Shipmonger and
+    Rift Engines as their cards.
+  - Bentor: Ancient Blueprints at once; Ken Tucc in any order; Merged
+    Replicators' match.
+  - Celdauri: George Nobin, Titus Flavius and Supremacy as their cards.
+  - Cheiran: Lithodax barrage, Brood Pod, Operator Kkavras, Spc. Phquaiset
+    and Thakt Clqua as their cards.
+  - Cymiae: Autonetic Memory's order, Cybernetic Madness, Skhot for any
+    player, Koryl Ferax moves a mech, Unholy Abomination II one by one.
+  - Dih-Mohn: Aegis for another Aegis, Jgin Faru for any player, Maximus
+    never beside enemy ships, Exodus Engineering, Verrisus Ypru every round.
+  - Edyn: Grace pays its token, Kadryn at Imperial / Unity, Sigil
+    anomalies, Midir's order, Unity Algorithm once a phase.
+  - Florzen: Mercenaries up to 2 fighters; Sal Gavda in the same system,
+    on any player's turn.
+  - Free Systems: Cordo Haved copies every legendary planet ability at its
+    own moment, for any player.
+  - Ghemina: the Rule of Two for the Lady and the Lord; Skarvald & Torvar
+    for any active player.
+  - Ghoti: Becece for any producing player; Tioleombp lets you choose the
+    ship.
+  - Gledge: Durran for any producing player; Dhonraz Installations as the
+    Reference card.
+  - L'tokk Khrask: Udosh B'rtul for any paying player, the Grove's
+    influence, Meteor Slings / Stone Speakers, Splintering Gale.
+  - Kjalengard: Glory's research for the units that fought; Merkismathr
+    Asvand at any combat; Ygegnad any command token.
+  - Kollecc: fighters can be cloaked; AI Survey shows all 3 exploration
+    decks or the relic deck; Captain Dust for any player; Shroud of Lith
+    at any player's move.
+  - Kolume: Omniscience Field at any activation; Coil Overcharge without
+    extra dice, with Starfall Gunnery's ships.
+  - Kortali: the Kortali assign the Ruthless hit; Tempest Drive any
+    command token; Queen Lucreia at any player's ground combat; Queen
+    Lorena against the anti-fighter barrage; Justicar keeps its shield.
+  - Kyro: Contagion against space cannon defense, and on your own and home
+    planets; Plague Reservoir; Silas Deriga through the Alliance; Tox at
+    any player's ground combat.
+  - Lanefir: War Stories once per action; Memory of Dusk at any tactical
+    action; Vassa Hagi at any exploration; The Venerable swaps relics in
+    play; Erasure Corps 2 commodities.
+  - Li-Zho: Vasra Ivo for any player; Dume Tathu with only fighters;
+    Khaz-Rin's home planets; Oro-Zhin's swap; a Feint is revealed.
+  - Mirveda: Privileged Citizenry's limit; Combat Drones; Rapid Excavation
+    and Logic Machina as their cards; Assault Machina and Wrath Machina.
+  - Glimmer of Mortheus: their home system is a nebula; Illusory Presence
+    without their own vote; Walik for any player and any new unit.
+  - Myko-Mentori: Divination one Omen die per die, on every roll of
+    theirs; Lactarius Indigo before a roll, as the card says; Psychoactive
+    Armaments per unit; Amanita Muscaria with a commodity or a trade good;
+    Dreamwalkers as the card; the Soul Cage can resolve heroes that
+    trigger on an event, not only actions.
+  Also: the Encrypted Trade Hub lets a law change hands in a deal; 13 more
+  agents can be promised in a deal; a system with only a space station
+  counts as having no planets for objectives; threats leave a grudge; the
+  two-step strategy cards (Trade, Construction, Thunder's Edge Warfare)
+  say which step you are on; in the agenda phase a small "Waiting for
+  you" tag in the top bar when the game waits for you to press A.
 
 NEW IN 0.59.30 - the faction debug pass, part 4: twelve more factions, the
 technologies and the action cards

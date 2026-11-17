@@ -218,7 +218,7 @@ void Rules::checkUnlocks() {
                     ok = n >= 3;
                 } else if (is("nomadcommander")) {
                     for (int16_t o : pl.scored)
-                        if (kObjectives[o].kind == 3) ok = true;
+                        if (scoredAsSecret(G, p, o)) ok = true;
                 } else if (is("titanscommander")) {
                     ok = structuresOf(G, p) >= 5;
                 } else if (is("bastioncommander")) {  // Thunder's Edge factions (0.35.0)
@@ -274,7 +274,8 @@ void Rules::checkUnlocks() {
                     for (int16_t t : pl.techs) ok = ok || kTechs[t].req[0] + kTechs[t].req[1] + kTechs[t].req[2] + kTechs[t].req[3] >= 2;
                 } else if (is("zeliancommander")) {
                     int n = 0;
-                    for (const SystemState& s : G.systems) n += (s.d().anomalies & kAsteroid) && s.space[size_t(p)].ships() ? 1 : 0;
+                    // (fixes 29: their home is an asteroid field - zelianAsteroids)
+                    for (size_t s = 0; s < G.systems.size(); ++s) n += (tileAnomalies(G, int(s)) & kAsteroid) && G.systems[s].space[size_t(p)].ships() ? 1 : 0;
                     ok = n >= 2;
                 } else if (is("rohdhnacommander")) {
                     for (size_t s = 0; s < G.systems.size() && !ok; ++s) ok = productionCapacity(G, p, int(s)) >= 7;
@@ -354,7 +355,11 @@ void Rules::checkUnlocks() {
                 } else if (is("nivyncommander")) {
                     int n = 0;
                     for (size_t s = 0; s < G.systems.size(); ++s)
-                        if (int(s) != pl.homeSystem && (G.systems[s].d().anomalies || int(s) == G.dsWound) && hasUnits(G, p, int(s))) ++n;
+                        // (fixes 29, the Nivyn review) "non-home anomalies": every anomaly (the Wound, a Dimensional Tear, ...) outside
+                        // every player's home system
+                        if (G.fixes >= 29 ? isAnomaly(G, int(s)) && G.systems[s].home < 0 && hasUnits(G, p, int(s))
+                                          : int(s) != pl.homeSystem && (G.systems[s].d().anomalies || int(s) == G.dsWound) && hasUnits(G, p, int(s)))
+                            ++n;
                     ok = n >= 2;
                 } else if (is("olradincommander")) {
                     bool c = false, h = false, i = false;
@@ -367,7 +372,7 @@ void Rules::checkUnlocks() {
                 } else if (is("cabalcommander")) {
                     int n = 0;
                     for (size_t s = 0; s < G.systems.size(); ++s)
-                        if (((G.systems[s].d().anomalies & kRift) || dimensionalTear(G, int(s))) && hasUnits(G, p, int(s))) ++n;
+                        if (((G.systems[s].d().anomalies & kRift) || dimensionalTear(G, int(s)) || nivynRift(G, int(s))) && hasUnits(G, p, int(s))) ++n;
                     ok = n >= 3;
                 }
             }
@@ -552,6 +557,7 @@ bool Rules::factionAction(int p, int option) {
             int q = fpick(p, Ab::HacanAgent, "Carth of Golden Sands", opts, leaderText(findLeader("hacanagent")));
             if (q < 0) return false;
             spendAgent(p, "hacan");
+            agentUsedFor(p, q);
             if (q == p) {
                 const int before = pl.commodities;
                 pl.commodities = int8_t(std::min(maxC, pl.commodities + 2));
@@ -591,6 +597,8 @@ bool Rules::factionAction(int p, int option) {
             int x = fpick(p, Ab::XxchaAgent, "Ggrocuto Rinn: ready which planet?", opts, "", false, true);
             if (x < 0) return false;
             spendAgent(p, "xxcha");
+            const bool promisedTo = G.fixes >= 28 && G.planets[x].owner >= 0 && G.agentFor[size_t(p)] == G.planets[x].owner;
+            agentUsedFor(p, G.planets[x].owner);
             G.planets[x].exhausted = false;
             say(p, planetName(x) + " is readied.", G.planets[x].system);
             // next to a planet you control: may remove 1 infantry from it
@@ -602,6 +610,7 @@ bool Rules::factionAction(int p, int option) {
             }
             int owner = G.planets[x].owner;
             if (near && owner != p && G.planets[x].units[owner].count(UnitType::Infantry) > 0 &&
+                !(promisedTo && !G.players[size_t(p)].human) &&  // (rules 28: a bot keeping its word doesn't take their infantry)
                 fyes(p, Ab::XxchaAgent, "Remove 1 of " + pn(owner) + "'s infantry from " + planetName(x) + "?", "")) {
                 // (fixes 27, the Xxcha review - owner 2026-11-13) "remove 1 infantry ... and return it to its reinforcements" - a
                 // removal, not a destruction (no Crimson Legionnaire, Devour, Infantry II, ...)
@@ -771,9 +780,12 @@ void Rules::roundEndFactions() {
         Player& pl = G.players[p];
         if (pl.heroRound == G.round) {
             int i = leaderIndex(G, p, kHero);
-            if (i >= 0) pl.leaders[i].status = kPurged;
             pl.heroRound = -1;
-            if (i >= 0 && G.fixes >= 8) purged(p);  // (0.44.4: Erasure Corps, Aggressive Broker)
+            // (fixes 29, the Nivyn review) a hero purged at the end of the round is purged like any other - the Myko-Mentori's Soul
+            // Cage takes it (D116), and a Myko-Mentori hero resolved as one of these takes the cage with it
+            if (i >= 0 && G.fixes >= 29) purgeHero(p);
+            else if (i >= 0) pl.leaders[i].status = kPurged;
+            if (i >= 0 && G.fixes >= 8 && G.fixes < 29) purged(p);  // (0.44.4: Erasure Corps, Aggressive Broker)
             enforceFleetLimit(p);
         }
     }
@@ -790,7 +802,18 @@ void Rules::startOfTurnFactions(int p) {
         const bool anywhere = (G.modules & kModDiscordant) && !std::strcmp(unitKey(G, p, UnitType::Infantry), "cymiae_infantry2");
         for (int x : anywhere ? controlledPlanets(G, p) : std::vector<int>(G.systems[pl.homeSystem].planets.begin(), G.systems[pl.homeSystem].planets.end()))
             if (G.planets[x].owner == p && !isDMZ(G, x)) opts.push_back({x, planetName(x), ""});
-        if (!opts.empty()) {
+        // (fixes 28, the Cymiae review - owner 2026-11-15) "place each unit that is on this card on a planet you control": one
+        // at a time, a planet each (AsyncTI4 statusInfRevival: "Place 1 Infantry On <planet>") - it put all of them on one
+        if (!opts.empty() && anywhere && G.fixes >= 28 && opts.size() > 1) {
+            const int n = pl.infantryOnCard;
+            for (int k = 0; k < n; ++k) {
+                const int x = fpick(p, Ab::InfantryReturn, "Your infantry come back (" + std::to_string(k + 1) + " of " + std::to_string(n) + "): on which planet?",
+                                    opts, "", false, true);
+                addUnits(p, UnitType::Infantry, 1, G.planets[x].system, x);
+                say(p, "1 of " + pn(p) + "'s infantry return to " + planetName(x) + ".", G.planets[x].system);
+            }
+            pl.infantryOnCard = 0;
+        } else if (!opts.empty()) {
             int x = opts.size() == 1 ? opts[0].id
                                      : fpick(p, Ab::InfantryReturn, anywhere ? "Your infantry come back: on which planet?" : "Your infantry come back: on which home planet?",
                                              opts, "", false, true);
@@ -908,7 +931,7 @@ void Rules::troAgent(int p, int sys) {
 
 bool Rules::shvalCheck(int p, int sys) {
     shval_ = false;
-    if (!fac(p, "sardakk") || !heroUnlocked(G, p)) return false;
+    if (!(fac(p, "sardakk") || caged(p, "sardakkhero")) || !heroUnlocked(G, p)) return false;  // (fixes 28: the Soul Cage too)
     // (fixes 25, Sardakk review 2026-11-11: also with no ground forces in space when G'hom Sek'kus can bring some in)
     bool ghom = false;
     if (G.fixes >= 25 && commanderUsable(G, p, "sardakk")) {
@@ -1177,7 +1200,7 @@ bool Rules::cancelActionCard(int player, int card) {
 }
 
 bool Rules::harruhgFree(int p) {
-    if (!fac(p, "hacan") || !heroUnlocked(G, p)) return false;
+    if (!(fac(p, "hacan") || caged(p, "hacanhero")) || !heroUnlocked(G, p)) return false;  // (fixes 28: the Soul Cage too)
     if (!fyes(p, Ab::HacanHero, "Use Harrugh Gefhara: everything you produce now is free?", "The hero is purged afterwards."))
         return false;
     purgeHero(p);

@@ -79,6 +79,10 @@ enum class Sfx : uint8_t {
     DroidBlaster,  // Roh'Dhna droids: "pew"
     CrystalLaser,  // Naalu crystal fighters: a glassy laser
     FirePlasma,    // Muaat infantry: plasma with a burn in it
+    // 0.59.70 (owner): the title screen's reveal
+    TitleGlyph,    // a Lazaxian letter appearing: a deep alien bell with a shimmer
+    TitleDecode,   // a letter turning into English: a short digital chirp
+    TitleReveal,   // the name complete: a slow swell and a wide chord
     Count
 };
 
@@ -97,6 +101,13 @@ void play(Sfx s, float gain = 1.f, float pan = 0.f);
 int musicVolume();  // 0..10
 bool musicPlaying();          // music loaded, volume above 0 (the title's "now playing", 0.28.0)
 void duckMusic(bool hushed);  // hush the music (glides) - the game-start transition (0.28.0)
+// 0.59.70 (owner: "the title screen music doesn't start until the sound effects of the Fallen Imperium title and its
+// transformation ... is complete"): holdMusic() before start() keeps the first track closed; releaseMusic() starts it
+void holdMusic();
+void releaseMusic(int fadeInMs, bool fromStart = false);  // fromStart (0.60.0): the track from its beginning, not where it stopped
+bool musicHeld();
+// The sound effects are made (they are synthesised on a thread after start()); true when there is no sound at all.
+bool soundsReady();
 
 // 0.30.0 (owner): three tracks - the title's, and two for the game that follow each other.
 // Each remembers where it stopped. Switching fades the old one out, then the new one in.

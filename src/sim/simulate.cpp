@@ -132,7 +132,8 @@ std::string checkInvariants(const Game& g) {
         for (int p = 0; p < g.numPlayers; ++p)
             if (pl.units[p].groundForces() > 0 && !((pl.coexist >> p) & 1)) ++armies;
         // (0.43.0: not once the game is won - a win in the middle of a tactical action stops it before the invasion)
-        if (armies > 1 && int(x) != g.groundCombatPlanet && g.phase != Phase::GameOver && g.winner < 0)
+        // (0.59.50: nor while Contagion's invasion of it is resolved - a question in its space cannon defense came at a check)
+        if (armies > 1 && int(x) != g.groundCombatPlanet && int(x) != g.dsInvading && g.phase != Phase::GameOver && g.winner < 0)
         {
             std::string who;
             for (int p = 0; p < kSides; ++p)

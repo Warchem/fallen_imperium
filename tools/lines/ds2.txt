@@ -17,6 +17,8 @@ decline: The stone has listened... and the stone does not move. Not for this.
 counter: Close... but uneven, like a cracked foundation. Here... set the stones this way instead.
 betray: Forgive us, {them}... even mountains shift, when the living world beneath them demands it.
 betrayed: You struck the stone, {them}... and the stone will remember, long after your fleets are dust.
+yield: Take it... The stone gives way... slowly. But it remembers every chisel, {them}.
+yield: So be it... Even mountains yield to the wind... and then they bury it.
 
 [kyro]
 name: Kyro
@@ -34,6 +36,8 @@ decline: Refused. Keep your offer - we will take what we need once your worlds l
 counter: Not quite. Let us... adjust the dose. These terms will go down much easier.
 betray: Forgive us, {them}. The plague must spread, and you were standing far too close.
 betrayed: Faithless {them}! Then you shall have the gift in full measure, every last drop.
+yield: Take it, with our blessing. And with something else, {them}. You will feel it soon.
+yield: We yield. Our next pilgrimage has found its first destination. How lucky for you.
 
 [lanefir]
 name: Lanefir
@@ -51,6 +55,8 @@ decline: We decline. Some pieces simply do not fit what we are building.
 counter: Not as it stands. History taught us to measure twice - here are terms that will hold.
 betray: This page of our story ends here, {them}. The Remnants must survive, whatever the cost.
 betrayed: We will write this down, {them}. Every word of it. The Remnants never forget a betrayal.
+yield: Take it. We have lost far more than this, {them}. We have also outlasted those who took it.
+yield: So it goes. This page of the chronicle bears your name now - and not kindly.
 
 [lizho]
 name: Li-Zho
@@ -68,6 +74,8 @@ decline: We must politely refuse. Something about it smells like one of our own 
 counter: Almost charming. Allow us to rearrange the pieces slightly - we know where they fit best.
 betray: Oh, {them}, did you think the floor was solid? Nothing in the Dynasty's house ever is.
 betrayed: Clever, {them}. Truly. But you stand on our ground now - and it was trapped long before you came.
+yield: Of course, take it, with our compliments. Do watch your step from now on, {them}.
+yield: How gracious of you to insist. We do so love a guest who will be coming back.
 
 [mirveda]
 name: Mirveda
@@ -85,6 +93,8 @@ decline: Declined. Please do not resubmit unless the terms have improved.
 counter: Your offer has been reviewed and adjusted for your protection. Please find the corrected terms enclosed.
 betray: We apologise, {them}. Your protection plan has expired. The Protectorate thanks you for your patronage.
 betrayed: Incident logged, {them}. The Protectorate will now provide you with a different kind of attention.
+yield: For your safety, we comply. For our safety, your profile has been updated to: threat, {them}.
+yield: Request granted. Please note that this interaction has been recorded for future enforcement.
 
 [mortheus]
 name: Glimmer
@@ -102,6 +112,8 @@ decline: No... the light bends away. Seek us elsewhere, if you can find where el
 counter: Turn the offer, as you would turn a jewel to the light... There. Now it shines as it should.
 betray: Did you trust a reflection, {them}? Reach for us now, and find only cold, empty space.
 betrayed: You struck at the mist, {them}... Look closely. Which of your ships is real, and which is ours?
+yield: Take the light, then... A stolen lantern still burns the hand that holds it, {them}.
+yield: Yours... the way a reflection is yours. Look again later, and see what looks back.
 
 [mykomentori]
 name: Myko
@@ -119,6 +131,8 @@ decline: The signs say refuse, and the signs are seldom wrong.
 counter: This offer would wither as it is. Let us graft on new terms - then it may flourish.
 betray: Your omens soured, {them}. We only followed where the signs pointed.
 betrayed: We saw this in a die that fell badly, {them}. Now all you own will rot from below.
+yield: Take it. Rot is patient, {them}. The signs already show where you will fall.
+yield: We give... and we watch. Every threat leaves a wound, and spores love wounds.
 
 [nivyn]
 name: Star Kings
@@ -136,6 +150,8 @@ decline: We decline. Return when your terms are worthy of a throne.
 counter: Your offer drifts off course. Allow the Star Kings to set the true heading.
 betray: Kings must look further ahead than their allies, {them}. Our path through time goes on without you.
 betrayed: A rash act, {them}. We are patient, and the void is patient - and neither of us forgets.
+yield: We yield this - space is wide and time is long. Both remember you now, {them}.
+yield: Take it. Kings forgive, sometimes. Star Kings rarely do.
 
 [nokar]
 name: Nokar
@@ -153,6 +169,8 @@ decline: No contract. The crew doesn't sail for scraps.
 counter: Close, but the crew wants a better cut. Here's the rate that gets them moving.
 betray: Sorry, {them}. Somebody paid more, and the Nokar always follow the better contract.
 betrayed: You stiffed us, {them}. Now every Sellship in the galaxy knows your name - and the price on it.
+yield: Fine. Paid. Just know your name's on our job board now, {them}, and the bounty's going up.
+yield: Take it. Free advice: never shake down a mercenary. We get paid to come back.
 
 [olradin]
 name: Olradin
@@ -170,6 +188,8 @@ decline: Sorry, that would never get past the Economy. Or the People. Or anyone.
 counter: Close! The League has a few amendments, though. Here's the revised version.
 betray: Sorry, {them}. The League held a vote about you - and you lost.
 betrayed: You broke faith with the whole League, {them}! For once every one of us agrees: you'll pay for it.
+yield: The League voted to pay, {them}. It also voted to remember. That one was unanimous.
+yield: Fine, it's yours. The People are angry, the Economy is angry - even the Environment is a bit cross.
 
 [zealots]
 name: Rhodun
@@ -187,6 +207,8 @@ decline: No. The faithful do not bow to offers like this one.
 counter: Your offer is flawed, as all unguided work is flawed. Here it is, corrected by the faith.
 betray: Your knowledge was never yours, {them}. Rhodun has come to take it back.
 betrayed: Faithless {them}! Your betrayal is written in the archives - and the faithful will answer it.
+yield: Take it. Coercion is heresy, {them}, and every heresy is answered.
+yield: We yield, as the faithful sometimes must. Your penance is merely postponed.
 
 [rohdhna]
 name: Roh'Dhna
@@ -204,6 +226,8 @@ decline: Doctrine 9-61R forbids this exchange. Request denied.
 counter: Non-compliant offer. The attached Revision 3 corrects all errors per Amendment 67-53P.
 betray: Notice, {them}: Termination Clause 00-01Z is now in effect. Your agreement is void.
 betrayed: Breach recorded, {them}. Retaliation Protocol 70-11R is active. War sun production has begun.
+yield: Compliance Clause 12-04A invoked. Grievance Protocol 77-3K is now active against {them}.
+yield: Terms accepted under Duress Statute 5-55D. Retaliation scheduled per Doctrine 31-9R.
 
 [tnelis]
 name: Syndicate
@@ -221,6 +245,8 @@ decline: I'm gonna pretend I never heard that offer. For your sake.
 counter: Let me fix this for you. The family's terms are right here - and they're very reasonable.
 betray: Nothing personal, {them} - it's just business. You should have known the family always comes first.
 betrayed: You crossed the family, {them}. That's the one thing you never do. We'll be in touch.
+yield: Sure, take it. Family remembers, {them}. Family always remembers.
+yield: Okay, you got me. That's a favour I owe you now - and I always repay my favours.
 
 [vaden]
 name: Vaden
@@ -238,6 +264,8 @@ decline: The clans don't lend against such poor security. Declined.
 counter: This barely covers the fees. Here are the clans' terms - do read the small print carefully.
 betray: Your credit has run out, {them}. The clans are calling in everything - starting now.
 betrayed: Default, {them}? Oh, you'll pay for this. Principal, interest and penalties. In full.
+yield: Take it. We've opened a new account in your name, {them} - and the interest has already started.
+yield: Paid. You are now in debt to the Clans. Nobody stays out of our ledgers for long.
 
 [vaylerian]
 name: Scourge
@@ -255,6 +283,8 @@ decline: Refused. Prey does not set the terms.
 counter: You bargain like prey begging for its life. Here are the hunter's terms.
 betray: There is nowhere to run, {them}. The truce was only us circling closer.
 betrayed: You struck and fled, {them}? Run, then. We will be there when you stop.
+yield: Take it. You have our scent now, {them}. More to the point, we have yours.
+yield: Fine. Run along with it. We do so enjoy the chase that comes after.
 
 [veldyr]
 name: Veldyr
@@ -272,6 +302,8 @@ decline: Thanks, but no. That proposal isn't aligned with our growth strategy.
 counter: Love the energy, but the terms need restructuring. Here's our revised offer.
 betray: We're restructuring, {them}, and your position has been eliminated. Effective immediately.
 betrayed: Breach of contract, {them}. Our legal department will be in touch - and it flies dreadnoughts.
+yield: Fine, we'll book it as a one-time loss. Your company is now on our hostile-takeover list, {them}.
+yield: Agreed. Consider our partnership terminated - and our acquisitions team notified.
 
 [zelian]
 name: Zelian
@@ -289,3 +321,5 @@ decline: rrrrgggghhh... [Refused. Rock does not bend.]
 counter: grrkkhrrghk... [Wrong shape. Here. We chip it into a better one.]
 betray: KHRRRGGHHKKK... [Nothing personal, {them}. Your world simply needs purifying.]
 betrayed: RRRGGHHHKKKRRR!... [You crack the stone, {them}? Then the stone falls on you.]
+yield: GRRRKKKRRGH... [Take it. Rock remembers every crack, {them}.]
+yield: KKKRRRGHHH... [Yours, for now. Every world is purified in the end.]

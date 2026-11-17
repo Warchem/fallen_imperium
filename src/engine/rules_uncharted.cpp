@@ -209,7 +209,7 @@ bool Rules::usResolve(int p, int card, const WinCtx* c) {
                 const int n = std::min(2, int(pl.commodities));
                 pl.commodities = int8_t(pl.commodities - n);
                 say(p, pn(p) + " turns " + std::to_string(n) + " commodities into trade goods (" + name + ").");
-                gainTG(p, n);
+                gainTGNotSupply(p, n); // (fixes 28: not from the supply - no Artuno)
             }
         }
         return true;
@@ -301,6 +301,7 @@ bool Rules::usResolve(int p, int card, const WinCtx* c) {
                 }
             }
         }
+        fragmentGained(p);  // (fixes 28)
         return true;
     }
     if (is("personnel_writ")) {

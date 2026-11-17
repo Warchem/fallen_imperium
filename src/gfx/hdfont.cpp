@@ -49,7 +49,7 @@ Face* faces() {
 
 // the bitmap fonts' TrueType sources (tools/gen_font.py)
 int faceOf(const FontData& f) {
-    if (&f == &FONT_LAZ) return 4;                   // the Lazaxian alphabet (0.57.0)
+    if (&f == &FONT_LAZ || &f == &FONT_LAZXL) return 4;  // the Lazaxian alphabet (0.57.0; XL 0.59.70)
     if (&f == &FONT_XS || &f == &FONT_SM) return 2;  // condensed
     if (&f == &FONT_SMB) return 3;                   // condensed bold
     if (&f == &FONT_MD) return 0;                    // regular

@@ -220,8 +220,9 @@ void Rules::becomeObsidian(int p) {
 }
 
 // Siphon: the puppet gained commodities - the Obsidian gain as many trade goods.
-void Rules::siphon(int q, int gained) {
+void Rules::siphon(int q, int gained, bool mic) {
     if (gained <= 0) return;
+    if (mic) micGained(q, gained);  // (fixes 28) Military Industrial Complex after any commodity gain
     const int o = obsidianOf(G);
     if (!plotPuppet(G, o, kPlotSiphon, q)) return;
     gainTG(o, gained);
@@ -231,7 +232,11 @@ void Rules::siphon(int q, int gained) {
 // (fixes 25, owner's faction debug pass) Siphon for every commodity gain that doesn't go through replenished() or the
 // exploration hooks: faction abilities, leaders, Uncharted Space cards, Discordant Stars.
 void Rules::commodityGained(int p, int before) {
-    if (G.fixes < 25 || !(G.modules & kModThundersEdge) || p < 0 || p >= G.numPlayers) return;
+    if (p < 0 || p >= G.numPlayers) return;
+    if (G.fixes < 25 || !(G.modules & kModThundersEdge)) {
+        micGained(p, G.players[size_t(p)].commodities - before);  // (fixes 28; siphon calls it otherwise)
+        return;
+    }
     siphon(p, G.players[size_t(p)].commodities - before);
 }
 

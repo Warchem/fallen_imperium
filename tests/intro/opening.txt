@@ -1,0 +1,22 @@
+# 0.59.70: the title's opening (run with TI4_TITLEINTRO=1): black with stars, the Lazaxian letters, each turning into
+# English, the pan to the planet, the menu fading in. A wait is one frame (16 ms).
+wait 25
+shot open_0400
+wait 113
+shot open_2200
+wait 106
+shot open_3900
+wait 50
+shot open_4700
+wait 69
+shot open_5800
+wait 75
+shot open_7000
+wait 150
+shot open_9400
+wait 85
+shot open_10760
+press DOWN
+wait 10
+shot open_menu_down
+quit
