@@ -19,8 +19,8 @@ namespace {
 int levelOf(const Game& g, int p) { return g.players[size_t(p)].aiLevel >= 0 ? g.players[size_t(p)].aiLevel : g.aiLevel; }
 
 const char* levelName(int l) {
-    static const char* k[] = {"Easy", "Normal", "Hard", "Competitive"};
-    return l >= 0 && l <= 3 ? k[l] : "?";
+    static const char* k[] = {"Easy", "Normal", "Hard", "Competitive", "A.I."};
+    return l >= 0 && l <= 4 ? k[l] : "?";
 }
 
 int countScored(const Game& g, int p, bool secret) {

@@ -13,6 +13,7 @@
 #include "app/app.h"
 #include "audio/audio.h"
 #include "ui/backdrops.h"
+#include "ui/newgame_bg.h"
 #include "ui/retro.h"
 #include "core/log.h"
 #include "engine/data.h"
@@ -26,6 +27,8 @@
 #include "ui/transition.h"
 #include "ui/hits.h"
 #include "ui/widgets.h"
+#include "ui/pcolors.h"
+#include "game/profile.h"
 
 using namespace ti;
 
@@ -34,9 +37,13 @@ std::unique_ptr<Scene> makeGameScene(std::unique_ptr<GameSession> session);
 namespace {
 
 const char* kSpeedNames[4] = {"Slow", "Normal", "Fast", "Instant"};
-const char* kLevels[4] = {"Easy", "Normal", "Hard", "Competitive"};
-const char* kLevelInfo[4] = {"Relaxed opponents.", "They plan for objectives.", "They play to win by rounds 6-8.",
-                             "Sharpest play; personality habits toned down."};
+// (0.74.0) A.I. = kAiLevelAI: experimental, no personality, plays only to win
+constexpr int kLevelCount = 5;
+const char* kLevels[kLevelCount] = {"Easy", "Normal", "Hard", "Competitive", "A.I."};
+const char* kLevelInfo[kLevelCount] = {"Relaxed opponents.", "They plan for objectives.", "They play to win by rounds 6-8.",
+                                       "Sharpest play; personality habits toned down.",
+                                       "Experimental: no personality; it plays only to win."};
+uint32_t levelColour(int l) { return l >= kAiLevelAI ? rgb(255, 112, 140) : l == kAiLevelCompetitive ? theme::gold : theme::text; }
 
 // The faction picker (0.28.2, owner): every faction as its emblem with name and a line
 // about it; Thunder's Edge and Discordant Stars (fan-made) shown greyed, "coming soon".
@@ -112,7 +119,9 @@ public:
         return factionShortName(f);
     }
 
-    enum Row { kPlayers, kSeats, kVP, kTrade, kGalaxy, kHyperlanes, kMecatol, kSpeed, kStart, kRows };
+    // 0.63.0 (owner's document): Mecatol Rex, Round 1 trade and AI speed moved into "Game options"; Hyperlanes into the Players
+    // window; Galaxy opens its own window (draft / random / seed, fair or unbalanced, a preview)
+    enum Row { kPlayers, kSeats, kVP, kGalaxy, kOptions, kStart, kRows };
     enum Col { kWho, kFaction, kColour, kLevel, kPers, kCols };
 
     int humans() const {
@@ -149,6 +158,7 @@ public:
         return true;
     }
     bool colourFree(int c, int except) const {
+        if (!profile::colourUnlocked(c)) return false;  // 0.80.0: a league's colour, not earned yet
         for (int i = 0; i < players_; ++i)
             if (i != except && seats_[size_t(i)].color == c) return false;
         return true;
@@ -176,10 +186,11 @@ public:
                 }
                 break;
             }
-            case kColour: {  // Auto, then the eight colours, skipping taken ones
+            case kColour: {  // Auto, then the sixteen colours (0.62.0: the classic 8 + 8 new), skipping taken ones
+                constexpr int kPos = pcolours::kCount + 1;
                 int pos = s.color + 1;
-                for (int tries = 0; tries < 9; ++tries) {
-                    pos = ((pos + (step > 0 ? 1 : -1)) % 9 + 9) % 9;
+                for (int tries = 0; tries < kPos; ++tries) {
+                    pos = ((pos + (step > 0 ? 1 : -1)) % kPos + kPos) % kPos;
                     const int c = pos - 1;
                     if (c < 0 || colourFree(c, seatSel_)) {
                         s.color = c;
@@ -189,10 +200,10 @@ public:
                 break;
             }
             case kLevel:
-                if (!s.human) s.level = ((s.level + (step > 0 ? 1 : -1)) % 4 + 4) % 4;
+                if (!s.human) s.level = ((s.level + (step > 0 ? 1 : -1)) % kLevelCount + kLevelCount) % kLevelCount;
                 break;
             case kPers:
-                if (!s.human) {
+                if (!s.human && s.level < kAiLevelAI) {  // (the A.I. has no personality)
                     const int m = int(Arch::Count) + 1;  // Random + the archetypes
                     s.arch = ((s.arch + 1 + (step > 0 ? 1 : -1)) % m + m) % m - 1;
                 }
@@ -201,12 +212,31 @@ public:
         }
     }
     void updateMenu(const Input& in) {
-        if (in.pressed(Btn::Up)) seatSel_ = (seatSel_ + players_ - 1) % players_;
-        if (in.pressed(Btn::Down)) seatSel_ = (seatSel_ + 1) % players_;
+        // 0.62.1 (owner's document: a Confirm button at the bottom - before, only B / Backspace / a right click left the table): the
+        // button is a stop of its own after the last seat (and before the first); A, START or a click on it keeps the choices and goes
+        // back to the New Game screen
+        if (onConfirm_) {
+            if (in.pressed(Btn::Up)) onConfirm_ = false, seatSel_ = players_ - 1;
+            else if (in.pressed(Btn::Down)) onConfirm_ = false, seatSel_ = 0;
+            else if (in.pressed(Btn::A) || in.pressed(Btn::B) || in.pressed(Btn::Start) || in.pressed(Btn::Menu)) menuOpen_ = onConfirm_ = false;
+            return;
+        }
+        if (in.pressed(Btn::Up)) {
+            if (seatSel_ == 0) onConfirm_ = true;
+            else --seatSel_;
+        }
+        if (in.pressed(Btn::Down)) {
+            if (seatSel_ >= players_ - 1) onConfirm_ = true;
+            else ++seatSel_;
+        }
+        if (onConfirm_) return;
         if (in.pressed(Btn::Left)) colSel_ = (colSel_ + kCols - 1) % kCols;
         if (in.pressed(Btn::Right)) colSel_ = (colSel_ + 1) % kCols;
         if (in.pressed(Btn::A)) {
             if (colSel_ == kFaction) openPicker();  // 0.28.2 (owner): the faction picker
+            else if (colSel_ == kColour || ((colSel_ == kLevel || colSel_ == kPers) && !seats_[size_t(seatSel_)].human)) {
+                if (!(colSel_ == kPers && seats_[size_t(seatSel_)].level >= kAiLevelAI)) openOpt();
+            }
             else change(1);
         }
         if (in.pressed(Btn::Y)) change(-1);
@@ -244,13 +274,14 @@ public:
         if (first_) {
             speed_ = app.settings().getInt("ai_speed", 1);
             players_ = std::max(3, std::min(8, app.settings().getInt("players", 6)));
-            myColor_ = std::max(-1, std::min(7, app.settings().getInt("color", 0)));
+            myColor_ = std::max(-1, std::min(pcolours::kCount - 1, app.settings().getInt("color", 0)));  // (0.62.0: up to the 16th)
             freeTrade_ = app.settings().getInt("trade_r1", 1) != 0;
             contested_ = app.settings().getInt("mecatol_contested", 1) != 0;  // (0.54.0)
             hyperlanes_ = app.settings().getInt("hyperlanes", 1) != 0;          // (0.58.0)
             draft_ = app.settings().getInt("galaxy_draft", 1) != 0;
             galaxy_ = std::max(0, std::min(2, app.settings().getInt("galaxy_mode", draft_ ? 1 : 0)));  // 0.43.0: + Seeded
             mapSeed_ = uint32_t(std::max(1, app.settings().getInt("map_seed", int(now % 99991u) + 1)));
+            fair_ = app.settings().getInt("galaxy_fair", 1) != 0;  // (0.63.0)
             resetSeats();
             first_ = false;
         }
@@ -258,28 +289,17 @@ public:
             updatePicker(in);
             return;
         }
+        if (optOpen_) {  // (0.61.4) the colour / difficulty / personality window
+            updateOpt(in);
+            return;
+        }
         if (menuOpen_) {
             updateMenu(in);
             return;
         }
-        if (slicesOpen_) {  // the seeded galaxy's slices (0.43.0): left / right try the next seed, L1 / R1 jump
-            if (in.pressed(Btn::Right)) setSeed(mapSeed_ + 1);
-            if (in.pressed(Btn::Left)) setSeed(mapSeed_ > 1 ? mapSeed_ - 1 : 1);
-            if (in.pressed(Btn::R1)) setSeed(mapSeed_ + 100);
-            if (in.pressed(Btn::L1)) setSeed(mapSeed_ > 100 ? mapSeed_ - 100 : 1);
-            if (in.pressed(Btn::X)) setSeed(1 + (now * 2654435761u >> 8) % 99991u);
-            if (in.pressed(Btn::A) || in.pressed(Btn::B) || in.pressed(Btn::Y) || in.pressed(Btn::Menu)) slicesOpen_ = false;
+        if (pop_ != kNoPop) {  // (0.63.0) the Players, Galaxy and Game options windows
+            updatePop(in, now);
             return;
-        }
-        if (sel_ == kGalaxy && galaxy_ == 2) {  // the seed: L1 / R1 change it, X a new one, Y its slices
-            if (in.pressed(Btn::R1)) setSeed(mapSeed_ + 1);
-            if (in.pressed(Btn::L1)) setSeed(mapSeed_ > 1 ? mapSeed_ - 1 : 1);
-            if (in.pressed(Btn::X)) setSeed(1 + (now * 2654435761u >> 8) % 99991u);
-            if (in.pressed(Btn::Y)) {
-                slicesOpen_ = true;
-                previewKey_ = 0;
-                return;
-            }
         }
         if (in.pressed(Btn::Up)) sel_ = (sel_ + kRows - 1) % kRows;
         if (in.pressed(Btn::Down)) sel_ = (sel_ + 1) % kRows;
@@ -287,42 +307,43 @@ public:
             app.pop();
             return;
         }
-        int step = in.pressed(Btn::Right) ? 1 : in.pressed(Btn::Left) ? -1 : 0;
-        if (in.pressed(Btn::A) && sel_ == kSeats) {
-            menuOpen_ = true;
-            seatSel_ = std::max(0, primary());
-            colSel_ = kFaction;
-            return;
-        }
-        if (in.pressed(Btn::A) && sel_ != kStart) step = 1;  // A also changes the selected row
-        if (step) {
+        if (in.pressed(Btn::A)) {
             switch (sel_) {
-                case kPlayers:
-                    players_ = std::max(3, std::min(8, players_ + (step > 0 ? 1 : -1)));
-                    resetSeats();
-                    break;
-                case kVP: vp_ = vp_ == 10 ? 14 : 10; break;
-                case kTrade: freeTrade_ = !freeTrade_; break;
-                case kMecatol: contested_ = !contested_; break;
-                case kHyperlanes: {  // (0.58.0) the seat at the bottom of the map can change: your seat moves with it
-                    const int was = std::max(0, southernmostSeat(players_, layout()));
-                    hyperlanes_ = !hyperlanes_;
-                    const int now2 = std::max(0, southernmostSeat(players_, layout()));
-                    if (was != now2) std::swap(seats_[size_t(was)], seats_[size_t(now2)]);
-                    previewKey_ = 0;
-                    break;
-                }
-                case kGalaxy: galaxy_ = (galaxy_ + (step > 0 ? 1 : 2)) % 3; break;  // Random, Draft, Seeded (0.43.0)
-                case kSpeed: speed_ = (speed_ + (step > 0 ? 1 : 3)) % 4; break;
                 case kSeats:
                     menuOpen_ = true;
+                    onConfirm_ = false;
                     seatSel_ = std::max(0, primary());
                     colSel_ = kFaction;
-                    break;
+                    return;
+                case kPlayers: openPop(kPopPlayers); return;
+                case kGalaxy: openPop(kPopGalaxy); return;
+                case kOptions: openPop(kPopOptions); return;
+                case kVP: vp_ = vp_ == 10 ? 14 : 10; break;
+                default: break;
+            }
+        }
+        const int step = in.pressed(Btn::Right) ? 1 : in.pressed(Btn::Left) ? -1 : 0;
+        if (step) {
+            switch (sel_) {
+                case kPlayers: setPlayers(players_ + step); break;
+                case kVP: vp_ = vp_ == 10 ? 14 : 10; break;
+                case kGalaxy: galaxy_ = (galaxy_ + (step > 0 ? 1 : 2)) % 3; break;  // Random, Draft, Seeded (0.43.0)
                 default: break;
             }
         }
         if ((in.pressed(Btn::A) && sel_ == kStart) || in.pressed(Btn::Start)) start(app, now);
+    }
+
+    void setPlayers(int n) {
+        players_ = std::max(3, std::min(8, n));
+        resetSeats();
+    }
+    void setHyperlanes(bool on) {  // (0.58.0) the seat at the bottom of the map can change: your seat moves with it
+        if (on == hyperlanes_) return;
+        const int was = std::max(0, southernmostSeat(players_, layout()));
+        hyperlanes_ = on;
+        const int now2 = std::max(0, southernmostSeat(players_, layout()));
+        if (was != now2) std::swap(seats_[size_t(was)], seats_[size_t(now2)]);
     }
 
     void start(App& app, uint32_t now) {
@@ -337,6 +358,7 @@ public:
         app.settings().setInt("galaxy_draft", galaxy_ == 1 ? 1 : 0);
         app.settings().setInt("galaxy_mode", galaxy_);
         app.settings().setInt("map_seed", int(mapSeed_));
+        app.settings().setInt("galaxy_fair", fair_ ? 1 : 0);
         app.settings().save();
         Setup s;
         s.players = players_;
@@ -346,6 +368,7 @@ public:
         s.trade = 1 | (freeTrade_ ? 2 : 0) | 4 | 8;  // community X-1 trades; round-1 free refills when a bot plays Trade (house rule)
         s.draft = galaxy_ == 1 ? 1 : 0;            // players build the galaxy (0.15.0) or a random one
         s.mapSeed = galaxy_ == 2 ? mapSeed_ : 0;   // ...or the map of the player's number (0.43.0)
+        s.unbalanced = galaxy_ != 2 && !fair_ ? 1 : 0;  // (0.63.0) "Fair slices" unticked: the first deal as it falls
         s.layout = layout();                        // the printed board without hyperlanes (0.58.0)
         s.modules = app.settings().getInt("modules", ti::kModCodex);  // the Modules screen (0.31.0)
         if (s.modules & ti::kModThundersEdge) {  // galactic events (0.36.0): only the playable ones
@@ -365,7 +388,7 @@ public:
         s.levels.assign(players_, -1);
         s.archetypes.assign(players_, -1);
         s.tribunii.assign(players_, -1);
-        int levelCount[4] = {};
+        int levelCount[kLevelCount] = {};
         for (int i = 0; i < players_; ++i) {
             const SeatSetup& st = seats_[size_t(i)];
             s.factions[size_t(i)] = st.faction;
@@ -378,7 +401,7 @@ public:
                 ++levelCount[st.level];
             }
         }
-        s.aiLevel = int(std::max_element(levelCount, levelCount + 4) - levelCount);  // the most common one
+        s.aiLevel = int(std::max_element(levelCount, levelCount + kLevelCount) - levelCount);  // the most common one
         std::unique_ptr<GameSession> session(new GameSession());
         if (!session->startNew(s)) {
             LOG("newgame: engine failed to start: %s", session->engine().crashMessage().c_str());
@@ -400,12 +423,12 @@ public:
 
     std::string seatsSummary() const {
         const int h = humans();
-        int levels[4] = {};
+        int levels[kLevelCount] = {};
         for (int i = 0; i < players_; ++i)
             if (!seats_[size_t(i)].human) ++levels[seats_[size_t(i)].level];
         std::string lv;
         int kinds = 0;
-        for (int l = 0; l < 4; ++l)
+        for (int l = 0; l < kLevelCount; ++l)
             if (levels[l]) {
                 ++kinds;
                 lv = kLevels[l];
@@ -421,13 +444,31 @@ public:
         drawScreen(app, c, now);
         if (pending_) transition::drawCover(c, startAt_ ? now - startAt_ : 0);
     }
-    bool animating() const override { return pending_ != nullptr || retro::on() || retro::hd(); }
+    // 0.62.1: on the seat table and its pickers a click on nothing (the panel's background, a gap) does nothing - it used to act as A
+    // on the highlighted cell (a click just under the Confirm button opened the faction picker); cells, rows and buttons still take it
+    bool bareClickIsA(float x, float y) const override {
+        (void)x, (void)y;
+        return !(menuOpen_ || pickerOpen_ || optOpen_);
+    }
+    bool animating() const override {
+        if (pending_ != nullptr || retro::on() || retro::hd() || optOpen_ || (menuOpen_ && onConfirm_)) return true;
+        if (menuOpen_)  // (0.62.0) a seat in one of the new colours: its swatch moves
+            for (int i = 0; i < players_; ++i)
+                if (seats_[size_t(i)].color >= 0 && pcolours::animated(seats_[size_t(i)].color)) return true;
+        return false;
+    }
     // 0.44.1 (owner: the wheel "snapping to the factions instead of allowing me to free-scroll"): in the picker the
     // wheel scrolls the grid itself (updatePicker), not the chosen faction
     bool wheelScrolls(float x, float y) const override { return pickerOpen_ ? false : Scene::wheelScrolls(x, y); }  // the backdrops move (0.30.0, 0.33.1)
     void drawScreen(App&, Canvas& c, uint32_t now) {
         (void)now;
-        if (retro::on()) backdrops::drawRetroNewGame(c, now);  // 0.30.0 (owner): the Retrowave New Game backdrop
+        if (retro::on()) {  // 0.30.0 (owner): the Retrowave New Game backdrop
+#if defined(__arm__)
+            backdrops::drawRetroNewGame(c, now);  // (the Miyoo keeps 0.60.0's chunky one)
+#else
+            newgamebg::draw(c, now);  // 0.60.1 (owner): in the title's detail
+#endif
+        }
         else if (!(retro::hd() && backdrops::drawVoidfallNewGame(c, now)))  // 0.33.1 (owner): Voidfall's own
             drawSpaceBackground(c, true);
         if (retro::hd()) {  // (0.33.1) the title and the line under the panel kept readable over the painting
@@ -435,61 +476,55 @@ public:
             c.fillRoundRect(40, 368, 560, 20, 8, rgb(10, 4, 18), 175);
         }
         drawTextAligned(c, FONT_LG, 0, 22, 640, Align::Center, "New game", theme::gold);
-        Rect r{100, 44, 440, 318};  // (0.54.0: 7 rows - Mecatol Rex added; 0.58.0: 8 - Hyperlanes)
+        Rect r{100, 58, 440, 284};  // (0.63.0: five rows - the rest went into the windows)
         drawPanel(c, r, theme::panel, theme::border, 12, retro::on() || retro::hd() ? 228 : 255);
         struct R {
             const char* label;
             std::string value, detail;
+            bool arrows;
         } rows[kRows - 1] = {
-            {"Players", std::to_string(players_), ""},
-            {"Factions & seats", "Set up", seatsSummary()},
-            {"Victory points", std::to_string(vp_), ""},
-            {"Round 1 trade", freeTrade_ ? "Free refills" : "As printed",
-             freeTrade_ ? "A computer playing Trade refills everyone" : "Trade card as printed in round 1"},
-            {"Galaxy", galaxy_ == 1 ? "Draft" : galaxy_ == 2 ? "Seed " + std::to_string(mapSeed_) : "Random",
-             galaxy_ == 1 ? "Everyone places tiles in turn"
-             : galaxy_ == 2 ? keyLabel("L1") + "/" + keyLabel("R1") + " seed, " + keyLabel("X") + " new, " + keyLabel("Y") + " the slices"
-                            : "A balanced random map"},
-            {"Hyperlanes", hyperlanes_ ? "On" : "Off", hyperlaneDetail()},
-            {"Mecatol Rex", contested_ ? "Contested" : "Calm",
-             contested_ ? "Bots fight its holder for it - Imperial's points" : "Bots take it only when its holder leaves it open"},
-            {"AI speed", kSpeedNames[speed_], ""},
+            {"Players", std::to_string(players_), players_ == 6 ? "Choose the count and see the map" : hyperlanes_ ? "Hyperlanes on" : "No hyperlanes: the printed board", true},
+            {"Factions & seats", "Set up", seatsSummary(), false},
+            {"Victory points", std::to_string(vp_), "", true},
+            {"Galaxy", galaxyName(), galaxyDetail(), true},
+            {"Game options", "Set up", optionsSummary(), false},
         };
-        const int rowH = 31;
-        int y = r.y + 14;
+        const int rowH = 40;
+        int y = r.y + 16;
+        const bool covered = menuOpen_ || pop_ != kNoPop;
         for (int i = 0; i < kRows - 1; ++i) {
             const bool sel = i == sel_;
-            if (!menuOpen_) {  // the mouse (0.27.0): point at a row, click its arrows to change it
-                hits::add(Rect{r.x + 12, y - 3, r.w - 24, rowH - 4}, [this, i]() { sel_ = i; });
-                if (sel && i != kSeats) {
-                    hits::addButton(Rect{r.x + r.w - 228, y - 3, 26, rowH - 4}, Btn::Left);
-                    hits::addButton(Rect{r.x + r.w - 46, y - 3, 30, rowH - 4}, Btn::Right);
+            if (!covered) {  // the mouse (0.27.0): point at a row, click it to open its window (or change it)
+                hits::add(Rect{r.x + 12, y - 4, r.w - 24, rowH - 4}, [this, i]() { sel_ = i; });
+                if (sel && rows[i].arrows) {
+                    hits::addButton(Rect{r.x + r.w - 228, y - 4, 26, rowH - 4}, Btn::Left);
+                    hits::addButton(Rect{r.x + r.w - 46, y - 4, 30, rowH - 4}, Btn::Right);
                 }
             }
-            if (sel) c.fillRoundRect(r.x + 12, y - 3, r.w - 24, rowH - 4, 6, theme::panelHi);
-            drawText(c, FONT_MDB, r.x + 26, y + (rows[i].detail.empty() ? 6 : 1), rows[i].label, sel ? theme::text : theme::dim);
+            if (sel) c.fillRoundRect(r.x + 12, y - 4, r.w - 24, rowH - 4, 6, theme::panelHi);
+            drawText(c, FONT_MDB, r.x + 26, y + (rows[i].detail.empty() ? 7 : 2), rows[i].label, sel ? theme::text : theme::dim);
             const int right = r.x + r.w - 46;
-            drawTextAligned(c, FONT_MDB, r.x, y + (rows[i].detail.empty() ? 6 : 1), right - r.x, Align::Right, rows[i].value, theme::gold);
+            drawTextAligned(c, FONT_MDB, r.x, y + (rows[i].detail.empty() ? 7 : 2), right - r.x, Align::Right, rows[i].value, theme::gold);
             if (!rows[i].detail.empty())
-                drawTextAligned(c, FONT_XS, r.x, y + 19, right - r.x, Align::Right, fitText(FONT_XS, rows[i].detail, 300), theme::faint);
-            if (sel && i != kSeats) {
-                drawText(c, FONT_SM, r.x + r.w - 220, y + 8, "\xE2\x97\x80", theme::dim);
-                drawText(c, FONT_SM, r.x + r.w - 38, y + 8, "\xE2\x96\xB6", theme::dim);
+                drawTextAligned(c, FONT_XS, r.x, y + 21, right - r.x, Align::Right, fitText(FONT_XS, rows[i].detail, 300), theme::faint);
+            if (sel && rows[i].arrows) {
+                drawText(c, FONT_SM, r.x + r.w - 220, y + 9, "\xE2\x97\x80", theme::dim);
+                drawText(c, FONT_SM, r.x + r.w - 38, y + 9, "\xE2\x96\xB6", theme::dim);
             }
             y += rowH;
         }
         const bool sel = sel_ == kStart;
         const bool watch = primary() < 0;
-        Rect b{r.x + (r.w - 180) / 2, y + 12, 180, 40};
-        if (!menuOpen_) hits::add(b, [this]() { sel_ = kStart; });
+        Rect b{r.x + (r.w - 180) / 2, y + 10, 180, 40};
+        if (!covered) hits::add(b, [this]() { sel_ = kStart; });
         c.fillRoundRect(b.x, b.y, b.w, b.h, 10, sel ? theme::gold : theme::panelHi);
         drawTextAligned(c, FONT_LG, b.x, b.y + 8, b.w, Align::Center, watch ? "Watch game" : "Start game", sel ? theme::black : theme::text);
         drawTextAligned(c, FONT_XS, 0, 372, 640, Align::Center,
-                        keyLabel("A") + " on \"Factions & seats\": who plays each seat, factions, colours, difficulty, personalities.",
+                        keyLabel("A") + " on a row opens its window: the player count and its map, the seats, the galaxy, game options.",
                         theme::faint);
         if (!error_.empty()) drawTextAligned(c, FONT_SM, 0, 390, 640, Align::Center, error_, theme::red);
-        if (slicesOpen_) {
-            drawSlices(c, now);
+        if (pop_ != kNoPop) {
+            drawPop(c, now);
             return;
         }
         if (menuOpen_) {
@@ -498,9 +533,20 @@ public:
                 hits::clear();  // 0.28.4: the seat table under the picker must not take the mouse (it changed another seat)
                 drawPicker(c, now);
             }
+            if (optOpen_) drawOpt(c, now);  // (0.61.4)
             return;
         }
-        drawHintBar(c, {{"\xE2\x97\x80\xE2\x96\xB6", "Change"}, {"A", "Choose"}, {"START", watch ? "Watch" : "Begin"}, {"B", "Back"}});
+        drawHintBar(c, {{"\xE2\x97\x80\xE2\x96\xB6", "Change"}, {"A", "Open"}, {"START", watch ? "Watch" : "Begin"}, {"B", "Back"}});
+    }
+
+    std::string galaxyName() const { return galaxy_ == 1 ? "Draft" : galaxy_ == 2 ? "Seed " + std::to_string(mapSeed_) : "Random"; }
+    std::string galaxyDetail() const {
+        if (galaxy_ == 2) return "The same number always makes the same map";
+        return std::string(galaxy_ == 1 ? "Everyone places tiles in turn" : "A random map") + (fair_ ? " - fair slices" : " - unbalanced");
+    }
+    std::string optionsSummary() const {
+        return std::string(contested_ ? "Mecatol contested" : "Mecatol calm") + " \xC2\xB7 " + (freeTrade_ ? "free refills" : "Trade as printed") +
+               " \xC2\xB7 AI " + kSpeedNames[speed_];
     }
 
     // 0.58.0 (owner): Hyperlanes On = the usual maps; Off = the printed board without them, at any player count
@@ -516,79 +562,340 @@ public:
         }
     }
 
-    // ------------------------------------------------------------ the seeded galaxy (0.43.0)
-    void setSeed(uint32_t v) {
-        mapSeed_ = std::max<uint32_t>(1, std::min<uint32_t>(999999u, v));
-        previewKey_ = 0;
+    // ============================================================ 0.63.0: the New Game windows (owner's document)
+    // "Players": the count and an example map for it, Hyperlanes as a tick box that redraws the map. "Galaxy": Draft, Random or
+    // a seed (typed on the keyboard, or stepped), "Fair slices" for the maps that aren't seeded, and the map it makes - the
+    // seed's own, or an example - with what each seat's slice (or draft hand) holds. "Game options": Mecatol Rex, Round 1
+    // trade, AI speed. D-pad / mouse to point, A or a click to change, the Done button (or B, or a click beside it) closes.
+    enum Pop { kNoPop, kPopPlayers, kPopGalaxy, kPopOptions };
+    int pop_ = kNoPop, popSel_ = 0;
+    std::string seedTyped_;  // the digits typed into the seed so far (keyboard)
+    static constexpr int kGalaxyButtons[3] = {1, 0, 2};  // the Galaxy window's buttons, left to right: Draft, Random, Seed
+
+    void openPop(int which) {
+        pop_ = which;
+        popSel_ = 0;
+        seedTyped_.clear();
     }
-    // The map this seed makes for these seats, built the way the game will build it, and each slice's numbers.
-    void buildPreview() {
-        const uint64_t key = (uint64_t(mapSeed_) << 8) ^ uint64_t(players_) ^ (uint64_t(modules_) << 40) ^ (uint64_t(layout()) << 60);
-        if (key == previewKey_) return;
-        previewKey_ = key;
-        preview_ = ti::Game();
-        preview_.numPlayers = players_;
-        preview_.modules = modules_;
-        preview_.layout = uint8_t(layout());
-        preview_.players.assign(size_t(players_), ti::Player());
-        std::vector<int> homes(static_cast<size_t>(players_), 0);
+    int popRows() const { return pop_ == kPopPlayers ? 3 : 4; }  // (the last row is the Done button)
+    void setSeed(uint32_t v) { mapSeed_ = std::max<uint32_t>(1, std::min<uint32_t>(999999u, v)); }
+
+    void updatePop(const Input& in, uint32_t now) {
+        const int n = popRows();
+        if (pop_ == kPopGalaxy && !in.typed().empty()) {  // digits typed: the seed (a seeded map from then on)
+            if (galaxy_ != 2) galaxy_ = 2;
+            if (popSel_ != 1) seedTyped_.clear();
+            popSel_ = 1;
+            for (char ch : in.typed())
+                if (seedTyped_.size() < 6 && !(seedTyped_.empty() && ch == '0')) seedTyped_ += ch;
+            if (!seedTyped_.empty()) setSeed(uint32_t(std::atoi(seedTyped_.c_str())));
+            return;
+        }
+        if (pop_ == kPopGalaxy && popSel_ == 1 && !seedTyped_.empty() && in.pressed(Btn::B)) {  // Backspace: the last digit
+            seedTyped_.pop_back();
+            if (!seedTyped_.empty()) setSeed(uint32_t(std::atoi(seedTyped_.c_str())));
+            return;
+        }
+        if (in.pressed(Btn::B) || in.pressed(Btn::Menu) || in.pressed(Btn::Start) || (popSel_ == n - 1 && in.pressed(Btn::A))) {
+            pop_ = kNoPop;
+            return;
+        }
+        auto usable = [&](int row) { return !(pop_ == kPopGalaxy && ((row == 1 && galaxy_ != 2) || (row == 2 && galaxy_ == 2))); };
+        if (in.pressed(Btn::Up) || in.pressed(Btn::Down)) {
+            const int d = in.pressed(Btn::Up) ? -1 : 1;
+            for (int k = 0; k < n; ++k) {
+                popSel_ = (popSel_ + d + n) % n;
+                if (usable(popSel_)) break;
+            }
+            seedTyped_.clear();
+        }
+        const int step = in.pressed(Btn::Right) ? 1 : in.pressed(Btn::Left) ? -1 : 0;
+        const bool a = in.pressed(Btn::A);
+        switch (pop_) {
+            case kPopPlayers:
+                if (popSel_ == 0 && (step || a)) setPlayers(players_ + (step ? step : 1) > 8 ? 3 : players_ + (step ? step : 1));
+                if (popSel_ == 1 && (step || a)) setHyperlanes(!hyperlanes_);
+                break;
+            case kPopGalaxy:
+                if (popSel_ == 0 && (step || a)) {
+                    int k = 0;
+                    while (k < 3 && kGalaxyButtons[k] != galaxy_) ++k;
+                    galaxy_ = kGalaxyButtons[(k + (step < 0 ? 2 : 1)) % 3];
+                }
+                if (popSel_ == 1 && galaxy_ == 2) {
+                    if (step || in.pressed(Btn::L1) || in.pressed(Btn::R1) || in.pressed(Btn::X)) seedTyped_.clear();
+                    if (step > 0) setSeed(mapSeed_ + 1);
+                    if (step < 0) setSeed(mapSeed_ > 1 ? mapSeed_ - 1 : 1);
+                    if (in.pressed(Btn::R1)) setSeed(mapSeed_ + 100);
+                    if (in.pressed(Btn::L1)) setSeed(mapSeed_ > 100 ? mapSeed_ - 100 : 1);
+                    if (in.pressed(Btn::X) || a) setSeed(1 + (now * 2654435761u >> 8) % 99991u);
+                }
+                if (popSel_ == 2 && (step || a) && galaxy_ != 2) fair_ = !fair_;
+                break;
+            case kPopOptions:
+                if (popSel_ == 0 && (step || a)) contested_ = !contested_;
+                if (popSel_ == 1 && (step || a)) freeTrade_ = !freeTrade_;
+                if (popSel_ == 2 && (step || a)) speed_ = (speed_ + (step < 0 ? 3 : 1)) % 4;
+                break;
+            default: break;
+        }
+        if (!usable(popSel_)) popSel_ = n - 1;  // (the row it was on went grey: Done)
+    }
+
+    // ---- the windows' pieces
+    void popFrame(Canvas& c, Rect r, const std::string& title) {
+        hits::clear();  // (the screen under the window doesn't take the mouse)
+        hits::addBackdrop(Rect{0, 0, 640, 446}, [this] { pop_ = kNoPop; });  // (a click beside it closes it)
+        c.fillRect(0, 0, 640, 480, rgb(0, 0, 0), 150);
+        c.fillRect(r.x + 5, r.y + 6, r.w, r.h, rgb(0, 0, 0), 110);
+        drawPanel(c, r, rgb(12, 16, 30), theme::gold, 12, 250);
+        hits::addBlock(r);
+        drawTextAligned(c, FONT_LG, r.x, r.y + 8, r.w, Align::Center, title, theme::gold);
+    }
+    void popRowFrame(Canvas& c, Rect rr, int idx, bool enabled) {
+        if (enabled) hits::add(rr, [this, idx] {
+                if (popSel_ != idx) seedTyped_.clear();
+                popSel_ = idx;
+            });
+        if (popSel_ == idx) c.fillRoundRect(rr.x, rr.y, rr.w, rr.h, 6, theme::panelHi);
+    }
+    // a row with a value that steps (arrows either side of it while it is chosen)
+    void popValueRow(Canvas& c, Rect rr, int idx, const std::string& label, const std::string& value, const std::string& detail,
+                     bool enabled = true) {
+        popRowFrame(c, rr, idx, enabled);
+        const bool sel = popSel_ == idx && enabled;
+        const int ty = detail.empty() ? rr.y + (rr.h - FONT_MDB.lineHeight) / 2 : rr.y + 3;
+        drawText(c, FONT_MDB, rr.x + 12, ty, label, !enabled ? theme::faint : sel ? theme::text : theme::dim);
+        const int right = rr.x + rr.w - 30, vw = textWidth(FONT_MDB, value);
+        drawTextAligned(c, FONT_MDB, rr.x, ty, right - rr.x, Align::Right, value, enabled ? theme::gold : theme::faint);
+        if (!detail.empty())
+            drawTextAligned(c, FONT_XS, rr.x + 12, rr.y + rr.h - 15, right - rr.x - 12, Align::Right, fitText(FONT_XS, detail, rr.w - 50),
+                            theme::faint);
+        if (sel) {
+            drawText(c, FONT_SM, right - vw - 20, ty + 2, "\xE2\x97\x80", theme::dim);
+            drawText(c, FONT_SM, right + 8, ty + 2, "\xE2\x96\xB6", theme::dim);
+            hits::addButton(Rect{right - vw - 26, rr.y, 22, rr.h}, Btn::Left);
+            hits::addButton(Rect{right + 2, rr.y, 26, rr.h}, Btn::Right);
+        }
+    }
+    // a row with a tick box
+    void popTickRow(Canvas& c, Rect rr, int idx, const std::string& label, bool on, const std::string& detail, bool enabled = true) {
+        popRowFrame(c, rr, idx, enabled);
+        const bool sel = popSel_ == idx && enabled;
+        const int bx = rr.x + 12, by = rr.y + (detail.empty() ? (rr.h - 16) / 2 : 5);
+        c.fillRoundRect(bx, by, 16, 16, 3, rgb(8, 10, 18));
+        c.frameRoundRect(bx, by, 16, 16, 3, !enabled ? theme::border : sel ? theme::gold : theme::dim, sel ? 2 : 1);
+        if (on) {
+            const uint32_t tc = enabled ? theme::green : theme::faint;
+            c.line(float(bx + 3), float(by + 8), float(bx + 7), float(by + 12), tc, 2.2f);
+            c.line(float(bx + 7), float(by + 12), float(bx + 13), float(by + 4), tc, 2.2f);
+        }
+        drawText(c, FONT_MDB, bx + 24, by - 1, label, !enabled ? theme::faint : sel ? theme::text : theme::dim);
+        if (!detail.empty()) drawText(c, FONT_XS, bx + 24, by + 18, fitText(FONT_XS, detail, rr.x + rr.w - bx - 30), theme::faint);
+    }
+    void popDone(Canvas& c, Rect b, int idx) {
+        hits::add(b, [this, idx] { popSel_ = idx; });
+        const bool sel = popSel_ == idx;
+        c.fillRoundRect(b.x, b.y, b.w, b.h, 7, sel ? rgb(40, 76, 44) : rgb(22, 40, 28), 245);
+        c.frameRoundRect(b.x, b.y, b.w, b.h, 7, sel ? theme::gold : theme::green, sel ? 2 : 1);
+        drawTextAligned(c, FONT_MDB, b.x, b.y + (b.h - FONT_MDB.lineHeight) / 2, b.w, Align::Center, "Done", sel ? theme::text : theme::green);
+    }
+
+    // ---- the map previews
+    struct Preview {
+        ti::Game g;
+        uint64_t key = ~0ull;
+        bool ok = false;
+        std::vector<int> owner;
+        std::vector<ti::SliceStats> stats;
+        MapView map;
+    };
+    Preview pvPlayers_, pvGalaxy_;
+    // the colours the seats will have - as the game gives them out: the picks, then the classic eight in seat order
+    std::vector<int> seatColours() const {
+        std::vector<int> col(size_t(players_), -1);
+        std::vector<bool> taken(size_t(pcolours::kCount), false);
+        for (int i = 0; i < players_; ++i) {
+            const int c = seats_[size_t(i)].color;
+            if (c >= 0 && c < pcolours::kCount && !taken[size_t(c)]) col[size_t(i)] = c, taken[size_t(c)] = true;
+        }
+        for (int i = 0, next = 0; i < players_; ++i) {
+            if (col[size_t(i)] >= 0) continue;
+            while (next < pcolours::kClassic && taken[size_t(next)]) ++next;
+            col[size_t(i)] = next < pcolours::kClassic ? next : 0;
+            if (next < pcolours::kClassic) taken[size_t(next)] = true;
+        }
+        return col;
+    }
+    // mode 0: a random map (fair or not) from `number`; 1: the board before the draft, with the hands dealt; 2: the seed's
+    // map. Built the way the game builds it, again only when something it depends on changes.
+    void buildMap(Preview& pv, int mode, uint32_t number, bool fair) {
+        const std::vector<int> cols = seatColours();
+        uint64_t key = 1469598103934665603ull;
+        auto mixIn = [&](uint64_t v) { key = (key ^ v) * 1099511628211ull; };
+        mixIn(uint64_t(mode)), mixIn(number), mixIn(fair ? 1 : 0), mixIn(uint64_t(players_)), mixIn(uint64_t(modules_)), mixIn(uint64_t(layout()));
+        for (int i = 0; i < players_; ++i) mixIn(uint64_t(seats_[size_t(i)].faction + 2) * 64u + uint64_t(cols[size_t(i)]));
+        if (key == pv.key) return;
+        pv.key = key;
+        pv.g = ti::Game();
+        pv.g.numPlayers = players_;
+        pv.g.modules = uint8_t(modules_);
+        pv.g.layout = uint8_t(layout());
+        pv.g.players.assign(size_t(players_), ti::Player());
+        std::vector<int> homes(size_t(players_), 0);
         for (int i = 0; i < players_; ++i) {
             const int f = seats_[size_t(i)].faction >= 0 ? seats_[size_t(i)].faction : i % ti::kFactionCount;  // (random seats: a stand-in home)
             homes[size_t(i)] = f;
-            preview_.players[size_t(i)].faction = int8_t(f);
-            preview_.players[size_t(i)].color = int8_t(seats_[size_t(i)].color >= 0 ? seats_[size_t(i)].color : i);
+            pv.g.players[size_t(i)].faction = int8_t(f);
+            pv.g.players[size_t(i)].color = int8_t(cols[size_t(i)]);
         }
-        ti::Rng mr(uint32_t(mapSeed_ * 2654435761u + uint32_t(players_)));  // (exactly as the game seeds it: 32-bit)
+        ti::Rng mr(uint32_t(number * 2654435761u + uint32_t(players_)));  // (a seed: exactly as the game seeds it, 32-bit)
         std::string err;
-        owner_.clear();
-        previewOk_ = ti::buildGalaxy(preview_, mr, homes, &err, true, &owner_);
-        if (previewOk_) {
-            ti::computeAdjacency(preview_);
-            stats_ = ti::sliceStats(preview_, owner_, players_);
-        }
-    }
-    void drawSlices(Canvas& c, uint32_t now) {
-        buildPreview();
-        c.fillRect(0, 0, 640, 480, rgb(6, 8, 16), 235);
-        drawText(c, FONT_LG, 14, 8, "Seed " + std::to_string(mapSeed_), theme::gold);
-        drawTextAligned(c, FONT_XS, 0, 14, 626, Align::Right, std::to_string(players_) + " players \xC2\xB7 each slice balanced", theme::dim);
-        if (!previewOk_) {
-            drawTextAligned(c, FONT_MD, 0, 200, 640, Align::Center, "No legal map for this seed - try another.", theme::red);
-        } else {
-            MapView map;
-            map.setViewport(Rect{8, 38, 340, 330});
-            map.setInfoTiles(false);
-            map.setZoom(0);
-            map.setCursor(preview_, std::max(0, preview_.mecatol()));
-            map.draw(c, preview_, now);
-            // the slices: a coloured dot on each slice tile
-            // (the table on the right: what each seat's five tiles hold)
-            const int tx = 356, tw = 276;
-            int y = 44;
-            const char* heads[] = {"Res", "Inf", "Best", "Pl", "Leg", "Sk", "Wh", "An"};
-            for (int k = 0; k < 8; ++k) drawTextAligned(c, FONT_XS, tx + 100 + k * 22, y, 22, Align::Center, heads[k], theme::dim);
-            y += 14;
-            for (int i = 0; i < players_ && i < int(stats_.size()); ++i) {
-                const SeatSetup& st = seats_[size_t(i)];
-                const uint32_t col = theme::player[preview_.players[size_t(i)].color % 8];
-                c.fillRect(tx, y + 2, 4, 26, col);
-                const std::string who = st.faction >= 0 ? ti::factionShortName(st.faction) : std::string("Random");
-                drawText(c, FONT_SMB, tx + 8, y, fitText(FONT_SMB, "Seat " + std::to_string(i + 1), 90), col);
-                drawText(c, FONT_XS, tx + 8, y + 15, fitText(FONT_XS, who, 90), theme::faint);
-                const ti::SliceStats& ss = stats_[size_t(i)];
-                const int v[8] = {ss.res, ss.inf, ss.optimal, ss.planets, ss.legendary, ss.skips, ss.wormholes, ss.anomalies};
-                for (int k = 0; k < 8; ++k)
-                    drawTextAligned(c, FONT_SMB, tx + 100 + k * 22, y + 7, 22, Align::Center, std::to_string(v[k]), k == 2 ? theme::gold : theme::text);
-                y += 32;
+        pv.owner.clear();
+        pv.stats.clear();
+        if (mode == 1) {
+            pv.ok = ti::startGalaxyDraft(pv.g, mr, homes, &err, !fair);
+            if (pv.ok) {  // what each hand holds
+                pv.stats.assign(size_t(players_), ti::SliceStats());
+                for (int p = 0; p < players_ && p < int(pv.g.draft.hands.size()); ++p)
+                    for (int d : pv.g.draft.hands[size_t(p)]) {
+                        ti::SliceStats& st = pv.stats[size_t(p)];
+                        const ti::SystemDef& sd = ti::kSystems[d];
+                        st.wormholes += sd.wormholes ? 1 : 0;
+                        st.anomalies += sd.anomalies ? 1 : 0;
+                        for (int k = 0; k < sd.planetCount; ++k) {
+                            const ti::PlanetDef& pd = ti::kPlanets[sd.planets[k]];
+                            st.res += pd.res, st.inf += pd.inf, st.optimal += std::max(pd.res, pd.inf);
+                            st.planets += 1, st.legendary += pd.legendary ? 1 : 0, st.skips += pd.skip != ti::TechColor::None ? 1 : 0;
+                        }
+                    }
             }
-            drawWrapped(c, FONT_XS, tx, y + 6, tw,
-                        "Res / Inf: resources and influence of the slice's planets. Best: each planet at its better value. Pl planets, "
-                        "Leg legendary, Sk technology specialties, Wh wormholes, An anomalies. The same seed and number of players "
-                        "always make this map.",
-                        theme::faint);
+        } else {
+            pv.ok = ti::buildGalaxy(pv.g, mr, homes, &err, mode == 2, &pv.owner, mode == 0 && !fair);
+            if (pv.ok) pv.stats = ti::sliceStats(pv.g, pv.owner, players_);
         }
-        drawHintBar(c, {{"\xE2\x97\x80\xE2\x96\xB6", "Seed -/+1"}, {"L1/R1", "-/+100"}, {"X", "New seed"}, {"B", "Back"}});
+        if (pv.ok) ti::computeAdjacency(pv.g);
     }
+    void drawMap(Canvas& c, Preview& pv, Rect area, uint32_t now) {
+        c.fillRoundRect(area.x, area.y, area.w, area.h, 8, rgb(4, 6, 12), 235);
+        if (!pv.ok) {
+            drawTextAligned(c, FONT_MD, area.x, area.y + area.h / 2 - 10, area.w, Align::Center, "No legal map - try another number.", theme::red);
+            return;
+        }
+        pv.map.setInfoTiles(false);
+        pv.map.fitTo(pv.g, area);
+        pv.map.draw(c, pv.g, now);
+    }
+    // each seat's slice (or draft hand): resources, influence, the best of each planet, planets, legendary, wormholes, anomalies
+    void drawSliceTable(Canvas& c, const Preview& pv, int x, int y) {
+        static const char* kHeads[] = {"Res", "Inf", "Best", "Pl", "Leg", "Wh", "An"};
+        constexpr int kColW = 30, kNameW = 92;
+        for (int k = 0; k < 7; ++k) drawTextAligned(c, FONT_XS, x + kNameW + k * kColW, y, kColW, Align::Center, kHeads[k], theme::dim);
+        y += 14;
+        int lo = 1 << 20, hi = -1;
+        for (int i = 0; i < players_ && i < int(pv.stats.size()); ++i) {
+            const ti::SliceStats& st = pv.stats[size_t(i)];
+            const uint32_t col = pcolours::base(pv.g.players[size_t(i)].color);
+            c.fillRect(x, y + 2, 3, 11, col);
+            const SeatSetup& ss = seats_[size_t(i)];
+            const std::string who = "Seat " + std::to_string(i + 1) + (ss.faction >= 0 ? std::string(" ") + ti::factionShortName(ss.faction) : "");
+            drawText(c, FONT_XS, x + 7, y, fitText(FONT_XS, who, kNameW - 10), pcolours::readable(col));
+            const int v[7] = {st.res, st.inf, st.optimal, st.planets, st.legendary, st.wormholes, st.anomalies};
+            for (int k = 0; k < 7; ++k)
+                drawTextAligned(c, FONT_XS, x + kNameW + k * kColW, y, kColW, Align::Center, std::to_string(v[k]), k == 2 ? theme::gold : theme::text);
+            lo = std::min(lo, st.optimal), hi = std::max(hi, st.optimal);
+            y += 14;
+        }
+        if (hi >= 0)
+            drawText(c, FONT_XS, x, y + 3, "Richest and poorest differ by " + std::to_string(hi - lo) + " (Best).", hi - lo >= 6 ? rgb(255, 200, 120) : theme::faint);
+    }
+
+    void drawPop(Canvas& c, uint32_t now) {
+        if (pop_ == kPopPlayers) {
+            const Rect r{40, 12, 560, 432};
+            popFrame(c, r, "Players");
+            popValueRow(c, Rect{56, 46, 528, 32}, 0, "Players", std::to_string(players_), "");
+            popTickRow(c, Rect{56, 82, 528, 40}, 1, "Hyperlanes", hyperlanes_,
+                       players_ == 6 ? "Six players never use them - the same map either way." : hyperlaneDetail());
+            buildMap(pvPlayers_, 0, 2026u, true);
+            drawMap(c, pvPlayers_, Rect{56, 128, 528, 252}, now);
+            const int me = primary();
+            const std::string you = me >= 0 ? "You play the seat at the bottom, in " + std::string(pcolours::info(seatColours()[size_t(me)]).name) + "."
+                                             : "Nobody plays at the device: you watch.";
+            drawTextAligned(c, FONT_XS, 56, 384, 528, Align::Center, "An example map for " + std::to_string(players_) + " players. " + you, theme::faint);
+            popDone(c, Rect{250, 404, 140, 30}, 2);
+            c.fillRect(0, 446, 640, 34, rgb(5, 8, 16));
+            drawHintBar(c, {{"D-PAD", "Move"}, {"\xE2\x97\x80\xE2\x96\xB6", "Change"}, {"A", popSel_ == 2 ? "Done" : "Change"}, {"B", "Done"}});
+        } else if (pop_ == kPopGalaxy) {
+            const Rect r{8, 8, 624, 436};
+            popFrame(c, r, "Galaxy");
+            // the three ways to make the map
+            popRowFrame(c, Rect{18, 44, 250, 36}, 0, true);
+            static const char* kNames[3] = {"Draft", "Random", "Seed"};
+            for (int k = 0; k < 3; ++k) {
+                const Rect b{24 + k * 80, 48, 76, 28};
+                const bool on = galaxy_ == kGalaxyButtons[k];
+                c.fillRoundRect(b.x, b.y, b.w, b.h, 6, on ? theme::gold : rgb(22, 28, 46));
+                c.frameRoundRect(b.x, b.y, b.w, b.h, 6, on ? theme::gold : theme::border, 1);
+                drawTextAligned(c, FONT_SMB, b.x, b.y + 6, b.w, Align::Center, kNames[k], on ? theme::black : theme::text);
+                const int mode = kGalaxyButtons[k];
+                hits::addAction(b, [this, mode] {
+                    galaxy_ = mode;
+                    popSel_ = 0;
+                    seedTyped_.clear();
+                });
+            }
+            const bool seeded = galaxy_ == 2;
+            popValueRow(c, Rect{18, 84, 250, 44}, 1, "Seed", seedTyped_.empty() || popSel_ != 1 ? std::to_string(mapSeed_) : seedTyped_ + "_",
+                        seeded ? keyboardKeys() ? "Type it, or " + keyLabel("L1") + "/" + keyLabel("R1") + " by 100, " + keyLabel("X") + " new"
+                                                : keyLabel("L1") + "/" + keyLabel("R1") + " by 100, " + keyLabel("X") + " a new one"
+                               : "Only for a seeded map",
+                        seeded);
+            popTickRow(c, Rect{18, 132, 250, 44}, 2, "Fair slices", seeded || fair_,
+                       seeded ? "A seeded map is always balanced" : fair_ ? "The most even of many deals" : "The first deal as it falls", !seeded);
+            const char* about = galaxy_ == 1
+                                    ? "Draft: everyone holds 3 blue and 2 red tiles and places them in turn, the speaker first, as in the rulebook. "
+                                      "The map on the right is the board before anyone places a tile; the table is an example of the hands."
+                                : galaxy_ == 0 ? "Random: the map is dealt when the game starts. The map on the right is an example - every game deals its own."
+                                               : "Seed: the number makes the map. The same number and player count always make this same map - "
+                                                 "share it with a friend to play the same galaxy.";
+            int ay = 188;
+            for (const std::string& l : wrapText(FONT_XS, about, 238)) {
+                drawText(c, FONT_XS, 24, ay, l, theme::dim);
+                ay += 13;
+            }
+            if (!seeded)
+                for (const std::string& l : wrapText(FONT_XS, fair_ ? "Fair slices: of many deals the most even one is used - every seat gets about as much."
+                                                                     : "Unbalanced: nothing is evened out - some seats start richer than others.",
+                                                       238)) {
+                    drawText(c, FONT_XS, 24, ay + 6, l, fair_ ? theme::faint : rgb(255, 200, 120));
+                    ay += 13;
+                }
+            popDone(c, Rect{78, 404, 140, 30}, 3);
+            // the map it makes, and its slices
+            buildMap(pvGalaxy_, galaxy_ == 2 ? 2 : galaxy_ == 1 ? 1 : 0, galaxy_ == 2 ? mapSeed_ : 7u, galaxy_ == 2 || fair_);
+            drawMap(c, pvGalaxy_, Rect{278, 44, 344, 226}, now);
+            drawTextAligned(c, FONT_XS, 278, 273, 344, Align::Center,
+                            galaxy_ == 2 ? "Seed " + std::to_string(mapSeed_) + ": the map you will play" : galaxy_ == 1 ? "The board before the draft (an example)" : "An example map",
+                            theme::faint);
+            if (pvGalaxy_.ok) drawSliceTable(c, pvGalaxy_, 282, 288);
+            c.fillRect(0, 446, 640, 34, rgb(5, 8, 16));
+            if (popSel_ == 1) drawHintBar(c, {{"\xE2\x97\x80\xE2\x96\xB6", "Seed -/+1"}, {"L1/R1", "-/+100"}, {"X", "New seed"}, {"B", seedTyped_.empty() ? "Done" : "Delete"}});
+            else drawHintBar(c, {{"D-PAD", "Move"}, {"\xE2\x97\x80\xE2\x96\xB6", "Change"}, {"A", popSel_ == 3 ? "Done" : "Change"}, {"B", "Done"}});
+        } else if (pop_ == kPopOptions) {
+            const Rect r{100, 92, 440, 252};
+            popFrame(c, r, "Game options");
+            popValueRow(c, Rect{116, 130, 408, 44}, 0, "Mecatol Rex", contested_ ? "Contested" : "Calm",
+                        contested_ ? "Bots fight its holder for it - Imperial's points" : "Bots take it only when its holder leaves it open");
+            popValueRow(c, Rect{116, 178, 408, 44}, 1, "Round 1 trade", freeTrade_ ? "Free refills" : "As printed",
+                        freeTrade_ ? "A computer playing Trade refills everyone" : "Trade card as printed in round 1");
+            popValueRow(c, Rect{116, 226, 408, 44}, 2, "AI speed", kSpeedNames[speed_], "How fast the computer players' turns are shown");
+            popDone(c, Rect{250, 290, 140, 32}, 3);
+            c.fillRect(0, 446, 640, 34, rgb(5, 8, 16));
+            drawHintBar(c, {{"D-PAD", "Move"}, {"\xE2\x97\x80\xE2\x96\xB6", "Change"}, {"A", popSel_ == 3 ? "Done" : "Change"}, {"B", "Done"}});
+        }
+    }
+
     void drawWrapped(Canvas& c, const FontData& f, int x, int y, int w, const std::string& s, uint32_t col) {
         for (const std::string& l : wrapText(f, s, w)) {
             drawText(c, f, x, y, l, col);
@@ -834,7 +1141,7 @@ public:
         int personNo = 1;
         for (int i = 0; i < players_; ++i) {
             const SeatSetup& s = seats_[size_t(i)];
-            const bool rowSel = i == seatSel_;
+            const bool rowSel = i == seatSel_ && !onConfirm_;
             if (rowSel) c.fillRoundRect(r.x + 6, y, r.w - 12, rowH - 3, 6, theme::panelHi);
             const int ty = y + (rowH - 3) / 2 - FONT_SMB.lineHeight / 2;
             drawText(c, FONT_SMB, r.x + 12, ty - (i == bottom ? 6 : 0), std::to_string(i + 1), theme::dim);
@@ -843,6 +1150,7 @@ public:
                 hits::add(Rect{kX[col], y, kX[col + 1] - kX[col] - 4, rowH - 3}, [this, i, col]() {
                     seatSel_ = i;
                     colSel_ = col;
+                    onConfirm_ = false;
                 });
             auto cell = [&](int col, const std::string& text, uint32_t colour, int iconFaction = -1) {
                 const int x = kX[col], w = kX[col + 1] - kX[col] - 4;
@@ -861,8 +1169,11 @@ public:
                 const int x = kX[kColour];
                 if (rowSel && colSel_ == kColour) c.frameRoundRect(x, y + 2, kX[kColour + 1] - x - 4, rowH - 7, 5, theme::gold, 2);
                 if (s.color >= 0) {
-                    c.fillCircle(float(x + 16), float(y + (rowH - 3) / 2), 8.f, theme::player[s.color]);
-                    drawText(c, FONT_SM, x + 28, ty + 1, theme::playerColorName[s.color], theme::text);
+                    {
+                        pcolours::Finish fin(c, pcolours::around(float(x + 16), float(y + (rowH - 3) / 2), 9.f, 9.f), s.color, uint32_t(i) * 5u);
+                        c.fillCircle(float(x + 16), float(y + (rowH - 3) / 2), 8.f, pcolours::base(s.color));
+                    }
+                    drawText(c, FONT_SM, x + 28, ty + 1, fitText(FONT_SM, pcolours::info(s.color).brief, kX[kColour + 1] - x - 32), theme::text);
                 } else {
                     drawText(c, FONT_SMB, x + 6, ty, "Auto", theme::dim);
                 }
@@ -871,15 +1182,25 @@ public:
                 cell(kLevel, "-", theme::faint);
                 cell(kPers, "-", theme::faint);
             } else {
-                cell(kLevel, kLevels[s.level], s.level == 3 ? theme::gold : theme::text);
-                cell(kPers, s.arch < 0 ? "Random" : kArchetypes[s.arch].name, s.arch < 0 ? theme::dim : theme::text);
+                cell(kLevel, kLevels[s.level], levelColour(s.level));
+                if (s.level >= kAiLevelAI) cell(kPers, "None", theme::faint);
+                else cell(kPers, s.arch < 0 ? "Random" : kArchetypes[s.arch].name, s.arch < 0 ? theme::dim : theme::text);
             }
             y += rowH;
+        }
+        // the Confirm button (0.62.1), above the line that says what the selection means
+        {
+            const Rect b{r.x + r.w / 2 - 90, r.y + r.h - 86, 180, 30};
+            hits::add(b, [this] { onConfirm_ = true; });  // (pointing at it selects it; a click confirms)
+            const float pulse = 0.5f + 0.5f * std::sin(float(pcolours::now() % 1500) / 1500.f * 6.2831853f);
+            c.fillRoundRect(b.x, b.y, b.w, b.h, 7, onConfirm_ ? rgb(40, 76, 44) : rgb(22, 40, 28), 245);
+            c.frameRoundRect(b.x, b.y, b.w, b.h, 7, onConfirm_ ? mix(theme::goldDim, theme::gold, int(pulse * 255)) : theme::green, onConfirm_ ? 2 : 1);
+            drawTextAligned(c, FONT_MDB, b.x, b.y + (b.h - FONT_MDB.lineHeight) / 2, b.w, Align::Center, "Confirm", onConfirm_ ? theme::text : theme::green);
         }
         // what the selected cell means
         const SeatSetup& s = seats_[size_t(seatSel_)];
         std::string info;
-        switch (Col(colSel_)) {
+        switch (onConfirm_ ? kCols : Col(colSel_)) {
             case kWho:
                 info = s.human ? (seatSel_ == me ? "You play this seat."
                                                  : "Another person plays this seat at the same device (hot-seat): the game asks you to pass it over before their turns.")
@@ -892,24 +1213,260 @@ public:
                            (s.tribunii < 0 ? "the Mentak, the Xxcha or the Argent Flight - one not in the game." : std::string(kFactions[s.tribunii].name) + ".");
                 else info = std::string(kFactions[s.faction].name) + ".";
                 break;
-            case kColour: info = s.color < 0 ? "Auto: the next colour nobody picked." : "Each colour can be used by one seat only."; break;
+            case kColour:
+                info = s.color < 0                       ? "Auto: the next of the classic eight colours nobody picked."
+                       : s.color >= pcolours::kClassic ? std::string(pcolours::info(s.color).name) + ": " + pcolours::info(s.color).look + "."
+                                                        : "Each colour can be used by one seat only.";
+                break;
             case kLevel: info = s.human ? "Difficulty is for computer players." : kLevelInfo[s.level]; break;
             case kPers:
                 info = s.human ? "Personalities are for computer players."
+                       : s.level >= kAiLevelAI ? "The A.I. has no personality: no archetype, grudges or betrayals. Every move is chosen to win."
                                : s.arch < 0 ? (s.level == 3 ? "Random: any archetype but Rusher and Chaotic (Competitive bots). Hidden until the end of round 3."
                                                             : "Random: any of the ten archetypes, Chaotic included. Hidden until the end of round 3.")
                                             : std::string(kArchetypes[s.arch].blurb) + ".";
                 break;
             default: break;
         }
+        if (onConfirm_) info = "Keep these seats and go back to the New Game screen.";
         auto lines = wrapText(FONT_SM, info, r.w - 40);
         int yy = r.y + r.h - 12 - int(std::min<size_t>(2, lines.size())) * 16;
         for (size_t k = 0; k < lines.size() && k < 2; ++k) {
             drawTextAligned(c, FONT_SM, r.x, yy, r.w, Align::Center, lines[k], theme::text);
             yy += 16;
         }
-        drawHintBar(c, {{"D-PAD", "Move"}, {"A", "Next"}, {"Y", "Previous"}, {"X", "Random"}, {"B", "Done"}});
+        if (onConfirm_) drawHintBar(c, {{"D-PAD", "Move"}, {"A", "Confirm"}, {"B", "Done"}});
+        else drawHintBar(c, {{"D-PAD", "Move"}, {"A", "Choose"}, {"Y", "Previous"}, {"X", "Random"}, {"B", "Done"}});
     }
+
+    // ---------------------------------------------------------------- 0.61.4: the option windows
+    // Owner's document: "When a color, difficulty, or personality is to be chosen, have a small window open over the respective field
+    // to allow the player to choose from a menu of their options." A on the cell (or a click) opens it under the cell; the D-pad / the
+    // mouse point, A (a click) takes one, B (or a click beside it) closes it. Taken colours are greyed with the seat that has them.
+    struct Opt {
+        int value = 0;
+        std::string label, sub;
+        bool enabled = true;
+        int swatch = -1;     // a colour's index
+        std::string detail;  // (colours) what it is, under the grid
+        bool lockedSwatch = false;  // (0.80.0) not earned yet: still highlighted to read why
+    };
+    void openOpt() {
+        opts_.clear();
+        const SeatSetup& s = seats_[size_t(seatSel_)];
+        int cur = 0;
+        optCol_ = colSel_;
+        if (colSel_ == kColour) {
+            opts_.push_back({-1, "Auto", "", true, -1, "The next of the classic eight colours nobody picked."});
+            for (int c = 0; c < pcolours::kCount; ++c) {  // (0.62.0: index 1..8 the classic colours, then the new ones; 0.75.0: 24)
+                Opt o{c, pcolours::info(c).name, "", colourFree(c, seatSel_), c,
+                      c >= pcolours::kClassic ? std::string(pcolours::info(c).look) + "." : "One of the classic colours."};
+                if (!profile::colourUnlocked(c)) {  // 0.80.0: locked until its league is finished
+                    o.sub = "locked";
+                    o.detail = std::string(pcolours::info(c).look) + ". Locked: " + profile::colourSource(c) + " to earn it.";
+                    o.lockedSwatch = true;
+                }
+                if (!o.enabled)
+                    for (int i = 0; i < players_; ++i)
+                        if (i != seatSel_ && seats_[size_t(i)].color == c) o.sub = "seat " + std::to_string(i + 1);
+                opts_.push_back(o);
+            }
+            for (size_t k = 0; k < opts_.size(); ++k)
+                if (opts_[k].value == s.color) cur = int(k);
+            optLastCol_ = s.color >= 0 ? s.color / pcolours::kClassic : 0;
+        } else if (colSel_ == kLevel) {
+            for (int l = 0; l < kLevelCount; ++l) opts_.push_back({l, kLevels[l], kLevelInfo[l], true, -1});
+            cur = s.level;
+        } else {
+            opts_.push_back({-1, "Random", s.level == 3 ? "Any but Rusher and Chaotic (Competitive bots)" : "Any of the ten", true, -1});
+            for (int a = 0; a < int(Arch::Count); ++a) opts_.push_back({a, kArchetypes[a].name, kArchetypes[a].blurb, true, -1});
+            for (size_t k = 0; k < opts_.size(); ++k)
+                if (opts_[k].value == s.arch) cur = int(k);
+        }
+        optSel_ = cur;
+        optSeat_ = seatSel_;
+        optOpen_ = true;
+    }
+    // (0.80.0) a locked colour can be highlighted - to read how it is earned - but not taken
+    bool seeable(int k) const { return k >= 0 && k < int(opts_.size()) && (opts_[size_t(k)].enabled || opts_[size_t(k)].lockedSwatch); }
+    void takeOpt() {
+        const Opt& o = opts_[size_t(optSel_)];
+        if (!o.enabled) return;
+        SeatSetup& s = seats_[size_t(optSeat_)];
+        if (optCol_ == kColour) s.color = o.value;
+        else if (optCol_ == kLevel) s.level = o.value;
+        else s.arch = o.value;
+        optOpen_ = false;
+        audio::play(audio::Sfx::Confirm);
+    }
+    void updateOpt(const Input& in) {
+        const int n = int(opts_.size());
+        auto step = [&](int d) {
+            for (int k = 0; k < n; ++k) {
+                optSel_ = (optSel_ + d + n) % n;
+                if (opts_[size_t(optSel_)].enabled) break;
+            }
+        };
+        if (optCol_ == kColour) {  // (0.62.0) Auto on top, then columns of eight: the classic colours, then the new ones (0.75.0: 3)
+            constexpr int kRows = pcolours::kClassic, kColourCols = pcolours::kCount / pcolours::kClassic;
+            auto colOf = [](int k) { return k <= 0 ? 0 : (k - 1) / kRows; };
+            auto rowOf = [](int k) { return k == 0 ? -1 : (k - 1) % kRows; };
+            auto idx = [](int col, int row) { return row < 0 ? 0 : 1 + col * kRows + row; };
+            const int cur = optSel_;
+            int col = cur == 0 ? optLastCol_ : colOf(cur), row = rowOf(cur);
+            auto vert = [&](int d) {
+                for (int k = 0; k < kRows + 1; ++k) {
+                    row += d;
+                    if (row >= kRows) row = -1;
+                    if (row < -1) row = kRows - 1;
+                    if (seeable(idx(col, row))) return;
+                }
+            };
+            if (in.pressed(Btn::Up)) vert(-1);
+            if (in.pressed(Btn::Down)) vert(1);
+            if ((in.pressed(Btn::Left) || in.pressed(Btn::Right)) && row >= 0) {
+                const int other = (col + (in.pressed(Btn::Right) ? 1 : kColourCols - 1)) % kColourCols;
+                for (int d = 0; d < kRows; ++d) {  // the same row in the other column, or the nearest free one
+                    const int r1 = row - d, r2 = row + d;
+                    if (r1 >= 0 && seeable(idx(other, r1))) { col = other, row = r1; break; }
+                    if (r2 < kRows && seeable(idx(other, r2))) { col = other, row = r2; break; }
+                }
+            }
+            optSel_ = idx(col, row);
+            if (row >= 0) optLastCol_ = col;
+        } else {
+            if (in.pressed(Btn::Up)) step(-1);
+            if (in.pressed(Btn::Down)) step(1);
+        }
+        if (in.pressed(Btn::A) || in.pressed(Btn::Start)) takeOpt();
+        else if (in.pressed(Btn::B) || in.pressed(Btn::Menu)) optOpen_ = false;
+    }
+    // the window, under the cell it was opened from (above it when there is no room)
+    void drawOpt(Canvas& c, uint32_t now) {
+        static const int kX[kCols + 1] = {58, 150, 330, 418, 526, 620};
+        const bool pers = optCol_ == kPers, colour = optCol_ == kColour;
+        const int rowH = colour ? 22 : pers ? 22 : 36;
+        const int w = colour ? 466 : pers ? 236 : 292;  // (0.75.0: three columns of colours)
+        const int detailH = pers ? 46 : colour ? 32 : 0;
+        const int h = colour ? 28 + 24 + 14 + rowH * pcolours::kClassic + detailH + 6 : 30 + rowH * int(opts_.size()) + detailH + 8;
+        const int rowsTop = 56, rowsH = players_ > 6 ? 34 : 40;
+        const int cellY = 8 + rowsTop + optSeat_ * rowsH;
+        int x = std::min(640 - w - 6, std::max(6, kX[optCol_] - (w - (kX[optCol_ + 1] - kX[optCol_])) / 2));
+        int y = cellY + rowsH;
+        if (y + h > 446) y = std::max(6, cellY - h - 2);
+        if (y + h > 446) y = std::max(6, 446 - h);
+        if (y < cellY + rowsH && y + h > cellY) {  // no room above or below: beside the cell (left of its column), level with it
+            x = kX[optCol_] - w - 6 >= 6 ? kX[optCol_] - w - 6 : std::min(640 - w - 6, kX[optCol_ + 1] + 6);
+            y = std::min(446 - h, std::max(6, cellY + rowsH / 2 - h / 2));
+        }
+        hits::clear();  // (the table under the window doesn't take the mouse)
+        hits::addBackdrop(Rect{0, 0, 640, 446}, [this] { optOpen_ = false; });  // (a click beside it closes it)
+        c.fillRect(0, 0, 640, 480, rgb(0, 0, 0), 90);
+        c.fillRect(x + 4, y + 5, w, h, rgb(0, 0, 0), 120);
+        drawPanel(c, Rect{x, y, w, h}, rgb(12, 16, 30), theme::gold, 10, 250);
+        hits::addBlock(Rect{x, y, w, h});
+        const char* title = colour ? "Colour" : pers ? "Personality" : "Difficulty";
+        drawText(c, FONT_SMB, x + 12, y + 7, std::string(title) + " - seat " + std::to_string(optSeat_ + 1), theme::gold);
+        int ry = y + 28;
+        if (colour) {  // (0.62.0) Auto across the top, the classic colours on the left, the new ones beside them (0.75.0: two columns)
+            constexpr int kColourCols = pcolours::kCount / pcolours::kClassic;
+            const int colW = (w - 12 - 6 * (kColourCols - 1)) / kColourCols;
+            auto cellOf = [&](size_t k) {
+                if (k == 0) return Rect{x + 6, y + 28, w - 12, 22};
+                const int col = (int(k) - 1) / pcolours::kClassic, row = (int(k) - 1) % pcolours::kClassic;
+                return Rect{x + 6 + col * (colW + 6), y + 28 + 24 + 14 + row * rowH, colW, rowH - 2};
+            };
+            drawText(c, FONT_XS, x + 14, y + 28 + 24 + 1, "Classic", theme::faint);
+            drawText(c, FONT_XS, x + 12 + colW + 8, y + 28 + 24 + 1, "New", theme::faint);
+            for (size_t k = 0; k < opts_.size(); ++k) {
+                const Opt& o = opts_[k];
+                const bool sel = int(k) == optSel_;
+                const Rect rr = cellOf(k);
+                if (o.enabled || o.lockedSwatch) hits::add(rr, [this, k] { optSel_ = int(k); });
+                if (sel) {
+                    const float pulse = 0.5f + 0.5f * std::sin(float(now % 1500) / 1500.f * 6.2831853f);
+                    c.fillRoundRect(rr.x, rr.y, rr.w, rr.h, 5, rgb(34, 44, 72), 240);
+                    c.frameRoundRect(rr.x, rr.y, rr.w, rr.h, 5, mix(theme::goldDim, theme::gold, int(pulse * 255)), 1);
+                }
+                const uint32_t tc = !o.enabled ? theme::faint : sel ? theme::text : rgb(190, 196, 212);
+                int tx = rr.x + 8;
+                if (o.swatch >= 0) {
+                    {
+                        pcolours::Finish fin(c, pcolours::around(float(tx + 7), float(rr.y + rr.h / 2), 8.f, 8.f), o.enabled ? o.swatch : -1, uint32_t(k) * 7u);
+                        c.fillCircle(float(tx + 7), float(rr.y + rr.h / 2), 7.f, pcolours::base(o.swatch), o.enabled ? 255 : 90);
+                    }
+                    c.ring(float(tx + 7), float(rr.y + rr.h / 2), 7.5f, 1.f, rgb(10, 10, 16));
+                    if (o.lockedSwatch) {  // (0.80.0) a small padlock on it
+                        const float px = float(tx + 7), py = float(rr.y + rr.h / 2);
+                        c.ring(px, py - 2.f, 2.6f, 1.2f, rgb(210, 214, 228));
+                        c.fillRoundRect(int(px - 3.5f), int(py - 1.f), 7, 6, 1, rgb(210, 214, 228));
+                    }
+                    tx += 20;
+                }
+                const int subW = o.sub.empty() ? 0 : textWidth(FONT_XS, o.sub) + 6, room = rr.x + rr.w - tx - 4 - subW;
+                const FontData& lf = textWidth(FONT_SMB, o.label) <= room ? FONT_SMB : FONT_SM;  // (Luminescent Green: a size down)
+                drawText(c, lf, tx, rr.y + (&lf == &FONT_SMB ? 3 : 4), fitText(lf, o.label, room), tc);
+                if (!o.sub.empty()) drawTextAligned(c, FONT_XS, rr.x, rr.y + 6, rr.w - 6, Align::Right, o.sub, theme::faint);
+            }
+            const int dy = y + 28 + 24 + 14 + rowH * pcolours::kClassic + 2;  // what the highlighted one is
+            c.hline(x + 10, x + w - 10, dy, theme::border);
+            if (optSel_ >= 0 && optSel_ < int(opts_.size())) {
+                const Opt& o = opts_[size_t(optSel_)];
+                int ly = dy + 4;
+                for (const std::string& l : wrapText(FONT_XS, o.detail, w - 24)) {
+                    if (ly > y + h - 12) break;
+                    drawText(c, FONT_XS, x + 12, ly, l, theme::dim);
+                    ly += 13;
+                }
+            }
+            c.fillRect(0, 446, 640, 34, rgb(5, 8, 16));
+            drawHintBar(c, {{"D-PAD", "Choose"}, {"A", "Take it"}, {"B", "Back"}});
+            return;
+        }
+        for (size_t k = 0; k < opts_.size(); ++k) {
+            const Opt& o = opts_[k];
+            const bool sel = int(k) == optSel_;
+            const Rect rr{x + 6, ry, w - 12, rowH - 2};
+            if (o.enabled) hits::add(rr, [this, k] { optSel_ = int(k); });
+            if (sel) {
+                const float pulse = 0.5f + 0.5f * std::sin(float(now % 1500) / 1500.f * 6.2831853f);
+                c.fillRoundRect(rr.x, rr.y, rr.w, rr.h, 5, rgb(34, 44, 72), 240);
+                c.frameRoundRect(rr.x, rr.y, rr.w, rr.h, 5, mix(theme::goldDim, theme::gold, int(pulse * 255)), 1);
+            }
+            const uint32_t tc = !o.enabled ? theme::faint : sel ? theme::text : rgb(190, 196, 212);
+            int tx = rr.x + 8;
+            if (colour) {
+                if (o.swatch >= 0) {
+                    c.fillCircle(float(tx + 7), float(rr.y + rr.h / 2), 7.f, pcolours::base(o.swatch), o.enabled ? 255 : 90);
+                    c.ring(float(tx + 7), float(rr.y + rr.h / 2), 7.5f, 1.f, rgb(10, 10, 16));
+                }
+                tx += 22;
+                drawText(c, FONT_SMB, tx, rr.y + 3, o.label, tc);
+                if (!o.sub.empty())
+                    drawTextAligned(c, FONT_XS, rr.x, rr.y + 6, rr.w - 8, Align::Right, o.enabled && o.swatch < 0 ? "" : o.sub, theme::faint);
+            } else if (pers) {
+                drawText(c, FONT_SMB, tx, rr.y + 2, o.label, tc);
+            } else {
+                drawText(c, FONT_SMB, tx, rr.y + 2, o.label, o.value == 3 && o.enabled ? (sel ? theme::gold : theme::goldDim) : tc);
+                drawText(c, FONT_XS, tx, rr.y + 19, fitText(FONT_XS, o.sub, rr.w - 16), sel ? theme::dim : theme::faint);
+            }
+            ry += rowH;
+        }
+        if (pers && optSel_ >= 0 && optSel_ < int(opts_.size())) {  // the highlighted personality, in a line or two
+            c.hline(x + 10, x + w - 10, ry + 2, theme::border);
+            int ly = ry + 6;
+            for (const std::string& l : wrapText(FONT_XS, opts_[size_t(optSel_)].sub, w - 24)) {
+                if (ly > y + h - 12) break;
+                drawText(c, FONT_XS, x + 12, ly, l, theme::dim);
+                ly += 13;
+            }
+        }
+        c.fillRect(0, 446, 640, 34, rgb(5, 8, 16));  // (the table's own hints don't show through)
+        drawHintBar(c, {{"\xE2\x96\xB2\xE2\x96\xBC", "Choose"}, {"A", "Take it"}, {"B", "Back"}});
+    }
+    std::vector<Opt> opts_;
+    bool optOpen_ = false;
+    int optSel_ = 0, optSeat_ = 0, optCol_ = 0, optLastCol_ = 0;
 
 private:
     std::vector<std::pair<int, int>> factions_;  // (faction, Keleres home: -1 = random)
@@ -918,16 +1475,13 @@ private:
     bool hyperlanes_ = true; // Hyperlanes: On / Off (0.58.0, Setup::layout 0 / 1)
     int galaxy_ = 1;              // 0 Random, 1 Draft, 2 Seeded (0.43.0)
     uint32_t mapSeed_ = 1;
-    bool slicesOpen_ = false, previewOk_ = false;
-    uint64_t previewKey_ = 0;
-    ti::Game preview_;
-    std::vector<int> owner_;
-    std::vector<ti::SliceStats> stats_;
+    bool fair_ = true;  // (0.63.0) Galaxy: "Fair slices" - off = Setup::unbalanced
     int modules_ = 1;
     int sel_ = kStart, players_ = 6, vp_ = 10, speed_ = 1, myColor_ = 0;
     bool first_ = true;
     bool menuOpen_ = false;
     int seatSel_ = 0, colSel_ = kFaction;
+    bool onConfirm_ = false;  // (0.62.1) the Confirm button has the focus
     std::array<SeatSetup, 8> seats_{};
     std::string error_;
 };

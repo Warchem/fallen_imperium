@@ -221,6 +221,20 @@ float spaceOdds(const Game& g, int p) {
 }
 }  // namespace
 
+bool aiRohdhnaFactory(const Game& g, int p, bool money) {
+    if (p < 0 || p >= g.numPlayers || !isFaction(g, p, "rohdhna")) return false;
+    if (g.round < 2 && aiTune("rhind", 0.f) <= 0.f) return false;
+    if (unitsForPlacement(g, p, UnitType::WarSun) <= 0 || unitsAvailable(g, p, UnitType::SpaceDock) <= 0) return false;
+    if (money && spendable(g, p, false) < 6) return false;
+    const Player& me = g.players[size_t(p)];
+    for (int x : controlledPlanets(g, p)) {
+        const int s = g.planets[size_t(x)].system;
+        if (s == me.homeSystem || otherShipsIn(g, p, s) || g.planets[size_t(x)].units[size_t(p)].count(UnitType::SpaceDock)) continue;
+        return true;
+    }
+    return false;
+}
+
 bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
     const int p = d.player;
     if (p < 0 || p >= g.numPlayers) return false;
@@ -642,7 +656,27 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
             return true;
         case Ab::DsIndustrious:
             if (yn) {
-                out = yes(g.round >= 2);
+                // (balance pass 0.66.0 - knob rhnoind, ON: the bots don't use Industrious) a war sun from a dock is Terrafactory I -
+                // it can't move: 6 resources tied to one system. Every way of using it more cost the bots wins (see ai.cpp
+                // ConstructionChoice: 31-35 wins against 39 in 360 games); never using it, with rhrecycle (630 games in four
+                // samples): 76 wins / 6.81 VP against 70 / 6.66 - only on the front (rhfront) 73 / 6.76. rhnoind=0 = the old
+                // way (yes from round 2; test knob rhind: round 1 too)
+                out = yes((g.round >= 2 || aiTune("rhind", 0.f) > 0.f) && aiTune("rhnoind", 1.f) <= 0.f);
+                // (balance pass 0.66.0 - test knob rhfront, OFF) only on the front: other players' ships within 2 systems of the
+                // dock, where a war sun that can't move still fights
+                if (aiTune("rhfront", 0.f) > 0.f) {
+                    int sys = -1;
+                    for (int x : controlledPlanets(g, p))
+                        if (g.planets[size_t(x)].units[size_t(p)].count(UnitType::SpaceDock) &&
+                            d.prompt.find(std::string(" on ") + kPlanets[g.planets[size_t(x)].def].name + " into") != std::string::npos)
+                            sys = g.planets[size_t(x)].system;
+                    bool front = false;
+                    if (sys >= 0)
+                        for (int s : systemsWithin(g, sys, 2))
+                            for (int q = 0; q < g.numPlayers; ++q)
+                                if (q != p && g.systems[size_t(s)].space[size_t(q)].nonFighterShips() > 0) front = true;
+                    out = yes(g.round >= 2 && front);
+                }
                 return true;
             }
             return false;
@@ -749,6 +783,21 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
             if (pick < 0 && mechAbilities(g) && unitsAvailable(g, p, UnitType::Mech) > 0 && has(d, int(UnitType::Cruiser)) &&
                 threatNear(g, p, sys) == 0 && f.nonFighterShips() >= 2 && g.round >= 2)
                 pick = int(UnitType::Cruiser);
+            // (balance pass 0.66.0 - knob rhrecycle, ON; used 7 times in 45 games before) the guide: "recycle the carriers you no
+            // longer need" - from round 3 an empty carrier with no free planet within 2 systems comes back as 2 trade goods (and
+            // the Autofabricator's mech); a damaged dreadnought whatever the trade goods. Tested (540 games in three samples):
+            // 68 wins / 6.71 VP against 65 / 6.65 - small; with rhnoind see Industrious above. 0 = the old way
+            if (pick < 0 && aiTune("rhrecycle", 1.f) > 0.f) {
+                if (has(d, int(UnitType::Dreadnought)) && f.damaged(UnitType::Dreadnought)) pick = int(UnitType::Dreadnought);
+                else if (has(d, int(UnitType::Carrier)) && g.round >= 3 && threatNear(g, p, sys) == 0 &&
+                         f.count(UnitType::Infantry) + f.count(UnitType::Mech) == 0 && unitsOnBoard(g, p, UnitType::Carrier) >= 2) {
+                    bool freePlanet = false;
+                    for (int s2 : systemsWithin(g, sys, 2))
+                        for (int16_t x : g.systems[size_t(s2)].planets)
+                            if (g.planets[size_t(x)].owner < 0 && !g.planets[size_t(x)].destroyed) freePlanet = true;
+                    if (!freePlanet) pick = int(UnitType::Carrier);
+                }
+            }
             out = one(pick);
             return true;
         }
@@ -1219,7 +1268,23 @@ bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
             {
                 float best = 0;
                 for (int16_t c : g.actionDiscard) best = std::max(best, aiCardKeepValue(c));
-                out = one(has(d, 1) && best >= 3.f ? 1 : has(d, 2) && int(me.actionCards.size()) >= actionCardLimit(g, p) - 1 ? 2 : 0);
+                const bool full = int(me.actionCards.size()) >= actionCardLimit(g, p) - 1;
+                // (balance pass 0.66.0 - knob cyauto, ON at 3) a card from the discard pile is followed by Cybernetic Madness's
+                // discard: it swaps a card, it adds none (214 of 315 choices before, always Sabotage / Direct Hit / Shields
+                // Holding). 1 = draw them all (the infantry when the hand is full); 2 = the infantry, the pile only for a junk card
+                // in hand; 3 = the infantry in rounds 1-3, then as 1. Tested (Competitive 6p, TE + DS, Cymiae in seat 0, three
+                // samples of 180 games): the old way 9 / 9 / 13 wins (5.7%, VP 6.15); 1: 16 / 17; 2: 22 / 13 / 18 (9.8%, 6.39);
+                // 3: 28 / 16 / 16 (11.1%, 6.48) - 0 = the old way
+                const int mode = int(aiTune("cyauto", 3.f));
+                if (mode > 0) {
+                    float worst = 99.f;
+                    for (int16_t c : me.actionCards) worst = std::min(worst, aiCardKeepValue(c));
+                    if (mode == 2 && has(d, 1) && best >= 3.f && worst <= 1.f) out = one(1);
+                    else if (mode == 2 || (mode == 3 && g.round <= 3)) out = one(has(d, 2) ? 2 : 0);
+                    else out = one(full && has(d, 2) ? 2 : 0);
+                    return true;
+                }
+                out = one(has(d, 1) && best >= 3.f ? 1 : has(d, 2) && full ? 2 : 0);
             }
             return true;
         case Ab::DsRecursiveWorm: {  // a rival's token where their fleet next door could hit us

@@ -57,7 +57,7 @@ std::vector<Option> osphaOptions(const Game& g, int p) {
             for (int u : kShipIdx) {
                 if (u == t || u == int(UnitType::Fighter)) continue;
                 const int cu = unitCost2(g, p, UnitType(u));
-                if (cu <= c || cu > c + 4 || unitsAvailable(g, p, UnitType(u)) <= 0) continue;
+                if (cu <= c || cu > c + 4 || unitsForPlacement(g, p, UnitType(u)) <= 0) continue;
                 o.push_back({int(s) * 256 + t * 16 + u,
                              sysLabel2(g, int(s)) + ": " + unitTypeName(UnitType(t)) + " -> " + unitTypeName(UnitType(u)),
                              std::to_string((cu + 1) / 2) + " resources instead of " + std::to_string((c + 1) / 2)});
@@ -202,7 +202,7 @@ void Rules::mitosis() {
     for (int p : initiativeOrder(G)) {
         if (!fac(p, "arborec")) continue;
         const bool inf = unitsAvailable(G, p, UnitType::Infantry) > 0;
-        const bool mech = unitsAvailable(G, p, UnitType::Mech) > 0 && mechAbilities(G);  // (Letani Behemoth: Deploy)
+        const bool mech = unitsForPlacement(G, p, UnitType::Mech) > 0 && mechAbilities(G);  // (Letani Behemoth: Deploy)
         std::vector<Option> opts;
         for (int x : controlledPlanets(G, p)) {
             if (isDMZ(G, x) || G.planets[x].destroyed) continue;
@@ -411,7 +411,7 @@ void Rules::afterActivation2(int p, int sys) {
     if (G.fixes >= 26) {
         const int Lz = playerOfFaction(G, "l1z1x");
         if (Lz >= 0 && Lz != p && canUseAgent(Lz, "l1z1x") && (G.players[size_t(Lz)].human || G.agentFor[size_t(Lz)] == p) &&
-            unitsAvailable(G, p, UnitType::Mech) > 0) {
+            unitsForPlacement(G, p, UnitType::Mech) > 0) {
             std::vector<Option> opts;
             if (G.systems[sys].space[p].count(UnitType::Infantry)) opts.push_back({-2, "Infantry in space", ""});
             for (int16_t x : G.systems[sys].planets)
@@ -422,6 +422,7 @@ void Rules::afterActivation2(int p, int sys) {
             curFor_ = -1;
             if (yes) {
                 int where = opts.size() == 1 ? opts[0].id : fpick(p, Ab::L1Z1XAgent, "I48S: replace which infantry with a mech?", opts);
+                if (!pieceFor(p, UnitType::Mech, sys)) return;  // (fixes 33, LRR 23.4a: no mech in the box and none taken back)
                 spendAgent(Lz, "l1z1x");
                 agentUsedFor(Lz, p);
                 Force& f = where == -2 ? G.systems[sys].space[p] : G.planets[where].units[p];
@@ -431,7 +432,7 @@ void Rules::afterActivation2(int p, int sys) {
             }
         }
     }
-    if (canUseAgent(p, "l1z1x") && unitsAvailable(G, p, UnitType::Mech) > 0) {
+    if (canUseAgent(p, "l1z1x") && unitsForPlacement(G, p, UnitType::Mech) > 0) {
         std::vector<Option> opts;
         if (G.systems[sys].space[p].count(UnitType::Infantry)) opts.push_back({-2, "Infantry in space", ""});
         for (int16_t x : G.systems[sys].planets)
@@ -439,6 +440,7 @@ void Rules::afterActivation2(int p, int sys) {
         if (!opts.empty() &&
             fyes(p, Ab::L1Z1XAgent, "Exhaust I48S to swap 1 infantry here for a mech?", leaderText(findLeader("l1z1xagent")))) {
             int where = opts.size() == 1 ? opts[0].id : fpick(p, Ab::L1Z1XAgent, "I48S: swap which infantry?", opts);
+            if (!pieceFor(p, UnitType::Mech, sys)) return;  // (fixes 33, LRR 23.4a)
             spendAgent(p, "l1z1x");
             Force& f = where == -2 ? G.systems[sys].space[p] : G.planets[where].units[p];
             f.remove(UnitType::Infantry, 1, false);
@@ -614,7 +616,7 @@ void Rules::zeuTE(int who, int sys) {
 void Rules::iconoclastTE(int gainer) {
     if (!teNaalu(G) || !mechAbilities(G) || G.phase == Phase::Setup) return;
     for (int n : initiativeOrder(G)) {
-        if (n == gainer || !fac(n, "naalu") || G.players[size_t(n)].eliminated || unitsAvailable(G, n, UnitType::Mech) <= 0) continue;
+        if (n == gainer || !fac(n, "naalu") || G.players[size_t(n)].eliminated || unitsForPlacement(G, n, UnitType::Mech) <= 0) continue;
         std::vector<Option> opts;
         for (int x : controlledPlanets(G, n))
             if (!G.planets[size_t(x)].destroyed && !isDMZ(G, x)) opts.push_back({x, planetName(x), ""});
@@ -637,7 +639,7 @@ bool Rules::assimilate(int planet, int p, int old) {
         int k = pl.units[old].count(t);
         if (!k) continue;
         destroyUnits(old, t, k, pl.system, planet, p, "assimilated");
-        addUnits(p, t, std::min(k, unitsAvailable(G, p, t)), pl.system, planet);
+        addUnits(p, t, std::min(k, unitsForPlacement(G, p, t)), pl.system, planet);
     }
     removing_ = false;
     abilityEvent2(E, p, "Assimilate", pn(p) + " assimilates the structures on " + planetName(planet) + ".", pl.system);
@@ -678,7 +680,7 @@ void Rules::dannelInvade(int p, const std::vector<int>& picks) {
         int k = std::min(e.second, unitsAvailable(G, p, UnitType::Infantry));
         if (k <= 0 || G.planets[x].destroyed) continue;
         addUnits(p, UnitType::Infantry, k, sys, x);
-        event(EventKind::Land, p, pn(p) + " lands " + std::to_string(k) + " infantry on " + planetName(x) + " (Dannel of the Tenth).", sys, x);
+        landEvent(p, sys, x, UnitType::Infantry, -1, pn(p) + " lands " + std::to_string(k) + " infantry on " + planetName(x) + " (Dannel of the Tenth).");
         for (int q = 0; q < G.numPlayers; ++q)
             if (q != p && G.planets[x].units[p].groundForces() > 0 && G.planets[x].units[q].groundForces() > 0) groundCombat(p, q, x);
         // (fixes 26, the Yin review) neutral ground forces (Thunder's Edge) are fought too - they were "captured" untouched
@@ -819,7 +821,7 @@ void Rules::spaceCombatEnded(int att, int def, int sys, int winner) {
         if (winner != p || !destroyedShipTypes_) continue;
         std::vector<Option> opts;
         for (int t : kShipIdx) {
-            if (!((destroyedShipTypes_ >> t) & 1) || unitsAvailable(G, p, UnitType(t)) <= 0 || unitCost2(G, p, UnitType(t)) <= 0) continue;
+            if (!((destroyedShipTypes_ >> t) & 1) || unitsForPlacement(G, p, UnitType(t)) <= 0 || unitCost2(G, p, UnitType(t)) <= 0) continue;
             int cost = unitCost(G, p, UnitType(t));
             if (cost > spendable(G, p, false)) continue;
             opts.push_back({t, unitTypeName(UnitType(t)), std::to_string(cost) + " resources"});
@@ -860,12 +862,12 @@ void Rules::groundCombatStart2(int att, int def, int planet) {
         // Indoctrination (Yin): 2 influence to turn 1 of the opponent's infantry (Moyin's Ashes: 3 for a mech)
         // (fixes 26, the Yin review - owner 2026-11-12) with no infantry left in the reinforcements, the mech version still
         // can be used (it needed a free infantry)
-        const bool moyin = unitsAvailable(G, p, UnitType::Mech) > 0 && spendable(G, p, true) >= 3 && mechAbilities(G);
+        const bool moyin = unitsForPlacement(G, p, UnitType::Mech) > 0 && spendable(G, p, true) >= 3 && mechAbilities(G);
         const bool infFree = unitsAvailable(G, p, UnitType::Infantry) > 0;
         if (fac(p, "yin") && ps.units[o].count(UnitType::Infantry) > 0 && spendable(G, p, true) >= 2 && (infFree || (G.fixes >= 26 && moyin))) {
             std::vector<Option> opts;
             if (infFree || G.fixes < 26) opts.push_back({0, "Swap for 1 infantry", "2 influence"});
-            if (unitsAvailable(G, p, UnitType::Mech) > 0 && spendable(G, p, true) >= 3 && mechAbilities(G))
+            if (unitsForPlacement(G, p, UnitType::Mech) > 0 && spendable(G, p, true) >= 3 && mechAbilities(G))
                 opts.push_back({1, "Swap for 1 mech (Moyin's Ashes)", "3 influence"});
             opts.push_back({-1, "No", ""});
             int c = fpick(p, Ab::Indoctrination, "Indoctrination: convert 1 of " + pn(o) + "'s infantry?", opts,
@@ -1005,7 +1007,7 @@ void Rules::unitDestroyedFactions(int p, UnitType t, int k, int sys, int planet)
         destroyedShipTypes_ = uint16_t(destroyedShipTypes_ | (1u << int(t)));  // Salvage Operations
         // Ipswitch, Loose Cannon: a ship of that type for each of the opponent's ships destroyed
         if (ipswitch_ >= 0 && p != ipswitch_) {
-            int n = std::min(k, unitsAvailable(G, ipswitch_, t));
+            int n = std::min(k, unitsForPlacement(G, ipswitch_, t));
             if (n > 0) {
                 addUnits(ipswitch_, t, n, sys, -1);
                 say(ipswitch_, pn(ipswitch_) + " gains " + std::to_string(n) + " " + unitTypeName(t, n > 1) + " (Ipswitch).", sys);
@@ -1038,7 +1040,7 @@ void Rules::unitDestroyedFactions(int p, UnitType t, int k, int sys, int planet)
                 const bool myFight = ship ? G.systems[size_t(sys)].space[size_t(y)].ships() > 0 : groundForcesOn(G, y, planet) > 0;
                 if (G.fixes >= 21 && y != p && myFight && G.agentFor[y] != p) continue;
                 const UnitType give = ship ? UnitType::Fighter : UnitType::Infantry;
-                if (unitsAvailable(G, p, give) <= 0) break;
+                if (unitsForPlacement(G, p, give) <= 0) break;
                 if (!fyes(y, Ab::YinAgent,
                           y == p ? "Exhaust Brother Milor: YOU get 2 " + std::string(unitTypeName(give, true)) +
                                        (ship ? " in " + sysName(sys) : " on " + planetName(planet)) + "?"
@@ -1050,7 +1052,7 @@ void Rules::unitDestroyedFactions(int p, UnitType t, int k, int sys, int planet)
                 }
                 spendAgent(y, "yin");
                 if (y != p && G.fixes >= 2) agentDone(y, p);
-                const int n = std::min(2, unitsAvailable(G, p, give));
+                const int n = std::min(2, unitsForPlacement(G, p, give));
                 addUnits(p, give, n, sys, ship ? -1 : planet);
                 if (ship) removeExcessCapacity(p, sys);
                 say(p, pn(p) + " gets " + std::to_string(n) + " " + unitTypeName(give, n > 1) + " (Brother Milor).", sys);
@@ -1355,7 +1357,7 @@ bool Rules::factionAction2(int p, Ab ab) {
             pl.usedFactionAbility = true;
             abilityEvent2(E, p, "Stall Tactics", pn(p) + " stalls (Stall Tactics).");
             // Blackshade Infiltrator (DEPLOY)
-            if (unitsAvailable(G, p, UnitType::Mech) > 0 && mechAbilities(G)) {
+            if (unitsForPlacement(G, p, UnitType::Mech) > 0 && mechAbilities(G)) {
                 std::vector<Option> where;
                 for (int x : controlledPlanets(G, p))
                     if (!isDMZ(G, x) && !G.planets[x].destroyed) where.push_back({x, planetName(x), ""});

@@ -1,12 +1,8 @@
 # The seeded galaxy (0.43.0): New Game -> Galaxy -> Seeded, the slices window, then the game's map.
 wait 5
+# (0.63.0) up to Galaxy, right = Seed; A opens the Galaxy window; the seed row: +1, -1, then 77 typed; START closes it, START begins
 press A
 wait 5
-# (0.58.0: up past AI speed, Mecatol Rex (0.54.0) and Hyperlanes to Galaxy)
-press UP
-wait 2
-press UP
-wait 2
 press UP
 wait 2
 press UP
@@ -14,17 +10,22 @@ wait 2
 press RIGHT
 wait 2
 shot newgame_seeded
-press Y
-wait 3
+press A
+wait 2
 shot seeded_slices
+press DOWN
+wait 2
 press RIGHT
-wait 3
+wait 2
 shot seeded_slices_next
 press LEFT
 wait 2
-press B
+type 77
+wait 2
+shot seeded_typed
+press START
 wait 2
 press START
-wait 60
+wait 2
 shot seeded_game
 quit

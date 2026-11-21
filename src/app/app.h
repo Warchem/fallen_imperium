@@ -12,7 +12,7 @@
 #include "gfx/canvas.h"
 #include "platform/platform.h"
 
-#define TI4_VERSION "0.60.0"
+#define TI4_VERSION "0.80.0"
 #if defined(_WIN32) || defined(TI4_SDL2)
 #define TI4_STAGE "Stage 12: PC edition \xC2\xB7 Pre-Beta"
 #else
@@ -90,6 +90,10 @@ private:
     Btn leftBtn_ = Btn::None;
     float dragDist_ = 0, wheelAcc_ = 0;
     bool panHeld_[4] = {}, panAsDpad_[4] = {};
+    bool panFast_ = false;                       // (0.72.0) Shift held: the camera goes faster
+    bool edging_ = false;                        // (0.72.0) the pointer is at an edge (edge scrolling)
+    uint32_t pointerAt_ = 0, keyAt_ = 0;          // (0.72.0) when the mouse last moved / a key or button was last pressed
+    void drawPointerLight(const Scene& top);      // (0.72.0) the button under the pointer lights up
     Platform& platform_;
     Settings& settings_;
     Canvas canvas_;
@@ -105,9 +109,11 @@ private:
 // Screens
 std::unique_ptr<Scene> makeTitleScene();
 std::unique_ptr<Scene> makeNewGameScene();
+std::unique_ptr<Scene> makeTournamentScene();  // 0.80.0: league mode (scene_league.cpp)
 std::unique_ptr<Scene> makeTestsMenuScene();
 std::unique_ptr<Scene> makeOptionsScene();
 std::unique_ptr<Scene> makeControlsScene();
+std::unique_ptr<Scene> makeMusicScene();  // 0.68.0: Options -> Music player
 std::unique_ptr<Scene> makeComingSoonScene(const std::string& title, const std::string& sub, const std::vector<std::string>& entries);
 std::unique_ptr<Scene> makeButtonTestScene();
 std::unique_ptr<Scene> makeDisplayTestScene();

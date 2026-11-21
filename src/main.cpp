@@ -36,6 +36,7 @@
 #include "ai/ai.h"
 #include "engine/engine.h"
 #include "game/session.h"
+#include "game/profile.h"
 #include "platform/platform.h"
 
 namespace {
@@ -95,6 +96,7 @@ LONG WINAPI winCrashFilter(EXCEPTION_POINTERS* ep) {
 int runSelfTest();
 int runUiTest(const std::string& outDir);
 int runPreview(const std::string& outDir);
+int runWarSunTest(const std::string& outDir);  // (0.73.0) the War Sun scene's frames
 namespace ti {
 int runSimulation(int games, int players, uint32_t seed, bool verbose);
 int runDumpData();
@@ -146,6 +148,7 @@ int main(int argc, char** argv) {
         if (!std::strcmp(argv[i], "--selftest")) return runSelfTest() == 0 ? 0 : 1;
         if (!std::strcmp(argv[i], "--uitest") && i + 1 < argc) return runUiTest(argv[i + 1]);
         if (!std::strcmp(argv[i], "--preview") && i + 1 < argc) return runPreview(argv[i + 1]);
+        if (!std::strcmp(argv[i], "--warsun") && i + 1 < argc) return runWarSunTest(argv[i + 1]);
         if (!std::strcmp(argv[i], "--simulate")) {
             int games = i + 1 < argc ? std::atoi(argv[i + 1]) : 10;
             int players = i + 2 < argc ? std::atoi(argv[i + 2]) : 0;
@@ -285,6 +288,7 @@ int main(int argc, char** argv) {
     if (backend == "headless") GameSession::savePath() = outDir + "/savegame.ti4";
     Settings settings;
     settings.load(backend == "headless" ? outDir + "/settings.cfg" : "settings.cfg");
+    profile::load(backend == "headless" ? outDir + "/profile.cfg" : "profile.cfg");  // 0.80.0: leagues finished, unlocks
 #ifdef _WIN32
     if (backend.empty()) backend = "win32";
 #elif defined(TI4_SDL2)
@@ -366,6 +370,8 @@ int main(int argc, char** argv) {
         // 0.59.70 (owner): the title's reveal plays first - the music waits for it (the title scene releases it; TI4_NOINTRO=1 skips it)
         if (!std::getenv("TI4_NOINTRO")) audio::holdMusic();
         audio::start(settings);
+    } else {
+        audio::loadLibrary(settings);  // (0.68.0) the music player's list, without a sound output
     }
 
     int rc = 0;

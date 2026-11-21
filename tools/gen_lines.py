@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The negotiation lines (0.57.0): tools/lines/*.txt -> src/ui/gen/lines.inc.
+"""The negotiation and combat lines (0.57.0, 0.71.0): tools/lines/*.txt -> src/ui/gen/lines.inc.
 
 Each faction section ([key]) holds `name:` (how others address it), `voice:` (for the owner) and its lines by
 category; `[pair speaker > listener]` sections hold lines one faction says only to another (rivals, kin), used
@@ -10,7 +10,12 @@ import os
 import re
 import sys
 
-CATS = ['offer', 'friendly', 'threat', 'vote', 'accept', 'decline', 'counter', 'betray', 'betrayed', 'yield']
+CATS = ['offer', 'friendly', 'threat', 'vote', 'accept', 'decline', 'counter', 'betray', 'betrayed', 'yield',
+        # (0.64.0) the line a computer player opens YOUR offer screen with - what lies between you (see BRIEF.md)
+        'hello', 'neighbour', 'partner', 'kept', 'broken', 'clash', 'leader', 'warm', 'wary', 'hostile',
+        # (0.71.0) combat reactions (tools/lines/combat*.txt): attacking / attacked / invading / invaded, and the
+        # situations - a rematch, a fight at Mecatol Rex, its home attacked. Pair lines use attack / defend only.
+        'attack', 'defend', 'invade', 'hold', 'rematch', 'mecatol', 'home']
 LAZ_OK = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 !\"'(),-.?")
 
 

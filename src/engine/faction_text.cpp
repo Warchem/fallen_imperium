@@ -1194,7 +1194,9 @@ const char* factionNoteName(int faction, int type) {
 const char* factionNoteText(int faction, int type) {
     if (faction < 0 || faction >= kFactionCount) return "";
     if (type == kNoteAlliance)
-        return "Goes face up in your play area: while you hold it you can use its owner's commander ability (once their commander is unlocked).";
+        return "When you receive this card, if you are not its owner, you must place it faceup in your play area. While this card is in "
+               "your play area, you can use its owner's commander ability, if it is unlocked. When you activate a system that contains 1 "
+               "or more of its owner's units, return this card to its owner.";
     if (type == kNoteFaction && codexTexts()) {
         if (!std::strcmp(kFactions[faction].key, "letnev"))
             return "After you and your opponent roll dice during space combat: You may reroll all of your opponent's dice. You may reroll any number of your dice. Then, return this card to the Letnev player.";

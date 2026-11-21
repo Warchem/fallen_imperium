@@ -1,0 +1,376 @@
+# The line each computer player opens YOUR offer screen with (0.64.0) - Discordant Stars factions, part 2.
+# See about_base.txt and BRIEF.md.
+
+[khrask]
+hello: Hear the stone... {them}. We have waited... a long time for a voice. Speak.
+hello: The mountain... listens, {them}. Speak slowly. We are in no hurry.
+neighbour: Your worlds... grow beside ours, {them}. Tend them well... and we will be good neighbours.
+neighbour: Neighbour... roots cross borders. Let ours grow together... not choke each other.
+partner: We have traded... before, {them}. The forest remembers kindness. Again.
+partner: Another bargain... like rain after rain. The soil is grateful.
+kept: You kept your word... {them}. A stone that does not crack. We honour that.
+kept: A promise kept... is a seed that grows. Speak.
+broken: You broke your word... {them}. A cracked stone lets the rot in. Speak... carefully.
+broken: Your promise... crumbled like dry earth. The mountain remembers.
+clash: You struck at us... {them}. The forest burned. The stone endures. Speak.
+clash: Your guns scarred living worlds... We will listen. We will not forget.
+leader: You stand tallest... {them}. The tallest tree... feels the wind most.
+leader: You lead the galaxy... Do not let your roots grow shallow.
+warm: {them}... friend of the green. Speak.
+warm: The stone is warm... in your sun. Go on.
+wary: The mountain watches you... {them}. Slowly. Patiently.
+wary: Roots search the soil... before they trust it. Speak.
+hostile: You are a blight... {them}. Speak... then leave our worlds be.
+hostile: The stone is cold to you... {them}. Be brief.
+
+[kyro]
+hello: Blessings of the sodality upon you, {them}! Speak - and breathe deeply.
+hello: Welcome, {them}! The Kyro are honoured to hear you. Our gift is always ready.
+neighbour: Your worlds are so close to ours, {them}. Our blessing travels well on the wind.
+neighbour: Neighbour! The plague-priests pray for you daily. Soon you may share the gift.
+partner: You traded with us before, {them}, and you are still well. A shame. Again?
+partner: Another bargain! Our last brought joy to both our peoples. Mostly ours.
+kept: You kept your word, {them}. Faithful as the fever. We bless you.
+kept: A promise kept. The sodality will remember you in its hymns.
+broken: You broke your word, {them}. Liars are first to receive the gift. Speak.
+broken: A broken promise... we will pray for your recovery. Or not.
+clash: You attacked the sodality, {them}. Our wounds weep with blessing. Speak.
+clash: You fought the Kyro. Our sickness spreads in every battle. Thank you.
+leader: You lead the galaxy, {them}! So many worlds, so many to share our blessing with.
+leader: You are ahead. Plagues love a crowd. Speak.
+warm: Dear {them}! We will save our finest blessing for you.
+warm: Friend of the sodality! Speak, and be blessed.
+wary: We watch you, {them}. Your health concerns us.
+wary: Speak. We are deciding whether you are ready for the gift.
+hostile: You will receive the gift soon, {them}. Speak while you can.
+hostile: The sodality prays for your sickness, {them}. Be brief.
+
+[lanefir]
+hello: The remnant hears you, {them}. Let this meeting be written in our chronicles.
+hello: Speak, {them}. Every conversation is a page of history. Let this one be kind.
+neighbour: Your worlds lie close to our ruins, {them}. Be good neighbours to the last of us.
+neighbour: Neighbour. Our chronicles record those who live beside us. Be worth remembering.
+partner: You have traded with the Lanefir before, {them}. It was a good chapter. Another?
+partner: We remember our last deal fondly. Let us write another.
+kept: You kept your word, {them}. The chroniclers will speak well of you.
+kept: A promise kept, as the great ones once kept theirs. Speak.
+broken: You broke your word to us, {them}. It is recorded. The record is long.
+broken: A broken promise, {them}. We have lost too much to forgive easily.
+clash: You attacked what remains of us, {them}. We have seen empires fall for less.
+clash: Your guns touched the last of the Lanefir. We will hear you. Grieving.
+leader: You lead the galaxy, {them}. Our ancestors led once. Learn from how it ended.
+leader: You are ahead. History is full of leaders. Few are remembered kindly.
+warm: {them}, a friend in our chronicles. Speak.
+warm: The remnant welcomes you, friend.
+wary: The chronicles are undecided on you, {them}.
+wary: Speak. We will decide how you are remembered.
+hostile: You will be written as an enemy, {them}. Speak.
+hostile: The remnant has no welcome for you, {them}. Be brief.
+
+[lizho]
+hello: Oh, {them}! What a delight. Do sit. The cushion is perfectly safe. Probably.
+hello: Welcome, {them}. The Dynasty bows to you. Deeply. Watch your feet.
+neighbour: You live so near, {them}! Neighbours share everything. Secrets, especially.
+neighbour: Dear neighbour! We've admired your worlds for so long. Up close, too.
+partner: You traded with us before, {them}, and came out smiling. How lucky for you.
+partner: Back for more! Our last deal was such fun. For us, at least.
+kept: You kept your word, {them}. How very honourable. How very predictable.
+kept: A promise kept! We do admire that. It makes you so easy to read.
+broken: You broke your word, {them}? Oh, how naughty. We do love a fellow trickster.
+broken: Tsk. A broken promise. We will smile at you, {them} - with all our teeth.
+clash: You attacked us, {them}. Rude! We will forgive you. Eventually. Surprisingly.
+clash: You fought the Dynasty. We bowed, we smiled, and we remembered.
+leader: You lead the galaxy, {them}! How marvellous. And how very far there is to fall.
+leader: You're ahead! We'll hold your hand all the way down.
+warm: Darling {them}! Truly, we have no tricks for you today. Truly.
+warm: For you, friend, only small traps. Speak.
+wary: We're watching you, {them}. Smiling, but watching.
+wary: Speak, {them}. We're still deciding which trap suits you.
+hostile: Oh, {them}. The courtesies are over. Speak.
+hostile: We smile because we have plans for you, {them}. Talk.
+
+[mirveda]
+hello: Good day, {them}. Mirveda Security, at your service. Please state your needs.
+hello: Welcome, {them}. This conversation is being protected for your safety.
+neighbour: You live within our protection zone, {them}. Please remain calm. We are watching over you.
+neighbour: Neighbour. Our drones patrol your border for your protection. Do not be alarmed.
+partner: Valued client, {them}. Our previous arrangement was fully satisfactory. Shall we renew?
+partner: Welcome back. Your previous contract was handled with care.
+kept: You honoured your agreement, {them}. Your security rating has improved.
+kept: Promise kept. Thank you for your cooperation.
+broken: You broke an agreement, {them}. Your security rating has been adjusted. Downward.
+broken: A breach was detected. For your protection, we will proceed carefully.
+clash: You attacked our assets, {them}. This incident has been logged. For your protection.
+clash: You fired on Mirveda units. Please remain where you are. We will talk.
+leader: You lead the galaxy, {them}. High-value targets require additional protection.
+leader: You are ahead. We recommend upgraded security. From us.
+warm: Valued friend {them}. Your safety is our priority. Please continue.
+warm: Premium client. How may we protect you today?
+wary: We are monitoring you, {them}. Please keep your hands visible.
+wary: For everyone's safety, please speak slowly.
+hostile: You have been classified as a threat, {them}. Please speak quickly.
+hostile: Our drones are ready, {them}. For our protection.
+
+[mortheus]
+hello: A light calls in the dark... is it you, {them}? Speak, and we will shine back.
+hello: You see us, {them}, but which of us is real? Speak to the brightest one.
+neighbour: Your stars reflect in our clouds, {them}. When we look at you, we see ourselves.
+neighbour: Neighbour... our light falls on your worlds every night. Do you dream of us?
+partner: We have traded before, {them}... or did we only dream it? Again, either way.
+partner: The last bargain still glows. Shall we light another?
+kept: You kept your word, {them}. A true light, no illusion. Rare.
+kept: Your promise did not flicker. We shine a little brighter for it.
+broken: You broke your word, {them}. A false light. We know false lights well.
+broken: Your promise was a mirage. We see through mirages. Speak.
+clash: You struck at the Glimmer, {them}. Did you hit us, or our reflection?
+clash: Your guns flashed in our clouds. We scattered. We gathered. Speak.
+leader: You shine brightest, {them}. The brightest stars burn out fastest.
+leader: You lead the galaxy... a candle in a storm. Speak.
+warm: {them}... a warm glow. We drift toward you.
+warm: Your light is welcome. Speak, friend.
+wary: We watch your light, {them}. Is it true? Is it a trick?
+wary: Shadows shift around you. Speak.
+hostile: Your light offends us, {them}. Speak... then fade.
+hostile: We see only darkness in you, {them}. Be brief.
+
+[mykomentori]
+hello: The threads stir... a voice. Speak, {them}. The spores are listening.
+hello: Hush... the network hears you, {them}. Let us read the signs.
+neighbour: Your worlds lie beside our gardens, {them}. Our threads already reach under your soil.
+neighbour: Neighbour... the spores drift between us. They always have.
+partner: We traded before, {them}. The dice favoured us both. Again?
+partner: The signs say you return. The signs are right. Speak.
+kept: You kept your word, {them}. The omens grow sweet around you.
+kept: A promise kept. Good soil. The network is pleased.
+broken: You broke your word, {them}. Rot spreads from broken things. Speak.
+broken: The signs warned us. We did not listen. Now we listen closely.
+clash: You burned our gardens, {them}. The threads remember every scar.
+clash: You fought the network. Decay feeds us. Thank you. Speak.
+leader: You lead the galaxy, {them}. The omens say everything rots in time.
+leader: You are ahead. The dice have not finished rolling.
+warm: {them}... the signs are bright around you. Speak.
+warm: The network welcomes you, friend.
+wary: The omens about you are unclear, {them}. Speak.
+wary: We roll the dice for you. Not yet decided.
+hostile: The signs say you will rot, {them}. Speak.
+hostile: Our threads are tightening around you, {them}. Be brief.
+
+[nivyn]
+hello: The Star Kings permit you to speak, {them}. We have time. We always have time.
+hello: You address the throne of the void, {them}. Speak, and be heard.
+neighbour: Your worlds lie in the folds of our realm, {them}. All space is our throne. You sit on its edge.
+neighbour: Neighbour. The dark between our stars is ours. We grant you passage. For now.
+partner: You have dealt with us before, {them}. We remember it as we remember all things. Again.
+partner: Another accord. We are pleased to continue.
+kept: You kept your word, {them}. A loyal subject of the void.
+kept: A promise honoured. We remember. For a very long time.
+broken: You broke your word to the Star Kings, {them}. The void is cold to liars.
+broken: A broken promise. We are patient. We will be patient with your punishment, too.
+clash: You raised arms against the throne, {them}. The void swallowed your fleet. Speak.
+clash: You struck at the Star Kings. We are unhurried. Our reply will come.
+leader: You lead the galaxy, {them}. We have watched a thousand leaders. All passed.
+leader: You are ahead. The void does not notice small lights.
+warm: {them}, a favoured guest of the throne. Speak.
+warm: We are pleased with you. Go on.
+wary: We weigh you, {them}. Slowly. The way stars burn.
+wary: Speak. We have not decided what you are to us.
+hostile: You displease the throne, {them}. Speak.
+hostile: The dark is closing on you, {them}. Be brief.
+
+[nokar]
+hello: Nokar crews. Guns for hire. What's the job, {them}?
+hello: You've reached the Sellswords. Rates on request, {them}. Talk.
+neighbour: You're next door, {them}. Neighbours get a discount on protection.
+neighbour: Your worlds are close. Handy. We can be on a job in no time.
+partner: We've worked with you before, {them}. You paid on time. That's a good client.
+partner: Repeat business. Our favourite kind. What's the next contract?
+kept: You kept your word, {them}. Honest pay for honest work. Respect.
+kept: You paid what you promised. The crews like you.
+broken: You broke your word, {them}. Nobody stiffs a sellsword twice. Talk.
+broken: Last contract, you didn't pay. This time, money up front.
+clash: You shot at our crews, {them}. Professional courtesy says we talk. Then we bill you.
+clash: You attacked the Nokar. Bad for business. Yours. Speak.
+leader: You're on top, {them}. Everyone wants to hire us against you.
+leader: You're winning. Want to outbid your enemies? Rates are rising.
+warm: {them}! Best client in the galaxy. What can we do for you?
+warm: Good to hear from you, friend. The crews are ready.
+wary: Let's hear the job, {them}. We'll decide if it's worth it.
+wary: We're careful with new clients. Talk.
+hostile: We don't work for you, {them}. Make it quick.
+hostile: The crews would rather fight you, {them}. Talk.
+
+[olradin]
+hello: Hello, {them}! The League's all here. Well, most of us. Go ahead!
+hello: Welcome, {them}! We've called a quick meeting just for you. Speak up!
+neighbour: You're our neighbours, {them}! The People like neighbours. The Environment likes quiet ones.
+neighbour: Neighbour! The committee voted to be friendly. Mostly unanimous.
+partner: You traded with the League before, {them}! The Economy loved it. Again?
+partner: Last deal passed the vote easily. Let's do another!
+kept: You kept your word, {them}! The People cheered. Really, they did.
+kept: Promise kept! The committee's very happy with you.
+broken: You broke a promise to the League, {them}. There was a lot of shouting. A LOT.
+broken: Last time you let us down. The People are cross. Speak.
+clash: You attacked the League, {them}! The People are furious. The Environment, too.
+clash: You fired on our ships. The committee wants an explanation. A good one.
+leader: You're winning, {them}! The Economy is jealous. The People are worried.
+leader: Top of the galaxy! The League's called an emergency meeting about you.
+warm: {them}! The whole League likes you. Even the grumpy ones!
+warm: Friend! The People, the Environment and the Economy all agree. Talk!
+wary: The League's not sure about you, {them}. We're still debating.
+wary: Speak. The committee is taking notes.
+hostile: The League voted against you, {them}. Unanimously. Speak.
+hostile: The People don't want you here, {them}. Make it quick.
+
+[zealots]
+hello: The Rhodun hear you, {them}. Speak truly. Lies are heresy.
+hello: You come before the Inquisition, {them}. State your purpose.
+neighbour: Your worlds lie near our sanctums, {them}. Your machines are watched. Closely.
+neighbour: Neighbour. We hear your engines. Are they pure? We will find out.
+partner: You have traded with us before, {them}. Your offering was acceptable. Again.
+partner: Our last covenant was clean. Continue.
+kept: You kept your word, {them}. Truth is sacred. You honour it.
+kept: A promise kept. The Inquisition notes your purity.
+broken: You broke your word, {them}. A lie is heresy. Heresy is corrected.
+broken: A broken promise. The Inquisition is listening. Confess.
+clash: You attacked the faithful, {them}. Your sins are recorded.
+clash: You raised arms against the Rhodun. Repent, and speak.
+leader: You lead the galaxy, {them}. Pride is a heresy too.
+leader: You are ahead. Power without truth must be corrected.
+warm: {them}, a faithful friend. Speak.
+warm: The Rhodun bless you. Go on.
+wary: The Inquisition watches you, {them}. Speak.
+wary: Your purity is uncertain. Prove it.
+hostile: You are a heretic, {them}. Speak your last.
+hostile: Correction awaits you, {them}. Be brief.
+
+[rohdhna]
+hello: Greeting Protocol 1-01A: acknowledged, {them}. State your request.
+hello: Communication Directive 3-12C permits this channel. Proceed, {them}.
+neighbour: Border Doctrine 22-07N: neighbours shall be treated with caution and courtesy. Hello, {them}.
+neighbour: Section 9, Clause 4B: shared borders require regular negotiation. Proceeding.
+partner: Records Code 14-60R: prior transactions with {them} were satisfactory. Continue.
+partner: Repeat Partner Protocol 5-21P is now active. Proceed.
+kept: Integrity Clause 33-05K: you kept your word, {them}. Trust rating increased.
+kept: Promise fulfilment confirmed. Per Doctrine 8-44T, cooperation continues.
+broken: Breach Doctrine 66-13X: you broke a promise, {them}. Trust rating reduced.
+broken: Per Section 12, Clause 7D, prior breaches require additional guarantees.
+clash: Hostility Code 90-02H: you attacked Roh'Dhna units, {them}. Talks permitted. Grudgingly.
+clash: Per Defence Directive 41-11W, this conversation is under review.
+leader: Threat Assessment 77-90L: you lead the galaxy, {them}. Monitoring increased.
+leader: Per Balance Doctrine 18-03E, leaders shall be checked. Proceeding.
+warm: Friendship Protocol 2-02F active. Welcome, {them}.
+warm: Per Clause 1A of the Alliance Charter: you are welcome.
+wary: Caution Directive 50-50C in effect, {them}. Proceed.
+wary: Per Section 3, your request will be evaluated.
+hostile: Hostile Party Code 99-99Z applies to you, {them}. Proceed briefly.
+hostile: Per Directive 0-00X, talks are permitted but not recommended.
+
+[tnelis]
+hello: {them}. So nice of you to call the family. What can we do for you?
+hello: Come in, {them}. Sit. The Syndicate always has time for friends.
+neighbour: You live right next door, {them}. Neighbours look after each other. Don't they?
+neighbour: Neighbour. Such a nice neighbourhood. It would be a shame if anything happened to it.
+partner: You've done business with the family before, {them}. We remember our friends.
+partner: Back again. The family appreciates loyalty. Speak.
+kept: You kept your word, {them}. That's respect. The family values respect.
+kept: A man of his word. Or whatever you are. Good. Talk.
+broken: You broke your word to the family, {them}. That hurts us. Deeply. Speak.
+broken: A broken promise, {them}. In our business, that's a debt. Debts get paid.
+clash: You hurt the family, {them}. We're still talking. That's a courtesy. Don't waste it.
+clash: You attacked us. Bad for business. Bad for your health. Speak.
+leader: You're on top, {them}. Big man. Big men need friends. Or they fall.
+leader: You lead the galaxy. Everyone wants a piece. We could help. For a favour.
+warm: {them}! Family. Speak, anything you need.
+warm: For you, friend, the door is always open.
+wary: We're watching you, {them}. Quietly. Respectfully. Talk.
+wary: The family hasn't decided about you. Speak.
+hostile: You disrespected the family, {them}. Talk, while you still can.
+hostile: We don't like you, {them}. Nothing personal. Speak.
+
+[vaden]
+hello: Ah, {them}. The banking clans are open for business. Your account is waiting.
+hello: Welcome, {them}. Interest rates are excellent today. For us.
+neighbour: You live next to our vaults, {them}. Neighbours make the best borrowers.
+neighbour: Neighbour! We've already opened an account in your name. You're welcome.
+partner: You've done business with the Vaden before, {them}. Your ledger is... acceptable.
+partner: Returning customer. Your credit is good. For now.
+kept: You paid your dues, {them}. Your credit rating is excellent.
+kept: A promise kept, like a debt repaid. The clans approve.
+broken: You defaulted on your word, {them}. Interest is accruing. Rapidly.
+broken: A broken promise is a debt, {them}. The clans always collect.
+clash: You attacked our assets, {them}. That will be added to your bill.
+clash: Damages incurred. Payment expected. Speak.
+leader: You lead the galaxy, {them}. Wealthy clients get premium rates. Higher ones.
+leader: You're ahead. Your account is very interesting to us.
+warm: Valued client {them}! Speak, and let's make money.
+warm: For you, friend, a lower rate. Slightly.
+wary: Your account is under review, {them}. Speak.
+wary: The clans are cautious with your credit.
+hostile: Your account is closed, {them}. Speak, then pay.
+hostile: The collectors are coming, {them}. Be brief.
+
+[vaylerian]
+hello: The Scourge catches your scent, {them}. Speak. Quickly.
+hello: A voice in the dark. How brave, {them}. Or how foolish.
+neighbour: Your worlds are so near our hunting grounds, {them}. We can smell them from here.
+neighbour: Neighbour... prey that lives close never sleeps well.
+partner: You have dealt with the Scourge before, {them}, and you still run. Good.
+partner: Another deal? The last one kept you alive. Let's see about this one.
+kept: You kept your word, {them}. Clever prey. We almost respect it.
+kept: A promise kept. We will hunt someone else today.
+broken: You broke your word, {them}. Prey that lies gets chased hardest.
+broken: You lied to the Scourge. We have your scent now. Forever.
+clash: You attacked us, {them}. The hunt is on. Speak while you can.
+clash: You bit the Scourge. Bold prey. We like a chase.
+leader: You lead the galaxy, {them}. The biggest prey attracts the most hunters.
+leader: You are ahead. We love when prey grows fat.
+warm: {them}. You are not prey. Today. Speak.
+warm: The Scourge lets you walk freely. Talk.
+wary: We circle you, {them}. Not yet hunting. Watching.
+wary: Speak. We are deciding if you are prey.
+hostile: You are prey, {them}. Run, or speak.
+hostile: We have your scent, {them}. Talk fast.
+
+[veldyr]
+hello: Veldyr Sovereignty, partnerships division! Great to connect, {them}. Let's talk growth.
+hello: Hi {them}! Let's touch base and explore some synergies.
+neighbour: You're right next to one of our branch offices, {them}! Let's leverage that proximity.
+neighbour: Neighbour! Our regional office sees great potential in your market.
+partner: Our last partnership with you was a great success, {them}! Let's scale it up.
+partner: Repeat partner! Our shareholders love you. Let's circle back.
+kept: You delivered on your commitments, {them}! That's the kind of partner we value.
+kept: Promise kept. Excellent. Your partnership rating is trending up.
+broken: You broke a commitment, {them}. Disappointing. We'll need to restructure.
+broken: Last quarter you didn't deliver. Let's realign expectations.
+clash: You attacked our assets, {them}. Not great for the relationship. Let's talk solutions.
+clash: Hostile action noted. We're open to a hostile takeover. Of you.
+leader: You're the market leader, {them}! Impressive. We'd love to acquire some of that.
+leader: Top of the galaxy! Have you considered a merger? We have.
+warm: {them}! Our favourite stakeholder. Let's make something happen.
+warm: Love this partnership. Talk to us.
+wary: We're doing due diligence on you, {them}. Pitch away.
+wary: Let's see the numbers, {them}. Then we'll decide.
+hostile: You're not a good fit for our portfolio, {them}. Make it quick.
+hostile: We'd rather buy you out, {them}. Talk.
+
+[zelian]
+hello: grrrkkhhrr... [The stone hears you, {them}. Speak.]
+hello: krrrrghh... rrgh... [A voice. Small. Talk, little world.]
+neighbour: hrrrkkkgrr... [Your worlds are near, {them}. Near enough to fall on.]
+neighbour: grrrhh... kkrrgh... [Neighbour. Stay solid. Stone respects solid.]
+partner: rrrgghhkk... [We traded before, {them}. It held. Again.]
+partner: krrghh... [Another deal. Heavy. Good.]
+kept: grrrrkkh... [You kept your word, {them}. Solid. Like us.]
+kept: hrrrgh... [Promise held. Stone remembers.]
+broken: KRRRGHHKK... [You broke your word, {them}. Cracked things get crushed.]
+broken: grrkk... RRRGH... [Liar. The stone is falling toward you.]
+clash: KRRRRGGHH... [You struck the stone, {them}. We felt it. We fall faster now.]
+clash: hrrkk... grrrh... [You attacked us. Impact is coming.]
+leader: grrrhhkk... [You stand highest, {them}. Tall worlds make good targets.]
+leader: krrrgh... [You lead. The stone does not care. The stone falls anyway.]
+warm: rrrhhmmm... [Friend {them}. The stone will not fall on you.]
+warm: grrmm... [Good. Speak, friend.]
+wary: hrrrkk... [We watch, {them}. We orbit. Speak.]
+wary: grrkkhh... [Not yet decided. Talk.]
+hostile: KRRRGGHH... [You are a target, {them}. Speak, before impact.]
+hostile: grrRRKKH... [Purify. Purify. Talk fast, {them}.]

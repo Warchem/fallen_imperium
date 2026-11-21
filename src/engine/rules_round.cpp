@@ -22,6 +22,7 @@ void Rules::playGame() {
         fleetStateCheck();  // (0.46.1, fixes 15: the fleet pool at all times)
         sunderedCheck();    // (fixes 24: Sundered - other players' units in the Crimson home, however they got there)
         oceanCheck();       // (fixes 27: Oceanbound's limit, any time)
+        warSunAgeCheck();   // (0.73.0: display only)
     };
     try {
         setupGame();
@@ -55,7 +56,7 @@ void Rules::setupGame() {
     const int n = std::max(3, std::min(8, s.players));
     G.numPlayers = n;
     G.vpGoal = s.vpGoal;
-    G.aiLevel = int8_t(std::max(0, std::min(3, s.aiLevel)));
+    G.aiLevel = int8_t(std::max(0, std::min(int(kAiLevelAI), s.aiLevel)));  // (0.74.0: 4 = A.I.)
     G.tradeRules = int8_t(s.trade & 15);
     G.extras = uint8_t(s.extras & 255);
     G.habits = s.habits;  // (0.54.0)
@@ -116,15 +117,17 @@ void Rules::setupGame() {
         tribunii[i] = homeFaction[i] = t;
     }
     // Colours: the seats' picks (faction menu, 0.19.0), then the human's choice;
-    // everyone else takes the next free colour in seat order.
+    // everyone else takes the next free colour in seat order - always one of the classic eight (0.62.0, owner: the 8 new
+    // colours, 8..15, are only ever picked; no randomness here, so older games set up exactly as before).
+    constexpr int kColours = kPlayerColours;  // (0.75.0: 24; colours past 15 never came up in older games)
     std::vector<int> col(n, -1);
-    std::vector<bool> taken(8, false);
+    std::vector<bool> taken(kColours, false);
     for (int i = 0; i < n && i < int(s.colors.size()); ++i)
-        if (s.colors[i] >= 0 && s.colors[i] < 8 && !taken[s.colors[i]]) {
+        if (s.colors[i] >= 0 && s.colors[i] < kColours && !taken[s.colors[i]]) {
             col[i] = s.colors[i];
             taken[col[i]] = true;
         }
-    if (s.human >= 0 && s.human < n && col[s.human] < 0 && s.humanColor >= 0 && s.humanColor < 8 && !taken[s.humanColor]) {
+    if (s.human >= 0 && s.human < n && col[s.human] < 0 && s.humanColor >= 0 && s.humanColor < kColours && !taken[s.humanColor]) {
         col[s.human] = s.humanColor;
         taken[s.humanColor] = true;
     }
@@ -141,22 +144,24 @@ void Rules::setupGame() {
         p.color = int8_t(col[i]);
         p.human = s.isHuman(i) && !s.autoplay;  // watching: the computer plays this seat like any other
         p.name = factionShortName(chosen[i]);
-        if (i < int(s.levels.size()) && s.levels[i] >= 0) p.aiLevel = int8_t(std::min(3, s.levels[i]));
+        if (i < int(s.levels.size()) && s.levels[i] >= 0) p.aiLevel = int8_t(std::min(int(kAiLevelAI), s.levels[i]));
     }
     setupPersonalities();  // computer players' archetypes, traits and B-Factors (0.12.0)
 
     std::string err;
     if (s.draft) {  // 0.15.0: the speaker first, then the players build the galaxy
         G.speaker = int8_t(E.rng().below(n));
+        if (s.speaker >= 0 && s.speaker < n) G.speaker = int8_t(s.speaker);  // (0.80.0) a league's faction draft: the last to pick
         galaxyDraft(homeFaction);
     } else {
         if (s.mapSeed) {  // 0.43.0: the seeded galaxy - the map from the player's number, balanced harder
             Rng mr(uint32_t(s.mapSeed * 2654435761u + uint32_t(n)));  // (the New Game slice preview seeds it the same way)
             if (!buildGalaxy(G, mr, homeFaction, &err, true)) throw std::runtime_error(err);
-        } else if (!buildGalaxy(G, E.rng(), homeFaction, &err)) {
+        } else if (!buildGalaxy(G, E.rng(), homeFaction, &err, false, nullptr, s.unbalanced != 0)) {
             throw std::runtime_error(err);
         }
         G.speaker = int8_t(E.rng().below(n));
+        if (s.speaker >= 0 && s.speaker < n) G.speaker = int8_t(s.speaker);  // (0.80.0) a league's faction draft: the last to pick
     }
 
     for (int p = 0; p < n; ++p) setupFaction(p);
@@ -237,7 +242,7 @@ void Rules::setupGame() {
 // player places two in a row and the order snakes back - until all are placed.
 void Rules::galaxyDraft(const std::vector<int>& factionBySeat) {
     std::string err;
-    if (!startGalaxyDraft(G, E.rng(), factionBySeat, &err)) throw std::runtime_error(err);
+    if (!startGalaxyDraft(G, E.rng(), factionBySeat, &err, E.setup().unbalanced != 0)) throw std::runtime_error(err);
     const std::vector<int> fwd = fromSpeaker(G);
     size_t per = 0;
     for (const auto& h : G.draft.hands) per = std::max(per, h.size());

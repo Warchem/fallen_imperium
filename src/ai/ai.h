@@ -2,13 +2,39 @@
 // The AI always answers legally (every answer is checked by the rules); its
 // strategy is a set of hand-written priorities, not a search.
 #pragma once
+#include <cstdint>
+#include <memory>
+
 #include "engine/decision.h"
 #include "engine/rng.h"
 #include "engine/state.h"
 
 namespace ti {
 
+class Engine;
+
 Answer aiAnswer(const Game& g, const Decision& d, Rng& rng);
+// (0.74.0) The engine of the game being played, so the A.I. difficulty can play its options out on copies of it
+// (src/ai/ai_think.cpp). Set before asking the AI; null = no look-ahead (every other level ignores it).
+void aiSetEngine(const Engine* e);
+
+// (0.74.0) The A.I. difficulty's look-ahead as a job run a little at a time, so the game screen keeps moving while it
+// thinks (the simulator runs it in one go inside aiAnswer). begin(): false = no thinking for this question - answer it
+// the usual way; it uses rng exactly as the usual answer would.
+class AiThinkJob {
+public:
+    AiThinkJob();
+    ~AiThinkJob();
+    bool begin(const Engine& e, Rng& rng);
+    bool step(uint32_t budgetMs);  // true = done: answer() holds the choice
+    bool done() const;
+    bool stale(const Engine& e) const;  // the game moved on since begin() (an undo, a new game): drop the job
+    const Answer& answer() const;
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> m_;
+};
 
 // Helpers that the UI also uses for "suggested" defaults.
 Answer aiPayment(const Game& g, const Decision& d);

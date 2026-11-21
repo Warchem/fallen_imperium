@@ -1,5 +1,5 @@
-# Watch mode via the Faction Menu (0.19.0): your seat played by the computer, a faction (icon), Hard
-# difficulty and personalities for two seats, then watch.
+# Watch mode via the Faction Menu (0.19.0; 0.61.4: opened with a click - the New Game rows moved): your seat played by the computer, a faction (icon), Hard
+# difficulty and personalities for two seats (0.61.4: through the option window), then watch.
 wait 5
 press A
 wait 5
@@ -14,20 +14,22 @@ wait 2
 press UP
 wait 2
 shot newgame_watch
-press A
+click 200 125
 wait 3
-press A
-wait 3
-press RIGHT
-wait 3
-shot faction_picker
-press A
-wait 2
 press LEFT
 wait 2
 press A
 wait 2
 press RIGHT
+wait 2
+press A
+wait 3
+shot faction_picker
+press RIGHT
+wait 2
+press RIGHT
+wait 2
+press A
 wait 2
 press RIGHT
 wait 2
@@ -39,7 +41,16 @@ press RIGHT
 wait 2
 press A
 wait 2
+shot newgame_pers_window
+press DOWN
+wait 2
+press DOWN
+wait 2
+press DOWN
+wait 2
 press A
+wait 2
+press DOWN
 wait 2
 press A
 wait 2
@@ -48,7 +59,10 @@ wait 2
 press A
 wait 2
 shot newgame_personalities
-press B
+mouse 320 365
+wait 3
+shot newgame_confirm_hover
+click 320 365
 wait 3
 shot newgame_after_pers
 press START

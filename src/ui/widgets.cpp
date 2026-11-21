@@ -97,7 +97,22 @@ CentredView::~CentredView() {
     hits::origin() = hits_;
 }
 
+void drawHoverLight(Canvas& c, Rect r, bool round) {
+    if (r.w <= 2 || r.h <= 2) return;
+    if (round) {
+        const float cx = float(r.x) + float(r.w) / 2.f, cy = float(r.y) + float(r.h) / 2.f;
+        const float rad = float(std::min(r.w, r.h)) / 2.f - 0.5f;
+        c.fillCircle(cx, cy, rad, rgb(255, 214, 120), 26);
+        c.ring(cx, cy, rad, 1.3f, theme::gold, 215);
+        return;
+    }
+    const int rad = std::max(1, std::min(5, std::min(r.w, r.h) / 3));
+    c.fillRoundRect(r.x, r.y, r.w, r.h, rad, rgb(255, 214, 120), 30);
+    c.frameRoundRect(r.x, r.y, r.w, r.h, rad, theme::gold, 1, 215);
+}
+
 void drawPanel(Canvas& c, Rect r, uint32_t fill, uint32_t border, int radius, int alpha) {
+    hits::addPanel(r);  // (0.61.2: the map underneath a panel takes no pointing or clicks)
     c.fillRoundRect(r.x, r.y, r.w, r.h, radius, fill, alpha);
     c.frameRoundRect(r.x, r.y, r.w, r.h, radius, border, 1);
 }
@@ -161,18 +176,19 @@ void drawValueBadge(Canvas& c, int cx, int cy, int r, int value, uint32_t color,
 void drawMenu(Canvas& c, Rect r, const std::vector<MenuItem>& items, int selected, uint32_t now, int* pick, int rowH) {
     for (size_t i = 0; i < items.size(); ++i) {
         int y = r.y + int(i) * rowH;
+        const int boxH = rowH <= 30 ? rowH - 1 : rowH - 6;  // (0.69.0: twelve Options rows - the detail line stays inside)
         bool sel = int(i) == selected;
         if (pick) hits::add(Rect{r.x, y, r.w, rowH - 4}, [pick, i]() { *pick = int(i); });  // the mouse (0.27.0)
         if (sel) {
             float pulse = 0.5f + 0.5f * std::sin(float(now % 2000) / 2000.f * 6.2831853f);
-            c.fillRoundRect(r.x, y, r.w, rowH - 6, 8, theme::panelHi, 240);
-            c.frameRoundRect(r.x, y, r.w, rowH - 6, 8, mix(theme::goldDim, theme::gold, int(pulse * 255)), 2);
+            c.fillRoundRect(r.x, y, r.w, boxH, 8, theme::panelHi, 240);
+            c.frameRoundRect(r.x, y, r.w, boxH, 8, mix(theme::goldDim, theme::gold, int(pulse * 255)), 2);
             // small marker triangle
-            float tx = float(r.x + 12), ty = float(y + (rowH - 6) / 2);
+            float tx = float(r.x + 12), ty = float(y + boxH / 2);
             float xs[3] = {tx, tx + 8, tx}, ys[3] = {ty - 6, ty, ty + 6};
             c.fillPolygon(xs, ys, 3, theme::gold);
         }
-        const int dy = rowH < 40 ? 2 : 3, ddy = rowH < 40 ? 17 : 20;
+        const int dy = rowH <= 30 ? 1 : rowH < 40 ? 2 : 3, ddy = rowH <= 30 ? 15 : rowH < 40 ? 17 : 20;
         drawText(c, FONT_MDB, r.x + 28, y + dy, items[i].label, sel ? theme::text : theme::dim);
         if (!items[i].detail.empty())
             drawText(c, FONT_XS, r.x + 28, y + ddy, items[i].detail, sel ? theme::dim : theme::faint);

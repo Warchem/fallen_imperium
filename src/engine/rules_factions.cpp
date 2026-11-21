@@ -521,7 +521,7 @@ bool Rules::factionAction(int p, int option) {
             addUnits(p, UnitType::Infantry, 2, G.planets[x].system, x);
             abilityEvent(E, p, "Orbital Drop", pn(p) + " uses Orbital Drop: 2 infantry land on " + planetName(x) + ".", G.planets[x].system);
             // ZS Thunderbolt M2 (DEPLOY)
-            if (unitsAvailable(G, p, UnitType::Mech) > 0 && spendable(G, p, false) >= 3 && mechAbilities(G) &&
+            if (unitsForPlacement(G, p, UnitType::Mech) > 0 && spendable(G, p, false) >= 3 && mechAbilities(G) &&
                 fyes(p, Ab::SolMechDeploy, "Pay 3 resources to put a mech on " + planetName(x) + "?", "ZS Thunderbolt M2 (deploy).") &&
                 pay(p, 3, false, "ZS Thunderbolt M2", false)) {
                 addUnits(p, UnitType::Mech, 1, G.planets[x].system, x);
@@ -1057,7 +1057,7 @@ void Rules::afterDiplomacy(int p) {
 // at most 2 PDS a planet, as anywhere else)
 std::vector<Option> Rules::xxchaHeroSpots(int p) const {
     std::vector<Option> o;
-    const bool pds = unitsAvailable(G, p, UnitType::PDS) > 0, mech = unitsAvailable(G, p, UnitType::Mech) > 0;
+    const bool pds = unitsForPlacement(G, p, UnitType::PDS) > 0, mech = unitsForPlacement(G, p, UnitType::Mech) > 0;
     for (int x : controlledPlanets(G, p)) {
         if (isStation(G, x) || isDMZ(G, x) || G.planets[size_t(x)].destroyed) continue;
         const std::string d = std::string(G.planets[size_t(x)].exhausted ? "exhausted - it is readied" : "ready");
@@ -1135,7 +1135,9 @@ bool Rules::quashCheck(int a) {
     for (int p : clockwiseFrom(G, G.speaker)) {
         if (G.players[p].eliminated) continue;
         // Quash
-        if (fac(p, "xxcha") && G.players[p].strategy > 0 &&
+        // ((fixes 31, the generic notes' pass) Political Secret: "cannot ... use faction abilities until after that agenda has been
+        // resolved" - Quash is one the Xxcha choose to use)
+        if (fac(p, "xxcha") && G.players[p].strategy > 0 && !(G.fixes >= 31 && ((silenced_ >> p) & 1)) &&
             fyes(p, Ab::Quash, std::string("Quash ") + kAgendas[a].name + "?", abilityText(G.players[p].faction, 1))) {
             spendStrategy(p, 1);
             abilityEvent(E, p, "Quash", pn(p) + " quashes " + kAgendas[a].name + ".");

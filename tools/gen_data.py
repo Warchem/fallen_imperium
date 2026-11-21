@@ -668,6 +668,15 @@ for cid in ("warforgeruins", "arcaneshieldemitter"):
     ex_order.append(k)
     ex_count[k] = 1
     ex_first[k] = e
+# 0.61.0 (the exploration pass): Codex III's six frontier cards (AsyncTI4 explores/codex3.json - its PoK deck has them, the
+# Keleres Ship twice), appended last; the engine shuffles them in only with the Codex (rules version 31, codex3Explore)
+for e in load("data/explores/codex3.json"):
+    k = (e["type"], e["name"])
+    if k not in ex_count:
+        ex_order.append(k)
+        ex_count[k] = 0
+        ex_first[k] = dict(e, source="pok")
+    ex_count[k] += 1
 emit("// Exploration cards: key, name, deck, copies, kind, source")
 emit(f"const ExploreCardDef kExploreCards[{len(ex_order)}] = {{")
 for k in ex_order:

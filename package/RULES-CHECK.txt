@@ -1,5 +1,307 @@
-RULES-CHECK - version 0.60.0
+RULES-CHECK - version 0.80.0
 =============================
+
+0.80.0 changes no rules of the game: the Tournament (league mode, see the
+README). These are my choices for the league's own rules - please check them:
+
+L1  "Win before round 7": the winner won in round 1 to 6.
+L2  "Knock a player out": goes to the player whose turn it was when the other
+    player was eliminated.
+L3  "Keep every promise you make": you made at least one promise in the game
+    and broke none (an X-1 payback you didn't send counts as broken).
+L4  "Support for the Throne from 3 players", "Occupy Mecatol Rex and Styx",
+    "Occupy all planets in the Fracture": counted at the end of the game.
+L5  Places: the winner is always 1st; the rest by victory points; players knocked
+    out share the last places. Shared places split their points, rounded up
+    (two players sharing 2nd: (4 + 3) / 2 = 3.5 -> 4 each).
+L6  The league's end: as soon as anyone reaches the target, the most points
+    wins (you, when you are level with a rival). After the last game the most
+    points wins the same way. A lost league starts again at game 1 with 0
+    points; your rivals keep their memory of you.
+L7  "Rising" bots (Grand league, Ashfall Crucible): Normal for the first third
+    of the league's games, Hard for the second, Competitive for the last.
+L8  A rival's grudge: +5 B-Factor toward you for every promise you ever broke
+    to it, +1 for every game you finished above it, at most +25.
+L9  Leagues without a faction draft: you pick once from players + 3 factions
+    (the Crystal Gauntlet: from every faction it deals) and keep it; each rival
+    keeps its own faction when the league deals it, the other bots get one at
+    random from the league's pool.
+L10 Your rival for a game: the rival nearest you in points (on a tie, the one
+    above you); it always gets a seat at your table, the other seats go to the
+    rivals who have played fewest games in this league.
+
+0.75.0 changes no rules: eight new faction colours (see the README). Nothing to
+check.
+
+0.74.0 changes no rules: a new difficulty, A.I. (see the README). Nothing to
+check. (It sees only what a player at the table sees - a test deals everyone
+else's hidden cards again and checks its choices don't change.)
+
+0.73.8 changes no rules: the scene when the Firmament becomes the Obsidian
+(see the README). Nothing to check.
+
+0.73.5 changed no rules: the Fracture is hidden until it comes into play, and
+the map ripples out from Styx when it does (see the README). Nothing to check.
+
+0.73.0 changed no rules: the War Sun scene (see the README). It plays for the
+first war sun technology of a game - the generic War Sun or a faction's own
+war sun upgrade (Muaat's Prototype War Sun II counts too); Muaat's starting
+war sun is not a technology, so it doesn't start it. Nothing to check.
+
+0.72.0 changed no rules: mouse polish and key bindings (see the README).
+Nothing to check.
+
+0.71.0 changed no rules: combat reactions - the two sides speak as a fight
+starts (see the README). Nothing to check.
+
+0.70.0 changed no rules: the sounds you approved (moments, the comms screen,
+every faction's voice - see the README). Nothing to check.
+
+0.69.0 changes no rules: the map sounds (sirens, landings, each faction's ships
+on the move - see the README). Nothing to check.
+
+0.68.1 - your ruling, applied (nothing to answer): Ouranos (Titans flagship,
+DEPLOY "after you activate a system that contains 1 or more of your PDS")
+looks at the PDS in the system when it was activated. A PDS that Awaken places
+in that same activation can't be replaced by it (LRR 1.14: "after" abilities
+resolve right after the timing event they name). A PDS that was already there
+still can. Only games started in 0.68.1 or later.
+
+0.68.0 changed no rules: a music player for your own songs (Options > Music
+player - see the README). Nothing to check.
+
+0.67.0 changed no rules: the screen buttons moved into the top banner
+(see the README). Nothing to check.
+
+0.66.0 changed no rules: the computer players play the Savages of Cymiae and
+the Roh'Dhna Mechatronics differently (see the README). Nothing to check.
+
+0.65.0 changed no rules: the computer players vote differently (a voting
+plan over both agendas of the agenda phase - see the README). Living Rules
+8.7 still holds: a player casts all their votes on an agenda for one outcome.
+
+0.64.0 changed no rules (the opponent's opening line on your offer screen
+and the L1Z1X "Lazax" glitch - display only).
+
+0.63.0 changed no rules (the New Game screen's windows). One new setup
+choice: Galaxy > "Fair slices" - ticked (as before) the slices of a random
+map, or the draft hands, are the most even of many deals; unticked they are
+the first deal as it falls (an unbalanced galaxy). A seeded map is always
+balanced. Older saves play as before.
+
+0.62.1 changed no rules (a Confirm button on the Factions & seats screen).
+
+0.62.0 changed no rules (the Factions & seats windows and the 8 new
+colours; computer seats on Auto keep to the classic eight, as you asked).
+
+0.61.3 changed no rules (the map list from your document: screens, mouse,
+keys and the Windows picture). The questions below are unchanged.
+
+0.61.2 (your answer to X1, 2026-11-18: "yes, it still covers it as it
+beholden to the living rules on unit placement", and the Minor Factions
+fix). Games started with this version get both; older saves play as before.
+No questions - say if you play it otherwise:
+Y1. Living Rules 23.4a for abilities too: every ability that places a unit
+    (Self-Assembly Routines, exploration cards, deploy abilities, I48S,
+    Refit Troops, action cards, agendas, galactic events ...) is offered
+    when the only pieces left are on the board, and when it places the unit
+    the game asks which of yours comes back (from a system without your
+    command token) - always with "Don't take one back", since "abilities
+    cannot force a player to remove and place a unit". The same "Take this
+    piece off the board?" box asks before it goes. If you decline, that
+    unit isn't placed (an agent isn't spent when nothing would happen).
+    Kept as before: the Myko-Mentori's mech from its card (not from the
+    reinforcements), and Koryl Ferax already moves a mech that is on the
+    board. Bots take back a unit for an ability a little more readily than
+    for production (the ability is already used).
+Y2. Minor Factions (galactic event), from the Thunder's Edge rulebook: the
+    Ghosts of Creuss and the Crimson Rebellion can be minor factions - "the
+    Creuss Gate or the Sorrow, respectively, is placed in a minor faction
+    spot, while the home system is placed near the game board" (joined by
+    its delta / epsilon wormhole; the 3 neutral infantry and the Alliance
+    go with the home system's planets). The Council Keleres: "choose one of
+    its three possible home systems at random" (only a Mentak / Xxcha /
+    Argent home not in play and not already a minor faction). The Firmament
+    / the Obsidian: "randomly choose which side of its home system". Before,
+    these four were never drawn.
+
+0.61.1 (your answers of 2026-11-18 to W19 and W20). Games started with this
+version get the rule below; older saves play as before. No questions this
+time - X1 tells you what I decided; say if you play it otherwise:
+X1. Living Rules 23.4a is in (your W19 "yes please"): when you would place a
+    unit and none of that type is left in your reinforcements (fighters and
+    infantry never run out), you may take one of yours off the board from a
+    system WITHOUT your command token and place it at once.
+    - Producing (every production, Integrated Economy too): a unit's row
+      lets you go past what's left. The line under the rows says "1 unit
+      comes off the board", and when you confirm, a warning box says which
+      units come OFF THE BOARD - before anything is paid (A goes ahead, B
+      goes back). After paying you pick the piece (its system or planet; a
+      damaged one comes back repaired), and a second box asks "Take this
+      piece off the board?" - A removes it, B lets you choose another.
+    - Placing a PDS or space dock (Construction and the like): a choice
+      with none left says "None left: one of yours comes off the board for
+      it", and the same pick and warning follow. If every choice would need
+      a piece from the board, "Nothing" is offered too - "abilities cannot
+      force a player to remove and place a unit in this manner" (23.4a).
+    - The piece is removed, not destroyed: no "when destroyed" effects. If
+      a carrier leaves fighters or ground forces without room, you remove
+      the extra as usual (LRR 16.3).
+    - Computer players only take back an idle unit: not at home, no enemy
+      ships within 2 systems, not on Mecatol Rex or a legendary planet, and
+      nothing it carries loses its room.
+    - Not covered: abilities that place a unit without producing it (a mech
+      from Self-Assembly Routines, a faction's deploy ability, ...) still
+      use only what's left in your reinforcements. Tell me if you want those
+      too.
+      Answered (owner 2026-11-18: "yes, it still covers it") - in 0.61.2, Y1.
+X2. The Alliance stays as it is (your W20: your card has the return line).
+
+0.61.0 (the card-wording passes - your go-ahead of 2026-11-17 21:24: card
+texts, rulings and timings for every card type still paraphrased, the Living
+Rules first, then the references, then AsyncTI4; my calls "as long as it
+follows the card"). The texts are now the cards' own wording. Every fix
+below applies to games started with this version; older saves play as
+before. Two questions for you: W19 (a general rule not in the game yet)
+and W20 (please check your printed Alliance card). The rest is settled by
+the card and the rules - no answer needed, but tell me if your card or a
+ruling you play by says otherwise:
+
+Public objectives
+W1. "The edge of the game board": hyperlane tiles are part of the board
+    (LRR 39: the board is every system tile), so a system beside a hyperlane
+    is not on the edge - as AsyncTI4 plays it.
+W2. The Ghosts of Creuss' home system is on the edge of the game board
+    (LRR 39.2a) - other players' units there count for Explore the Outer Rim /
+    Control the Borderlands (the Creuss player's own home never does).
+W3. Discover Lost Outposts / Reclaim Ancient Monuments: Terraform, Ul the
+    Progenitor (Geoform) and the Nano-Forge are attachments ("attach this
+    card"), and a planet you coexist on counts as controlled (as T22).
+
+Secret objectives
+W4. One objective during or after each combat (LRR 61.7): when one combat
+    fulfils several of your secrets (say Brave the Void, Unveil Flagship and
+    Demonstrate Your Power, or a flagship destroyed during the fight for
+    Destroy Their Greatest Ship), you pick one to score at the end of the
+    combat; the others stay in your hand. The space combat and the ground
+    combat of one tactical action count separately (61.7a). Bots score the
+    one least likely to come again.
+W5. Action-phase secrets score only in the action phase (61.5b) and agenda
+    ones only in the agenda phase (61.5c): Drive the Debate from an agenda
+    resolved during the action phase (the Keleres' Executive Order) doesn't
+    score.
+W6. Dictate Policy with 3 laws already in play is scored at the start of the
+    agenda phase ("any time during that phase") - before, only once an
+    agenda had resolved, so a Repeal Law first could take it away.
+W7. Without the Codex (Modules), Make an Example of Their World, Turn Their
+    Fleets to Dust and Fight with Precision are the first printings: "Use
+    BOMBARDMENT / SPACE CANNON / ANTI-FIGHTER BARRAGE to destroy the last of
+    a player's ..." - for Turn Their Fleets to Dust that means every ship,
+    fighters too (counted before ships over capacity go - the Living Rules
+    FAQ), and X-89 Bacterial Weapon's own "destroy all infantry" afterwards
+    isn't BOMBARDMENT. With the Codex (the default) they are the Omega cards
+    ("... during the bombardment / space cannon offense / anti-fighter
+    barrage step").
+W8. Betray a Friend: "whose promissory note you had in your play area" - the
+    notes face up in front of you (Alliance, Support for the Throne, Promise
+    of Protection, ...), not the ones in your hand (the Living Rules tell
+    the two apart, 69.5).
+W9. Demonstrate Your Power doesn't need a win: 3 or more non-fighter ships in
+    the active system when a space combat ends - also when the other side
+    slipped away with Skilled Retreat.
+W10. Spark a Rebellion when players are tied for the most victory points
+    (everyone on 0 in round 1, say): each of them "has the most", so a win
+    against any of them scores it - as before.
+W11. Become the Gatekeeper with ships in the active wormhole nexus alone: it
+    contains an alpha and a beta wormhole, so it counts - as before; the
+    inactive nexus has only its gamma wormhole.
+W12. The Titans' Hel-Titans (their PDS) are ground forces for Occupy the
+    Fringe and Make an Example of Their World; Destroy Their Greatest Ship
+    needs the ship destroyed, not removed (61.9a).
+
+Exploration cards
+W13. Codex III's six frontier cards were missing from our frontier deck:
+    Minor Entropic Field (1 command token + 1 trade good), Entropic Field
+    (+2), Major Entropic Field (+3), Keleres Ship x2 (2 command tokens) and
+    Dead World (draw 1 relic). They are in the deck in games with the Codex
+    (the default in Modules) - 20 frontier cards, as the AsyncTI4 bot plays.
+W14. Merchant Station's "replenish your commodities" is a replenish: a Trade
+    Agreement another player holds, Minister of Commerce and the like answer
+    it (before, only the Trade card's refill did).
+W15. Functioning Base / Local Fabricators: "spend 1 trade good or 1
+    commodity" - you pick which when you have both (bots spend the
+    commodity).
+W16. Demilitarized Zone: "During the agenda phase, this planet's planet card
+    can be traded as part of a transaction" - the Negotiations screen offers
+    it on the Planet row in the agenda phase (it was missing).
+W17. Deserted Trade Station: a space station (Thunder's Edge) isn't a planet,
+    so it gives no trade good.
+
+Strategy cards
+W18. The eight cards (and Thunder's Edge's Construction and Warfare) now show
+    their own wording; their rules were checked against the Living Rules
+    (24, 32, 45, 52, 66, 92, 99) and already played that way - Politics may
+    make yourself the speaker (if you aren't), Trade's chosen players refill
+    without a token, Warfare's secondary uses one space dock at home. One
+    fix: Diplomacy's "a system that contains a planet you control" - a
+    system where you hold only a space station can't be chosen.
+W19. Not in the game yet (a general rule, not a card): Living Rules 23.4a -
+    when you would place a unit and have none left in your reinforcements,
+    you may take one of yours from a system without your command token.
+    Today the game just doesn't offer that unit. Want it added later?
+    Answered (owner 2026-11-18: "yes please", with a warning before a piece
+    is removed) - in 0.61.1, see X1.
+
+Generic promissory notes
+W20. Alliance: the card says "When you activate a system that contains 1 or
+    more of the <color> player's units, return this card" - it now goes
+    back like Support for the Throne (you're warned before the activation;
+    bots count the cost). Before, it stayed for good. Please check your
+    printed card: if yours has no such line, tell me and I'll take it out.
+    Answered (owner 2026-11-18: "it does say that") - kept.
+W21. Political Secret: "cannot vote, play action cards, or use faction
+    abilities until after that agenda has been resolved" - faction abilities
+    the player would choose to use (the Living Rules FAQ) are now stopped
+    too: the Xxcha's Quash and the Nekro's Galactic Threat on that agenda.
+    Leaders and technologies still work (the FAQ).
+
+Legendary planets
+W22. The 18 legendary abilities show their cards' wording, and Thunder's
+    Edge's Mecatol Rex card (The Galactic Council) now shows on the planet
+    card too.
+W23. Bi-Phasic Generators (Echo): "a system that does not contain a planet" -
+    a supernova is one (the Embers of Muaat's ships can go there; bots only
+    choose it if they can reach it); a system whose only "planet" is a space
+    station counts as one too.
+W24. Mystic Library (Prism): only the technology you purge must be a
+    non-faction, non-unit upgrade one; the one you gain may be any you could
+    gain with the same number of prerequisites - a unit upgrade (Destroyer II
+    for Fleet Logistics) or one of your faction's.
+W25. The Atrament (Primor): no infantry onto a planet with the Arcane Shield
+    Emitter; Maxis Central Control (Faunus): Terraform, Ul the Progenitor and
+    the Nano-Forge count as attachments (as W3).
+
+Thunder's Edge action cards
+W26. The 20 cards show their own wording. Brilliance had only half its
+    card: "Ready 1 of your planets that has a technology specialty or choose
+    1 player to gain their breakthrough" - the breakthrough choice is in now
+    (bots give it only to themselves).
+
+Uncharted Space action cards
+W27. The 30 cards show their own wording. Contagion: "After you destroy 1 or
+    more of another player's infantry on a planet" - it is offered after a
+    bombardment too (before, only in ground combat). Confused Sage stays as
+    it was played so far: combat and unit-ability dice (rerolled hits,
+    bombardment, space cannon, barrage), not every die in the game.
+
+Galactic events
+W28. The 20 events show their cards' own wording (the Galactic events
+    screen got a taller text box and shows 7 events at a time; long texts use
+    the smaller font). Their rules were checked against the cards and the
+    Thunder's Edge rulebook's notes: all as before, plus - Age of Exploration
+    can't place a new tile off a Fracture system (the rulebook), and a new
+    tile with only a space station gets a frontier token (a station isn't a
+    planet; the same for Star Charts).
 
 0.60.0 (the agenda and relic passes - your go-ahead of 2026-11-17 14:59 and
 15:32). Every fix below applies to games started with this version; older

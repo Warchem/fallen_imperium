@@ -144,7 +144,7 @@ void Rules::teEndOfTurn(int p) {
         for (int16_t o : pl.secrets) opts.push_back({o, std::string("Discard ") + kObjectives[o].name, objectiveSummary(o)});
         opts.push_back({-1, "Not now", ""});
         const int o = pick(p, Tag::LegendaryAbility, "The Galactic Council (Mecatol Rex): discard a secret objective to draw another?", opts,
-                           "Thunder's Edge: Mecatol Rex is a legendary planet.");
+                           "You may exhaust this card at the end of your turn and discard 1 secret objective to draw 1 secret objective.");
         if (o >= 0) {
             G.planets[size_t(mr)].abilityExhausted = true;
             pl.secrets.erase(std::find(pl.secrets.begin(), pl.secrets.end(), int16_t(o)));
@@ -198,6 +198,7 @@ bool Rules::passAbility(int p, int x, bool cordo, const std::function<void()>& s
         for (size_t y = 0; y < G.planets.size(); ++y) {
             const PlanetState& ps = G.planets[y];
             if (ps.destroyed || ps.owner == p || isHomePlanet(G, int(y)) || isLegendaryPlanet(G, int(y)) || !ps.attachments.empty()) continue;
+            if (G.fixes >= 31 && (ps.terraform || ps.ulHero || ps.nanoForge)) continue;  // ((fixes 31) attachments too - see attachedPlanets)
             if (ps.system < 0 || isStation(G, int(y))) continue;
             bool units = false;
             for (int q = 0; q < G.numPlayers; ++q)
@@ -253,7 +254,7 @@ bool Rules::passAbility(int p, int x, bool cordo, const std::function<void()>& s
         for (int t : kShipIdx) {
             if (UnitType(t) == UnitType::Fighter && false) continue;
             const UnitDef& u = unitDef(G, p, UnitType(t));
-            if (u.tech < 0 || !G.players[size_t(p)].hasTech(u.tech) || unitsAvailable(G, p, UnitType(t)) <= 0) continue;
+            if (u.tech < 0 || !G.players[size_t(p)].hasTech(u.tech) || unitsForPlacement(G, p, UnitType(t)) <= 0) continue;
             kinds.push_back({t, u.name, std::to_string(u.cost2 / 2) + " cost"});
         }
         std::vector<Option> where;

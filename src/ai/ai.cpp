@@ -159,7 +159,12 @@ float economyValue(const Game& g, int p, int pl) {
             }
         }
     // (0.59.1) the Creuss home has 2 influence: the custodians (6) and influence objectives need it from the planets
-    const float infW = isFaction(g, p, "ghost") ? aiTune("creussinf", 1.25f) : 0.8f;
+    float infW = isFaction(g, p, "ghost") ? aiTune("creussinf", 1.25f) : 0.8f;
+    // (balance pass 0.66.0 - test knobs zlinf / cyinf, OFF) the Zealots (Poh 2/0, Orad 3/1) and the Cymiae (3/1) have 1 influence
+    // at home: the custodians (6), tokens and influence objectives come from the planets they take (custodians 0.04 VP a game
+    // against 0.19). REVISIT (360 games each, 1.25): Zealots 33 wins / 6.39 VP against 31 / 6.39, Cymiae 16 / 6.11 against 18 / 6.17
+    if (aiTune("zlinf", 0.f) > 0.f && isFaction(g, p, "zealots")) infW = aiTune("zlinf", 0.f);
+    if (aiTune("cyinf", 0.f) > 0.f && isFaction(g, p, "cymiae")) infW = aiTune("cyinf", 0.f);
     const float worth = float(planetResources(g, pl)) + infW * float(planetInfluence(g, pl)) + 0.6f;
     // taking a planet from someone is a fight, valued elsewhere: only a little here
     return worth * near * k * (ps.owner >= 0 ? 0.3f : 1.2f);
@@ -171,6 +176,11 @@ float planetValue(const Game& g, int p, int pl) {
     const int res = planetResources(g, pl), inf = planetInfluence(g, pl);
     float v = res + inf * 0.8f + 0.8f;
     if (d.skip != TechColor::None) v += 1.0f;
+    // (balance pass 0.66.0 - test knob zlspec, OFF) the Zealots: a specialty skips 2 prerequisites (Ancient Knowledge), pays a
+    // commodity when exhausted and, with Pilgrimage Beacons, a ship - their plan is built on these planets. REVISIT (+2, three samples
+    // of 180 games): 11 / 30 / 14 wins against 15 / 16 / 17 - not in all three
+    if ((d.skip != TechColor::None || d.skip2 != TechColor::None) && aiTune("zlspec", 0.f) > 0.f && isFaction(g, p, "zealots"))
+        v += aiTune("zlspec", 0.f);
     if (d.legendary) v += 2.0f;
     const bool mecatol = !std::strcmp(d.key, "mr");
     if (mecatol) v += 3.0f;
@@ -239,6 +249,72 @@ bool enemyNear(const Game& g, int p, int sys, int steps) {
     for (int s : systemsWithin(g, sys, steps))
         if (otherShipsIn(g, p, s)) return true;
     return false;
+}
+
+// 0.61.1 (fixes 32, LRR 23.4a): what taking this unit off the board would cost the bot (lower = idler): its home, enemies near, the
+// planet it holds or guards, the cargo it carries; a damaged one comes back repaired. 100+ = never (it would come straight back).
+float aiReclaimLoss(const Game& g, int p, UnitType t, int sys, int planet, bool damaged, int destSys) {
+    if (sys == destSys) return 100.f;
+    const SystemState& sy = g.systems[size_t(sys)];
+    float v = 1.f;
+    if (sy.home == p) v += 3.f;
+    if (enemyNear(g, p, sys, 1)) v += 4.f;
+    else if (enemyNear(g, p, sys, 2)) v += 1.5f;
+    if (sys == g.mecatol() || (planet >= 0 && isLegendaryPlanet(g, planet))) v += 2.f;
+    if (planet >= 0) {
+        const Force& f = g.planets[size_t(planet)].units[size_t(p)];
+        if (t == UnitType::SpaceDock) v += 3.f + float(planetResources(g, planet));  // (its production)
+        if (t == UnitType::PDS) v += 0.15f * planetValue(g, p, planet);
+        if (t == UnitType::Mech && f.groundForces() <= 1) v += 1.5f;  // (the planet's last defender)
+    } else {
+        if (t == UnitType::SpaceDock) v += 3.f;  // (a floating factory: its production too)
+        Force after = sy.space[size_t(p)];
+        after.remove(t, 1, damaged);
+        if (overflowOf(g, p, sys, after) > overflowOf(g, p, sys, sy.space[size_t(p)])) v += 3.f;  // (its cargo loses its room)
+        if (sy.space[size_t(p)].nonFighterShips() <= 1 && enemyNear(g, p, sys, 2)) v += 1.f;
+    }
+    if (damaged) v -= 0.8f;
+    return v;
+}
+// the idlest piece (option id) of a Tag::ReclaimUnit question, or -1; *loss its cost
+int aiReclaimPick(const Game& g, const Decision& d, float* loss) {
+    const UnitType t = UnitType(d.value % 64);
+    const int dest = d.value / 64;
+    int best = -1;
+    float bv = 1e9f;
+    for (const Option& o : d.options) {
+        if (o.id < 0 || !o.enabled) continue;
+        int s = 0, planet = -1;
+        bool dmg = false;
+        reclaimDecode(o.id, s, planet, dmg);
+        const float v = aiReclaimLoss(g, d.player, t, s, planet, dmg, dest);
+        if (v < bv) {
+            bv = v;
+            best = o.id;
+        }
+    }
+    if (loss) *loss = bv;
+    return best;
+}
+// how many of p's units of type t could come off the board for a placement in destSys at a loss of `bar` or less (*best: the lowest loss)
+int aiReclaimIdle(const Game& g, int p, UnitType t, int destSys, float bar, float* best = nullptr) {
+    if (best) *best = 1e9f;
+    if (!reclaimAllowed(g, p, t)) return 0;
+    int n = 0;
+    for (size_t s = 0; s < g.systems.size(); ++s) {
+        const SystemState& sy = g.systems[s];
+        if (sy.hasToken(p)) continue;
+        auto add = [&](const Force& f, int planet) {
+            if (!f.count(t)) return;
+            const bool dmg = f.damaged(t) > 0;
+            const float v = aiReclaimLoss(g, p, t, int(s), planet, dmg, destSys);
+            if (best) *best = std::min(*best, v);
+            if (v <= bar) n += f.count(t);
+        };
+        add(sy.space[size_t(p)], -1);
+        for (int16_t x : sy.planets) add(g.planets[size_t(x)].units[size_t(p)], x);
+    }
+    return n;
 }
 
 // Resources / influence / trade goods the AI wants to keep untouched so it can
@@ -2155,6 +2231,38 @@ static Plan bestPlanCore(const Game& g, int p) {
     return best;
 }
 
+// (0.74.0, the A.I.'s look-ahead) the systems worth activating, best first, scored as bestPlanCore scores them (the plan's
+// value less what activating the system locks in place); at most k, only plans worth something
+std::vector<int> activationRanking(const Game& g, int p, int k) {
+    std::vector<Plan> plans;
+    for (size_t s = 0; s < g.systems.size(); ++s)
+        if (canActivate(g, p, int(s))) plans.push_back(buildPlan(g, p, int(s), true));
+    const float lockW = aiCompetitive(g) ? 0.7f : 0.f;
+    const int tokensLeft = g.players[size_t(p)].tactic;
+    std::vector<std::pair<float, int>> scored;
+    for (const Plan& pl : plans) {
+        if (pl.value <= 0.f || pl.system < 0) continue;
+        float lock = 0.f;
+        if (tokensLeft >= 2 && lockW > 0.f)
+            for (const Plan& other : plans) {
+                if (other.system == pl.system || other.value <= lock) continue;
+                for (size_t i = 0; i + 3 < other.move.size(); i += 4)
+                    if (other.move[i] == pl.system) {
+                        lock = other.value;
+                        break;
+                    }
+            }
+        scored.push_back({pl.value - lock * lockW, pl.system});
+    }
+    std::sort(scored.begin(), scored.end(), [](const std::pair<float, int>& a, const std::pair<float, int>& b) {
+        return a.first > b.first || (a.first == b.first && a.second < b.second);
+    });
+    std::vector<int> out;
+    for (const auto& s : scored)
+        if (int(out.size()) < k) out.push_back(s.second);
+    return out;
+}
+
 // ============================================================ strategy cards
 bool hardAI(const Game& g) { return aiLevelScale(g) >= 0.99f; }
 
@@ -2347,6 +2455,8 @@ bool cardGoodNow(const Game& g, int p, int card, float bestTactical) {
             // structure on a new planet outside home is worth more (and counts for
             // objectives) than one at home on the first turn.
             if (pl.tactic == 0 || bestTactical < 2.f) return true;
+            // (balance pass 0.66.0 - knob rhkeep) the Roh'Dhna wait until 6 resources are ready: the dock becomes a war sun
+            if (aiTune("rhkeep", 0.f) > 0.f && aiRohdhnaFactory(g, p, false)) return aiRohdhnaFactory(g, p, true);
             const int home = pl.homeSystem;
             int spots = 0;
             for (int x : controlledPlanets(g, p))
@@ -2457,7 +2567,8 @@ float techWant(const Game& g, int p, int t) {
     // planets are exhausted) at the table's 4; Sanctification Field (YYY: another player's technology blank for a tactical action) at 5.
     // REVISIT (checkpoint 2, 90 forced games each, at 7): zlpilgrim - researched in 73-78% (38-49% at 4), its ships 0.3 -> 0.8-0.9 a game -
     // 7 wins / 6.51 VP against 9 / 6.41, second sample 7 / 6.01 against 5 / 6.10: not clear; zlsanct - researched in 52-60% (26-32%), used
-    // 6.0-7.2 times a game (2.3-3.0) - 12 / 6.34 against 9 / 6.41, second sample 5 / 6.12 against 5 / 6.10: not clear in both. Both off
+    // 6.0-7.2 times a game (2.3-3.0) - 12 / 6.34 against 9 / 6.41, second sample 5 / 6.12 against 5 / 6.10: not clear in both. Both off.
+    // (balance pass 0.66.0, zlpilgrim at 7 again, 360 games: 31 wins / 6.46 VP against 31 / 6.39 - still no gain)
     if (keyIs(d.key, "dsrhodb") && aiTune("zlpilgrim", 0.f) > 0.f) v = aiTune("zlpilgrim", 0.f);
     if (keyIs(d.key, "dsrhody") && aiTune("zlsanct", 0.f) > 0.f) v = aiTune("zlsanct", 0.f);
     // (the Sardakk checkpoint 2 - sdvpw ON at 9, owner 2026-11-17 11:05 "Go ahead and turn them on") Valkyrie Particle Weave (RR): 1 more
@@ -3058,11 +3169,19 @@ Answer aiProduceCore(const Game& g, const Decision& d) {
             const int use = fleetUse(g, p, sys, after);
             if (use > fleetLimit(g, p) && use > fleetUseIn(g, p, sys)) return false;
         }
+        // (0.61.1, fixes 32 - LRR 23.4a) past the reinforcements only by idle units that can come off the board (aiReclaimLoss)
+        bool back = false;
+        for (int u = 0; u < kUnitTypes; ++u) {
+            const int over = next[size_t(u)] - unitsAvailable(g, p, UnitType(u));
+            if (over <= 0) continue;
+            if (!d.reclaim || aiTune("reclaim", 1.f) <= 0.f || over > aiReclaimIdle(g, p, UnitType(u), sys, aiTune("reclaimbar", 1.5f))) return false;
+            back = true;
+        }
         if (d.planet >= 0 && d.validate) {  // Integrated Economy (after 0.44.4): its own rules - ground forces on that planet, no dock
             Answer t;
             t.data = next;
             if (!d.validate(t).empty()) return false;
-        } else if (!checkProducePlan(g, p, sys, next, limit, d.hitMask, true).empty()) {  // (0.45.0: bots stay within the fleet pool)
+        } else if (!checkProducePlan(g, p, sys, next, limit, d.hitMask, true, back).empty()) {  // (0.45.0: bots stay within the fleet pool)
             return false;
         }
         plan = next;
@@ -3647,6 +3766,9 @@ Answer aiPick(const Game& g, const Decision& d, Rng& rng) {
             if (!free && !yes && isFaction(g, p, "ghost") && g.round <= 3 && pl.strategy >= 1 && aiLevelScale(g) > 0.f && card == 3 &&
                 constructionSpot && crimsonNeedsDock(g, p))
                 yes = true;
+            // (balance pass 0.66.0 - knob rhfollow) the Roh'Dhna: Construction's secondary is a war sun for 6 resources (Industrious)
+            if (!free && !yes && card == 3 && pl.strategy >= 1 && constructionSpot && aiTune("rhfollow", 0.f) > 0.f && aiRohdhnaFactory(g, p, true))
+                yes = true;
             if (free && card != 3 && card != 6) yes = true;
             // 0.44.4: breakthroughs that make a secondary cheap - Mindsieve (Naalu: a spare promissory note instead of the
             // token), Specialist Compounds (Jol-Nar: a technology-specialty planet instead of the 4 resources)
@@ -3778,6 +3900,12 @@ Answer aiPick(const Game& g, const Decision& d, Rng& rng) {
         case Tag::ConstructionChoice: {  // Thunder's Edge Construction: produce when there's money to build with
             const bool structures = unitsAvailable(g, p, UnitType::PDS) + unitsAvailable(g, p, UnitType::SpaceDock) > 1;
             const bool money = (aiLevelScale(g) > 0.f ? aiFreeSpend(g, p, false) : spendable(g, p, false)) >= 5;
+            // (balance pass 0.66.0 - test knobs rhchoice / rhfollow / rhkeep / rhind, OFF) the Roh'Dhna: producing first spends the 6
+            // resources Industrious needs (the second structure comes after the production) - place the dock first and raise the war
+            // sun. REVISIT (360 games each, base 39 wins / 6.69 VP, 0.4 war suns from docks a game): rhchoice 35 / 6.58; + rhfollow
+            // 31 / 6.52; + rhkeep 31 / 6.48; all four 32 / 6.44 (2.6 war suns a game) - a war sun that can't move (Terrafactory I)
+            // ties 6 resources to one system; they won less
+            if (aiTune("rhchoice", 0.f) > 0.f && aiRohdhnaFactory(g, p, true)) return pickOne(1);
             return pickOne(hasOption(d, 2) && (money || !structures) && g.round >= 2 ? 2 : 1);
         }
         case Tag::ConstructionDock: {  // the dock that builds most, nearer the enemy on ties
@@ -3816,11 +3944,25 @@ Answer aiPick(const Game& g, const Decision& d, Rng& rng) {
                         const Goals& G = aiGoals(g, p);
                         v += G.structure + G.dock;
                     }
+                    // (0.61.1, fixes 32 - LRR 23.4a) none left: one of the factories comes off the board for it
+                    if (unitsAvailable(g, p, UnitType::SpaceDock) <= 0 && reclaimAllowed(g, p, UnitType::SpaceDock)) {
+                        float loss = 1e9f;
+                        aiReclaimIdle(g, p, UnitType::SpaceDock, s, 0.f, &loss);
+                        v -= loss + 1.5f;
+                        if (v < 0.5f) continue;
+                    }
                 } else {
                     int planet = o.id / 2;
                     bool dock = o.id % 2;
                     bool home = g.systems[g.planets[planet].system].home == p;
                     v = dock ? (home ? 1.f : 3.f + planetResources(g, planet)) : 1.f + planetValue(g, p, planet) * 0.2f;
+                    // (0.61.1, fixes 32 - LRR 23.4a) none left: one comes off the board - what it does where it stands is lost
+                    if (const UnitType bt = dock ? UnitType::SpaceDock : UnitType::PDS; unitsAvailable(g, p, bt) <= 0 && reclaimAllowed(g, p, bt)) {
+                        float loss = 1e9f;
+                        aiReclaimIdle(g, p, bt, g.planets[size_t(planet)].system, 0.f, &loss);
+                        v -= loss + 1.5f;
+                        if (v < 0.5f) continue;  // (moving a structure is worth it only when clearly better)
+                    }
                     // (0.59.0) the Crimson's first dock out on the board: their production 2 moves nearer
                     if (dock && !home && crimsonNeedsDock(g, p) && aiTune("crimsondock", 1.f) > 0.f) v += 5.f;
                     // (the Celdauri review, checkpoint 2 - test knob celdock) a dock not in or next to home unlocks Henry
@@ -3833,6 +3975,10 @@ Answer aiPick(const Game& g, const Decision& d, Rng& rng) {
                     }
                     // (the Myko-Mentori review, checkpoint 2 - test switch mkdock) a dock out on the board: +1 commodity value
                     if (dock && !home && aiTune("mkdock", 0.f) > 0.f && isFaction(g, p, "mykomentori")) v += 2.f;
+                    // (balance pass 0.66.0 - knob rhchoice) the Roh'Dhna: a dock where Industrious can turn it into a war sun now
+                    if (dock && !home && aiTune("rhchoice", 0.f) > 0.f && !otherShipsIn(g, p, g.planets[size_t(planet)].system) &&
+                        aiRohdhnaFactory(g, p, true))
+                        v += 4.f;
                     if (!dock) v += aiStyle(g, p).pdsPref * 2.f;  // Turtler, Shell Defense, Iron Shepherd
                     // (the Arborec review, checkpoint 2 - test knob bestfriend) the Arborec's Best Friend trait says it
                     // fortifies its legendary planets and Mecatol Rex, but its PDS liking is general (and toned down on
@@ -3867,6 +4013,13 @@ Answer aiPick(const Game& g, const Decision& d, Rng& rng) {
             if (best == -1) best = hasOption(d, -1) ? -1 : firstEnabled(d);
             return pickOne(best);
         }
+        case Tag::ReclaimUnit: {  // (0.61.1, fixes 32 - LRR 23.4a) the idlest piece; an optional one only when it is idle enough
+            // (0.61.2, fixes 33: an ability's placement asks with "don't" - the ability is already used, so a bit more readily: 2.5)
+            float loss = 1e9f;
+            const int id = aiReclaimPick(g, d, &loss);
+            if (hasOption(d, -1) && (id < 0 || loss > aiTune("reclaimopt", 2.5f))) return pickOne(-1);
+            return pickOne(id >= 0 ? id : firstEnabled(d));
+        }
         case Tag::ConstructionSystem: {
             int best = firstEnabled(d);
             float bv = -1e9f;
@@ -3880,6 +4033,13 @@ Answer aiPick(const Game& g, const Decision& d, Rng& rng) {
                 } else {
                     v += 2;
                 }
+                // (balance pass 0.66.0 - knob rhfollow) the Roh'Dhna: a system where the new dock can become a war sun
+                if (aiTune("rhfollow", 0.f) > 0.f && g.systems[o.id].home != p && !otherShipsIn(g, p, o.id) && aiRohdhnaFactory(g, p, true))
+                    for (int16_t pl : g.systems[o.id].planets)
+                        if (g.planets[pl].owner == p && !g.planets[pl].units[p].count(UnitType::SpaceDock)) {
+                            v += 6;
+                            break;
+                        }
                 if (v > bv) {
                     bv = v;
                     best = o.id;
@@ -3943,6 +4103,24 @@ Answer aiPick(const Game& g, const Decision& d, Rng& rng) {
             return pickOne(best);
         }
         case Tag::ScoreSecret: {
+            if (!hasOption(d, -1)) {
+                // (0.61.0) one of several a combat fulfilled (LRR 61.7): the one least likely to come again - the others stay held
+                static const struct {
+                    const char* key;
+                    int ease;
+                } ease[] = {{"btv", 5}, {"dyp", 6}, {"sar", 4}, {"fwp", 1}, {"dts", 2}, {"dtgs", 2}, {"uf", 2}, {"baf", 0}};
+                int best = d.options.empty() ? -1 : d.options[0].id, bestEase = 99;
+                for (const Option& o : d.options) {
+                    int e = 3;
+                    for (const auto& x : ease)
+                        if (o.id >= 0 && o.id < kObjectiveCount && keyIs(kObjectives[o.id].key, x.key)) e = x.ease;
+                    if (e < bestEase) {
+                        bestEase = e;
+                        best = o.id;
+                    }
+                }
+                return pickOne(best);
+            }
             for (const Option& o : d.options)
                 if (o.id >= 0) return pickOne(o.id);
             return pickOne(-1);
@@ -4057,9 +4235,29 @@ float aiPlanetValue(const Game& g, int p, int pl) { return planetValue(g, p, pl)
 float aiStrategyCardValue(const Game& g, int p, int card) { return cardValue(g, p, card); }
 bool isYesNoOptions(const Decision& d) { return isYesNo(d); }
 
+std::vector<int> aiActivationRanking(const Game& g, int p, int k) { return activationRanking(g, p, k); }
+float aiObjectiveScore(const Game& g, int p) { return objectiveScore(g, p); }
+
+// (0.74.0, the A.I.'s look-ahead) the strategy cards on offer, best first by the card values
+std::vector<int> aiStrategyRanking(const Game& g, const Decision& d) {
+    std::vector<std::pair<float, int>> v;
+    for (const Option& o : d.options)
+        if (o.enabled) v.push_back({cardValue(g, d.player, o.id), o.id});
+    std::sort(v.begin(), v.end(), [](const std::pair<float, int>& a, const std::pair<float, int>& b) {
+        return a.first > b.first || (a.first == b.first && a.second < b.second);
+    });
+    std::vector<int> out;
+    for (const auto& x : v) out.push_back(x.second);
+    return out;
+}
+
 Answer aiAnswer(const Game& g, const Decision& d, Rng& rng) {
     g_aiSeat = d.player;
     Answer cards;
+    if (aiThink(g, d, rng, cards)) {  // (0.74.0) the A.I. difficulty plays its options out first (only A.I. seats)
+        g_aiSeat = d.player;
+        return cards;
+    }
     if (aiGalaxyAnswer(g, d, rng, cards)) return cards;  // galaxy setup
     if (aiDealAnswer(g, d, rng, cards)) return cards;  // negotiations, promised votes
     if (aiFactionAnswer(g, d, rng, cards)) return cards;

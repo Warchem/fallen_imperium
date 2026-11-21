@@ -271,6 +271,10 @@ bool aiExploreAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
         case Tag::ExploreChoice: {
             const int c = d.explore;
             auto has = [&](const char* s) { return d.prompt.find(s) != std::string::npos; };
+            if ((exKey(c, "fb") || exKey(c, "lf")) && has(": spend which?")) {  // (0.61.0) a commodity is worth less than a trade good
+                out = pick1(0);
+                return true;
+            }
             // ---- Uncharted Space (0.33.0)
             if (has("move which command token")) {  // Distinguished Admiral, Scorched Depot
                 out = pick1(tokenMove(g, p, d));
@@ -694,7 +698,15 @@ bool aiExploreAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
             }
             if (has("Bi-Phasic Generators: put")) {  // next to our ships: we can explore it soon
                 int b = firstReal(d);
+                // (0.61.0: supernovas are offered now - only where our ships can go)
+                auto reachable = [&](int s) { return s >= 0 && (!(g.systems[size_t(s)].d().anomalies & kSupernova) || canEndMoveIn(g, p, s)); };
+                for (const Option& o : d.options)
+                    if (reachable(o.id)) {
+                        b = o.id;
+                        break;
+                    }
                 for (const Option& o : d.options) {
+                    if (!reachable(o.id)) continue;
                     bool near = false;
                     for (size_t s = 0; s < g.systems.size() && !near; ++s)
                         near = hasShips(g, p, int(s)) && adjacentSystems(g, o.id, int(s));

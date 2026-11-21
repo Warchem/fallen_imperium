@@ -758,7 +758,7 @@ bool Rules::dsStoneEmbrace(int p) {
 void Rules::dsDockPlaced(int p, int planet) {
     if (!fac(p, "rohdhna")) return;
     const int sys = G.planets[size_t(planet)].system;
-    if (otherShipsIn(G, p, sys) || unitsAvailable(G, p, UnitType::WarSun) <= 0 || spendable(G, p, false) < 6) return;
+    if (otherShipsIn(G, p, sys) || unitsForPlacement(G, p, UnitType::WarSun) <= 0 || spendable(G, p, false) < 6) return;
     // (0.46.1, fixes 15 - owner: the war sun counts against the fleet pool; say so when it is full)
     const bool full = G.fixes >= 15 && fleetUseIn(G, p, sys) + 1 > fleetLimit(G, p);
     if (!fyes(p, Ab::DsIndustrious, "Industrious: pay 6 resources to turn the new space dock on " + planetName(planet) + " into a war sun?",
@@ -819,7 +819,7 @@ void Rules::dsAfterMovement(int p, int sys, bool destroyerMoved, const Force* mo
         }
     }
     // Daedalon (Tnelis mech): a destroyer moved into a non-home system (not Mecatol Rex) - 3 resources for a mech
-    if (destroyerMoved && fac(p, "tnelis") && mechAbilities(G) && !home && sys != G.mecatol() && unitsAvailable(G, p, UnitType::Mech) > 0 &&
+    if (destroyerMoved && fac(p, "tnelis") && mechAbilities(G) && !home && sys != G.mecatol() && unitsForPlacement(G, p, UnitType::Mech) > 0 &&
         spendable(G, p, false) >= 3 && !s.planets.empty()) {
         std::vector<Option> opts;
         for (int16_t x : s.planets) {
@@ -1228,7 +1228,7 @@ void Rules::ds2Activated(int p, int sys) {
                 removeExcessCapacity(p, sys);
                 gainTG(p, tg);
                 ds2Event(E, p, "Recycled Materials", pn(p) + " breaks down a " + unitTypeName(UnitType(t)) + " for " + std::to_string(tg) + " trade goods.", sys);
-                if (mechAbilities(G) && unitsAvailable(G, p, UnitType::Mech) > 0) {  // Autofabricator
+                if (mechAbilities(G) && unitsForPlacement(G, p, UnitType::Mech) > 0) {  // Autofabricator
                     std::vector<Option> where{{-2, "The space area", ""}};
                     for (int16_t x : s.planets)
                         if (G.planets[size_t(x)].owner == p && !isDMZ(G, x)) where.push_back({x, planetName(x), ""});

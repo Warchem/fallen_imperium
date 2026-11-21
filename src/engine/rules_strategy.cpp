@@ -103,8 +103,8 @@ void Rules::secondaryAbility(int q, int card) {
             bool any = false;
             for (int x : controlledPlanets(G, q)) {
                 const Force& f = G.planets[x].units[q];
-                if ((f.count(UnitType::PDS) < 2 || lawInPlay(G, "defense_act")) && unitsAvailable(G, q, UnitType::PDS) > 0) any = true;
-                if (f.count(UnitType::SpaceDock) == 0 && unitsAvailable(G, q, UnitType::SpaceDock) > 0) any = true;
+                if ((f.count(UnitType::PDS) < 2 || lawInPlay(G, "defense_act")) && unitsForPlacement(G, q, UnitType::PDS) > 0) any = true;
+                if (f.count(UnitType::SpaceDock) == 0 && unitsForPlacement(G, q, UnitType::SpaceDock) > 0) any = true;
             }
             if (!any) return;
             break;
@@ -264,8 +264,8 @@ void Rules::diplomacy(int p, bool primary) {
         for (size_t s = 0; s < G.systems.size(); ++s) {
             if (int(s) == mec) continue;
             bool mine = false;
-            for (int16_t x : G.systems[s].planets)
-                if (G.planets[x].owner == p) mine = true;
+            for (int16_t x : G.systems[s].planets)  // ((fixes 31) "a planet you control" - a space station isn't one, Thunder's Edge)
+                if (G.planets[x].owner == p && !(G.fixes >= 31 && isStation(G, x))) mine = true;
             if (mine) opts.push_back({int(s), sysName(int(s)), ""});
         }
         if (!opts.empty()) {
@@ -306,8 +306,11 @@ void Rules::politics(int p, bool primary) {
 // ------------------------------------------------------------------ 4 Construction
 void Rules::placeStructure(int p, int sys, bool allowDock, bool allowPds, bool optional, const std::string& prompt) {
     std::vector<Option> opts;
-    const bool dockOk = allowDock && unitsAvailable(G, p, UnitType::SpaceDock) > 0;
-    const bool pdsOk = allowPds && unitsAvailable(G, p, UnitType::PDS) > 0;
+    // (0.61.1, fixes 32 - LRR 23.4a) with none left in the reinforcements, one of yours may come back off the board for it
+    const bool dockBack = allowDock && unitsAvailable(G, p, UnitType::SpaceDock) <= 0 && unitsPlaceable(G, p, UnitType::SpaceDock) > 0;
+    const bool pdsBack = allowPds && unitsAvailable(G, p, UnitType::PDS) <= 0 && unitsPlaceable(G, p, UnitType::PDS) > 0;
+    const bool dockOk = allowDock && (unitsAvailable(G, p, UnitType::SpaceDock) > 0 || dockBack);
+    const bool pdsOk = allowPds && (unitsAvailable(G, p, UnitType::PDS) > 0 || pdsBack);
     const bool floating = unitDef(G, p, UnitType::SpaceDock).spaceOnly;
     for (int x : controlledPlanets(G, p)) {
         int s = G.planets[x].system;
@@ -317,14 +320,14 @@ void Rules::placeStructure(int p, int sys, bool allowDock, bool allowPds, bool o
         if (dockOk && !floating && f.count(UnitType::SpaceDock) == 0)
             opts.push_back({x * 2 + 1, std::string("Space dock on ") + planetName(x),
                             "Produces up to " + std::to_string(planetResources(G, x) + unitDef(G, p, UnitType::SpaceDock).production) +
-                                " units."});
+                                " units.", true, s});  // (0.61.2: picked on the map)
         if (pdsOk && unitDef(G, p, UnitType::PDS).spaceOnly) {  // Privileged Citizenry (Mirveda): Gauss Cannons, fleet tokens per system
             bool dup = false;
             for (const Option& o : opts) dup = dup || (o.id % 2 == 0 && o.id >= 0 && G.planets[size_t(o.id / 2)].system == s);
             if (!dup && G.systems[size_t(s)].space[size_t(p)].count(UnitType::PDS) < G.players[size_t(p)].fleet)
-                opts.push_back({x * 2, std::string("Gauss Cannon in ") + sysName(s), "In the space area: space cannon and bombardment; it moves like a ship."});
+                opts.push_back({x * 2, std::string("Gauss Cannon in ") + sysName(s), "In the space area: space cannon and bombardment; it moves like a ship.", true, s});
         } else if (pdsOk && (f.count(UnitType::PDS) < 2 || lawInPlay(G, "defense_act")))
-            opts.push_back({x * 2, std::string("PDS on ") + planetName(x), "Space cannon and planetary shield."});
+            opts.push_back({x * 2, std::string("PDS on ") + planetName(x), "Space cannon and planetary shield.", true, s});
     }
     if (dockOk && floating) {
         // Saar floating factories go in the space area of a system with your planet
@@ -334,15 +337,22 @@ void Rules::placeStructure(int p, int sys, bool allowDock, bool allowPds, bool o
             bool dup = false;
             for (const Option& o : opts)
                 if (o.id == -(s + 10)) dup = true;
-            if (!dup) opts.push_back({-(s + 10), "Floating factory in " + sysName(s), ""});
+            if (!dup) opts.push_back({-(s + 10), "Floating factory in " + sysName(s), "", true, s});
         }
     }
     if (opts.empty()) return;
-    if (optional) opts.push_back({-1, "Nothing", ""});
+    // (fixes 32) a choice that needs a piece off the board says so; "abilities cannot force" it - with nothing else to choose, "Nothing"
+    auto needsBack = [&](const Option& o) { return o.id <= -10 || o.id % 2 ? dockBack : pdsBack; };
+    bool allBack = true;
+    for (Option& o : opts)
+        if (needsBack(o)) o.detail += std::string(o.detail.empty() ? "" : " ") + "None left: one of yours comes off the board for it (LRR 23.4a).";
+        else allBack = false;
+    if (optional || allBack) opts.push_back({-1, "Nothing", ""});
     int c = pick(p, Tag::ConstructionWhere, prompt.empty() ? std::string("Place a structure") : prompt, opts, "", false, false);
     if (c == -1) return;
     if (c <= -10) {
         int s = -c - 10;
+        if (dockBack) reclaimUnit(p, UnitType::SpaceDock, s, false);
         addUnits(p, UnitType::SpaceDock, 1, s, -1);
         say(p, pn(p) + " places a floating factory in " + sysName(s) + ".", s);
         if (lawOwner(G, "minister_industry") == p) production(p, s, productionCapacity(G, p, s), false);
@@ -352,6 +362,7 @@ void Rules::placeStructure(int p, int sys, bool allowDock, bool allowPds, bool o
     UnitType t = (c % 2) ? UnitType::SpaceDock : UnitType::PDS;
     if (monumentInstead(p, planet)) return;  // Monuments to the Ages (galactic event)
     if (t == UnitType::PDS && hecatoncheires(p, planet)) return;  // Titans mech: a mech and an infantry instead
+    if (t == UnitType::SpaceDock ? dockBack : pdsBack) reclaimUnit(p, t, G.planets[planet].system, false);  // (fixes 32, LRR 23.4a)
     addUnits(p, t, 1, G.planets[planet].system, planet);
     say(p, pn(p) + " builds a " + unitTypeName(t) + " on " + planetName(planet) + ".", G.planets[planet].system);
     if (t == UnitType::SpaceDock && (G.modules & kModDiscordant)) dsDockPlaced(p, planet);  // Industrious (Roh'Dhna)
@@ -411,8 +422,9 @@ void Rules::construction(int p, bool primary) {
     for (int x : controlledPlanets(G, p)) {
         int s = G.planets[x].system;
         const Force& f = G.planets[x].units[p];
-        bool canPlace = ((f.count(UnitType::PDS) < 2 || lawInPlay(G, "defense_act")) && unitsAvailable(G, p, UnitType::PDS) > 0) ||
-                        ((floating || f.count(UnitType::SpaceDock) == 0) && unitsAvailable(G, p, UnitType::SpaceDock) > 0);
+        // (fixes 32: unitsPlaceable - with none left, one of yours may come back off the board, LRR 23.4a)
+        bool canPlace = ((f.count(UnitType::PDS) < 2 || lawInPlay(G, "defense_act")) && unitsPlaceable(G, p, UnitType::PDS) > 0) ||
+                        ((floating || f.count(UnitType::SpaceDock) == 0) && unitsPlaceable(G, p, UnitType::SpaceDock) > 0);
         if (!canPlace) continue;
         bool dup = false;
         for (const Option& o : opts)

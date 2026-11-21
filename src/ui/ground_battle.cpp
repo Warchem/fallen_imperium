@@ -17,6 +17,7 @@
 #include "ui/painted.h"
 #include "ui/pixel_ships.h"
 #include "ui/theme.h"
+#include "ui/pcolors.h"
 
 using namespace ti;
 
@@ -188,6 +189,7 @@ struct GroundBattle::Impl {
 
     int pl[2] = {-1, -1};
     uint32_t col[2] = {0, 0}, raw[2] = {0, 0};
+    int pci[2] = {-1, -1};  // 0.62.0: the sides' colour indices (their finish on the mechs)
     int fac[2] = {-1, -1};
     float speed = 1.f;
     uint32_t t0 = 0, last = 0;
@@ -2160,7 +2162,7 @@ struct GroundBattle::Impl {
     }
 
     void drawTower(Canvas& c, const Game& g, const Tower& t, uint32_t now) {
-        const uint32_t traw = t.owner == kNeutral ? theme::neutral : t.owner >= 0 ? theme::player[g.players[size_t(t.owner)].color % 8] : 0u;
+        const uint32_t traw = t.owner == kNeutral ? theme::neutral : t.owner >= 0 ? pcolours::base(g.players[size_t(t.owner)].color) : 0u;
         const uint32_t tc = t.owner == kNeutral || t.owner >= 0 ? (painting() ? paintMuted(traw) : muted(traw)) : theme::text;
         const float sz = t.size * R;
         const float px = X(t.x), py = Y(t.y);
@@ -2618,7 +2620,8 @@ void GroundBattle::start(const Game& g, int sys, int planet, int attacker, int d
             continue;
         }
         const Player& p = g.players[size_t(m.pl[i])];
-        m.raw[i] = theme::player[p.color % 8];
+        m.raw[i] = pcolours::base(p.color);
+        m.pci[i] = pcolours::of(g, m.pl[i]);
         m.col[i] = muted(m.raw[i]);  // muted on the ground (owner)
         m.pcol[i] = paintMuted(m.raw[i]);
         m.fac[i] = p.faction;
@@ -2769,7 +2772,13 @@ void GroundBattle::draw(Canvas& c, const Game& g, Rect area, uint32_t now, const
         else if (it.kind == 3) {
             const Impl::Squad& q = m.squads[size_t(it.i / 16)];
             if (int32_t(now - q.enterAt) >= 0) m.drawMan(c, q, it.i % 16, now);  // (not while still in orbit)
-        } else m.drawWalker(c, m.walkers[size_t(it.i)], now);
+        } else {
+            const auto& w = m.walkers[size_t(it.i)];
+            const float sz = w.size * m.R;
+            pcolours::Finish fin(c, pcolours::around(m.X(w.x), m.Y(w.y) - sz * 0.5f, sz * 0.6f, sz * 0.7f), w.state == 0 && w.t == UnitType::Mech ? m.pci[w.side] : -1,
+                                 uint32_t(it.i) * 37u + uint32_t(w.side));
+            m.drawWalker(c, w, now);
+        }
     }
     m.drawClouds(c, now);  // 0.44.0
     for (const Impl::Shot& s : m.shots) m.drawShot(c, s, now);
@@ -2830,7 +2839,7 @@ void GroundBattle::draw(Canvas& c, const Game& g, Rect area, uint32_t now, const
     }
     m.drawDice(c, now);
     if (m.ended && !m.result.empty()) {
-        const uint32_t wc = m.winner == kNeutral ? theme::neutral : m.winner >= 0 ? theme::player[g.players[size_t(m.winner)].color % 8] : theme::text;
+        const uint32_t wc = m.winner == kNeutral ? theme::neutral : m.winner >= 0 ? pcolours::base(g.players[size_t(m.winner)].color) : theme::text;
         const int w = int(m.R * 1.2f);
         const int y = int(m.cy - m.R * 0.86f) + 8;
         c.fillRoundRect(int(m.cx) - w / 2, y, w, 24, 6, rgb(8, 10, 18), 220);

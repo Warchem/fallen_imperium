@@ -1071,7 +1071,7 @@ void Rules::ds5AfterMovement(int p, int sys) {
     // Sal Sparrow (Nokar agent): a destroyer for the active player here, then a trade
     if (G.fixes >= 29) {
         salSparrow29(p, sys);
-    } else if (const int user = agentUser(p, "nokar"); user >= 0 && hasShips(G, p, sys) && unitsAvailable(G, p, UnitType::Destroyer) > 0) {
+    } else if (const int user = agentUser(p, "nokar"); user >= 0 && hasShips(G, p, sys) && unitsForPlacement(G, p, UnitType::Destroyer) > 0) {
         agentFor(user, p);
         curValue_ = fleetLimit(G, p) - fleetUseIn(G, p, sys);  // (for the AI: room in the fleet pool)
         const bool use = fyes(user, Ab::DsSalSparrow, user == p ? "Exhaust Sal Sparrow: place 1 destroyer here?" : "Exhaust Sal Sparrow: " + pn(p) + " places 1 destroyer here?",
@@ -1106,7 +1106,7 @@ void Rules::salSparrow29(int p, int sys) {
         if (human && sparrowQuiet_[size_t(o)] == G.round) continue;
         std::vector<Option> opts;
         for (int q : initiativeOrder(G))
-            if (!G.players[size_t(q)].eliminated && hasShips(G, q, sys) && unitsAvailable(G, q, UnitType::Destroyer) > 0)
+            if (!G.players[size_t(q)].eliminated && hasShips(G, q, sys) && unitsForPlacement(G, q, UnitType::Destroyer) > 0)
                 opts.push_back({q, (q == o ? std::string("You") : pn(q)) + (q == p ? " (the active player)" : ""),
                                 std::to_string(G.systems[size_t(sys)].space[size_t(q)].ships()) + " ships here."});
         if (opts.empty()) return;
@@ -1210,7 +1210,7 @@ void Rules::ds5Produced(int p, int sys, const Force& made) {
                 productionCore(p, s, 2, false, true);
                 notProductionAbility_ = na;
                 // Liberator (mech): 1 trade good for a mech on one of their planets next to it
-                if (mechAbilities(G) && unitsAvailable(G, p, UnitType::Mech) > 0 && pl.tradeGoods > 0) {
+                if (mechAbilities(G) && unitsForPlacement(G, p, UnitType::Mech) > 0 && pl.tradeGoods > 0) {
                     std::vector<Option> where;
                     std::vector<int> zone{s};
                     for (int16_t a : G.systems[size_t(s)].adj) zone.push_back(a);
@@ -1277,7 +1277,7 @@ void Rules::ds5Control(int planet, int p, int old) {
         fyes(p, Ab::DsCyhn, "President Cyhn: produce 1 ship in " + sysName(sys) + "?", ""))
         dsProduceOne(p, sys, 0, "President Cyhn");
     // Mycelium Ring (Myko-Mentori space docks): DEPLOY - 4 infantry (II: 3) become a space dock
-    if (fac(p, "mykomentori") && unitsAvailable(G, p, UnitType::SpaceDock) > 0 && !isDMZ(G, planet)) {
+    if (fac(p, "mykomentori") && unitsForPlacement(G, p, UnitType::SpaceDock) > 0 && !isDMZ(G, planet)) {
         Force& f = G.planets[size_t(planet)].units[size_t(p)];
         const int need = owns(p, "dsmykosd") ? 3 : 4;
         if (!f.count(UnitType::SpaceDock) && f.count(UnitType::Infantry) >= need &&
@@ -1302,7 +1302,7 @@ void Rules::ds5Explored(int p, int planet) {
 void Rules::ds5TurnStart(int p) {
     Player& pl = G.players[size_t(p)];
     // Amandia Pholdis (Myko-Mentori mech): a mech from the card replaces 1 of their infantry
-    if (fac(p, "mykomentori") && pl.dsMykoMechs > 0 && unitsAvailable(G, p, UnitType::Mech) > 0) {
+    if (fac(p, "mykomentori") && pl.dsMykoMechs > 0 && unitsAvailable(G, p, UnitType::Mech) > 0) {  // (the mech comes off the card)
         std::vector<Option> opts;
         for (int x : controlledPlanets(G, p))
             if (G.planets[size_t(x)].units[size_t(p)].count(UnitType::Infantry) && !isDMZ(G, x)) opts.push_back({x, planetName(x), ""});
@@ -1327,7 +1327,7 @@ void Rules::ds5TurnEnd(int p) {
         if (G.dsOrders[i] != p || ((G.dsOrderEx >> i) & 1)) continue;
         const UnitType t = orderType(i);
         const int n = i >= 6 ? 2 : 1;
-        if (unitsAvailable(G, p, t) <= 0) continue;
+        if (unitsForPlacement(G, p, t) <= 0) continue;
         std::vector<Option> opts;
         for (size_t s = 0; s < G.systems.size(); ++s)
             if (hasShips(G, p, int(s)) && G.systems[s].hasToken(p)) opts.push_back({int(s), sysName(int(s)), ""});
@@ -1840,7 +1840,7 @@ std::vector<Option> cordoOptions(const Game& G, int p) {
         const std::string n = std::string(legendaryName(ps.def)) + ": ";
         const int id = int(x) * 10;
         if (!std::strcmp(k, "hopesend")) {
-            if (unitsAvailable(G, p, UnitType::Mech) > 0) o.push_back({id + 1, n + "1 mech on a planet you control", ""});
+            if (unitsForPlacement(G, p, UnitType::Mech) > 0) o.push_back({id + 1, n + "1 mech on a planet you control", ""});
             o.push_back({id + 2, n + "draw 1 action card", ""});
         } else if (!std::strcmp(k, "primor")) {
             if (unitsAvailable(G, p, UnitType::Infantry) > 0) o.push_back({id + 1, n + "2 infantry on planets you control", ""});
@@ -1850,7 +1850,7 @@ std::vector<Option> cordoOptions(const Game& G, int p) {
             o.push_back({id + 1, n + "gain 2 trade goods", ""});
             if (G.players[size_t(p)].commodities > 0) o.push_back({id + 2, n + "convert your commodities", ""});
         } else if (!std::strcmp(k, "silence")) {
-            if (unitsAvailable(G, p, UnitType::Cruiser) > 0) o.push_back({id + 1, n + "1 cruiser with your ships", ""});
+            if (unitsForPlacement(G, p, UnitType::Cruiser) > 0) o.push_back({id + 1, n + "1 cruiser with your ships", ""});
         }
     }
     return o;
@@ -2095,7 +2095,7 @@ void Rules::ds5Options(int p, std::vector<Option>& o) {
     if (techReady(p, "dsaxisy")) {
         bool spot = false;
         for (int x : controlledPlanets(G, p)) spot = spot || (!G.planets[size_t(x)].units[size_t(p)].count(UnitType::SpaceDock) && !isDMZ(G, x));
-        if (G.fixes >= 9 && unitsAvailable(G, p, UnitType::SpaceDock) <= 0) {  // (0.44.5: a dock to place or to move)
+        if (G.fixes >= 9 && unitsForPlacement(G, p, UnitType::SpaceDock) <= 0) {  // (0.44.5: a dock to place or to move)
             bool dock = false;
             for (int x : controlledPlanets(G, p)) dock = dock || G.planets[size_t(x)].units[size_t(p)].count(UnitType::SpaceDock) > 0;
             spot = spot && dock;
@@ -2221,7 +2221,7 @@ bool Rules::ds5Action(int p, Ab ab) {
                 if (s < 0) return false;
                 std::vector<Option> what;
                 if (unitsAvailable(G, p, UnitType::Fighter) > 0) what.push_back({int(UnitType::Fighter), "2 fighters", ""});
-                if (unitsAvailable(G, p, UnitType::Destroyer) > 0) what.push_back({int(UnitType::Destroyer), "1 destroyer", ""});
+                if (unitsForPlacement(G, p, UnitType::Destroyer) > 0) what.push_back({int(UnitType::Destroyer), "1 destroyer", ""});
                 what.push_back({-1, "Cancel", ""});
                 const int t = fpick(p, Ab::BtMuaat, "The Nucleus: place what?", what, "No command token needed.");
                 if (t < 0) return false;
@@ -2397,7 +2397,7 @@ bool Rules::ds5Action(int p, Ab ab) {
                 if (!G.planets[size_t(x)].units[size_t(p)].count(UnitType::SpaceDock) && !isDMZ(G, x)) to.push_back({x, planetName(x), ""});
             if (to.empty()) return false;
             std::vector<Option> from;
-            if (unitsAvailable(G, p, UnitType::SpaceDock) > 0) from.push_back({-1, "A new one from your reinforcements", ""});
+            if (unitsForPlacement(G, p, UnitType::SpaceDock) > 0) from.push_back({-1, "A new one from your reinforcements", ""});
             for (int x : controlledPlanets(G, p))
                 if (G.planets[size_t(x)].units[size_t(p)].count(UnitType::SpaceDock)) from.push_back({x, "Move the one on " + planetName(x), ""});
             if (from.empty()) return false;
@@ -2417,7 +2417,7 @@ bool Rules::ds5Action(int p, Ab ab) {
                 if (G.players[size_t(q)].eliminated) continue;
                 bool ships = false;
                 for (size_t s = 0; s < G.systems.size() && !ships; ++s) ships = hasShips(G, q, int(s));
-                if (ships && (unitsAvailable(G, q, UnitType::Cruiser) > 0 || unitsAvailable(G, q, UnitType::Destroyer) > 0))
+                if (ships && (unitsForPlacement(G, q, UnitType::Cruiser) > 0 || unitsForPlacement(G, q, UnitType::Destroyer) > 0))
                     opts.push_back({q, pn(q), q == p ? "" : "You gain 2 commodities."});
             }
             if (opts.empty()) return false;
@@ -2425,8 +2425,8 @@ bool Rules::ds5Action(int p, Ab ab) {
             spendAgent(p, "axis");
             agentUsedFor(p, q);
             std::vector<Option> what;
-            if (unitsAvailable(G, q, UnitType::Cruiser) > 0) what.push_back({int(UnitType::Cruiser), "1 cruiser", ""});
-            if (unitsAvailable(G, q, UnitType::Destroyer) > 0) what.push_back({int(UnitType::Destroyer), "1 destroyer", ""});
+            if (unitsForPlacement(G, q, UnitType::Cruiser) > 0) what.push_back({int(UnitType::Cruiser), "1 cruiser", ""});
+            if (unitsForPlacement(G, q, UnitType::Destroyer) > 0) what.push_back({int(UnitType::Destroyer), "1 destroyer", ""});
             std::vector<Option> where;
             for (size_t s = 0; s < G.systems.size(); ++s)
                 if (hasShips(G, q, int(s))) where.push_back({int(s), sysName(int(s)), ""});

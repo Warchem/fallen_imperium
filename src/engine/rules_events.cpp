@@ -112,14 +112,14 @@ void Rules::setupEvents() {
             std::vector<Option> opts;
             for (int x : controlledPlanets(G, p))
                 if (!G.planets[size_t(x)].units[size_t(p)].count(UnitType::SpaceDock)) opts.push_back({x, planetName(x), ""});
-            if (!opts.empty() && unitsAvailable(G, p, UnitType::SpaceDock) > 0) {
+            if (!opts.empty() && unitsForPlacement(G, p, UnitType::SpaceDock) > 0) {
                 const int x = opts.size() == 1 ? opts[0].id
                                                : fpick(p, Ab::EvMobilize, "Rapid Mobilization: put a space dock on which planet?", opts,
                                                        "Your flagship and 3 fighters join it there.", false, true);
                 const int sys = G.planets[size_t(x)].system;
                 addUnits(p, UnitType::SpaceDock, 1, sys, x);
-                if (unitsAvailable(G, p, UnitType::Flagship) > 0) addUnits(p, UnitType::Flagship, 1, sys, -1);
-                else if (unitsAvailable(G, p, UnitType::Flagship2) > 0) addUnits(p, UnitType::Flagship2, 1, sys, -1);  // (0.52.0: the Lady)
+                if (unitsForPlacement(G, p, UnitType::Flagship) > 0) addUnits(p, UnitType::Flagship, 1, sys, -1);
+                else if (unitsForPlacement(G, p, UnitType::Flagship2) > 0) addUnits(p, UnitType::Flagship2, 1, sys, -1);  // (0.52.0: the Lady)
                 addUnits(p, UnitType::Fighter, std::min(3, unitsAvailable(G, p, UnitType::Fighter)), sys, -1);
                 say(p, pn(p) + " builds a space dock on " + planetName(x) + " with their flagship and 3 fighters (Rapid Mobilization).", sys);
             }
@@ -145,16 +145,22 @@ void Rules::setupEvents() {
 
 // Minor Factions: the home systems of factions not in play take the place of second-ring systems between the players'
 // homes (one per player), with 3 neutral infantry; their planets have all three traits.
+// (0.61.2, fixes 33 - task #424, the Thunder's Edge rulebook's notes) the Ghosts of Creuss / the Crimson Rebellion: their Creuss Gate / the
+// Sorrow takes the minor faction spot and the home system goes beside the board (joined by its delta / epsilon wormhole); the Council
+// Keleres: one of its three possible home systems at random (Mentak, Xxcha, Argent - not one in play or already a minor faction); the
+// Firmament / the Obsidian: a random side of its home system. Before, these four were never drawn.
 void Rules::minorFactions() {
     const int mec = G.mecatol();
     if (mec < 0) return;
+    const bool v33 = G.fixes >= 33;
     std::vector<int> unused;
     for (int f = 0; f < kFactionCount; ++f) {
         const char* k = kFactions[f].key;
         if (kFactions[f].source == Source::Discordant && (!(G.modules & kModDiscordant) || !factionInPool(f, G.dsLevel))) continue;
-        if (!factionImplemented(f) || kFactions[f].homeSystem < 0 || !std::strcmp(k, "obsidian") || !std::strcmp(k, "keleres") ||
-            !std::strcmp(k, "ghost") || !std::strcmp(k, "crimson"))
+        const bool late = !std::strcmp(k, "keleres") || !std::strcmp(k, "ghost") || !std::strcmp(k, "crimson");  // (fixes 33)
+        if (!factionImplemented(f) || !std::strcmp(k, "obsidian") || (late && !v33) || (kFactions[f].homeSystem < 0 && std::strcmp(k, "keleres")))
             continue;
+        if (!std::strcmp(k, "keleres") && !(G.modules & kModThundersEdge) && !(G.extras & 2)) continue;  // (Keleres only where it can be dealt)
         bool inPlay = false;
         for (const Player& pl : G.players) inPlay = inPlay || pl.faction == f || pl.tribunii == f;
         if (!inPlay) unused.push_back(f);
@@ -180,36 +186,96 @@ void Rules::minorFactions() {
     }
     std::stable_sort(spots.begin(), spots.end(), [](const Spot& a, const Spot& b) { return a.gap < b.gap; });
     int placed = 0;
-    std::vector<int> taken;
+    size_t next = 0;               // (fixes 33: the next faction to try)
+    std::vector<int> taken, usedDefs;  // (fixes 33: home system tiles already on the board)
+    for (const SystemState& sy : G.systems) usedDefs.push_back(sy.def);
+    auto homeTile = [&](int f, int& gate) -> int {  // (fixes 33) the home system tile this minor faction brings, -1 if none is free
+        const char* k = kFactions[f].key;
+        gate = -1;
+        if (!std::strcmp(k, "keleres")) {
+            std::vector<int> homes;
+            for (const char* t : {"mentak", "xxcha", "argent"}) {
+                const int tf = findFaction(t);
+                if (tf < 0 || kFactions[tf].homeSystem < 0) continue;
+                bool inPlay = false;
+                for (const Player& pl : G.players) inPlay = inPlay || pl.faction == tf || pl.tribunii == tf;
+                if (!inPlay && std::find(usedDefs.begin(), usedDefs.end(), kFactions[tf].homeSystem) == usedDefs.end())
+                    homes.push_back(kFactions[tf].homeSystem);
+            }
+            return homes.empty() ? -1 : homes[size_t(E.rng().below(int(homes.size())))];
+        }
+        if (!std::strcmp(k, "ghost")) gate = findSystem("17");
+        if (!std::strcmp(k, "crimson")) gate = findSystem("94");
+        const int h = kFactions[f].homeSystem;
+        return h < 0 || std::find(usedDefs.begin(), usedDefs.end(), h) != usedDefs.end() ? -1 : h;
+    };
     for (const Spot& sp : spots) {
-        if (placed >= G.numPlayers || placed >= int(unused.size())) break;
+        if (placed >= G.numPlayers || (v33 ? next >= unused.size() : placed >= int(unused.size()))) break;
         bool near = false;  // (not two side by side)
         for (int t : taken) near = near || hexDistance(G.systems[size_t(t)].pos, G.systems[size_t(sp.sys)].pos) <= 1;
         if (near) continue;
-        const int f = unused[size_t(placed)];
+        int f = v33 ? -1 : unused[size_t(placed)];
+        int def = v33 ? -1 : kFactions[f].homeSystem, gate = -1;
+        while (v33 && def < 0 && next < unused.size()) {
+            f = unused[next++];
+            // the Firmament / the Obsidian: a random side (TE rulebook)
+            if (!std::strcmp(kFactions[f].key, "firmament") && E.rng().below(2)) f = findFaction("obsidian");
+            def = homeTile(f, gate);
+        }
+        if (def < 0) break;
+        usedDefs.push_back(def);
+        int homeSys = sp.sys;  // (where the planets are: the spot, or beside the board behind a gate)
         SystemState& sy = G.systems[size_t(sp.sys)];
         for (int16_t x : sy.planets) {  // the old system's planets leave the game
             G.planets[size_t(x)].destroyed = true;
             G.planets[size_t(x)].owner = -1;
         }
         sy.planets.clear();
-        sy.def = kFactions[f].homeSystem;
+        sy.def = gate >= 0 ? gate : def;
         sy.frontier = false;
-        const SystemDef& d = kSystems[sy.def];
-        for (int k = 0; k < d.planetCount; ++k) {
+        if (gate >= 0) {  // (fixes 33) the home system beside the board, the nearest free space outside it
+            usedDefs.push_back(gate);
+            int maxRing = 0;
+            std::vector<Hex> used;
+            for (const SystemState& s2 : G.systems) {
+                used.push_back(s2.pos);
+                if (!s2.offBoard) maxRing = std::max(maxRing, hexRingOf(s2.pos));
+            }
+            if (G.modules & kModThundersEdge) {
+                for (const Hex& h : G.fracturePos) used.push_back(h);
+                used.push_back(G.tePos);
+            }
+            Hex best{99, 99};
+            int bestD = 1 << 20;
+            for (const Hex& h : hexRing(maxRing + 1)) {
+                if (std::find(used.begin(), used.end(), h) != used.end()) continue;
+                const int dd = hexDistance(h, sy.pos);
+                if (dd < bestD) {
+                    bestD = dd;
+                    best = h;
+                }
+            }
+            homeSys = addOffBoardSystem(G, def, best);  // (its planets come with it)
+            for (int16_t x : G.systems[size_t(homeSys)].planets) G.planets[size_t(x)].minor = int8_t(f);
+        }
+        SystemState& hs = G.systems[size_t(homeSys)];
+        const SystemDef& d = kSystems[def];
+        for (int k = 0; gate < 0 && k < d.planetCount; ++k) {
             PlanetState ps;
             ps.def = d.planets[k];
-            ps.system = int16_t(sp.sys);
+            ps.system = int16_t(homeSys);
             ps.minor = int8_t(f);
-            sy.planets.push_back(int16_t(G.planets.size()));
+            hs.planets.push_back(int16_t(G.planets.size()));
             G.planets.push_back(ps);
         }
-        const int np = int(sy.planets.size());
+        const int np = int(hs.planets.size());
         for (int k = 0; k < np; ++k) {  // 3 neutral infantry, split as evenly as possible
             const int n = 3 / np + (k < 3 % np ? 1 : 0);
-            if (n) placeNeutral(UnitType::Infantry, n, sp.sys, sy.planets[size_t(k)], "");
+            if (n) placeNeutral(UnitType::Infantry, n, homeSys, hs.planets[size_t(k)], "");
         }
-        E.log(-1, std::string("Minor faction: the home system of ") + kFactions[f].name + " sits in the second ring (" + sysName(sp.sys) + ").",
+        E.log(-1, std::string("Minor faction: the home system of ") + kFactions[f].name +
+                      (gate >= 0 ? std::string(" sits beside the board, its ") + kSystems[gate].name + " in the second ring (" + sysName(sp.sys) + ")."
+                                 : " sits in the second ring (" + sysName(homeSys) + ")."),
               EventKind::Phase);
         taken.push_back(sp.sys);
         ++placed;
@@ -345,6 +411,7 @@ bool Rules::darkEnergyExplore(int p) {
     for (size_t s = 0; s < G.systems.size(); ++s) {
         const SystemState& sy = G.systems[s];
         if (sy.home >= 0 || sy.offBoard || !hasShips(G, p, int(s))) continue;
+        if (G.fixes >= 31 && sy.fracture) continue;  // ((fixes 31) Thunder's Edge FAQ: not off a Fracture tile)
         bool edge = false;
         for (const Hex& h : spots)
             if (hexDistance(h, sy.pos) == 1) edge = true;
@@ -373,7 +440,8 @@ bool Rules::darkEnergyExplore(int p) {
         int nonHome = 0;
         for (int e = 0; e < 6; ++e) {
             const int j = G.findSystemAt(hexNeighbor(h, e));
-            if (j >= 0 && !G.systems[size_t(j)].isHyperlane() && G.systems[size_t(j)].home < 0) ++nonHome;
+            if (j >= 0 && !G.systems[size_t(j)].isHyperlane() && G.systems[size_t(j)].home < 0 && !(G.fixes >= 31 && G.systems[size_t(j)].fracture))
+                ++nonHome;  // ((fixes 31) the Fracture's systems aren't adjacent to what they touch)
         }
         if (nonHome >= 2) opts.push_back({(h.q + 64) * 256 + (h.r + 64), "Beside " + sysName(s), std::to_string(nonHome) + " systems next to it"});
     }
@@ -384,7 +452,7 @@ bool Rules::darkEnergyExplore(int p) {
     const int id = opts.size() == 1 ? opts[0].id : fpick(p, Ab::EvExplore, std::string("Place ") + kSystems[def].name + " where?", opts);
     const Hex h{id / 256 - 64, id % 256 - 64};
     const int ns = addBoardSystem(G, def, h);
-    if (G.systems[size_t(ns)].planets.empty()) G.systems[size_t(ns)].frontier = true;
+    if (G.fixes >= 31 ? planetless(G, ns) : G.systems[size_t(ns)].planets.empty()) G.systems[size_t(ns)].frontier = true;  // (fixes 31: a station isn't a planet)
     computeAdjacency(G);
     eventLog(E, p, "Age of Exploration", pn(p) + " discovers " + sysName(ns) + " beyond " + sysName(s) + ".", ns);
     return true;
@@ -531,6 +599,7 @@ void Rules::weirdWormholes(int p, int sys, const std::vector<std::pair<int, int>
             res.need.push_back(6);
             const int step = v <= 5 ? -1 : 1;
             int to = -1;
+            // ("War Sun (if researched)": unitsAvailable has no war sun for a player without the technology)
             for (int i = at + step; i >= 0 && i < n; i += step)
                 if (unitsAvailable(G, p, kChain[i]) > 0) {
                     to = i;

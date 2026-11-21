@@ -4,7 +4,7 @@ An unofficial fan-made digital version of **Twilight Imperium 4th Edition** for 
 (Linux) and the Miyoo Mini Plus handheld, played against computer opponents (3 to 8 players, or hot-seat with
 friends).
 
-**Current version: 0.60.0 (Pre-Beta).** Downloads are on the [Releases](../../releases) page.
+**Current version: 0.80.0 (Pre-Beta).** Downloads are on the [Releases](../../releases) page.
 
 > Unofficial fan project. Twilight Imperium is a trademark of Fantasy Flight Games; this project is not
 > affiliated with or endorsed by Fantasy Flight Games or Asmodee. It is free and not for sale.
@@ -15,7 +15,9 @@ friends).
 - All factions: the 24 of the base game and Prophecy of Kings, the Council Keleres, the Thunder's Edge factions
   and the 34 Discordant Stars factions, with their abilities, leaders, technologies, units and promissory notes.
 - Computer players with personalities (archetypes, grudges, betrayals), a strategy core per faction, plans over
-  several turns, and four difficulty levels.
+  several turns, and five difficulty levels - the top one, A.I., thinks ahead by playing its options out.
+- **The Tournament:** a ladder of 17 leagues, each a season of games against named rival commanders who
+  remember you, with a faction draft, league points and bonuses, emblems and faction colours to earn.
 - Negotiations: trades, promises, loans, threats and vote deals - offered over a Metal Gear-style comms codec,
   with an animated portrait and a voice for every faction.
 - Three tilesets: **Retrowave** (animated pixel art, the default), **Voidfall** (painted, high definition) and
@@ -23,46 +25,51 @@ friends).
   controller support.
 - An animated opening: the name written in the Lazaxian alphabet, then a living world behind the title
   (Retrowave) or a battlefield at twilight (Voidfall).
+- Sound: the soundtrack, synthesised battle and map sounds, a voice for every faction over the comms, and a music
+  player for your own MP3s.
 
-## What's new since 0.59.30
+## What's new since 0.60.0
 The full list, version by version, is in `GUIDE.txt` (in the download, and `package/README.txt` here). Games
 started with an older version keep their own rules, so old saves replay exactly as before.
 
-- **0.60.0: the Voidfall title, the agenda and relic passes.**
-  - With the Voidfall tileset the opening ends on a battlefield: troopers fighting from cover across a
-    cratered plain, walkers trading Gatling lasers and beams and blowing up, warships overhead and a
-    dreadnought's bombardment landing anywhere on the field. The opening's last swell blends into the start of
-    the title song.
-  - All 50 agendas were checked outcome by outcome against their cards (99 checks), and their texts are now
-    the cards' wording. Fixed: Enforced Travel Ban and Nexus Sovereignty only stop movement through those
-    wormholes (space cannon still fires through them and players joined by them are still neighbours);
-    Miscount Disclosed keeps its law in play during the revote; Representative Government allows no extra
-    votes; Wormhole Research and Ixthian Artifact let you decline to research; Committee Formation is used
-    after the riders, just before the vote; space stations can't be elected as planets; and more.
-  - All the relics were checked the same way. Fixed: The Codex, Neuraloop (the game no longer runs out of
-    objectives a round early), Maw of Worlds, the Crown of Thalnos and the Stellar Converter. New: the three
-    Codex II relics - **Dynamis Core**, **JR-XS455-O** and **Nano-Forge** - in games with the Codex or
-    Thunder's Edge.
-- **0.59.70: a new title screen and the last ten Discordant Stars factions.** The opening writes "Fallen
-  Imperium" letter by letter in the Lazaxian alphabet, each letter shifting into English, then pans down to a
-  nuclear-battered city world (any button skips it). The faction debug pass finished with the Nivyn, Nokar,
-  Olradin, Roh'Dhna, Tnelis, Vaden, Vaylerian, Veldyr, Zealots of Rhodun and Zelian: all 64 factions have now
-  been checked card by card.
-- **0.59.40: twenty-four Discordant Stars factions** checked against the Discordant Stars Reference, one card
-  at a time, from the Augurs of Ilyxum to the Myko-Mentori. Agents and abilities that work "for any player"
-  now ask a person each time (with "don't ask again this round"); the two-step strategy cards say which step
-  you are on.
+- **0.80.0: the Tournament (league mode).** Title screen > Tournament: 17 leagues, each a season of games
+  against the same named rival commanders. Places earn league points (6 / 4 / 3 / 1, shared places split), plus
+  bonuses (take Mecatol Rex first, win before round 7, finish above your rival, keep every promise, knock a
+  player out, ...). Reach the target first to win the league - its emblem and its faction colour - and open the
+  next ones; lose the race and it starts again. A faction draft before most games (the last to pick is the
+  speaker); rivals remember who finished above whom and who broke a promise, and bring a grudge to the next game.
+  Each league keeps its own save. Options > "Unlock everything (testing)" opens it all.
+- **0.75.0 and 0.62.0: 24 faction colours.** Gold, Silver, Bronze, Luminescent Green, Hatred Crimson,
+  Pearlescent, Ion Cyan, Void, Brown, Retro Sunset, Crystal, Ash, Prismatic, Wireframe Green / Blue and Rose Gold
+  beside the classic eight - most of them animated. The new ones are earned in the Tournament.
+- **0.74.0: the A.I. difficulty (experimental).** No personality; before its big choices it plays its best
+  options out on copies of the game (re-dealing every card it can't see - it never peeks) and takes the best.
+- **0.73.x: scenes.** The Age of the War Sun (the first war sun technology of a game), the Fracture tearing open
+  in a ripple across the map, and the Obsidian unmasked.
+- **0.69.0 - 0.72.0: sound and controls.** Map sounds (sirens, invasions, every faction's ships on the move),
+  sounds for the big moments and the comms screen, a voice for every faction, combat reactions (both sides speak
+  as a fight starts), a gold edge on whatever the pointer can click, Shift to speed the camera, edge scrolling,
+  and your own key bindings.
+- **0.68.0: the music player.** Put your own MP3s in "My Music"; games play the soundtrack, your music or both.
+- **0.63.0 - 0.67.0: screens and bots.** A new New Game screen (Players, Factions & seats, VP, Galaxy with a
+  typed seed and "Fair slices", Game options), the computer players' opinion of you on the offer screen, bots
+  that plan their votes for the whole agenda phase, a first balance pass on the weakest factions, and the screen
+  buttons moved into the top banner.
+- **0.61.x: the cards' own words.** Every objective, exploration card, strategy card, note, legendary planet,
+  action card and galactic event now shows its card's text, with the rules checked against each; taking a unit
+  back from the board when none is left (Living Rules 23.4a); picking planets on the map; DirectX drawing on
+  Windows (no tearing).
 
-Before that, 0.59.0 - 0.59.30 checked the 30 factions of the base game, Prophecy of Kings, the Council Keleres
-and Thunder's Edge, the shared technologies and the 93 action cards against the cards' exact wording, and
-0.58.x added "Hyperlanes: On / Off" (the rulebook's printed boards for every player count).
+Before that, 0.59.0 - 0.60.0 checked every faction, the shared technologies, the action cards, the agendas and
+the relics against their cards, and 0.58.x added "Hyperlanes: On / Off".
 
 ## Playing
 - **Windows:** unzip `TI4-Windows-<version>.zip` and run `TwilightImperium.exe`.
 - **Steam Deck / Linux:** unpack `TI4-SteamDeck-<version>.tar.gz` and run `TwilightImperium.sh` (on the Deck you
   can add it to Steam as a non-Steam game). See `README.txt` inside the download.
-- **Miyoo Mini Plus (OnionOS):** unzip `TI4-Miyoo-<version>.zip` onto the SD card (it goes into
-  `App/TwilightImperium`) and start it from the Apps list.
+- **Miyoo Mini Plus (OnionOS):** when a release has a Miyoo build, unzip `TI4-Miyoo-<version>.zip` onto the SD
+  card (it goes into `App/TwilightImperium`) and start it from the Apps list. (The PC versions come first now;
+  not every release has a Miyoo build.)
 - `GUIDE.txt` (in the download, and `package/README.txt` here) explains the controls and lists what is new in
   each version.
 

@@ -18,13 +18,26 @@
 namespace speech {
 
 // Yield (owner 2026-11-15): it gives in to a threat - grudging, not pleased
-enum class Cat : int { Offer, Friendly, Threat, Vote, Accept, Decline, Counter, Betray, Betrayed, Yield, Count };
+// (0.64.0, owner: "an animated opponent who talks about you") the line it opens your offer screen with - what lies between you:
+// Hello (nothing yet), Neighbour, Partner (deals made), Kept / Broken (your promises to it), Clash (you attacked it), Leader (you
+// lead), and after the round-3 reveal Warm / Wary / Hostile (how it feels about you). Same order as negotalk::Why.
+enum class Cat : int {
+    Offer, Friendly, Threat, Vote, Accept, Decline, Counter, Betray, Betrayed, Yield,
+    Hello, Neighbour, Partner, Kept, Broken, Clash, Leader, Warm, Wary, Hostile,
+    // (0.71.0) combat reactions: attacking (space) / attacked / invading / invaded, then the situations
+    Attack, Defend, Invade, Hold, Rematch, Mecatol, Home,
+    Count
+};
 
 // How other factions address faction f in speech ("Hacan", "Star Kings").
 std::string address(int faction);
 // The words faction `speaker` says to faction `listener` (a line written for that pair first, when there is one),
 // {them} filled in. `seed` chooses among them. Empty when there is nothing (unknown faction).
 std::string pick(int speaker, int listener, Cat cat, uint32_t seed);
+// (0.71.0) Every line of kind `cat` faction `speaker` has for `listener`: the ones written for that pair (pairOnly) or the
+// generic ones; with {them} filled in, or as written (fill = false: then fillThem() does it).
+std::vector<std::string> options(int speaker, int listener, Cat cat, bool pairOnly, bool fill = true);
+std::string fillThem(const std::string& text, int listener);
 // A seed from numbers that stay the same while a moment is on screen.
 uint32_t seedOf(uint32_t a, uint32_t b = 0, uint32_t c = 0, uint32_t d = 0);
 uint32_t seedOf(const std::string& s, uint32_t salt = 0);

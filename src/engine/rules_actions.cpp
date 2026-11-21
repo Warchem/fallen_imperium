@@ -388,7 +388,7 @@ bool Rules::cardPlayable(int p, int card, const WinCtx& c) const {
                 if (is("harness")) return s.d().anomalies && pl.commodities < commodityCap(G, pl);
                 if (is("rally")) return otherShipsIn(G, p, c.sys) && reinforcementTokens(p) > 0;
                 if (is("upgrade"))
-                    return s.space[p].count(UnitType::Cruiser) > 0 && unitsAvailable(G, p, UnitType::Dreadnought) > 0;
+                    return s.space[p].count(UnitType::Cruiser) > 0 && unitsForPlacement(G, p, UnitType::Dreadnought) > 0;
                 return false;
             }
             if (is("counterstroke")) return s.hasToken(p);
@@ -1408,10 +1408,11 @@ void Rules::resolveCard(int p, int card, const WinCtx* c) {
             int n = G.systems[sy].space[p].count(UnitType::Infantry);
             for (int i = 0; i < n && i < 2; ++i) opts.push_back({(np + int(sy)) * 4 + i, "Infantry in space, " + sysName(int(sy)), ""});
         }
-        int maxN = std::min<int>(2, std::min<int>(int(opts.size()), unitsAvailable(G, p, UnitType::Mech)));
+        int maxN = std::min<int>(2, std::min<int>(int(opts.size()), unitsForPlacement(G, p, UnitType::Mech)));
         std::vector<int> picks = pickMany(p, Tag::CardTarget, "Refit Troops: replace which infantry with mechs?", opts, 1, maxN);
         for (int id : picks) {
             int x = id / 4;
+            if (!pieceFor(p, UnitType::Mech, x >= np ? x - np : int(G.planets[size_t(x)].system))) break;  // (fixes 33, LRR 23.4a)
             Force& f = x >= np ? G.systems[x - np].space[p] : G.planets[x].units[p];
             f.remove(UnitType::Infantry, 1, false);
             f.add(UnitType::Mech, 1);
@@ -1590,7 +1591,7 @@ bool Rules::componentCardUsable(int p, int card) const {
         return false;
     }
     if (is("ghost_ship")) {
-        if (unitsAvailable(G, p, UnitType::Destroyer) <= 0) return false;
+        if (unitsForPlacement(G, p, UnitType::Destroyer) <= 0) return false;
         for (size_t s = 0; s < G.systems.size(); ++s)
             if (G.systems[s].home < 0 && (wormholesOf(G, s) & (kAlpha | kBeta | kGamma | kDelta)) && !otherShipsIn(G, p, int(s)) &&
                 !G.systems[s].offBoard)
@@ -1663,7 +1664,7 @@ bool Rules::componentCardUsable(int p, int card) const {
         return false;
     }
     if (is("refit")) {
-        if (unitsAvailable(G, p, UnitType::Mech) <= 0) return false;
+        if (unitsForPlacement(G, p, UnitType::Mech) <= 0) return false;
         for (const PlanetState& x : G.planets)
             if (x.units[p].count(UnitType::Infantry)) return true;
         for (const SystemState& sy : G.systems)
@@ -1703,7 +1704,7 @@ bool Rules::componentCardUsable(int p, int card) const {
         return false;
     }
     if (is("war_effort")) {
-        if (unitsAvailable(G, p, UnitType::Cruiser) <= 0) return false;
+        if (unitsForPlacement(G, p, UnitType::Cruiser) <= 0) return false;
         for (const SystemState& s : G.systems)
             if (s.space[p].ships()) return true;
         return false;
@@ -1816,11 +1817,11 @@ bool Rules::slingRelayCan(int p, int s) const {
     int mask = 0;
     for (int t : kShipIdx) mask |= 1 << t;
     for (int t : kShipIdx) {
-        if (unitsAvailable(G, p, UnitType(t)) <= 0 || unitCost2(G, p, UnitType(t)) <= 0) continue;
+        if (unitsForPlacement(G, p, UnitType(t)) <= 0 || unitCost2(G, p, UnitType(t)) <= 0) continue;
         std::vector<int> one(kUnitTypes + 1, 0);
         one[size_t(t)] = 1;
         one[kUnitTypes] = -1;
-        if (!checkProducePlan(G, p, s, one, 1, mask).empty()) continue;
+        if (!checkProducePlan(G, p, s, one, 1, mask, false, G.fixes >= 33).empty()) continue;  // (fixes 33: a ship off the board too)
         int c[kUnitTypes] = {};
         c[t] = 1;
         if (productionCost(G, p, c) <= spendable(G, p, false)) return true;

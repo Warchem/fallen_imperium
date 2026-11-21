@@ -13,6 +13,7 @@
 #include "ui/cards.h"
 #include "ui/dice.h"
 #include "ui/icons.h"
+#include "ui/pcolors.h"
 #include "ui/theme.h"
 
 using namespace ti;
@@ -20,7 +21,7 @@ using namespace ti;
 namespace playarea {
 
 namespace {
-uint32_t colourOf(const Game& g, int p) { return p >= 0 && p < g.numPlayers ? theme::player[g.players[size_t(p)].color % 8] : theme::neutral; }
+uint32_t colourOf(const Game& g, int p) { return p >= 0 && p < g.numPlayers ? pcolours::base(g.players[size_t(p)].color) : theme::neutral; }
 UnitType orderUnit(int i) {
     static const UnitType k[4] = {UnitType::Dreadnought, UnitType::Carrier, UnitType::Cruiser, UnitType::Destroyer};
     return k[std::clamp(i / 2, 0, 3)];
@@ -358,7 +359,7 @@ public:
         const Rect r{10, 10, 620, 436};
         const uint32_t pc = colourOf(g_, p_);
         drawPanel(c, r, theme::panel, pc, 12);
-        hits::addAction(r, []() {});  // clicks inside the window don't close it (outside: A closes; right click: B)
+        hits::addBlock(r);  // clicks inside the window don't close it (outside: A closes; right click: B)
         // title: whose play area, and where we are in it
         int tx = r.x + 14;
         if (p_ >= 0 && p_ < g_.numPlayers) {
@@ -428,7 +429,7 @@ public:
     }
 
 private:
-    uint32_t colourOf(const Game& g, int p) const { return p >= 0 && p < g.numPlayers ? theme::player[g.players[size_t(p)].color % 8] : theme::neutral; }
+    uint32_t colourOf(const Game& g, int p) const { return p >= 0 && p < g.numPlayers ? pcolours::base(g.players[size_t(p)].color) : theme::neutral; }
     // the next (dir 1) / previous (-1) player with something in play; false if nobody else has
     bool nextPlayer(int dir) {
         for (int k = 1; k <= g_.numPlayers; ++k) {

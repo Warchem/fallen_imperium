@@ -29,6 +29,15 @@ bool owns(const Game& g, int p, const char* techKeyName) { return ownsTechKey(g,
 }  // namespace
 
 bool codexOn(const Game& g) { return (g.modules & kModCodex) || ((g.modules & kModThundersEdge) && g.fixes >= 5); }
+bool dmzTradeable(const Game& g, int who, int planet) {
+    return g.fixes >= 31 && g.phase == Phase::Agenda && planet >= 0 && planet < int(g.planets.size()) && g.planets[size_t(planet)].owner == who &&
+           !g.planets[size_t(planet)].destroyed && hasAttachment(g, planet, "dmz") && !isStation(g, planet);
+}
+bool codex3Explore(int c) {
+    if (c < 0 || c >= kExploreCardCount) return false;
+    const char* k = kExploreCards[c].key;
+    return !std::strcmp(k, "minent") || !std::strcmp(k, "ent") || !std::strcmp(k, "majent") || !std::strcmp(k, "kel") || !std::strcmp(k, "dw");
+}
 bool codex2Relic(int r) {
     if (r < 0 || r >= kRelicCount) return false;
     const char* k = kRelics[r].key;
@@ -456,6 +465,16 @@ uint8_t wormholesOf(const Game& g, int sys) {
 }
 int attachedPlanets(const Game& g, int p) {
     int n = 0;
+    if (g.fixes >= 31) {
+        // (fixes 31, the public objectives' pass) Discover Lost Outposts / Reclaim Ancient Monuments: "Control N planets that have
+        // attachments" - Terraform, Ul the Progenitor (Geoform) and the Nano-Forge are attachments too ("Attach this card to ...");
+        // controlled as for every other objective (coexisting planets count - T22; space stations are not planets)
+        for (int x : controlledPlanets(g, p)) {
+            const PlanetState& ps = g.planets[size_t(x)];
+            if (!isStation(g, x) && (!ps.attachments.empty() || ps.terraform || ps.ulHero || ps.nanoForge)) ++n;
+        }
+        return n;
+    }
     for (const PlanetState& ps : g.planets)
         if (ps.owner == p && !ps.attachments.empty()) ++n;
     return n;
@@ -798,6 +817,32 @@ int unitsAvailable(const Game& g, int p, UnitType t) {
     if (t == UnitType::Mech && g.fixes >= 28 && (g.modules & kModDiscordant) && isFaction(g, p, "mykomentori")) onCard += g.players[size_t(p)].dsMykoMechs;
     return std::max(0, unitLimitOf(g, p, t) - unitsOnBoard(g, p, t) - onCard - capturedFrom(g, p, t) - g.players[size_t(p)].purgedUnits[int(t)]);
 }
+
+bool reclaimAllowed(const Game& g, int p, UnitType t) {
+    if (g.fixes < 32 || p < 0 || p >= g.numPlayers || unitLimit(t) >= 99) return false;  // (fighters / infantry: tokens)
+    if (t == UnitType::Mech && eidolonShip(g, p)) return false;  // (Absolute Synergy: no mechs at all)
+    if (t == UnitType::WarSun && !owns(g, p, "ws") && unitDef(g, p, t).tech >= 0 && !g.players[size_t(p)].hasTech(unitDef(g, p, t).tech))
+        return false;  // (no war sun without the technology)
+    return true;
+}
+
+int reclaimable(const Game& g, int p, UnitType t) {
+    if (!reclaimAllowed(g, p, t)) return 0;
+    int n = 0;
+    for (const SystemState& s : g.systems) {
+        if (s.hasToken(p)) continue;
+        n += s.space[size_t(p)].count(t);
+        for (int16_t x : s.planets) n += g.planets[size_t(x)].units[size_t(p)].count(t);
+    }
+    return n;
+}
+
+int unitsPlaceable(const Game& g, int p, UnitType t) {
+    const int n = unitsAvailable(g, p, t);
+    return n + (reclaimAllowed(g, p, t) ? reclaimable(g, p, t) : 0);
+}
+
+int unitsForPlacement(const Game& g, int p, UnitType t) { return g.fixes >= 33 ? unitsPlaceable(g, p, t) : unitsAvailable(g, p, t); }
 
 int capturedCount(const Game& g, int p, UnitType t) {
     if (p < 0 || p >= g.numPlayers) return 0;  // (Thunder's Edge: not for neutral units)
@@ -3081,8 +3126,11 @@ bool meetsObjective(const Game& g, int p, int obj) {
         return n >= 4;
     }
     if (keyIs(obj, "otf")) {
-        for (const PlanetState& x : g.planets)
-            if (x.units[p].groundForces() >= 9 && !x.units[p].count(UnitType::SpaceDock)) return true;
+        // (fixes 31, the secret objectives' pass) the Titans' Hel-Titans are ground forces too
+        for (size_t x = 0; x < g.planets.size(); ++x)
+            if ((g.fixes >= 31 ? groundForcesOn(g, p, int(x)) : g.planets[x].units[p].groundForces()) >= 9 &&
+                !g.planets[x].units[p].count(UnitType::SpaceDock))
+                return true;
         return false;
     }
     if (keyIs(obj, "pem")) {
@@ -3189,9 +3237,9 @@ ObjProgress objectiveProgress(const Game& g, int p, int obj) {
     }
     // secrets
     else if (keyIs(obj, "ans")) {
-        int n = 0;
+        int n = 0;  // (0.61.0: counted as meetsObjective does - not the Valefar Assimilators)
         for (int16_t t : pl.techs)
-            if (kTechs[t].faction >= 0) ++n;
+            if (kTechs[t].faction >= 0 && (kTechs[t].color != TechColor::None || kTechs[t].unitUpgrade)) ++n;
         set(n, 2);
     } else if (keyIs(obj, "btgk")) {
         bool a = false, b = false;
@@ -3246,8 +3294,9 @@ ObjProgress objectiveProgress(const Game& g, int p, int obj) {
         set(n, 4);
     } else if (keyIs(obj, "otf")) {
         int best = 0;
-        for (const PlanetState& x : g.planets)
-            if (!x.units[p].count(UnitType::SpaceDock)) best = std::max(best, x.units[p].groundForces());
+        for (size_t x = 0; x < g.planets.size(); ++x)
+            if (!g.planets[x].units[p].count(UnitType::SpaceDock))
+                best = std::max(best, g.fixes >= 31 ? groundForcesOn(g, p, int(x)) : g.planets[x].units[p].groundForces());
         set(best, 9);
     } else if (keyIs(obj, "pem")) {
         int best = 0;

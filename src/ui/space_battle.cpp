@@ -16,6 +16,7 @@
 #include "ui/icons.h"
 #include "ui/pixel_ships.h"
 #include "ui/theme.h"
+#include "ui/pcolors.h"
 
 using namespace ti;
 
@@ -206,6 +207,7 @@ struct SpaceBattle::Impl {
 
     int pl[2] = {-1, -1};
     uint32_t col[2] = {0, 0};
+    int pci[2] = {-1, -1};  // 0.62.0: the sides' colour indices (their finish)
     int fac[2] = {-1, -1};
     std::string flagName[2], flagName2[2];  // (0.52.0: flagName2 - the second flagship, the Ghemina's Lady)
     float speed = 1.f;
@@ -1576,6 +1578,8 @@ struct SpaceBattle::Impl {
             if (s.state == 1 && s.t == UnitType::Flagship)
                 k.whiten = int(255.f * std::min(1.f, float(int32_t(now - s.dieAt)) / std::max(1.f, 1400.f * speed + 450.f)) * 0.9f);
             if (const pxship::Sprite* sp = spriteFor(c, s.t, s.len * R, s.len * R * 0.8f, col[s.side])) {
+                pcolours::Finish fin(c, pcolours::around(X(s.x), Y(s.y), s.len * R * 0.6f, s.len * R * 0.45f), s.state == 0 ? pci[s.side] : -1,
+                                     uint32_t(s.ordinal) * 131u + uint32_t(s.side));
                 if (s.damaged) {
                     k.hurt = 1;
                     k.hurtX = sp->w / 2 + int(std::lround(c.fx(s.sx * R) / float(grid.f)));
@@ -1598,7 +1602,11 @@ struct SpaceBattle::Impl {
             c.fillCircle(bx, Y(s.y), half * 1.5f * flick, rgb(255, 160, 60), 110);
             c.fillCircle(bx, Y(s.y), half * 0.7f * flick, rgb(255, 240, 190), 190);
         }
-        drawArt(c, s.t, s.x, s.y, s.len, colr, s.faceLeft, a);
+        {
+            pcolours::Finish fin(c, pcolours::around(X(s.x), Y(s.y), s.len * R * 0.6f, s.len * R * 0.45f), s.state == 0 ? pci[s.side] : -1,
+                                 uint32_t(s.ordinal) * 131u + uint32_t(s.side));
+            drawArt(c, s.t, s.x, s.y, s.len, colr, s.faceLeft, a);
+        }
         if (s.damaged) {  // the breach glows
             const float ox = s.faceLeft == (s.side == 1) ? s.sx : -s.sx;
             const float fl = 0.6f + 0.4f * std::sin(float(now % 200) / 200.f * 2 * kPi);
@@ -1946,7 +1954,7 @@ struct SpaceBattle::Impl {
     }
 
     void drawStruct(Canvas& c, const Game& g, const Struct& st, uint32_t now) {
-        const uint32_t colr = st.owner == kNeutral ? theme::neutral : st.owner >= 0 ? theme::player[g.players[size_t(st.owner)].color % 8] : theme::text;
+        const uint32_t colr = st.owner == kNeutral ? theme::neutral : st.owner >= 0 ? pcolours::base(g.players[size_t(st.owner)].color) : theme::text;
         const float sz = st.size;
         if (st.t == UnitType::SpaceDock) {  // in the background, small and dim, its lights blinking
             const int w = std::max(4, int(sz * R));
@@ -2160,7 +2168,8 @@ void SpaceBattle::start(const Game& g, int sys, int attacker, int defender, cons
             continue;
         }
         const Player& p = g.players[size_t(m.pl[i])];
-        m.col[i] = theme::player[p.color % 8];
+        m.col[i] = pcolours::base(p.color);
+        m.pci[i] = pcolours::of(g, m.pl[i]);
         m.fac[i] = p.faction;
         m.flagName[i] = unitDef(g, m.pl[i], UnitType::Flagship).name;
         m.flagName2[i] = unitDef(g, m.pl[i], UnitType::Flagship2).name;  // (0.52.0: the Ghemina's Lady)
@@ -2362,7 +2371,7 @@ void SpaceBattle::draw(Canvas& c, const Game& g, Rect area, uint32_t now, const 
     m.drawDice(c, now);
     // the result, and the line that waits for A
     if (m.ended && !m.result.empty()) {
-        const uint32_t wc = m.winner == kNeutral ? theme::neutral : m.winner >= 0 ? theme::player[g.players[size_t(m.winner)].color % 8] : theme::text;
+        const uint32_t wc = m.winner == kNeutral ? theme::neutral : m.winner >= 0 ? pcolours::base(g.players[size_t(m.winner)].color) : theme::text;
         const int w = int(m.R * 1.2f);
         const int y = int(m.cy - m.R * 0.86f) + 8;
         c.fillRoundRect(int(m.cx) - w / 2, y, w, 24, 6, rgb(8, 10, 18), 220);

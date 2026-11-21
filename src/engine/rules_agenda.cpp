@@ -112,6 +112,10 @@ void Rules::agendaPhase() {
         c.w = Win::AgendaStart;
         window(c);
     }
+    // (fixes 31, the secret objectives' pass) LRR 61.5c "at any time during that phase": Dictate Policy with 3 laws already in play
+    // is scored at the start (before, only after an agenda - lost if the first one discarded a law)
+    if (G.fixes >= 31)
+        for (int q = 0; q < G.numPlayers; ++q) agendaSecrets(q);
     for (int i = 0; i < 2; ++i) resolveAgenda(i);
     G.currentAgenda = -1;
     curAgenda_ = -1;
@@ -185,7 +189,8 @@ void Rules::runAgenda(int a, bool miscount) {
                         playNoteWindow(q, kNotePoliticalSecret, noteOwner(note),
                                        "Play " + pn(noteOwner(note)) + "'s Political Secret?")) {
                         silenced_ = uint8_t(silenced_ | (1u << noteOwner(note)));
-                        say(q, pn(noteOwner(note)) + " can't vote or play action cards on this agenda.");
+                        say(q, pn(noteOwner(note)) + (G.fixes >= 31 ? " can't vote, play action cards or use faction abilities on this agenda."
+                                                                     : " can't vote or play action cards on this agenda."));
                     }
             if (!cardHas(played, "veto") && !quashCheck(a)) break;  // Veto, Quash, Political Favor
             G.agendaDiscard.push_back(int16_t(a));
@@ -402,12 +407,12 @@ void Rules::runAgenda(int a, bool miscount) {
                 G.speaker = int8_t(q);
                 say(q, pn(q) + " becomes the speaker.");
             } else if (!std::strcmp(k, "const_rider")) {
-                if (unitsAvailable(G, q, UnitType::SpaceDock) > 0) placeStructure(q, -1, true, false, false);
+                if (unitsForPlacement(G, q, UnitType::SpaceDock) > 0) placeStructure(q, -1, true, false, false);
             } else if (!std::strcmp(k, "war_rider")) {
                 std::vector<Option> opts;
                 for (size_t s = 0; s < G.systems.size(); ++s)
                     if (hasShips(G, q, int(s))) opts.push_back({int(s), sysName(int(s)), ""});
-                if (!opts.empty() && unitsAvailable(G, q, UnitType::Dreadnought) > 0) {
+                if (!opts.empty() && unitsForPlacement(G, q, UnitType::Dreadnought) > 0) {
                     int s = pick(q, Tag::CardTarget, "Warfare Rider: place a dreadnought where?", opts, "", true);
                     addUnits(q, UnitType::Dreadnought, 1, s, -1);
                     Event e;  // 0.29.0: the placement shows in the feed (display only)
@@ -544,6 +549,10 @@ void Rules::votingStep(int a, std::vector<int>& votedFor, std::vector<int>& vote
             d.options = opts;
             d.value = avail;
             if (G.modules & kModDiscordant) d.predicted = dsPredictionOf(p);  // (0.44.6: for the AI)
+            if (predictions_[p].size() >= 2) {  // (0.65.0, for the AI's voting plan) this voter's rider
+                d.riderCard = predictions_[p][0];
+                d.riderBet = predictions_[p][1];
+            }
             std::vector<Option> copy = opts;
             d.validate = [copy](const Answer& ans) -> std::string {
                 if (ans.picks.size() != 1) return "Choose one option.";
@@ -573,6 +582,11 @@ void Rules::votingStep(int a, std::vector<int>& votedFor, std::vector<int>& vote
                         v.mixed = exec;
                         v.maxPick = 1;
                         v.value = o;  // the outcome these votes go to
+                        if (predictions_[p].size() >= 2) {  // (0.65.0, for the AI)
+                            v.riderCard = predictions_[p][0];
+                            v.riderBet = predictions_[p][1];
+                        }
+                        if (G.modules & kModDiscordant) v.predicted = dsPredictionOf(p);  // (0.65.0, for the AI)
                         if (exec)
                             v.context = "Executive Order: each planet gives its resources or its influence (the higher), "
                                         "and each trade good is 1 vote.";
@@ -701,6 +715,7 @@ void Rules::votingStep(int a, std::vector<int>& votedFor, std::vector<int>& vote
 
 void Rules::agendaSecrets(int p) {
     if (G.players[p].eliminated) return;
+    if (G.fixes >= 31 && G.phase != Phase::Agenda) return;  // (fixes 31) LRR 61.5c: an agenda-phase objective, in the agenda phase
     for (int16_t o : std::vector<int16_t>(G.players[p].secrets)) {
         if (kObjectives[o].phase != ObjPhase::Agenda) continue;
         if (!std::strcmp(kObjectives[o].key, "dp") && G.laws.size() >= 3) scoreObjective(p, o);
@@ -789,6 +804,9 @@ void Rules::resolveOutcome(int a, int o, const std::vector<int>& votedFor, const
     // Drive the Debate: you, or a planet you control, are elected.
     auto debated = [&](int p) {
         if (p < 0) return;
+        // (fixes 31, the secret objectives' pass) LRR 61.5c: Drive the Debate is an agenda-phase objective - not an agenda resolved
+        // in the action phase (Executive Order)
+        if (G.fixes >= 31 && G.phase != Phase::Agenda) return;
         for (int16_t s : std::vector<int16_t>(G.players[p].secrets))
             if (!std::strcmp(kObjectives[s].key, "dtd")) scoreObjective(p, s);
         // (fixes 25, owner's faction debug pass) the Firmament meets another player's Drive the Debate: Plots Within Plots
@@ -919,6 +937,13 @@ void Rules::resolveOutcome(int a, int o, const std::vector<int>& votedFor, const
         // Vote on the elected law again as if it had just been revealed.
         for (size_t i = 0; i < G.laws.size(); ++i)
             if (G.laws[i].agenda == o) {
+                // (fixes 31) "as if it were just revealed": a law whose card would be discarded on its reveal - Classified Document
+                // Leaks with no other secret objective scored (the one it made public stays public while the law is in play) - has
+                // nothing to vote for; it is discarded (the computer's rider had no outcome to predict and the game stopped)
+                if (G.fixes >= 31 && (!agendaRevealable(o) || agendaOutcomes(o).empty())) {
+                    discardLaw(int(i), "Miscount Disclosed: nothing to vote for");
+                    break;
+                }
                 if (G.fixes >= 30) {
                     // (fixes 30, the agenda pass - FAQ: "the law that is being voted on remains active and in play" during the
                     // revote; runAgenda takes it out when the revote resolves)
@@ -1128,7 +1153,7 @@ void Rules::resolveOutcome(int a, int o, const std::vector<int>& votedFor, const
         for (int q = 0; q < n; ++q) {
             if (G.players[q].eliminated) continue;
             if (!against) {
-                if (unitsAvailable(G, q, UnitType::Mech) <= 0) continue;
+                if (unitsForPlacement(G, q, UnitType::Mech) <= 0) continue;
                 std::vector<Option> opts;
                 for (int16_t x : G.systems[G.players[q].homeSystem].planets)
                     if (G.planets[x].owner == q) opts.push_back({x, planetName(x), ""});
@@ -1346,6 +1371,9 @@ void Rules::politicsPeek(int p) {
     }
     for (int a : toBottom) G.agendaDeck.insert(G.agendaDeck.begin(), int16_t(a));
     for (int i = int(toTop.size()) - 1; i >= 0; --i) G.agendaDeck.push_back(int16_t(toTop[i]));
+    // (0.65.0, for the AI's voting plan) what this player now knows about the top of the deck
+    G.players[size_t(p)].agendaSeen[0] = G.players[size_t(p)].agendaSeen[1] = -1;
+    for (size_t i = 0; i < toTop.size() && i < 2; ++i) G.players[size_t(p)].agendaSeen[i] = int16_t(toTop[i]);
     say(p, pn(p) + " looks at the top of the agenda deck.");
 }
 

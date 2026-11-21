@@ -525,15 +525,19 @@ void paintVoidfall(Canvas& c, const Tile& t, float cx, float cy, float r, uint32
 std::vector<Tile> place(const Game& g, const std::vector<Hex>& taken) {
     std::vector<Tile> out;
     if (g.systems.empty()) return out;
+    // 0.80.0 (owner: "Unless the Thunder's Edge module is active, the Fracture and Thunder's Edge should remain hidden on the
+    // game map"): nothing of them in other games (0.24.0 - 0.75.0 drew both beside every map as a preview)
+    if (!(g.modules & kModThundersEdge)) return out;
     // owner 0.43.2: the planets at the ends again (0.28.0 to 0.43.1 had the egress points there - games started
     // then keep it: Setup::fixes < 3)
     static const Kind kOrderOld[7] = {Egress, Cocytus, Rift, Styx, Rift, LethePhlegethon, Egress};
     static const Kind kOrderNew[7] = {Cocytus, Egress, Rift, Styx, Rift, Egress, LethePhlegethon};
     const Kind* kOrder = (g.modules & kModThundersEdge) && g.fixes < 3 ? kOrderOld : kOrderNew;  // (only TE games place it for real)
-    // Thunder's Edge games (0.34.0): where the engine will put them (tePlacement) - until they come into play
+    // Thunder's Edge games (0.34.0): Thunder's Edge where the engine will put it (tePlacement) until it comes into play.
+    // 0.73.5 (owner: "When a game would start that uses Thunder's Edge, the Fracture is hidden"): the Fracture isn't shown
+    // until it appears - then as real systems, with the ripple (scene_game); the map keeps its room (map_view hiddenFracture).
     if ((g.modules & kModThundersEdge) && !(g.fracturePos[3] == Hex{})) {
-        if (!g.fractureIn)
-            for (int i = 0; i < 7; ++i) out.push_back({kOrder[i], g.fracturePos[size_t(i)], i});
+        (void)kOrder;
         if (g.teSystem < 0 && !(g.tePos == Hex{})) out.push_back({ThundersEdge, g.tePos, 7});
         return out;
     }

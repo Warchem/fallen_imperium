@@ -1,15 +1,24 @@
 # Long UI fuzz: start a game and press buttons in a pattern, saving screenshots along the way.
 wait 5
+# (0.63.0: New Game -> Game options -> AI speed) Instant
 press A
 wait 5
 press UP
-wait 3
+wait 2
+press A
+wait 2
+press DOWN
+wait 2
+press DOWN
+wait 2
 press RIGHT
-wait 3
+wait 2
 press RIGHT
-wait 3
+wait 2
+press B
+wait 2
 press START
-wait 20
+wait 2
 mash 30
 wait 8
 shot fuzz00

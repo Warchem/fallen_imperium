@@ -88,6 +88,8 @@ void Rules::tacticalAction(int p) {
         for (int16_t n : pl.notesInPlay)
             if (noteType(n) == kNoteSupportThrone && hasUnits(G, noteOwner(n), sys))
                 warn += pn(noteOwner(n)) + "'s Support for the Throne goes back (you lose 1 victory point). ";
+            else if (G.fixes >= 31 && noteType(n) == kNoteAlliance && hasUnits(G, noteOwner(n), sys))  // (fixes 31: the card)
+                warn += pn(noteOwner(n)) + "'s Alliance goes back (you lose their commander's ability). ";
         if (!warn.empty()) {
             int c = pick(p, Tag::ActivateConfirm, "Activate " + sysName(sys) + "?",
                          {{0, "Back", "Choose another system or action."}, {1, "Activate it anyway", warn}}, warn);
@@ -107,8 +109,11 @@ void Rules::tacticalAction(int p) {
     G.fx = TacticalEffects();
     // Betray a Friend: whose promissory notes were held at the start of this tactical action
     notesHeld_ = 0;
-    for (int16_t n : pl.notes)
-        if (noteOwner(n) != p) notesHeld_ = uint8_t(notesHeld_ | (1u << noteOwner(n)));
+    // (fixes 31, the secret objectives' pass) "whose promissory note you had in your play area" - the notes face up there, not
+    // those in hand (LRR 69.5 tells the two apart)
+    if (G.fixes < 31)
+        for (int16_t n : pl.notes)
+            if (noteOwner(n) != p) notesHeld_ = uint8_t(notesHeld_ | (1u << noteOwner(n)));
     for (int16_t n : pl.notesInPlay) notesHeld_ = uint8_t(notesHeld_ | (1u << noteOwner(n)));
     {
         Event e;
@@ -142,6 +147,12 @@ void Rules::tacticalAction(int p) {
     activationSleepers_.clear();
     for (int16_t x : G.systems[size_t(sys)].planets)
         if (G.planets[size_t(x)].sleeper) activationSleepers_.push_back(x);
+    // (fixes 34, owner 2026-11-19: "after placing a PDS, I am prompted with the choice of placing my flagship. The flagship
+    // can't be placed right after I placed my PDS") Ouranos looks at the PDS there when the system is activated - not the
+    // ones Awaken turns sleepers into a moment later (LRR 1.14: "after" = right after the activation it describes)
+    activationPDS_.clear();
+    for (int16_t x : G.systems[size_t(sys)].planets)
+        if (G.planets[size_t(x)].units[p].count(UnitType::PDS)) activationPDS_.push_back(x);
     scanlink(p, sys);
     // (fixes 26, the Empyrean review - owner 2026-11-12) Void Tether: "WHEN you activate a system" - before the "after you
     // activate" cards and abilities (it came with the other breakthroughs, after them)
@@ -719,6 +730,14 @@ void Rules::spaceCannonOffense(int p, int sys) {
         // Aurora Research Base (Veldyr breakthrough, 0.43.0): their ability hits in a nebula can't be cancelled either
         const bool halberd = (dsOn && q < G.numPlayers && flagshipAbility(G, q, "kolume") && flagshipIn(G, q, sys)) ||
                              (dsOn && q < G.numPlayers && dsbtOn(q, "veldyr") && (anomaliesFor(G, q, sys) & kNebula));
+        // (fixes 31, the secret objectives' pass) Turn Their Fleets to Dust as printed (games without the Codex): "Use SPACE CANNON
+        // to destroy the last of a player's ships in a system" - fighters are ships; counted right after the space cannon's hits,
+        // before ships over capacity go (Living Rules FAQ: a carrier destroyed and its fighters removed doesn't fulfil it)
+        const bool ttfdPrinted = G.fixes >= 31 && !codexOn(G);
+        const int shipsBefore = G.systems[sys].space[target].ships();
+        auto ttfdPrintedCheck = [&]() {
+            if (ttfdPrinted && shipsBefore > 0 && G.systems[sys].space[target].ships() == 0) actionSecret(q, "ttfd");
+        };
         int rookHits = 0;
         if (dsOn && q < G.numPlayers && fac(q, "kolume") && mechAbilities(G))
             for (size_t i = 0; i < r.dice.size() && i < r.unit.size(); ++i)
@@ -742,7 +761,10 @@ void Rules::spaceCannonOffense(int p, int sys) {
                 say(target, pn(target) + " cancels " + std::to_string(c) + " hit" + (c > 1 ? "s" : "") + ".", sys);
             }
         }
-        if (r.hits <= 0) continue;
+        if (r.hits <= 0) {
+            ttfdPrintedCheck();  // (the Rook's hits alone)
+            continue;
+        }
         int nonFightersBefore = G.systems[sys].space[target].nonFighterShips();
         int mask = 0;
         for (int t : kShipIdx) mask |= 1 << t;
@@ -766,7 +788,10 @@ void Rules::spaceCannonOffense(int p, int sys) {
         }
         if (G.fixes >= 9) cannonHits(target, sys, r.hits, mask | 1 << int(UnitType::Fighter), gls, "space cannon", q);
         else assignHits(target, sys, -1, r.hits, mask, "space cannon", q);
-        if (nonFightersBefore > 0 && G.systems[sys].space[target].nonFighterShips() == 0) actionSecret(q, "ttfd");
+        // (the Codex's Turn Their Fleets to Dust: "Destroy the last of a player's non-fighter ships in the active system during the
+        // space cannon offense step")
+        if (ttfdPrinted) ttfdPrintedCheck();
+        else if (nonFightersBefore > 0 && G.systems[sys].space[target].nonFighterShips() == 0) actionSecret(q, "ttfd");
     }
     // Thunder's Edge (0.34.0): neutral PDS in the system always fire at the active player's ships
     {
@@ -966,11 +991,32 @@ void Rules::bombardment(int p, int sys) {
         }
         if (G.modules & kModDiscordant) dsBombardHits(p, q, sys, pl, r);  // Shard Volley, Hyperkinetic Ordnance, Meteor Slings
         int infBefore = G.planets[pl].units[q].count(UnitType::Infantry);
-        int gfBefore = G.planets[pl].units[q].groundForces();
+        // (fixes 31, the secret objectives' pass) Make an Example of Their World: the Titans' Hel-Titans are ground forces too; as
+        // printed (games without the Codex) "Use BOMBARDMENT to destroy the last of a player's ground forces on a planet" - what
+        // the bombardment's hits destroyed (not X-89 Bacterial Weapon's own ability afterwards); the Codex's: "... during the
+        // bombardment step" (as before)
+        const bool v31 = G.fixes >= 31;
+        auto gfNow = [&]() { return v31 && q < G.numPlayers ? groundForcesOn(G, q, pl) : G.planets[pl].units[q].groundForces(); };
+        const bool mewPrinted = v31 && !codexOn(G);
+        int gfBefore = gfNow();
         int mask = (1 << int(UnitType::Infantry)) | (1 << int(UnitType::Mech)) | (fac(q, "titans") ? (1 << int(UnitType::PDS)) : 0);
         r.hits = proximaCancel(q, sys, pl, r.hits);  // Proxima Targeting VI: 1 hit less per galvanized unit there
         if (eventOn(G, kEvConventions) && r.hits > 0) r.hits *= 3;  // Conventions of War Abandoned: 3 units per hit
         assignHits(q, sys, pl, r.hits, mask, "bombardment", p);
+        if (mewPrinted && gfBefore > 0 && gfNow() == 0) actionSecret(p, "mew");
+        // (fixes 31, the Uncharted Space card pass) Contagion: "After you destroy 1 or more of another player's infantry on a planet" -
+        // the bombardment's too (it was only offered in ground combat)
+        if (G.fixes >= 31 && (G.modules & kModUncharted) && q < G.numPlayers &&
+            G.planets[size_t(pl)].units[q].count(UnitType::Infantry) < infBefore && G.planets[size_t(pl)].units[q].count(UnitType::Infantry) > 0) {
+            WinCtx w;
+            w.w = Win::InfantryKilled;
+            w.a = p;
+            w.b = q;
+            w.sys = sys;
+            w.planet = pl;
+            w.space = false;
+            window(w);
+        }
         int infAfter = G.planets[pl].units[q].count(UnitType::Infantry);
         if (x89Omega(G, p) && !G.planets[pl].exhausted) {  // ...and the planet it bombarded is exhausted
             G.planets[pl].exhausted = true;
@@ -979,7 +1025,7 @@ void Rules::bombardment(int p, int sys) {
         if (infAfter < infBefore && infAfter > 0 && owns(p, "x89_base") && !x89Omega(G, p) &&
             yesNo(p, Tag::UseTech, "Use X-89 Bacterial Weapon?", "Destroy all of their infantry on " + planetName(pl) + "."))
             destroyUnits(q, UnitType::Infantry, infAfter, sys, pl, p, "X-89");
-        if (gfBefore > 0 && G.planets[pl].units[q].groundForces() == 0) actionSecret(p, "mew");
+        if (!mewPrinted && gfBefore > 0 && gfNow() == 0) actionSecret(p, "mew");
     }
 }
 
@@ -1049,6 +1095,7 @@ void Rules::invasion(int p, int sys) {
             if (custodiansCost == 0 || pay(p, custodiansCost, true, "removing the custodians token", false)) {
                 if (custodiansCost == 0) say(p, pn(p) + " removes the custodians token for free (Blood Ties).", sys);
                 G.custodiansRemoved = true;
+                G.custodiansBy = int8_t(p);
                 s.custodians = false;
                 for (int16_t pl : s.planets)
                     if (!std::strcmp(kPlanets[G.planets[pl].def].key, "mr")) mustLand = pl;
@@ -1101,6 +1148,20 @@ void Rules::invasion(int p, int sys) {
     d.validate = [gp, p, sys, spec](const Answer& a) { return checkLandPlan(*gp, p, sys, a.data, spec); };
     Answer a = E.ask(std::move(d));
     std::vector<int> landed, tollPaid, tollRefused;
+    // (0.69.0, the map sounds) the landing as a whole: is any planet it goes to defended (bit 0), do mechs come down
+    // (bit 1: onto a defended planet when there is one, else anywhere)
+    int landSum = 0;
+    {
+        bool mechDef = false, mechAny = false;
+        for (size_t i = 0; i + 2 < a.data.size(); i += 3) {
+            if (a.data[i + 2] <= 0 || a.data[i] < 0 || size_t(a.data[i]) >= G.planets.size()) continue;
+            const bool def = defendedAgainst(p, a.data[i]), mech = a.data[i + 1] == int(UnitType::Mech);
+            if (def) landSum |= 1;
+            mechDef |= def && mech;
+            mechAny |= mech;
+        }
+        if (landSum & 1 ? mechDef : mechAny) landSum |= 2;
+    }
     for (size_t i = 0; i < a.data.size(); i += 3) {
         int pl = a.data[i], t = a.data[i + 1], k = a.data[i + 2];
         if (const int toll = omniopiaresToll(p, pl)) {
@@ -1125,9 +1186,8 @@ void Rules::invasion(int p, int sys) {
         G.planets[pl].units[p].dmg[t] = uint8_t(G.planets[pl].units[p].dmg[t] + dmgMoved);
         G.planets[pl].units[p].galv[t] = uint8_t(G.planets[pl].units[p].galv[t] + galvMoved);
         if (std::find(landed.begin(), landed.end(), pl) == landed.end()) landed.push_back(pl);
-        event(EventKind::Land, p,
-              pn(p) + " lands " + std::to_string(k) + " " + unitTypeName(UnitType(t), k > 1) + " on " + planetName(pl) + ".",
-              sys, pl);
+        landEvent(p, sys, pl, UnitType(t), landSum,
+                  pn(p) + " lands " + std::to_string(k) + " " + unitTypeName(UnitType(t), k > 1) + " on " + planetName(pl) + ".");
     }
     // (fixes 29, the Zelian review) Impactor I: "During invasion, this unit must commit to a planet it bombards" - the infantry that bombarded
     // a planet and weren't committed to it land there now (from those still in the space area)
@@ -1145,10 +1205,9 @@ void Rules::invasion(int p, int sys) {
         G.planets[size_t(pl)].units[p].add(UnitType::Infantry, k);
         G.planets[size_t(pl)].units[p].galv[int(UnitType::Infantry)] = uint8_t(G.planets[size_t(pl)].units[p].galv[int(UnitType::Infantry)] + galvMoved);
         if (std::find(landed.begin(), landed.end(), pl) == landed.end()) landed.push_back(pl);
-        event(EventKind::Land, p,
-              pn(p) + " lands " + std::to_string(k) + " " + unitTypeName(UnitType::Infantry, k > 1) + " on " + planetName(pl) +
-                  " (Impactor I: the infantry that bombarded a planet must commit to it).",
-              sys, pl);
+        landEvent(p, sys, pl, UnitType::Infantry, landSum,
+                  pn(p) + " lands " + std::to_string(k) + " " + unitTypeName(UnitType::Infantry, k > 1) + " on " + planetName(pl) +
+                      " (Impactor I: the infantry that bombarded a planet must commit to it).");
     }
     impactorCommit_.clear();
     // (fixes 25, Sardakk review 2026-11-11) G'hom Sek'kus "commits (moves)" ground forces: the ones it brought that didn't
@@ -1562,8 +1621,17 @@ void Rules::productionCore(int p, int sys, int capacityLimit, bool viaWarfare, b
         if (must) d.context += " You must produce 1.";
     }
     d.mustProduce = must;
+    // (0.61.1, fixes 32 - owner 2026-11-18 W19) LRR 23.4a: units past the reinforcements come back off the board (asked after paying)
+    d.reclaim = G.fixes >= 32;
+    if (d.reclaim) {
+        std::string out;
+        for (int t = 0; t < kUnitTypes; ++t)
+            if (!isStructure(UnitType(t)) && unitsAvailable(G, p, UnitType(t)) == 0 && reclaimable(G, p, UnitType(t)) > 0)
+                out += std::string(out.empty() ? "" : ", ") + unitTypeName(UnitType(t), true);
+        if (!out.empty()) d.context += " None left: " + out + " - you may take yours off the board to place them here (Living Rules 23.4a).";
+    }
     d.validate = [gp, p, sys, capacityLimit, discount, shipsOnly, typeMask, costCap, must](const Answer& a) -> std::string {
-        std::string e = checkProducePlan(*gp, p, sys, a.data, capacityLimit, typeMask);
+        std::string e = checkProducePlan(*gp, p, sys, a.data, capacityLimit, typeMask, false, gp->fixes >= 32);
         if (!e.empty()) return e;
         int counts[kUnitTypes];
         int total = 0;
@@ -1599,6 +1667,7 @@ void Rules::productionCore(int p, int sys, int capacityLimit, bool viaWarfare, b
     }
     int gfPlanet = a.data[kUnitTypes];
     if (counts[int(UnitType::Flagship)] && commanderUsable(G, p, "nomad")) say(p, pn(p) + "'s flagship costs nothing (Navarch Feng).", sys);
+    reclaimForPlacement(p, counts, sys);  // (fixes 32, LRR 23.4a: the player picks the units that come back off the board)
     Force made;
     for (int t = 0; t < kUnitTypes; ++t) {
         if (!counts[t]) continue;
@@ -1643,7 +1712,7 @@ void Rules::productionCore(int p, int sys, int capacityLimit, bool viaWarfare, b
             }
     // Self-Assembly Routines: place a mech on a planet you control in this system.
     // (0.44.8, fixes 12: only after the PRODUCTION ability - not an ability's own production; no Demilitarized Zone)
-    if (techReady(p, "sar") && unitsAvailable(G, p, UnitType::Mech) > 0 && !(G.fixes >= 12 && notProductionAbility_)) {
+    if (techReady(p, "sar") && unitsForPlacement(G, p, UnitType::Mech) > 0 && !(G.fixes >= 12 && notProductionAbility_)) {
         std::vector<Option> opts;
         for (int16_t x : G.systems[sys].planets)
             if (G.planets[x].owner == p && !(G.fixes >= 12 && isDMZ(G, x))) opts.push_back({x, planetName(x), ""});
@@ -1705,6 +1774,7 @@ void Rules::integratedEconomy(int p, int planet) {
     d.amount = 20;
     d.planet = planet;
     d.costCap = budget;  // 0.43.0 (debug passes): the bots didn't know the limit (and had answers turned down)
+    d.reclaim = G.fixes >= 32;  // (0.61.1: LRR 23.4a)
     const Game* gp = &G;
     struct NoSarween {  // 0.44.5 (fixes 9): Integrated Economy isn't the PRODUCTION ability - no Sarween Tools
         Game& g;
@@ -1721,7 +1791,8 @@ void Rules::integratedEconomy(int p, int planet) {
             if (counts[t] < 0) return "Bad count.";
             if (counts[t] && isStructure(UnitType(t))) return "Structures can't be produced.";
             if (counts[t] && unitDef(*gp, p, UnitType(t)).cost2 <= 0) return "That unit can't be produced.";
-            if (counts[t] > unitsAvailable(*gp, p, UnitType(t))) return "Not enough units left in your supply.";
+            if (counts[t] > (gp->fixes >= 32 ? unitsPlaceable(*gp, p, UnitType(t)) : unitsAvailable(*gp, p, UnitType(t))))
+                return "Not enough units left in your supply.";
             if (counts[t] && isShip(UnitType(t)) && blockaded(*gp, p, sys) && !gp->fx.noBlockade &&
                 !(breakthroughsOn(*gp) && breakthroughIs(*gp, p, "dihmohn")))  // (Exodus Engineering, 0.43.0)
                 return "Blockaded: no ships can be produced here.";
@@ -1743,6 +1814,7 @@ void Rules::integratedEconomy(int p, int planet) {
     }
     if (!total) return;
     if (!pay(p, productionCost(G, p, counts), false, "Integrated Economy", false)) return;
+    reclaimForPlacement(p, counts, sys);  // (fixes 32, LRR 23.4a)
     Force made;
     for (int t = 0; t < kUnitTypes; ++t)
         if (counts[t]) {

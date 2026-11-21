@@ -98,6 +98,7 @@ linux-package: build/linux/ti4
 	cp build/linux/ti4 assets/icons.dat assets/retro.dat assets/retro-pc.dat assets/voidfall-pc.dat package/linux/TwilightImperium.sh build/linuxpkg/TwilightImperium/
 	@$(call COPY_MUSIC,pc,build/linuxpkg/TwilightImperium)
 	mkdir -p build/linuxpkg/TwilightImperium/art && cp assets/art/eve_of_the_fall-pc.jpg assets/art/fated_expedition-pc.jpg assets/art/trade_wars-pc.jpg assets/art/twilights_fall-pc.jpg assets/art/action_back-pc.png assets/art/portraits-pc.png assets/art/codec_space-pc.jpg assets/art/codec_alert-pc.jpg build/linuxpkg/TwilightImperium/art/
+	mkdir -p "build/linuxpkg/TwilightImperium/My Music" && cp "package/My Music/Put your MP3 files here.txt" "build/linuxpkg/TwilightImperium/My Music/"  # (0.68.0: the music player)
 	cp package/linux/README-SteamDeck.txt build/linuxpkg/TwilightImperium/README.txt
 	cp package/README.txt build/linuxpkg/TwilightImperium/GUIDE.txt
 	chmod +x build/linuxpkg/TwilightImperium/ti4 build/linuxpkg/TwilightImperium/TwilightImperium.sh
@@ -126,9 +127,10 @@ windows-package: build/win/TwilightImperium.exe
 	cp build/win/TwilightImperium.exe assets/icons.dat assets/retro.dat assets/retro-pc.dat assets/voidfall-pc.dat build/winpkg/TwilightImperium/
 	@$(call COPY_MUSIC,pc,build/winpkg/TwilightImperium)
 	mkdir -p build/winpkg/TwilightImperium/art && cp assets/art/eve_of_the_fall-pc.jpg assets/art/fated_expedition-pc.jpg assets/art/trade_wars-pc.jpg assets/art/twilights_fall-pc.jpg assets/art/action_back-pc.png assets/art/portraits-pc.png assets/art/codec_space-pc.jpg assets/art/codec_alert-pc.jpg build/winpkg/TwilightImperium/art/
+	mkdir -p "build/winpkg/TwilightImperium/My Music" && cp "package/My Music/Put your MP3 files here.txt" "build/winpkg/TwilightImperium/My Music/"  # (0.68.0: the music player)
 	cp package/windows/README-Windows.txt build/winpkg/TwilightImperium/README.txt
 	cp package/README.txt build/winpkg/TwilightImperium/GUIDE.txt
-	cd build/winpkg/TwilightImperium && for f in README.txt GUIDE.txt; do sed -i 's/$$/\r/' $$f; done
+	cd build/winpkg/TwilightImperium && for f in README.txt GUIDE.txt "My Music/Put your MP3 files here.txt"; do sed -i 's/$$/\r/' "$$f"; done
 	rm -f dist/TI4-Windows-$(VERSION).zip && cd build/winpkg && python3 -c "import shutil; shutil.make_archive('../../dist/TI4-Windows-$(VERSION)', 'zip', '.')"
 	cp build/win/TwilightImperium.map dist/TI4-Windows-$(VERSION).map  # (0.43.3: names the addresses in a crash report)
 	@echo "Built dist/TI4-Windows-$(VERSION).zip"
@@ -152,6 +154,12 @@ test: build/host/ti4
 	  || { echo "FAILED: sounds"; tail -5 build/test/audio/stdout.txt; exit 1; }; echo "ok   sounds"
 	@mkdir -p build/test/hd && TI4_SCALE=2.25 ./build/host/ti4 --headless tests/01_tour.txt build/test/hd > build/test/hd/stdout.txt 2>&1 \
 	  || { echo "FAILED: sharp picture"; tail -5 build/test/hd/stdout.txt; exit 1; }; echo "ok   sharp picture (1440x1080)"
+	@mkdir -p build/test/music && TI4_MYMUSIC=tests/music ./build/host/ti4 --headless tests/music/music_player.txt build/test/music > build/test/music/stdout.txt 2>&1 \
+	  && grep -q "^music_mode=1" build/test/music/settings.cfg && grep -q "^music_shuffle=1" build/test/music/settings.cfg \
+	  && grep -q "^music_off=." build/test/music/settings.cfg && grep -q "My Music - 4 songs" build/test/music/ti4.log \
+	  || { echo "FAILED: music player"; tail -5 build/test/music/stdout.txt; exit 1; }; echo "ok   music player (Options: your own MP3s)"
+	@mkdir -p build/test/wide && TI4_SCREENW=854 ./build/host/ti4 --headless tests/wide/screen_buttons.txt build/test/wide > build/test/wide/stdout.txt 2>&1 \
+	  || { echo "FAILED: screen buttons"; tail -5 build/test/wide/stdout.txt; exit 1; }; echo "ok   screen buttons in the top banner (16:9)"
 	@mkdir -p build/test/intro && TI4_TITLEINTRO=1 ./build/host/ti4 --headless tests/intro/opening.txt build/test/intro > build/test/intro/stdout.txt 2>&1 \
 	  && mkdir -p build/test/intro_skip && TI4_TITLEINTRO=1 ./build/host/ti4 --headless tests/intro/opening_skip.txt build/test/intro_skip > build/test/intro_skip/stdout.txt 2>&1 \
 	  && TI4_UITEST_ONLY=titlebg ./build/host/ti4 --uitest build/test/intro > build/test/intro/uitest.txt 2>&1 \

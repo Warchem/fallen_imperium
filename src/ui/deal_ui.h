@@ -12,6 +12,9 @@
 
 // DecisionKind::Deal - compose an offer or a counter-offer.
 std::unique_ptr<DecisionUI> makeDealUI(const ti::Game& g, const ti::Decision& d, MapView& map);
+// (0.64.0) the offer screen's opponent: 2 = a band above the rows - its portrait and the line it greets you with (owner:
+// "Offer B looks like the best one"); 1 = the draft he didn't choose (portrait and line in the right-hand panel); 0 = none.
+int& dealLook();
 // Tag::DealResponse - accept, decline or counter an offer.
 std::unique_ptr<DecisionUI> makeDealResponseUI(const ti::Game& g, const ti::Decision& d, MapView& map);
 // Tag::Negotiate - choose who to make an offer to, on the faction web.

@@ -1,11 +1,404 @@
 FALLEN IMPERIUM - Windows version
 (an unofficial fan project of Twilight Imperium)
-Version 0.60.0 - Pre-Beta (what is new in each version: GUIDE.txt)
+Version 0.80.0 - Pre-Beta (what is new in each version: GUIDE.txt)
 
 The same game as the Miyoo Mini Plus version (Fourth Edition + Prophecy of
 Kings, Codex, Uncharted Space, Thunder's Edge and Discordant Stars, 3 to 8
 players against the computer, every faction), on your PC,
 played with the keyboard and mouse or a controller. Unofficial fan project.
+
+NEW IN 0.80.0 - the Tournament (league mode)
+  - Title screen > Tournament: a ladder of 17 leagues. Each league is a
+    season of games against the same named rival commanders. Start with
+    the Bronze League; finishing a league opens the next ones.
+  - Every game's places earn league points (1st 6, 2nd 4, 3rd 3, 4th 1);
+    shared places split the points, rounded up, and a player knocked out
+    finishes last. +1 for each bonus: take Mecatol Rex first, win before
+    round 7, finish above your rival, keep every promise you make, knock a
+    player out, hold Support for the Throne from 3 players - and in the
+    Thunder's Edge leagues hold Mecatol Rex and Styx, or every planet in
+    the Fracture.
+  - Reach the league's target first to win it. If a rival gets there
+    first, or the game limit comes and someone else has the most points,
+    the league is lost and starts again from 0.
+  - Before most games there is a faction draft: a random seat picks first,
+    then round the table, and the last to pick is the speaker. Some
+    leagues have you pick one faction and keep it for the whole season.
+  - Your rival: the commander nearest you in the standings sits at your
+    table - finish above them for +1. Rivals remember every game with you
+    (who finished above whom, promises you broke to them) and come to the
+    next game with a grudge.
+  - Each league keeps its own saved game: quit at any time and continue it
+    from the league's page. Your casual game's save is separate.
+  - Winning a league gives its emblem (shown under the title menu) and its
+    faction colour: the 16 new colours are now earned in the Tournament
+    (the classic eight are always open). Options > "Unlock everything
+    (testing)" opens every league and colour.
+  - Y on the Tournament screen swaps the list for a map of the leagues;
+    X shows a league's rivals. The Custom League (Tournament Builder)
+    comes in a later build.
+  - The title menu: Continue game, Campaigns, Tournament, Casual game ...
+    (Device tests moved into Options).
+
+NEW IN 0.75.0 - eight new faction colours
+  - New Game > Factions and seats > Colour now has a third column with
+    eight more colours (24 in all):
+      Brown - plain, like the classic eight.
+      Retro Sunset - orange melting into purple; the line between them
+        rises and sinks, and big pieces show the bands of a retro sun.
+      Crystal - cut ice: its facets catch a turning light, a cold sheen
+        runs over it and it glints.
+      Ash - a grey crust with embers smouldering in its cracks; now and
+        then a spark rises off it.
+      Prismatic - a soft rainbow drifting across it, with a holographic
+        sheen.
+      Wireframe Green and Wireframe Blue - dark inside, every edge drawn
+        as a glowing line over a faint grid, with a scan line running down.
+      Rose Gold - polished rose gold that glints, like Gold.
+  - They show everywhere a faction's colour does: units, tokens, the map
+    borders, the faction web and the sheets.
+  - Every colour is open to everyone for now; they become unlockables
+    when the unlock system comes.
+
+NEW IN 0.74.0 - the A.I. difficulty (experimental)
+  - A fifth difficulty above Competitive: A.I. Pick it for any computer
+    seat in New Game > Factions and seats (Difficulty column). An A.I.
+    player has no personality - no archetype, grudges or betrayals - and
+    makes every choice only to win.
+  - It thinks ahead: before its big choices (the strategy card it takes,
+    what it does with its turn, the system it activates) it plays its best
+    few options out to the end of the round on copies of the game, and
+    takes the one that leaves it best placed. While it does, a small
+    "(A.I.) is thinking" marker shows over the map - usually for a second
+    or less.
+  - It never cheats: in those copies, the cards it can't see (other
+    players' action cards and secret objectives, the order of every deck)
+    and the dice are dealt again at random. It gets no extra resources.
+  - It judges deals coldly: promises from a player who has broken promises
+    before are worth less to it, and it keeps its own word unless breaking
+    it stops someone winning or wins the game.
+  - The other difficulties play exactly as before.
+
+NEW IN 0.73.8 - the Obsidian unmasked
+  - When the Firmament (a computer player or you) casts off its mask and
+    becomes the Obsidian, the space behind the map slowly turns crimson
+    while a rising scream swells - countless voices screaming across the
+    galaxy. Then the screams stop dead, the Fracture's tearing sound comes
+    back far deeper and badly distorted, and the same ripple runs out over
+    the whole map - from the Obsidian's home system. The log's line
+    appears along the top with a line under it: "A trillion voices cried
+    out across the stars - and then the galaxy fell silent." Then the
+    crimson drains away.
+
+NEW IN 0.73.5 - the Fracture tears open
+  - In games with Thunder's Edge the Fracture is hidden until it comes into
+    play (its place on the map stays free, so nothing moves when it comes).
+  - When it appears - by a breakthrough's roll or by an ability - the whole
+    map ripples out from Styx, a crimson wave splitting the colours as it
+    runs over the galaxy, with a cosmic, eldritch screech as spacetime tears
+    open. The log's line, "The Fracture tears open at the edge of the
+    galaxy.", appears along the top of the screen.
+
+NEW IN 0.73.0 - the Age of the War Sun
+  - The first time anyone in a game gets war sun technology (researched or
+    gained any other way - once a game, for the first player only), a
+    scene plays: the horizon of an ice planet, two ships flying past the
+    camera and away into space, the camera slowly looking up past the
+    traffic to a moon-sized war sun being built - "Technology Discovered.
+    The Age of the War Sun Approaches." With its own sounds: the two ships
+    going by, then war drums over a drone building up as the war sun comes
+    into view. The music dips under it.
+  - A (or a click) moves on; A pressed early skips the rest. Under MENU >
+    Cards: Timed, it plays through on its own. At Instant speed it is left
+    out.
+
+NEW IN 0.72.0 - mouse polish and your own keys
+  - Every button and clickable thing lights up under the pointer the same
+    way on every screen: a gold edge. (In lists, the row you point at is
+    chosen, as before.)
+  - Hold Shift while moving the camera (WASD): it goes two and a half
+    times as fast.
+  - Edge scrolling: Options > Edge scrolling. Off unless you turn it on;
+    then the map moves when the pointer touches the edge of the screen.
+  - Your own keys: Options > Controls and key bindings. Choose an action
+    and press the key you want. If another action had that key, it takes
+    this one's old key; "Put every key back to the defaults" undoes it
+    all. The key hints on screen show your keys.
+
+NEW IN 0.71.0 - combat reactions
+  - In one fight in three, space or ground, both sides' portraits come in
+    at the lower corners of the battle, outside its hexagon: the attacker
+    speaks first, then the defender answers, each with its voice, as the
+    fight starts. The fight doesn't wait for them.
+  - Every faction has three lines for attacking, being attacked, invading
+    and being invaded, plus lines for its home being attacked, a fight at
+    Mecatol Rex and a rematch with someone it fought earlier in the game.
+  - Rivals (139 pairs - old enemies, kin, allies, grudges) have lines of
+    their own for each other, used first when they meet.
+  - A faction doesn't repeat a line until it has used its others.
+
+NEW IN 0.70.0 - the sounds you approved (rounds 5-9 of the drafts)
+  - Moments that were silent: your turn, a new round, a strategy card
+    taken, an action card played, a technology researched, objectives
+    scored (public and secret), a planet taken from another player, an
+    agenda revealed and the ruling, deals made and refused, a betrayal,
+    Kingslay, the dice, a relic gained, a hero unleashed (a warning) and
+    the victory fanfare when you win.
+  - The comms screen: a call coming in, the channel opening and closing,
+    accepted, declined, a counter-offer, a threat, and the red alert of a
+    broken promise.
+  - A voice for every faction (a made-up tongue over the comms) as its
+    lines type out: in your negotiations, when bots deal with each other,
+    and on the betrayal screen.
+  - All under the Sounds volume. None at Instant speed or while you hold A
+    to speed the game up.
+
+NEW IN 0.69.0 - map sounds
+  - The grim sounds you kept from the drafts are in the game:
+      - a short air-raid siren when someone activates a system that holds
+        another player's units (with the red flash)
+      - invasions: drop pods when mechs land on a defended planet, boots
+        when only infantry land on one, a landing burn when nobody defends it
+      - each faction's own sound as its ships move (all 65 factions)
+  - Options > Map sounds: On / Off (on at first; the Sounds volume sets how
+    loud). At Fast speed fewer of them play, at Instant none.
+
+NEW IN 0.68.1 - a Titans of Ul fix
+  - Ouranos, the Titans flagship, could replace a PDS that Awaken had only
+    just placed in the same activation. It now replaces only a PDS that was
+    already in the system when you activated it (your ruling). Games started
+    before 0.68.1 keep the old behaviour, so their saves load unchanged.
+
+NEW IN 0.68.0 - the music player: your own music in games
+  - Title screen > Options > Music player. Put your own MP3 files in the
+    "My Music" folder next to the game (folders inside it work too - one
+    per album, say); the player lists them by their title and artist.
+  - Choose what a game plays: the game soundtrack (as before - still the
+    default), My Music, or both; in order or shuffled. Tick songs off to
+    skip them. When a song ends the next one starts.
+  - Listen to any song right there (X, or click Listen); the title
+    screen's theme comes back when you leave. The title screen always
+    keeps its own music.
+  - Added songs while the game runs? Y (or "Look for new songs") looks in
+    the folder again.
+  - "Open folder" opens My Music in File Explorer.
+  - The player is only on the title screen, not in a game: games simply
+    play what you chose. Your choices are remembered.
+  - Only MP3 files play; the player says how many other music files
+    (FLAC, M4A, WAV ...) it skipped.
+  - Song titles with accents, Greek or Cyrillic letters now show properly.
+  - No rule or computer-player changes: saved games load as before.
+
+NEW IN 0.67.0 - the screen buttons move into the top banner
+  - The SCREENS panel's buttons (Objectives, Laws, Your cards, Faction
+    sheet, Units, Technology, Planets, Players, Game log) are now small
+    pictures in the empty middle of the top banner, so nothing covers
+    the map. Rest the pointer on one for a second to see its name.
+  - A click opens that screen in its pop-out window as before: drag it,
+    fold it, close it. Another button switches the window to its screen.
+    A folded window waits at the top right of the map.
+  - With Galactic Events in play, their button is the last picture (the
+    purple one). In the agenda phase the "Waiting for you" tag sits to
+    the left of the buttons.
+  - The buttons appear once you use the mouse, like the panel did. On a
+    4:3 or the original 640x480 picture the banner has no room for them,
+    so the floating SCREENS panel stays there.
+  - No rule or computer-player changes: saved games load as before.
+
+NEW IN 0.66.0 - balance pass, part 1: the three weakest factions
+  - The computer players were measured faction by faction (Competitive,
+    6 players, the faction always in the same seat). A fair share is 1
+    win in 6 (16.7%); the ten weakest won 6-11%. This version works on
+    the bottom three; the next ones follow in later versions. Every
+    change below was tested in 360-630 games and kept only if it helped
+    in each separate batch of test games.
+  - Savages of Cymiae: Autonetic Memory now takes the free infantry in
+    rounds 1-3 and draws normally after that. Taking a card from the
+    discard pile makes them discard one (Cybernetic Madness), so it only
+    swapped cards and their hand never grew. Wins: 6.2% -> 11.3%.
+  - Roh'Dhna Mechatronics: they now scrap carriers they no longer need,
+    and damaged dreadnoughts, with Recycled Materials - which also brings
+    out their mech. They no longer turn new space docks into war suns
+    (Industrious): those war suns can't move, and every way of using
+    them more cost the computer players wins. You can still use it.
+    Wins: 11.1% -> 12.1%, a small gain.
+  - Zealots of Rhodun: unchanged - none of the six changes tested
+    helped them.
+  - Computer players only: saved games load as before.
+
+NEW IN 0.65.0 - the computer players vote like people
+  - Each computer player now plans its votes for the whole agenda phase.
+    It weighs what each outcome means to it (its faction and personality
+    count too), reads the votes already cast and who still has to vote,
+    then holds back, casts enough to swing it, or abstains.
+  - Votes spent on the first agenda are gone for the second, so it keeps
+    some for what the second card is likely to be - and if it put that
+    card on top with Politics, it knows exactly what it is saving for.
+  - Every computer player has a voting style from its personality:
+    Spenders go big on the first card, Savers keep most for the second,
+    Splitters spread their votes over both, Brokers sell their votes to
+    whoever cares. Chaotic players pick a new style every round.
+  - Computer players that don't care about an agenda offer to sell their
+    votes. The Nekro Virus no longer sells votes it can't cast.
+  - Laws the computer players used to ignore (Enforced Travel Ban,
+    Wormhole Reconstruction, Nexus Sovereignty, Checks and Balances,
+    Regulated Conscription, Incentive Program and others) are now judged
+    by the board, so they get voted on.
+  - Display and computer players only: saved games load as before.
+
+NEW IN 0.64.0 - the opponent talks about you on your offer screen
+  - When you open an offer to a computer player, a band above the rows
+    switches on its portrait and it says a line about YOU, typed out
+    like the comms codec. It picks the sharpest thing between you: a
+    promise you broke, a fight you started, your lead in points, a
+    promise you kept, deals you made together, or a shared border -
+    and after the round-3 reveal how it feels about you (Friendly,
+    Wary or Hostile). A plain greeting when there is nothing yet.
+  - Every faction has two lines for each of those moments (1,300 new
+    lines, in each faction's own voice). Broken promises, attacks and
+    hostility show in a red box.
+  - Tags beside its name on the right list what lies between you
+    ("Neighbours", "You broke a promise", "2 deals made", ...).
+  - The L1Z1X: whenever they say "Lazax", the a's and 1's of that word
+    glitch back and forth (Lazax / L1z1x) - in every line they say.
+  - Display only: your saved games play on exactly as before.
+
+NEW IN 0.63.0 - the New Game screen from your document
+  - New Game has five rows now: Players, Factions & seats, Victory points,
+    Galaxy and Game options. A (or a click) on a row opens its window.
+  - Players: the count with an example map for it, and Hyperlanes as a
+    tick box - the map changes as you change them.
+  - Galaxy: Draft, Random and Seed buttons; the seed can be typed on a
+    keyboard (or stepped with the arrows, L1/R1 by 100, X for a new one).
+    "Fair slices" (ticked = as before) evens out every seat's slice or
+    draft hand; untick it for an unbalanced galaxy where some seats start
+    richer. The window shows the map (the seed's own, or an example) and
+    what each seat's slice holds, and how far apart the richest and the
+    poorest are.
+  - Game options: Mecatol Rex, Round 1 trade and AI speed moved here.
+
+NEW IN 0.62.1 - a Confirm button on Factions & seats
+  - The seat table has a Confirm button at the bottom: click it, or move
+    down past the last seat (or up past the first) and press A or START.
+    It keeps your choices and goes back to the New Game screen. B,
+    Backspace and a right click still do the same.
+  - A click on the table's background (not on a seat, a cell or the
+    button) no longer opens the highlighted cell's choices.
+
+NEW IN 0.62.0 - Factions & seats windows and 8 new colours
+  - Factions & seats: A (or a click) on a seat's Colour, Difficulty or
+    Personality opens a small window beside it with every choice - the
+    colours with their swatches (a taken one is greyed and says which seat
+    has it), the four difficulties with what each does, the personalities
+    with their descriptions. Point with the D-pad or the mouse, A or a click
+    takes one, B or a click beside the window closes it. Y and X still step
+    back / pick at random.
+  - 16 colours: the classic eight and eight new ones that move - Gold,
+    Silver and Bronze (a light runs over them and they glint), Luminescent
+    Green (a glow that breathes), Hatred Crimson (a glow that beats like a
+    heart), Pearlescent (soft tints drift over it), Ion Cyan (small arcs of
+    lightning crackle off it) and Void (black, with stars inside). They show
+    on the map (borders, homes, planets, flags, control and command tokens,
+    ships and their counts), on the expanded tile, in space battles, on mechs
+    in ground battles and on the Negotiations web. Names in Void and Hatred
+    Crimson are written a little lighter so they can be read.
+  - Computer seats on Auto keep to the classic eight: the new colours are
+    only ever picked (later they can become unlockables). Older saves keep
+    their colours.
+
+NEW IN 0.61.3 - the map list from your document
+  - Windows: the picture now goes through DirectX and waits for the
+    screen's refresh, so moving the map no longer tears (Voidfall too). If
+    the screen ever stays black, add the line  gdi=1  to settings.cfg in
+    the game's folder to go back to the old way of drawing.
+  - Picking on the map: a question whose choices are planets in several
+    systems (Construction, taking a unit back from the board, many faction
+    abilities) lights those systems up on the map - point and click (or A)
+    on one; with several choices there you get a short list of just those.
+    Y still shows the whole list. A new tile (Star Charts, Age of
+    Exploration, Dark Energy Tap) shows the empty spaces at the edge of the
+    board to click.
+  - Space instead of Enter: lists where you choose several (Trade's X-1
+    offers and the like) end in a Confirm row, and the offer screen in
+    Negotiations ends in a "Send the offer" button - Space, A or a click
+    (Enter still works).
+  - Pop-out windows (the SCREENS panel) have a minimize button: the window
+    folds into a small strip under the panel and the game goes on; the
+    strip's other button (or the panel's button) opens it again.
+  - Your cards: the tabs never run over the title (with five tabs they use
+    a smaller font).
+
+NEW IN 0.61.2 - abilities can take a unit back too; more minor factions; menus
+  - Taking a unit back from the board (Living Rules 23.4a) now works for
+    every ability that places a unit too - a mech from Self-Assembly
+    Routines, an exploration card's cruiser, a faction's deploy ability and
+    so on. When none of that unit is left, the game asks which of yours
+    comes off the board (from a system without your command token), always
+    with "Don't take one back" - an ability can never force it - and asks
+    once more before the piece goes.
+  - Minor Factions (galactic event): the Ghosts of Creuss and the Crimson
+    Rebellion can now be minor factions - their Creuss Gate or the Sorrow
+    takes the spot and their home system sits beside the board, joined by
+    its wormhole. The Council Keleres comes on one of its three possible
+    homes (Mentak, Xxcha or Argent, if free), and the Firmament / the
+    Obsidian on a random side (the Thunder's Edge rulebook).
+  Games started with 0.61.2 have these; older saves play as before.
+  - Menus over the map: pointing at a question's panel, the side panel, a
+    pop-up or a button no longer moves the map's cursor to the tile
+    underneath, and a click there never reaches the map (no faction tiles
+    or Thunder's Edge opening by accident). Beside the menus the map
+    follows the mouse as before.
+
+NEW IN 0.61.1 - take a unit back from the board (Living Rules 23.4a)
+  When you would place a unit and none of that kind is left in your
+  reinforcements (fighters and infantry never run out), you may now take one
+  of yours off the board - from a system without your command token - and
+  place it at once. It works when you produce units (any production) and
+  when you place a PDS or space dock (Construction and the like). The game
+  always warns you first: the production screen says how many units come
+  off the board and asks before you pay, and after you pick the piece a box
+  asks "Take this piece off the board?" (A removes it, B picks another).
+  A damaged unit taken back comes back repaired. Computer players only take
+  back idle units. Games started with 0.61.1 have this rule; older saves
+  play as before.
+
+NEW IN 0.61.0 - every card in its own words, a sharper New Game screen
+  The card-wording passes: every kind of card that still had our own short
+  description now shows the card's own text - public and secret
+  objectives, exploration cards (Prophecy of Kings and Uncharted Space),
+  the strategy cards (with Thunder's Edge's Construction and Warfare), the
+  generic promissory notes, the legendary planets, the Thunder's Edge and
+  Uncharted Space action cards and the galactic events. Each was checked
+  against the Living Rules and its card, and what didn't follow the card is
+  fixed (games started with 0.61.0 - older saves keep the old rules):
+  - Only one objective during or after each combat (Living Rules 61.7):
+    when one fight fulfils several of your secret objectives, you pick one.
+  - Action-phase secrets score only in the action phase, agenda ones in
+    the agenda phase; Dictate Policy scores at the start of the agenda
+    phase when 3 laws are already in play.
+  - Without the Codex, Make an Example of Their World, Turn Their Fleets to
+    Dust and Fight with Precision are the first printings (fighters count
+    for Turn Their Fleets to Dust).
+  - Betray a Friend counts only the promissory notes in your play area.
+  - The Ghosts of Creuss' home system is on the edge of the board;
+    Terraform, Ul the Progenitor and the Nano-Forge are attachments.
+  - New: Codex III's six frontier cards (Entropic Fields, Keleres Ship,
+    Dead World) are in the frontier deck in games with the Codex.
+  - Merchant Station's refill answers a Trade Agreement; Functioning Base
+    and Local Fabricators let you pick a trade good or a commodity to
+    spend; a Demilitarized Zone's planet card can be traded in the agenda
+    phase.
+  - The Alliance goes back when you activate a system with its owner's
+    units; Political Secret also stops Quash and Galactic Threat.
+  - Brilliance can give a player their breakthrough; Contagion works after
+    a bombardment; Mystic Library can gain a unit upgrade; Bi-Phasic
+    Generators can put a frontier token in a supernova.
+  - A computer game could stop on a Miscount Disclosed revote with nothing
+    to vote for - fixed.
+  RULES-CHECK.txt lists every call made on the way (W1-W28), with two
+  questions for you (W19, W20).
+  The New Game screen's Retrowave backdrop is now as detailed as the
+  title's, with a new Federation cruiser and its fighters flying past.
 
 NEW IN 0.60.0 - the Voidfall title, the agenda and relic passes
   The Voidfall title: with the Voidfall tileset the opening ends on a
@@ -927,6 +1320,8 @@ RUNNING IT
 
 OPTIONS (title screen)
   Music / Sounds   volume 0-10 (0 = off); also in the game menu
+  Music player     what games play: the game soundtrack, your own MP3s
+                   (the "My Music" folder) or both; in order or shuffled
   Controls         Keyboard & mouse, or Controller
   Picture          Sharp widescreen (your screen's resolution and shape),
                    Sharp 4:3, or Original 640x480

@@ -27,7 +27,34 @@ bool aiTeComponentValue(const Game& g, int p, int ab, float& v);  // breakthroug
 bool aiCoupNow(const Game& g, int p);                              // the Firmament: take Puppets of the Blade now
 int aiHomeSpentValue(const Game& g, int p);                        // resources + influence of exhausted home planets
 bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out);  // Discordant Stars questions (ai_ds.cpp)
+// (balance pass, 0.66.0) Roh'Dhna Industrious: a space dock placed now could become a war sun - a war sun and a dock left, a planet
+// outside home with no dock in a system without other players' ships, round 2+ (or knob rhind), and 6 to spend when 'money'
+bool aiRohdhnaFactory(const Game& g, int p, bool money);
 bool aiDsComponentValue(const Game& g, int p, int ab, float& v);           // their component actions
+// The agenda voting plan (ai_votes.cpp, 0.65.0): what to vote for on an agenda and how many votes, by reading the table
+// (votes cast, votes to come), the two agendas' budget and the voter's style.
+enum class VoteStyle : int8_t { Spender, Saver, Splitter, Broker };
+VoteStyle aiVoteStyle(const Game& g, int p);  // fixed at game start from the personality (Chaotic: each round)
+const char* aiVoteStyleName(VoteStyle s);
+bool aiVotePlanOn();                          // knob vplan (default 1; 0 = the old voting, head-to-head tests)
+struct VotePlan {
+    int outcome = -100;      // -100 = abstain
+    int votes = 0;           // votes to cast in all
+    int planetVotes = 0;     // ... from planets (Zeal's free votes taken off)
+    float gain = 0.f;        // what voting brings over abstaining
+    float keepWorth = 0.f;   // the next agenda's stake (first agenda only)
+    int ifAbstain = -100;    // the outcome expected to win without its votes
+};
+// opts: the decision's outcomes (empty: all of the agenda's); forceOutcome: a vote already decided (promised / forced) -
+// the plan then only says how many votes; -100 = choose.
+VotePlan aiVotePlan(const Game& g, int p, int agenda, const std::vector<int>& opts, int avail, bool mustVote, int riderBet,
+                    int riderCard, int predicted, int forceOutcome);
+float aiVoteStake(const Game& g, int p, int agenda);                          // the most p gains by voting on it
+float aiVoteWorth(const Game& g, int p, int agenda, int winner, int myVote);  // that outcome to p (myVote -100: abstained)
+int aiVoteLikelyWinner(const Game& g, int p, int agenda);                     // the outcome winning on the current table
+float aiVoteSaveWeight(const Game& g, int p);                                 // how much it likes keeping votes for later
+std::vector<int> aiVotePlanets(const Game& g, int p, const std::vector<int>& planets, int want, bool exec);
+
 // From ai_cards.cpp, for the faction AI.
 float aiOutcomeValue(const Game& g, int p, int agenda, int outcome);
 int aiPredictOutcome(const Game& g, int agenda, float* confidence);
@@ -99,7 +126,15 @@ struct Goals {
 };
 const Goals& aiGoals(const Game& g, int p);
 float aiLevelScale(const Game& g);  // 0 Easy, 0.6 Normal, 1 Hard (and Competitive)
-int aiLevelOf(const Game& g);       // 0-3: the difficulty of the computer player being answered for
+int aiLevelOf(const Game& g);       // 0-4: the difficulty of the computer player being answered for
+bool aiIsAI(const Game& g);         // (0.74.0) that player plays at the A.I. level (kAiLevelAI)
+bool aiIsAISeat(const Game& g, int p);  // the same, for player p
+// (0.74.0, ai_think.cpp) The A.I.'s look-ahead: for its big decisions it plays its best few options out on copies of the
+// game and answers with the one that leaves it best placed. False = not this decision (the usual answer follows).
+bool aiThink(const Game& g, const Decision& d, Rng& rng, Answer& out);
+std::vector<int> aiActivationRanking(const Game& g, int p, int k);       // (ai.cpp)
+std::vector<int> aiStrategyRanking(const Game& g, const Decision& d);   // (ai.cpp)
+float aiObjectiveScore(const Game& g, int p);                           // (ai.cpp: objectiveScore)
 struct AiSeat {                     // answer as player p for a while (their difficulty, Competitive...)
     explicit AiSeat(int p);
     ~AiSeat();

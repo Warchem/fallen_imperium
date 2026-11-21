@@ -473,92 +473,94 @@ bool techImplemented(int t) {
 }
 
 // ---------------------------------------------------------------------------
-// Objective descriptions (our own short wording).
+// Objective descriptions. 0.61.0 (owner 2026-11-17: the card-wording pass): the public objectives in the cards' wording
+// (AsyncTI4 public_objectives.json, base + PoK printings).
 namespace {
 const KeyText kObjText[] = {
     // Stage I (base)
-    {"corner", "Control 4 planets that share the same trait.", true},
+    {"corner", "Control 4 planets that each have the same planet trait.", true},
     {"develop", "Own 2 unit upgrade technologies.", true},
-    {"diversify", "Own 2 technologies in each of 2 colours.", true},
+    {"diversify", "Own 2 technologies in each of 2 colors.", true},
     {"monument", "Spend 8 resources.", true},
     {"expand_borders", "Control 6 planets in non-home systems.", true},
     {"research_outposts", "Control 3 planets that have technology specialties.", true},
-    {"intimidate", "Have ships in 2 systems next to the Mecatol Rex system.", true},
+    {"intimidate", "Have 1 or more ships in 2 systems that are adjacent to Mecatol Rex's system.", true},
     {"lead", "Spend a total of 3 tokens from your tactic and/or strategy pools.", true},
     {"trade_routes", "Spend 5 trade goods.", true},
     {"sway_council", "Spend 8 influence.", true},
     // Stage I (PoK)
-    {"amass_wealth", "Spend 3 influence, 3 resources and 3 trade goods.", true},
-    {"build_defenses", "Have 4 or more structures on the board.", true},
+    {"amass_wealth", "Spend 3 influence, 3 resources, and 3 trade goods.", true},
+    {"build_defenses", "Have 4 or more structures.", true},
     {"lost_outposts", "Control 2 planets that have attachments.", true},
-    {"engineer_marvel", "Have your flagship or a war sun on the board.", true},
-    {"deep_space", "Have units in 3 systems that contain no planets.", true},
-    {"infrastructure", "Have structures on 3 planets outside your home system.", true},
-    {"make_history", "Have units in 2 systems that contain a legendary planet, Mecatol Rex or an anomaly.", true},
-    {"outer_rim", "Have units in 3 systems on the edge of the board, other than your home system.", true},
-    {"push_boundaries", "Control more planets than each of 2 of your neighbours.", true},
-    {"raise_fleet", "Have 5 or more non-fighter ships in one system.", true},
+    {"engineer_marvel", "Have your flagship or a war sun on the game board.", true},
+    {"deep_space", "Have units in 3 systems that do not contain planets.", true},
+    {"infrastructure", "Have structures on 3 planets outside of your home system.", true},
+    {"make_history", "Have units in 2 systems that contain legendary planets, Mecatol Rex, or anomalies.", true},
+    {"outer_rim", "Have units in 3 systems on the edge of the game board other than your home system.", true},
+    {"push_boundaries", "Control more planets than each of 2 of your neighbors.", true},
+    {"raise_fleet", "Have 5 or more non-fighter ships in 1 system.", true},
     // Stage II (base)
     {"centralize_trade", "Spend 10 trade goods.", true},
-    {"conquer", "Control a planet in another player's home system.", true},
+    {"conquer", "Control 1 planet that is in another player's home system.", true},
     {"brain_trust", "Control 5 planets that have technology specialties.", true},
     {"golden_age", "Spend 16 resources.", true},
     {"galvanize", "Spend a total of 6 tokens from your tactic and/or strategy pools.", true},
     {"manipulate_law", "Spend 16 influence.", true},
-    {"master_science", "Own 2 technologies in each of 4 colours.", true},
+    {"master_science", "Own 2 technologies in each of 4 colors.", true},
     {"revolutionize", "Own 3 unit upgrade technologies.", true},
     {"subdue", "Control 11 planets in non-home systems.", true},
-    {"unify_colonies", "Control 6 planets that share the same trait.", true},
+    {"unify_colonies", "Control 6 planets that each have the same planet trait.", true},
     // Stage II (PoK)
-    {"supremacy", "Have your flagship or a war sun in another player's home system or the Mecatol Rex system.", true},
-    {"become_legend", "Have units in 4 systems that contain a legendary planet, Mecatol Rex or an anomaly.", true},
-    {"command_armada", "Have 8 or more non-fighter ships in one system.", true},
-    {"massive_cities", "Have 7 or more structures on the board.", true},
-    {"control_borderlands", "Have units in 5 systems on the edge of the board, other than your home system.", true},
-    {"vast_reserves", "Spend 6 influence, 6 resources and 6 trade goods.", true},
-    {"vast_territories", "Have units in 5 systems that contain no planets.", true},
-    {"protect_border", "Have structures on 5 planets outside your home system.", true},
+    {"supremacy", "Have your flagship or war sun in another player's home system or the Mecatol Rex system.", true},
+    {"become_legend", "Have units in 4 systems that contain legendary planets, Mecatol Rex, or anomalies.", true},
+    {"command_armada", "Have 8 or more non-fighter ships in 1 system.", true},
+    {"massive_cities", "Have 7 or more structures.", true},
+    {"control_borderlands", "Have units in 5 systems on the edge of the game board other than your home system.", true},
+    {"vast_reserves", "Spend 6 influence, 6 resources, and 6 trade goods.", true},
+    {"vast_territories", "Have units in 5 systems that do not contain planets.", true},
+    {"protect_border", "Have structures on 5 planets outside of your home system.", true},
     {"ancient_monuments", "Control 3 planets that have attachments.", true},
-    {"distant_lands", "Control 2 planets that are each in or next to a different other player's home system.", true},
-    // Secret (base)
-    {"ans", "Own 2 faction technologies (Valefar Assimilators don't count).", true},
-    {"btgk", "Have ships in a system with an alpha wormhole and ships in a system with a beta wormhole.", true},
-    {"ctr", "Have ships in 6 systems.", true},
-    {"csl", "Have ships in a system that contains another player's space dock.", true},
+    {"distant_lands", "Control 2 planets that are each in or adjacent to a different, other player's home system.", true},
+    // Secret (base) - (0.61.0: the cards' wording, AsyncTI4 secret_objectives.json; Make an Example of Their World, Turn Their Fleets
+    // to Dust and Fight with Precision as first printed - the Codex wording is in objectiveSummary)
+    {"ans", "Own 2 faction technologies. \"Valefar Assimilator\" technologies do not count toward this objective.", true},
+    {"btgk", "Have 1 or more ships in a system that contains an alpha wormhole and 1 or more ships in a system that contains a beta wormhole.", true},
+    {"ctr", "Have 1 or more ships in 6 systems.", true},
+    {"csl", "Have 1 or more ships in the same system as another player's space dock.", true},
     {"dtgs", "Destroy another player's war sun or flagship.", true},
-    {"eap", "Have 4 PDS on the board.", true},
+    {"eap", "Have 4 PDS units on the game board.", true},
     {"faa", "Control 4 cultural planets.", true},
     {"fsn", "Discard 5 action cards.", true},
-    {"fwm", "Have 3 space docks on the board.", true},
-    {"gamf", "Have 5 dreadnoughts on the board.", true},
-    {"lsc", "Have ships in 3 systems that are each next to an anomaly.", true},
-    {"mew", "Destroy the last of a player's ground forces on a planet with bombardment.", true},
-    {"mlp", "Own 4 technologies of the same colour.", true},
+    {"fwm", "Have 3 space docks on the game board.", true},
+    {"gamf", "Have 5 dreadnoughts on the game board.", true},
+    {"lsc", "Have 1 or more ships in 3 systems that are each adjacent to an anomaly.", true},
+    {"mew", "Use BOMBARDMENT to destroy the last of a player's ground forces on a planet.", true},
+    {"mlp", "Own 4 technologies of the same color.", true},
     {"mrm", "Control 4 hazardous planets.", true},
     {"mp", "Control 4 industrial planets.", true},
     {"ose", "Control Mecatol Rex and have 3 or more ships in its system.", true},
     {"sar", "Win a combat against a player who has the most victory points.", true},
-    {"te", "Have ships in a system next to another player's home system.", true},
-    {"ttfd", "Destroy the last of a player's non-fighter ships in the active system with space cannon fire.", true},
-    {"uf", "Win a space combat in a system containing your flagship, without losing the flagship.", true},
+    {"te", "Have 1 or more ships in a system that is adjacent to another player's home system.", true},
+    {"ttfd", "Use SPACE CANNON to destroy the last of a player's ships in a system.", true},
+    {"uf", "Win a space combat in a system that contains your flagship. You cannot score this objective if your flagship is destroyed in the combat.", true},
     // Secret (PoK)
     {"bam", "Lose control of a planet in a home system.", true},
-    {"baf", "Win a combat against a player whose promissory note you held at the start of your tactical action.", true},
+    {"baf", "Win a combat against a player whose promissory note you had in your play area at the start of your tactical action.", true},
     {"btv", "Win a combat in an anomaly.", true},
     {"dts", "Win a combat in another player's home system.", true},
     {"dfat", "Have units in the wormhole nexus.", true},
     {"dyp", "Have 3 or more non-fighter ships in the active system at the end of a space combat.", true},
-    {"dhw", "Purge 2 of your relic fragments.", true},
+    {"dhw", "Purge 2 of your relic fragments of any type.", true},
     {"dp", "There are 3 or more laws in play.", true},
-    {"dtd", "You, or a planet you control, are elected by an agenda.", true},
-    {"eh", "Control planets with a combined influence of at least 12.", true},
-    {"fwp", "Destroy the last of a player's fighters in the active system with anti-fighter barrage.", true},
-    {"fc", "Be neighbours with all other players.", true},
-    {"hrm", "Control planets with a combined resource value of at least 12.", true},
+    {"dtd", "You or a planet you control are elected by an agenda.", true},
+    {"eh", "Control planets that have a combined influence value of at least 12.", true},
+    {"fwp", "Use ANTI-FIGHTER BARRAGE to destroy the last of a player's fighters in a system.", true},
+    {"fc", "Be neighbors with all other players.", true},
+    {"hrm", "Control planets that have a combined resource value of at least 12.", true},
     {"mtm", "Have 1 mech on each of 4 planets.", true},
-    {"otf", "Have 9 or more ground forces on a planet without one of your space docks.", true},
-    {"pem", "Have units with combined production of at least 8 in one system.", true},
-    {"pe", "Be the last player to pass in a game round.", true},
+    {"otf", "Have 9 or more ground forces on a planet that does not contain 1 of your space docks.", true},
+    {"pem", "Have units with a combined PRODUCTION value of at least 8 in a single system.", true},
+    {"pe", "Be the last player to pass during a game round.", true},
     {"sai", "Control a legendary planet.", true},
     {"syc", "Control a planet in a system that contains a planet controlled by another player.", true},
     {"sb", "Have another player's promissory note in your play area.", true},
@@ -597,105 +599,159 @@ const char* strategyName(int c) {
 bool g_teStrategy = false;
 void setStrategyTexts(bool thundersEdge) { g_teStrategy = thundersEdge; }
 
+// (0.61.0, the strategy card pass: the cards' wording - AsyncTI4 strategy_cards/pok.json and te.json)
 const char* strategyPrimary(int c) {
     if (g_teStrategy && c == 3)
-        return "Either place a PDS or space dock on a planet you control, or produce at one of your space docks. Then place 1 more PDS "
-               "or space dock.";
+        return "Either place 1 structure on a planet you control, or use the PRODUCTION ability of 1 of your space docks. Place 1 "
+               "structure on a planet you control.";
     if (g_teStrategy && c == 5)
-        return "Rearrange your command tokens, make a tactical action without placing a command token (in any system, even one "
-               "with your token - it still counts as activated), then rearrange them again.";
+        return "Perform a tactical action in any system without placing a command token, even if the system already has your command "
+               "token in it: that system still counts as being activated. You may redistribute your command tokens before and after "
+               "this action.";
     static const char* t[] = {
-        "Gain 3 command tokens, then buy more at 3 influence each.",
-        "Pick a system with your planet (not Mecatol Rex): other players can't activate it. Ready up to 2 of your planets.",
-        "Choose a new speaker (another player), draw 2 action cards, then look at the top 2 agendas and put each on top or bottom.",
-        "Place a PDS or space dock on a planet you control, then you may place another PDS.",
-        "Gain 3 trade goods and refill your commodities; you may let other players refill theirs.",
-        "Take back one of your command tokens from the board, gain 1 token and rearrange your tokens.",
-        "Research 1 technology; you may pay 6 resources to research a second.",
-        "Score a public objective you qualify for. Then gain 1 victory point if you control Mecatol Rex, otherwise draw a secret objective.",
+        "Gain 3 command tokens. Spend any amount of influence to gain 1 command token for every 3 influence spent.",
+        "Choose 1 system other than the Mecatol Rex system that contains a planet you control; each other player places a command "
+        "token from their reinforcements in the chosen system. Then, ready up to 2 exhausted planets you control.",
+        "Choose a player other than the speaker. That player gains the speaker token. Draw 2 action cards. Look at the top 2 cards of "
+        "the agenda deck. Place each card on the top or bottom of the deck in any order.",
+        "Place 1 PDS or 1 space dock on a planet you control. Place 1 PDS on a planet you control.",
+        "Gain 3 trade goods. Replenish commodities. Choose any number of other players. Those players use the secondary ability of "
+        "this strategy card without spending a command token.",
+        "Remove 1 of your command tokens from the game board; then, gain 1 command token. Redistribute any number of the command "
+        "tokens on your command sheet.",
+        "Research 1 technology. Spend 6 resources to research 1 technology.",
+        "Immediately score 1 public objective if you fulfill its requirements. Gain 1 victory point if you control Mecatol Rex; "
+        "otherwise, draw 1 secret objective.",
     };
     return (c >= 0 && c < kStrategyCards) ? t[c] : "";
 }
 
 const char* strategySecondary(int c) {
-    if (g_teStrategy && c == 3) return "Spend a strategy token to place a PDS or space dock on a planet you control.";
-    if (g_teStrategy && c == 5) return "Spend a strategy token to use the Production of your units in your home system.";
+    if (g_teStrategy && c == 3) return "Spend 1 token from your strategy pool to place 1 structure on a planet you control.";
+    if (g_teStrategy && c == 5)
+        return "Spend 1 token from your strategy pool to use the PRODUCTION abilities of the units in your home system (this token is "
+               "not placed in your home system).";
     static const char* t[] = {
-        "Buy command tokens at 3 influence each (no strategy token needed).",
-        "Spend a strategy token to ready up to 2 of your planets.",
-        "Spend a strategy token to draw 2 action cards.",
-        "Spend a strategy token, placing it in any system, to put a PDS or space dock on your planet there.",
-        "Spend a strategy token to refill your commodities.",
-        "Spend a strategy token to produce at one space dock in your home system.",
-        "Spend a strategy token and 4 resources to research 1 technology.",
-        "Spend a strategy token to draw a secret objective.",
+        "Spend any amount of influence to gain 1 command token for every 3 influence spent.",
+        "Spend 1 token from your strategy pool to ready up to 2 exhausted planets you control.",
+        "Spend 1 token from your strategy pool to draw 2 action cards.",
+        "Spend 1 token from your strategy pool and place it in any system; you may place either 1 space dock or 1 PDS on a planet you "
+        "control in that system.",
+        "Spend 1 token from your strategy pool to replenish your commodities.",
+        "Spend 1 token from your strategy pool to use the PRODUCTION ability of 1 of your space docks in your home system (this token "
+        "is not placed in your home system).",
+        "Spend 1 token from your strategy pool and 4 resources to research 1 technology.",
+        "Spend 1 token from your strategy pool to draw 1 secret objective.",
     };
     return (c >= 0 && c < kStrategyCards) ? t[c] : "";
 }
 
 // Thunder's Edge galactic events (0.36.0), in our own words; done = playable (ticked on the Modules screen)
 const GalacticEventDef& galacticEvent(int ev) {
+    // (0.61.0, the galactic event pass: the cards' wording - AsyncTI4 galactic_events/te_galactic_events.json; their bullets as
+    // sentences)
     static const GalacticEventDef k[kEventCount] = {
         {"commerce", "Age of Commerce",
-         "Anyone may trade with anyone. Commodities have no limit: refilling adds your commodity value to what you have. A deal may "
-         "share a technology (not a faction one): the receiver gains it too.", true},
+         "Players do not have to be neighbors to perform transactions with each other. Players do not have a maximum number of "
+         "commodities; when they refresh commodities, they gain a number of commodities equal to their commodity value instead. Players "
+         "can share non-faction technology with other players as part of a transaction. When sharing tech in this way, the receiving "
+         "player gains that technology from their own deck; the sharing player does not lose the technology.", true},
         {"void", "Call of the Void",
-         "Activating a system in the Fracture gives your ships +1 move; moving units into a Fracture system gains you 1 command token.", true},
+         "After you move 1 or more units into the active system, if that system is in The Fracture, gain 1 command token. When you "
+         "activate a system in The Fracture, apply +1 to the move values of each of your ships.", true},
         {"wilds", "Dangerous Wilds",
-         "Neutral infantry guard each hazardous planet (as many as its resources) and come back each round while nobody holds it. "
-         "The first to take one may research a technology, ignoring as many prerequisites as its resources.", true},
+         "During setup, place neutral infantry on each hazardous planet equal to that planet's resource value. At the end of each round, "
+         "for each hazardous planet that is not controlled, replenish any neutral units that were destroyed during the game round. When a "
+         "player gains control of a hazardous planet from the deck, they may research 1 technology; they may ignore a number of "
+         "prerequisites equal to that planet's resource value.", true},
         {"hidden", "Hidden Agenda",
-         "Votes are secret: only the totals are shown once everyone has voted (the Argent's votes are seen first). No deals during "
-         "the agenda phase.", true},
+         "During the agenda phase, only the speaker can talk; all other players must remain silent except when declaring action cards / "
+         "abilities. Transactions cannot be performed during this phase. When voting, players secretly and simultaneously choose their "
+         "outcome and number of votes; after all players have voted, only the totals are revealed. The Argent Flight's votes are public "
+         "and are known before the other players vote.", true},
         {"exploration", "Age of Exploration",
-         "A relic takes 2 matching fragments instead of 3 (the Naaz-Rokha's need not match). Dark Energy Tap gains an action: "
-         "exhaust it to add a new system beside a non-home edge system with your ships.", true},
+         "Relics require only 2 matching fragments be purged instead of 3. The Naaz-Rokha Alliance's Fabrication faction ability and "
+         "Black Market Forgery promissory note do not require purged fragments to match. All players can perform the following action - "
+         "ACTION: Exhaust Dark Energy Tap and choose a non-home edge system that contains your ships to roll 1 die. On a result of 1-4, "
+         "draw a random unused red tile; on a result of 5-10, draw a random unused blue tile. Place that tile adjacent to the chosen "
+         "system so that it is touching at least 2 non-home systems. Place a frontier token in the system if it does not contain any "
+         "planets.", true},
         {"civilized", "Civilized Society",
-         "All public objectives start face up and any number can be scored in a status phase. The game ends at the end of the "
-         "status phase in which someone reaches the goal: most points wins (ties: planets' influence plus trade goods).", true},
+         "During setup, turn all public objectives face up. There is no limit on the number of public objectives a player may score "
+         "during the status phase. The game does not immediately end when a player reaches the required number of victory points; "
+         "instead, it ends at the end of that round's status phase, and the player with the most victory points wins. In the case of a "
+         "tie, the tied players total the influence values of their controlled planets and their unspent trade goods; the player or "
+         "players with the highest total win the game.", true},
         {"minor", "Minor Factions",
-         "Home systems of factions not in play sit in the second ring, guarded by neutral infantry; their planets have all three "
-         "traits. Hold every planet of one to use that faction's Alliance (commander) ability.", true},
+         "During setup, players are dealt 1 fewer blue tile. The home systems of factions not being played are placed in the second "
+         "ring, equidistant from players' home systems, each with 3 neutral infantry on its planets, split as evenly as possible. These "
+         "are minor faction systems and do not count as home systems. When a player controls each planet in a minor faction system, they "
+         "take that faction's alliance card from the deck or from the player that owned it previously. Planets in minor faction systems "
+         "gain all three planet traits (cultural, industrial, hazardous).", true},
         {"atomics", "Stellar Atomics",
-         "Each player starts with an atomics token. Action: spend it to destroy every ground force and structure on any non-home "
-         "planet. Without it you can't vote or play action cards in the agenda phase.", true},
+         "During setup, each player places one of their control markers on this card. All players can perform the following action - "
+         "ACTION: Discard your control marker from this card to destroy all ground forces and structures on any non-home planet. If you "
+         "do not have a control marker on this card, you cannot vote or play action cards during the agenda phase.", true},
         {"fighters", "Age of Fighters",
-         "Everyone starts with Fighter II (the Naalu with theirs). Fighters that count against your fleet pool can each carry 1 "
-         "ground force. Non-fighter ships that are destroyed are purged.", true},
+         "During setup, all players gain the Fighter II unit upgrade technology; the Naalu Collective player gains Hybrid Crystal "
+         "Fighter II technology instead. All fighters that are counting against fleet pool gain CAPACITY 1 that cannot be used to "
+         "support fighters. Non-fighter ships are purged when they are destroyed.", true},
         {"totalwar", "Total War",
-         "Destroying other players' units puts commodities equal to their cost (infantry and fighters 1) on a planet of your home "
-         "system. Taking a planet with commodities lets you move them home. Action: discard 10 of them for 1 victory point.", true},
+         "When a player destroys another player's units, they place commodities from the supply equal to the combined cost of those "
+         "units on a planet they control in their home system (infantry and fighters are worth 1 each). When a player gains control of "
+         "a planet that has commodities on it, they may move those commodities to a planet they control in their home system. All "
+         "players can perform the following action - ACTION: Discard 10 commodities from planets in your home system to gain 1 "
+         "victory point.", true},
         {"wild", "Wild, Wild Galaxy",
-         "Action cards hit harder: Direct Hit on mechs, Flank Speed +2, Maneuvering Jets cancels every space cannon hit, Morale "
-         "Boost +2, Sabotage takes the card, Shields Holding in ground combat, Skilled Retreat without a token, War Machine -5, "
-         "Diplomatic Pressure 3 notes; Stellar Converter and Nova Seed anywhere.", true},
+         "Action cards are adjusted as follows: Direct Hit can be used against mechs; Flank Speed applies +2 move instead of +1; "
+         "Maneuvering Jets cancels all SPACE CANNON hits; Morale Boost applies +2 to die rolls instead of +1; Sabotage also takes the "
+         "canceled action card; Shields Holding can be used in ground combat; Skilled Retreat does not place a command token; War "
+         "Machine reduces cost by 5 instead of 1; Diplomatic Pressure: the player must give 3 notes. Additionally, Stellar Converter "
+         "and Nova Seed can be used against any planets and systems.", true},
         {"wormholes", "Weird Wormholes",
-         "A ship that moves through an alpha, beta or gamma wormhole rolls: 1-5 it becomes the next smaller ship, 6-10 the next "
-         "bigger one (fighter, destroyer, cruiser, dreadnought, carrier, flagship, war sun), from your reinforcements.", true},
+         "After a ship moves using at least 1 alpha, beta, or gamma wormhole, roll 1 die and consult the list Fighter - Destroyer - "
+         "Cruiser - Dreadnought - Carrier - Flagship - War Sun (if researched). For each result of 1-5, replace that ship with the ship "
+         "before it from your reinforcements, if able; for each result of 6-10, with the ship after it. If there are no ships of that "
+         "type remaining in your reinforcements, skip that type and replace it with the next available type.", true},
         {"monuments", "Monuments to the Ages",
-         "Placing a structure on a non-home planet, you may pay 5 trade goods for a monument instead (3 in play at most). Each "
-         "status phase puts 1 commodity under each; every 3 is a victory point for the planet's holder. A new holder may destroy it.", true},
+         "When you would place a structure on a non-home planet, you may spend 5 trade goods to place a neutral space dock instead; "
+         "this is a monument, and is not considered to be a unit of any type. There can only be 3 monuments in play at once. At the "
+         "start of the status phase, place 1 commodity beneath each monument. A monument is worth 1 victory point to the player who "
+         "controls it for every 3 commodities placed beneath it. When a player gains control of a planet that contains a monument, they "
+         "may destroy it.", true},
         {"cosmic", "Cosmic Phenomenae",
-         "Defenders in nebulae get +3; Fighter I can't fight in asteroid fields; Production in or next to a supernova +1; ships "
-         "leaving a gravity rift may take +1 move (lost on 1-5); entropic scars are adjacent to each other.", true},
+         "Nebulae: defending ships in nebulae apply an additional +3 to their combat rolls instead of +1. Asteroid fields: Fighter I's "
+         "do not participate in space combat in asteroid fields. Supernovas: units with PRODUCTION in or adjacent to supernovas have "
+         "their PRODUCTION values increased by 1. Gravity rifts: you may apply an additional +1 to the MOVE value of any of your ships "
+         "moving out of gravity rifts; if you do, those ships are destroyed on a roll of 5 or lower. Entropic scars: systems that "
+         "contain entropic scars are adjacent to each other.", true},
         {"cultural", "Cultural Exchange Program",
-         "Each player plays with the leaders of another faction in the game, its commander unlocked (the Firmament take The "
-         "Obsidian relic instead).", false},
+         "At the end of setup, shuffle the reference cards that correspond to each faction in play. Each player draws 1 of those cards "
+         "and takes all leaders that correspond to that faction. They belong to that player for the remainder of the game. Then, each "
+         "player unlocks their commander. The Obsidian / Firmament player does not participate; instead, they begin the game with \"The "
+         "Obsidian\" relic.", false},
         {"mercenaries", "Mercenaries for Hire",
-         "The Alliances of factions not in play form a deck. Action: pay 3 trade goods to take the top one and use that faction's "
-         "commander ability.", true},
+         "At the start of the game, shuffle the alliance cards that correspond to the factions not in play and place them in the common "
+         "play area; this is the Mercenary deck. All players can perform the following action - ACTION: Spend 3 trade goods to gain the "
+         "top card of the mercenary deck and place it in your play area. Players can use the abilities of the mercenaries in their play "
+         "area.", true},
         {"mobilization", "Rapid Mobilization",
-         "A quick start: the Fracture is in play; everyone puts an infantry on each planet next to home, a space dock with their "
-         "flagship and 3 fighters, gains their breakthrough and researches a technology (the Nomad two).", true},
+         "After setup, put The Fracture into play. Then, each player simultaneously resolves the following effects in order: place 1 "
+         "infantry onto each planet adjacent to your home system (or the Creuss Gate / the Sorrow) - do not explore those planets - "
+         "then ready each of those planets; place 1 space dock on any planet you control and place your flagship and 3 fighters in its "
+         "system; gain your breakthrough; research 1 technology (the Nomad player researches 1 additional technology).", true},
         {"orthodoxy", "Zealous Orthodoxy",
-         "The first player to score 2 secret objectives gains 1 more victory point, and every player gains that faction's Alliance "
-         "ability.", true},
+         "The first player to score 2 secret objectives gains 1 victory point. Then, place that faction's alliance card on this card; "
+         "all players gain that ability. That faction's alliance promissory note is then purged.", true},
         {"warsun", "Advent of the War Sun",
-         "Everyone starts with War Sun; the Muaat instead get their commander unlocked and a second war sun at home (and lose "
-         "Fires of the Gashlai).", true},
+         "At the end of setup, all players other than the Embers of Muaat player gain the War Sun unit upgrade technology. The Embers "
+         "of Muaat player purges their faction specific promissory note, unlocks their commander, and places 1 additional War Sun in "
+         "their home system.", true},
         {"conventions", "Conventions of War Abandoned",
-         "Each bombardment hit destroys 3 units. X-89 Bacterial Weapon gains an action: exhaust it to purge a planet in a system "
-         "with your bombarding units. A player whose home planets are all purged is out.", true},
+         "Each hit produced by BOMBARDMENT rolls destroys 3 units instead of 1. X-89 Bacterial Weapon technology gains the following "
+         "ACTION: Exhaust to choose 1 planet in a system that contains 1 of your units that has bombardment; purge its planet card and "
+         "all attachments or legendary planet ability cards associated with it. You are eliminated if all your home system's planet "
+         "cards are purged.", true},
     };
     static const GalacticEventDef none{"", "", "", false};
     return ev >= 0 && ev < kEventCount ? k[ev] : none;

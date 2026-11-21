@@ -148,7 +148,8 @@ int southernmostSeat(int players, int layout) {
     return best;
 }
 
-bool buildGalaxy(Game& g, Rng& rng, const std::vector<int>& factionBySeat, std::string* err, bool balanced, std::vector<int>* sliceOwner) {
+bool buildGalaxy(Game& g, Rng& rng, const std::vector<int>& factionBySeat, std::string* err, bool balanced, std::vector<int>* sliceOwner,
+                 bool anyDeal) {
     const int n = int(factionBySeat.size());
     const LayoutView lay = layoutFor(n, g.layout);
     if (!lay) {
@@ -250,7 +251,7 @@ bool buildGalaxy(Game& g, Rng& rng, const std::vector<int>& factionBySeat, std::
             }
             penalty += 0.6f * (rhi - rlo) + 0.6f * (ihi - ilo) + 1.5f * float(std::max(0, whhi - whlo - 1)) + 1.5f * float(std::max(0, anhi - anlo - 1));
         }
-        float score = (hi - lo) + penalty;
+        float score = anyDeal ? 0.f : (hi - lo) + penalty;  // (0.63.0 unbalanced: any deal will do)
         if (score >= bestScore) continue;
         // arrange each slice's tiles in its slots; retry arrangements for legality
         bool ok = false;
@@ -279,6 +280,7 @@ bool buildGalaxy(Game& g, Rng& rng, const std::vector<int>& factionBySeat, std::
         if (!ok) continue;
         bestScore = score;
         best = cells;
+        if (anyDeal) break;  // (the first legal one)
     }
     if (best.empty()) {
         if (err) *err = "could not build a legal map";
@@ -387,6 +389,7 @@ int addSystem(Game& g, int def, Hex pos, int rotation, int home, bool offBoard) 
 }  // namespace
 
 int addBoardSystem(Game& g, int def, Hex pos) { return addSystem(g, def, pos, 0, -1, false); }
+int addOffBoardSystem(Game& g, int def, Hex pos) { return addSystem(g, def, pos, 0, -1, true); }
 
 bool systemInGame(const Game& g, int def) {
     switch (kSystems[def].source) {
@@ -432,7 +435,7 @@ std::vector<int> blueTilesLeft(const Game& g) {
     return v;
 }
 
-bool startGalaxyDraft(Game& g, Rng& rng, const std::vector<int>& factionBySeat, std::string* err) {
+bool startGalaxyDraft(Game& g, Rng& rng, const std::vector<int>& factionBySeat, std::string* err, bool anyDeal) {
     const int n = int(factionBySeat.size());
     const LayoutView lay = layoutFor(n, g.layout);
     if (!lay) {
@@ -518,7 +521,7 @@ bool startGalaxyDraft(Game& g, Rng& rng, const std::vector<int>& factionBySeat, 
     }
     float bestScore = 1e9f;
     std::vector<std::vector<int16_t>> bestHands;
-    for (int t = 0; t < 40; ++t) {
+    for (int t = 0; t < (anyDeal ? 1 : 40); ++t) {  // (0.63.0 unbalanced: the first deal as it falls)
         std::vector<int> b = blue, r = red;
         rng.shuffle(b);
         rng.shuffle(r);
@@ -805,6 +808,7 @@ void computeAdjacency(Game& g) {
         adj.erase(i);
         s.adj.assign(adj.begin(), adj.end());
         if (i == g.nexus) s.edge = true;  // LRR 100.1c
+        if (g.fixes >= 31 && s.offBoard && s.home >= 0) s.edge = true;  // (fixes 31) LRR 39.2a: the Ghosts of Creuss' home system too
     }
 }
 

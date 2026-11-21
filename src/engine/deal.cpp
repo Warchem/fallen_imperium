@@ -593,7 +593,7 @@ std::string checkDeal(const Game& g, const Deal& d, bool counter) {
                 if (std::find(pl.actionCards.begin(), pl.actionCards.end(), int16_t(c)) == pl.actionCards.end())
                     return playerName(g, who) + " doesn't hold that action card.";
         }
-        if (s.planet >= 0) {
+        if (s.planet >= 0 && !dmzTradeable(g, who, s.planet)) {  // (fixes 31: or a Demilitarized Zone in the agenda phase)
             if (s.planet >= int(g.planets.size()) || g.planets[s.planet].owner != who || !isFaction(g, who, "hacan") ||
                 !g.planets[s.planet].units[who].count(UnitType::Mech))
                 return "Only a Hacan planet with the Pride of Kenara (mech) can be traded.";

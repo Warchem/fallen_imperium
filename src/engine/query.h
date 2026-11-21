@@ -108,6 +108,14 @@ int unitLimit(UnitType t);                       // physical pieces (fighters/in
 int unitLimitOf(const Game& g, int p, UnitType t);  // with faction extras (Discordant Stars: Teeming, Industrialists)
 int unitsOnBoard(const Game& g, int p, UnitType t);
 int unitsAvailable(const Game& g, int p, UnitType t);  // in reinforcements (captured units excluded, LRR 17.5)
+// 0.61.1 (fixes 32, owner 2026-11-18 W19) LRR 23.4a: with none of a type left in the reinforcements, a player may take one of
+// theirs back from any system without their command token and place it at once (not fighters / infantry: unlimited)
+bool reclaimAllowed(const Game& g, int p, UnitType t);
+int reclaimable(const Game& g, int p, UnitType t);     // their units of that type in systems without their command token
+int unitsPlaceable(const Game& g, int p, UnitType t);  // unitsAvailable + reclaimable (when allowed)
+// 0.61.2 (fixes 33, owner 2026-11-18 X1 "it still covers it as it beholden to the living rules on unit placement"): what an ABILITY
+// may place - unitsPlaceable from rules 33 (the player is asked, and may decline, in Rules::addUnits), else unitsAvailable
+int unitsForPlacement(const Game& g, int p, UnitType t);
 int capturedCount(const Game& g, int p, UnitType t);  // units of this type the Vuil'raith player p holds captured
 int capturedFrom(const Game& g, int owner, UnitType t);  // owner's non-fighter ships / mechs held captured by anyone
 bool dimensionalTear(const Game& g, int sys);         // a Vuil'raith space dock makes the system a gravity rift
@@ -235,6 +243,9 @@ bool x89Omega(const Game& g, int p);
 // 0.43.4 (owner, RULES-CHECK X1): the Codex's Omega cards are in play with the Codex ticked - or with Thunder's Edge,
 // which comes with the updated Codex (games started with fixes >= 5)
 bool codexOn(const Game& g);
+bool codex3Explore(int card);
+// (0.61.0, fixes 31) Demilitarized Zone: "During the agenda phase, this planet's planet card can be traded as part of a transaction"
+bool dmzTradeable(const Game& g, int who, int planet);  // (0.61.0) Codex III's frontier cards: Entropic Fields, Keleres Ship, Dead World
 bool codex2Relic(int r);  // (0.60.0) Dynamis Core, JR-XS455-O, Nano-Forge - in games with the Codex or Thunder's Edge
 // (0.57.1, fixes 20 - tester) Thunder's Edge replaces the Xxcha hero: Xxekir Grom places PDS / mechs and readies planets
 // (the Codex's resources-and-influence passive is off then)

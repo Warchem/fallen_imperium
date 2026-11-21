@@ -145,8 +145,18 @@ std::string fleetOverWarning(const Game& g, int p, int active, const std::vector
 // 0.58.5: will a combat (space or ground) happen in the active system after this player's move?
 bool combatAhead(const Game& g, int p, int sys);
 // fleetStrict (0.45.0): keep within the fleet pool even where the rules allow going over (the bots' own planning)
+// reclaim (0.61.1, fixes 32 - LRR 23.4a): the counts may go past the reinforcements by the units the player could take back off the
+// board (the production question itself; the bots' plans and "must produce" checks stay within the reinforcements)
 std::string checkProducePlan(const Game& g, int p, int sys, const std::vector<int>& data, int capacityLimit, int typeMask = 0,
-                             bool fleetStrict = false);
+                             bool fleetStrict = false, bool reclaim = false);
+// Tag::ReclaimUnit option ids (0.61.1): a unit of the type asked for, in a system's space area (planet -1) or on a planet, damaged or not
+inline int reclaimId(int sys, int planet, bool damaged) { return ((sys * 4096) + (planet + 1)) * 2 + (damaged ? 1 : 0); }
+inline void reclaimDecode(int id, int& sys, int& planet, bool& damaged) {
+    damaged = (id & 1) != 0;
+    id >>= 1;
+    sys = id / 4096;
+    planet = id % 4096 - 1;
+}
 std::string checkHits(const Game& g, int p, int sys, int planet, int hits, int mask, const std::vector<int>& data,
                       bool noSustain = false);
 std::string checkLandPlan(const Game& g, int p, int sys, const std::vector<int>& data, const LandSpec& spec = LandSpec());
@@ -172,6 +182,10 @@ private:
     bool inSpaceCombat_ = false;
     int bunkerOwner_ = -1;       // Bunker: bombardment against this player's planets gets -4
     uint8_t notesHeld_ = 0;      // whose notes the active player held when the tactical action began
+    // (fixes 31, the secret objectives' pass) LRR 61.7 "only one objective during or after each combat": the action-phase
+    // secrets a combat fulfils wait for its end (player, objective), where each player scores one of theirs
+    int combatDepth_ = 0;
+    std::vector<std::pair<int, int>> combatSecrets_;
     bool blitz_ = false;         // Blitz: non-fighter ships get bombardment 6
     bool disabled_ = false;      // Disable: enemy PDS lose shield and cannon
     int warMachine_ = 0;         // War Machine played this production
@@ -363,6 +377,7 @@ private:
     bool takeEmptyPlanet(int p, int x);
     int adjFlagshipZ_ = 0;
     uint16_t sleeperAsked_ = 0;
+    std::vector<int16_t> activationPDS_;       // (fixes 34) planets with the active player's PDS when the system was activated
     std::vector<int16_t> activationSleepers_;  // (0.45.0) sleeper planets in the system when it was activated  // (0.44.9) players the Titans asked for a sleeper this turn
     std::vector<Option> sleeperAskSpots(int p) const;
     bool sleeperAsk(int p);  // Slumberstate Computing: ask another player for a sleeper on their planet  // (0.44.9) where Valefar Z copies of Hil Colish were when adjacency was last computed  // (0.44.9) "coexisting" infantry on an empty planet take it          // Creuss tokens leave a Wormhole Nexus that became active                        // Z-Grav Eidolon / Eidolon Maximum: mechs fight as ships  // Duranium Armor's repair (the type repaired, -1 none)  // Proxima Targeting VI: 1 bombardment hit less per galvanized unit
@@ -1015,6 +1030,7 @@ private:
     std::vector<int> awakened_;       // planets where Awaken put Hel-Titans this tactical action (Coalescence)
     bool noRetreat_ = false;          // Airo Shir Aur: nobody can retreat from this combat
     int curValue_ = 0;                // extra number copied into decisions (Decision::value) for the AI
+    bool spotPick_ = false;           // (0.61.2) the next pick's options are board-edge spaces (Decision::onSpots)
     int curFor_ = -1;                 // an agent used for another player (deal): Decision::targetPlayer
     bool tgFromPlayer_ = false;       // 0.43.0: these trade goods come from another player (deal, loan), not the supply
     bool artunoPay_ = false;          // Artuno's trade goods are being paid out (not from the supply)
@@ -1085,6 +1101,7 @@ private:
     int16_t carrinaQuiet_[kMaxPlayers] = {};    // Doctor Carrina when not needed (fixes 27): the same
     bool carrinaNo_ = false;                    // (fixes 27) the Deepwrought said no: the researcher picks again
     int16_t peaceQuiet_[kMaxPlayers] = {};      // Minister of Peace: the same (0.28.0)
+    int8_t warSunAgeBy_ = -1;                    // 0.73.0: the first war sun technology was just gained by this player (scene to show)
     int16_t icarusQuiet_[kMaxPlayers] = {};     // Icarus Drive (fixes 24): the same
     int16_t taivraQuiet_[kMaxPlayers] = {};     // Emissary Taivra for another player (fixes 24): the same
     int16_t acamarQuiet_[kMaxPlayers] = {};     // Acamar for another player (fixes 26): the same
@@ -1257,6 +1274,12 @@ private:
     std::string planetName(int pl) const;
     void say(int p, const std::string& text, int sys = -1);
     void event(EventKind kind, int p, const std::string& text, int sys = -1, int planet = -1);
+    // (0.69.0, display only - the map sounds) ground forces of p landed on pl: the event also says whether it is an
+    // invasion (hostile: another player's planet or units there; other = that player), whether the landing is defended
+    // (count 1: their ground forces are on a planet it goes to) and unit = Mech when mechs come down (else t). `sum`
+    // gives the last two for the whole landing in the system (bit 0 defended, bit 1 mechs); -1 = this planet alone.
+    void landEvent(int p, int sys, int pl, UnitType t, int sum, const std::string& text);
+    bool defendedAgainst(int p, int pl) const;  // another player's ground forces are on pl (not coexisting)
     int pick(int p, Tag tag, const std::string& prompt, std::vector<Option> opts, const std::string& context = "",
              bool onMap = false, bool onPlanets = false);
     std::vector<int> pickMany(int p, Tag tag, const std::string& prompt, std::vector<Option> opts, int minPick,
@@ -1280,11 +1303,18 @@ private:
     void destroyUnits(int p, UnitType t, int k, int sys, int planet, int byPlayer, const char* how);
     void setControl(int planet, int p);
     void researchTech(int p, int tech, bool researched = true);
+    void warSunAgeCheck();  // 0.73.0: the War Sun scene (display only), after the research is announced
     void exhaustTech(int p, const char* key);
     bool techReady(int p, const char* key) const;
     bool owns(int p, const char* key) const;
     void checkWin();
     void removeExcessCapacity(int p, int sys);
+    // 0.61.1 (fixes 32, LRR 23.4a): take one of p's units of type t back off the board (a system without their command token) so it can
+    // be placed in destSys at once - the player picks which (optional: may decline). True when one went back to the reinforcements.
+    bool reclaimUnit(int p, UnitType t, int destSys, bool optional);
+    void reclaimForPlacement(int p, const int* counts, int destSys);  // ... as many as the counts go past the reinforcements
+    int piecesFree(int p, UnitType t) const;   // (0.61.2, fixes 33) pieces in the box (not on the board, captured or on a card)
+    bool pieceFor(int p, UnitType t, int sys);  // (fixes 33) a piece for a swap - from the box, or taken back off the board
     void enforceFleetLimit(int p);  // remove ships beyond the fleet pool
     void enforceFleetIn(int p, int sys);
 
@@ -1326,8 +1356,11 @@ private:
     void reportRoll(int p, int sys, const std::string& what, const RollResult& r);
     void neutralHits(int sys, int planet, int hits, int mask, const std::string& why, int attacker);  // Thunder's Edge
     void assignHits(int victim, int sys, int planet, int hits, int mask, const std::string& why, int attacker);
-    void spaceCombat(int attacker, int defender, int sys);
+    void spaceCombat(int attacker, int defender, int sys);   // (fixes 31: the LRR 61.7 bookkeeping round the two below)
     void groundCombat(int attacker, int defender, int planet);
+    void spaceCombatRun(int attacker, int defender, int sys);
+    void groundCombatRun(int attacker, int defender, int planet);
+    void combatSecretsFlush(size_t mark);
     std::vector<int> retreatOptions(int p, int sys) const;
     void doRetreat(int p, int from, int to);
     void retreatCargo(int p, int from);  // (0.54.0) ground forces from the planets go along

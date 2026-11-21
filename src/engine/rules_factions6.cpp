@@ -646,7 +646,7 @@ std::vector<Option> Rules::factionActionOptions6(int p) {
             for (int t = 0; t < kUnitTypes; ++t) dmg = dmg || s.space[size_t(p)].dmg[t];
         for (const PlanetState& ps : G.planets)
             for (int t = 0; t < kUnitTypes; ++t) dmg = dmg || ps.units[size_t(p)].dmg[t];
-        if (pds && unitsAvailable(G, p, UnitType::PDS) > 0) add(Ab::Nano1, "Nanomachines: place a PDS", "Exhaust it: 1 PDS on a planet you control.");
+        if (pds && unitsForPlacement(G, p, UnitType::PDS) > 0) add(Ab::Nano1, "Nanomachines: place a PDS", "Exhaust it: 1 PDS on a planet you control.");
         if (dmg) add(Ab::Nano2, "Nanomachines: repair", "Exhaust it: repair all of your damaged units.");
         if (!G.players[size_t(p)].actionCards.empty()) add(Ab::Nano3, "Nanomachines: swap a card", "Exhaust it and discard 1 action card to draw 1.");
     }
@@ -701,7 +701,7 @@ bool Rules::factionAction6(int p, Ab ab) {
                 if ((G.planets[size_t(x)].units[size_t(p)].count(UnitType::PDS) < 2 || lawInPlay(G, "defense_act")) &&
                     !(G.fixes >= 12 && isDMZ(G, x)))
                     opts.push_back({x, planetName(x), ""});
-            if (opts.empty() || unitsAvailable(G, p, UnitType::PDS) <= 0) return false;
+            if (opts.empty() || unitsForPlacement(G, p, UnitType::PDS) <= 0) return false;
             opts.push_back({-1, "Cancel", ""});
             const int x = fpick(p, Ab::Nano1, "Nanomachines: place a PDS on which planet?", opts, "", false, true);
             if (x < 0) return false;
@@ -1379,7 +1379,7 @@ void Rules::subatomicSplicer(int p, UnitType t, int k) {
     if (!dock) return;
     if (G.fixes >= 9 && blockaded(G, p, home)) return;
     if (t == UnitType::Fighter) {
-        int n = std::min(k, unitsAvailable(G, p, t));
+        int n = std::min(k, unitsForPlacement(G, p, t));
         if (n <= 0) return;
         auto costOf = [&](int m) { return (m * unitCost2(G, p, t) + 1) / 2; };
         if (G.fixes >= 24) {  // (faction debug pass: each fighter lost is its own "may" - choose how many come back)
@@ -1408,7 +1408,7 @@ void Rules::subatomicSplicer(int p, UnitType t, int k) {
         phantomProducedOne(p, home, t, n);  // Homesick Phantom
         return;
     }
-    for (int i = 0; i < k && unitsAvailable(G, p, t) > 0; ++i) {
+    for (int i = 0; i < k && unitsForPlacement(G, p, t) > 0; ++i) {
         const int cost = (unitCost2(G, p, t) + 1) / 2;
         if (spendable(G, p, false) < cost) return;
         if (!fyes(p, Ab::Subatomic, std::string("Subatomic Splicer: produce a ") + unitTypeName(t) + " at home for " + std::to_string(cost) + " resources?", ""))
@@ -1489,7 +1489,7 @@ void Rules::phantomCombat(int att, int def, int sys) {
 // any planet there: asked after bombardment (invasion), offered for p's own planets too, and a Revenant that isn't
 // landed goes back to the reinforcements instead of staying in space.)
 int Rules::revenant(int p, int sys) {
-    if (!fac(p, "crimson") || !mechAbilities(G) || G.systems[size_t(sys)].breach != 2 || unitsAvailable(G, p, UnitType::Mech) <= 0) return -1;
+    if (!fac(p, "crimson") || !mechAbilities(G) || G.systems[size_t(sys)].breach != 2 || unitsForPlacement(G, p, UnitType::Mech) <= 0) return -1;
     bool target = G.fixes >= 24 && !G.systems[size_t(sys)].planets.empty();
     for (int16_t x : G.systems[size_t(sys)].planets)
         if (G.planets[size_t(x)].owner != p) target = true;

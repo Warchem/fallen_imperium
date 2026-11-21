@@ -19,6 +19,7 @@
 #include "ui/icons.h"
 #include "ui/theme.h"
 #include "ui/widgets.h"
+#include "ui/pcolors.h"
 
 using namespace ti;
 
@@ -44,7 +45,7 @@ uint32_t techColor(int tech) {
 namespace {
 
 uint32_t pcol(const Game& g, int p) {
-    return p == kNeutral ? theme::neutral : p >= 0 && p < g.numPlayers ? theme::player[g.players[p].color % 8] : theme::text;
+    return p == kNeutral ? theme::neutral : p >= 0 && p < g.numPlayers ? pcolours::base(g.players[p].color) : theme::text;
 }
 
 std::string capitalize(std::string s) {
@@ -75,17 +76,40 @@ int drawWrapped(Canvas& c, const FontData& f, int x, int y, int w, const std::st
 }
 
 // onClick (0.30.0, owner): clicking a tab's title opens it
+// minLeft (0.61.2, owner: "the 'Your Cards' title clipping the 'action cards' tab"): the tabs never reach left of it - with
+// many tabs (the fifth, Faction) they take the small font, then shorter names
 void drawTabs(Canvas& c, const std::vector<std::string>& tabs, int sel, int right, int y,
-              const std::function<void(int)>& onClick = nullptr) {
+              const std::function<void(int)>& onClick = nullptr, int minLeft = 0) {
     if (tabs.size() < 2) return;
+    auto label = [&](int i, bool shortNames) {
+        if (!shortNames) return tabs[size_t(i)];
+        const std::string& t = tabs[size_t(i)];
+        if (t == "Promissory notes") return std::string("Notes");
+        if (t == "Action cards") return std::string("Actions");
+        return t;
+    };
+    const FontData* font = &FONT_SMB;
+    int pad = 18;
+    bool shortNames = false;
+    auto total = [&]() {
+        int w = 0;
+        for (int i = 0; i < int(tabs.size()); ++i) w += textWidth(*font, label(i, shortNames)) + pad + 6;
+        return w - 6;
+    };
+    if (minLeft > 0 && right - total() < minLeft) {
+        font = &FONT_XS;
+        pad = 12;
+        if (right - total() < minLeft) shortNames = true;
+    }
     int x = right;
     for (int i = int(tabs.size()) - 1; i >= 0; --i) {
-        int w = textWidth(FONT_SMB, tabs[i]) + 18;
+        const std::string t = label(i, shortNames);
+        int w = textWidth(*font, t) + pad;
         x -= w;
         bool on = i == sel;
         if (onClick) hits::addAction(Rect{x, y, w, 22}, [onClick, i]() { onClick(i); });
         c.fillRoundRect(x, y, w, 22, 6, on ? theme::gold : theme::panelHi);
-        drawTextAligned(c, FONT_SMB, x, y + 3, w, Align::Center, tabs[i], on ? theme::black : theme::dim);
+        drawTextAligned(c, *font, x, y + (font == &FONT_XS ? 5 : 3), w, Align::Center, t, on ? theme::black : theme::dim);
         x -= 6;
     }
 }
@@ -154,12 +178,15 @@ public:
             if (icons::draw(c, ic, tx, r.y + 9, 24, 255, theme::gold)) tx += 30;
         }
         drawText(c, FONT_LG, tx, r.y + 10, title_, theme::gold);
-        drawTabs(c, tabs_, tab_, r.x + r.w - 12, r.y + 12, [this](int i) {
-            if (detail_ || i == tab_) return;
-            tab_ = i;
-            sel_ = scroll_ = 0;
-            rebuild();
-        });
+        drawTabs(
+            c, tabs_, tab_, r.x + r.w - 12, r.y + 12,
+            [this](int i) {
+                if (detail_ || i == tab_) return;
+                tab_ = i;
+                sel_ = scroll_ = 0;
+                rebuild();
+            },
+            tx + textWidth(FONT_LG, title_) + 12);  // (0.61.2: never over the title)
         std::string h = header();
         if (!h.empty()) drawText(c, FONT_SM, r.x + 14, r.y + 40, fitText(FONT_SM, h, r.w - 28), theme::dim);
         const int gap = 8;
@@ -636,7 +663,7 @@ protected:
         if (ps.exhausted) st += std::string(st.empty() ? "" : " \xC2\xB7 ") + "Exhausted";
         else st += std::string(st.empty() ? "" : " \xC2\xB7 ") + "Ready";
         drawText(c, FONT_XS, x, r.y + r.h - 20, fitText(FONT_XS, st, r.w - 22),
-                 tab_ == 1 ? pcol(g_, ps.owner) : ps.exhausted ? theme::faint : theme::green);
+                 tab_ == 1 ? pcolours::readable(pcol(g_, ps.owner)) : ps.exhausted ? theme::faint : theme::green);
     }
 
     void drawDetail(Canvas& c, int i, Rect r) override {
@@ -707,7 +734,7 @@ protected:
         }
         for (int16_t a : ps.attachments) {
             std::string txt = exploreText(a);
-            if (txt.compare(0, 8, "Attach: ") == 0) txt = txt.substr(8);
+            if (txt.compare(0, 8, "Attach: ") == 0 || txt.compare(0, 8, "ATTACH: ") == 0) txt = txt.substr(8);
             std::string t = "Attached - " + std::string(kExploreCards[a].name) + ": " + txt;
             y = drawWrapped(c, FONT_SM, x, y, w, t, theme::cyan, r.y + r.h - 90);
         }
@@ -718,12 +745,20 @@ protected:
             y = drawWrapped(c, FONT_SM, x + ix, y, w - ix, t, theme::gold, r.y + r.h - 70);
         } else if (isLegendaryPlanet(g_, pl)) {
             if (ix) icons::draw(c, "legendary_complete", x, y - 1, 18);
-            y = drawWrapped(c, FONT_SM, x + ix, y, w - ix, std::string(ix ? "" : "\xE2\x98\x85 ") + "Legendary planet", theme::gold);
+            // (0.61.0) Thunder's Edge's Mecatol Rex card: The Galactic Council
+            const bool council = !std::strcmp(kPlanets[ps.def].key, "mr") && (g_.modules & kModThundersEdge);
+            y = drawWrapped(c, FONT_SM, x + ix, y, w - ix,
+                            std::string(ix ? "" : "\xE2\x98\x85 ") +
+                                (council ? std::string("The Galactic Council - You may exhaust this card at the end of your turn and discard 1 secret "
+                                                       "objective to draw 1 secret objective.") +
+                                               (ps.owner >= 0 ? (ps.abilityExhausted ? "  (exhausted)" : "  (ready)") : "")
+                                         : std::string("Legendary planet")),
+                            theme::gold);
         }
         y += 6;
         drawText(c, FONT_SMB, x, y,
                  "Controlled by " + playerName(g_, ps.owner) + (ps.exhausted ? " \xC2\xB7 exhausted until the status phase" : " \xC2\xB7 ready"),
-                 pcol(g_, ps.owner));
+                 pcolours::readable(pcol(g_, ps.owner)));
         y += 22;
         c.hline(x, x + w, y, theme::border);
         y += 8;
@@ -844,7 +879,7 @@ protected:
         y += 34;
         std::string kind = std::string(unitTypeName(t)) + (isShip(t) ? " \xC2\xB7 ship" : isGroundForce(t) ? " \xC2\xB7 ground force" : " \xC2\xB7 structure");
         if (u.faction >= 0) kind += " \xC2\xB7 " + std::string(factionShortName(u.faction)) + " special unit";
-        drawText(c, FONT_SM, x, y, kind, pcol(g_, p));
+        drawText(c, FONT_SM, x, y, kind, pcolours::readable(pcol(g_, p)));
         y += 22;
         // stat row
         const char* labels[4] = {"Cost", "Combat", "Move", "Capacity"};
@@ -1276,7 +1311,7 @@ protected:
             std::string who = seen ? "Held by " + playerName(g_, (id - kSeen) / 100) + " (seen with M'aban)"
                               : owner == human_ ? "Yours - to give away" : "From " + playerName(g_, owner);
             if (inPlay) who += " (in play)";
-            drawText(c, FONT_XS, r.x + 14, r.y + 23, who, pcol(g_, owner));
+            drawText(c, FONT_XS, r.x + 14, r.y + 23, who, pcolours::readable(pcol(g_, owner)));
             drawWrapped(c, FONT_XS, r.x + 14, r.y + 39, r.w - 22, noteTextOf(g_, n), theme::dim, r.y + r.h - 4);
         }
     }
@@ -1311,7 +1346,7 @@ protected:
                 iw = 48;
             }
             y = drawWrapped(c, FONT_XL, x, y, w - iw, noteNameOf(g_, n), theme::text);
-            drawText(c, FONT_SMB, x, y + 4, "PROMISSORY NOTE \xC2\xB7 " + playerName(g_, noteOwner(n)), pcol(g_, noteOwner(n)));
+            drawText(c, FONT_SMB, x, y + 4, "PROMISSORY NOTE \xC2\xB7 " + playerName(g_, noteOwner(n)), pcolours::readable(pcol(g_, noteOwner(n))));
             y += 30;
             drawWrapped(c, FONT_MD, x, y, w, noteTextOf(g_, n), theme::text);
             drawWrapped(c, FONT_SM, x, r.y + r.h - 60, w,
@@ -1394,7 +1429,7 @@ protected:
         }
         if (tab_ == 0) {
             const Law& l = g_.laws[items_[i]];
-            if (l.owner >= 0) drawText(c, FONT_SMB, x, r.y + r.h - 40, "Held by " + playerName(g_, l.owner), pcol(g_, l.owner));
+            if (l.owner >= 0) drawText(c, FONT_SMB, x, r.y + r.h - 40, "Held by " + playerName(g_, l.owner), pcolours::readable(pcol(g_, l.owner)));
         }
     }
 
@@ -2051,7 +2086,7 @@ public:
         }
         drawText(c, FONT_LG, tx, r.y + 12, fitText(FONT_LG, std::string(factionShortName(pl.faction)) + " - faction pieces", 520), col);
         drawTextAligned(c, FONT_SM, r.x, r.y + 16, r.w - 16, Align::Right, p == human_ ? "You" : "Computer player", theme::dim);
-        hits::addAction(Rect{0, 0, 640, 456}, [this]() { piecesOpen_ = false; });
+        hits::addAction(Rect{0, 0, 640, 456}, [this]() { piecesOpen_ = false; }, hits::Light::None);
         piecesH_ = pieces::drawDetail(c, g_, p, pieces::of(g_, p, human_), r, now, piecesScroll_);
         if (piecesScroll_ > 0) drawTextAligned(c, FONT_XS, r.x, r.y + 32, r.w - 16, Align::Right, "\xE2\x96\xB2 more", theme::dim);
         if (piecesScroll_ + 380 < piecesH_) drawTextAligned(c, FONT_XS, r.x, r.y + r.h - 12, r.w - 16, Align::Right, "\xE2\x96\xBC more", theme::dim);

@@ -30,6 +30,12 @@ struct KeyEvent {
 constexpr int kRawWheelUp = 0x10001, kRawWheelDown = 0x10002;  // (old: whole notches)
 constexpr int kRawMouseMove = 0x10003, kRawMouseLeft = 0x10004, kRawMouseRight = 0x10005, kRawWheel = 0x10006;
 constexpr int kRawPanUp = 0x10010, kRawPanDown = 0x10011, kRawPanLeft = 0x10012, kRawPanRight = 0x10013;
+// (0.72.0) the camera's speed-up key held / let go (Shift); the pointer left the window or the window lost the focus (no
+// edge scrolling until it comes back)
+constexpr int kRawPanFast = 0x10014, kRawMouseLeave = 0x10007;
+// (0.63.0) a digit typed on the keyboard (the top row or the number pad): kRawDigit0 + 0..9, key down only - for number
+// fields (the galaxy seed); the keys do nothing else
+constexpr int kRawDigit0 = 0x10020;
 
 class Platform {
 public:

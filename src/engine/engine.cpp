@@ -209,7 +209,7 @@ void Engine::emit(Event e) {
     // paces checkUnlocks, and old saves must replay exactly as before.
     const bool display = e.kind == EventKind::ObjectiveScored || e.kind == EventKind::RelicUsed || e.kind == EventKind::ComponentUsed ||
                          e.kind == EventKind::Planetfall || e.kind == EventKind::CardDrawn || e.kind == EventKind::ObjectiveRevealed ||
-                         e.kind == EventKind::Note;
+                         e.kind == EventKind::Note || e.kind == EventKind::WarSunAge;
     if (e.kind != EventKind::Dice && !display && !e.text.empty()) g_.log.push_back(e.text);
     events_.push_back(std::move(e));
 }
@@ -295,6 +295,7 @@ std::string Engine::saveText() const {
     o << "draft " << setup_.draft << "\n";
     if (setup_.mapSeed) o << "mapseed " << setup_.mapSeed << "\n";
     if (setup_.layout) o << "layout " << setup_.layout << "\n";
+    if (setup_.unbalanced) o << "unbalanced " << setup_.unbalanced << "\n";
     o << "extras " << setup_.extras << "\n";
     if (setup_.modules) o << "modules " << setup_.modules << "\n";
     if (setup_.events) o << "events " << setup_.events << "\n";
@@ -327,6 +328,14 @@ std::string Engine::saveText() const {
     if (anyTribunii) {
         o << "tribunii";
         for (int t : setup_.tribunii) o << ' ' << t;
+        o << "\n";
+    }
+    if (setup_.speaker >= 0) o << "speaker " << setup_.speaker << "\n";
+    bool anyGrudge = false;
+    for (int gr : setup_.grudges) anyGrudge |= gr != 0;
+    if (anyGrudge) {
+        o << "grudges";
+        for (int gr : setup_.grudges) o << ' ' << gr;
         o << "\n";
     }
     o << "answers " << answers_.size() << "\n";
@@ -366,11 +375,13 @@ bool Engine::loadText(const std::string& text, std::string* err) {
         else if (word == "draft") in >> s.draft;
         else if (word == "mapseed") in >> s.mapSeed;
         else if (word == "layout") in >> s.layout;
+        else if (word == "unbalanced") in >> s.unbalanced;
         else if (word == "extras") in >> s.extras;
         else if (word == "modules") in >> s.modules;
         else if (word == "events") in >> s.events;
         else if (word == "dslevel") in >> s.dsLevel;
         else if (word == "fixes") in >> s.fixes;
+        else if (word == "speaker") in >> s.speaker;
         else if (word == "auto") {
             int v = 0;
             in >> v;
@@ -388,8 +399,8 @@ bool Engine::loadText(const std::string& text, std::string* err) {
             std::istringstream ls(line);
             int a;
             while (ls >> a) s.archetypes.push_back(a);
-        } else if (word == "colors" || word == "levels" || word == "tribunii") {
-            std::vector<int>& v = word == "colors" ? s.colors : word == "levels" ? s.levels : s.tribunii;
+        } else if (word == "colors" || word == "levels" || word == "tribunii" || word == "grudges") {
+            std::vector<int>& v = word == "colors" ? s.colors : word == "levels" ? s.levels : word == "grudges" ? s.grudges : s.tribunii;
             std::string line;
             std::getline(in, line);
             std::istringstream ls(line);

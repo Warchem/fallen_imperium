@@ -257,7 +257,7 @@ bool Rules::btAction(int p, int ab) {
         if (s < 0) return false;
         std::vector<Option> what;
         if (unitsAvailable(G, p, UnitType::Fighter) > 0) what.push_back({int(UnitType::Fighter), "2 fighters", ""});
-        if (unitsAvailable(G, p, UnitType::Destroyer) > 0) what.push_back({int(UnitType::Destroyer), "1 destroyer", ""});
+        if (unitsForPlacement(G, p, UnitType::Destroyer) > 0) what.push_back({int(UnitType::Destroyer), "1 destroyer", ""});
         what.push_back({-1, "Cancel", ""});
         const int t = fpick(p, Ab::BtMuaat, "The Nucleus: place what?", what, "No command token needed.");
         if (t < 0) return false;

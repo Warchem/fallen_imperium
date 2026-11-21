@@ -20,10 +20,20 @@
 #include "ui/tile_view.h"
 #include "ui/voidfall.h"
 #include "ui/theme.h"
+#include "ui/pcolors.h"
 
 using namespace ti;
 
 namespace {
+// (0.73.5, owner: "When a game would start that uses Thunder's Edge, the Fracture is hidden") where the Fracture will come:
+// not drawn until it is in play, but the map keeps its room so nothing moves when it appears
+std::vector<Hex> hiddenFracture(const Game& g) {
+    std::vector<Hex> out;
+    if ((g.modules & kModThundersEdge) && !g.fractureIn && !(g.fracturePos[3] == Hex{}) && !g.draft.active)
+        out.assign(std::begin(g.fracturePos), std::end(g.fracturePos));
+    return out;
+}
+
 constexpr float kSizes[MapView::kZoomLevels] = {24.f, 34.f, 50.f, 70.f};
 // Retrowave (0.26.0): sizes that suit the art (corner radius 48): half, 0.7, 1:1, 1.5
 constexpr float kRetroSizes[MapView::kZoomLevels] = {24.f, 34.f, 48.f, 72.f};
@@ -55,7 +65,9 @@ uint32_t traitColor(Trait t) {
     }
 }
 
-uint32_t playerColor(const Game& g, int p) { return p == kNeutral ? theme::neutral : theme::player[g.players[p].color % 8]; }
+uint32_t playerColor(const Game& g, int p) { return p == kNeutral ? theme::neutral : pcolours::base(g.players[p].color); }
+// the rect round a point (game units), for a colour's finish (0.62.0)
+Rect aroundRect(float x, float y, float rx, float ry) { return Rect{int(std::floor(x - rx)), int(std::floor(y - ry)), int(std::ceil(2.f * rx)) + 1, int(std::ceil(2.f * ry)) + 1}; }
 
 float rowOf(Hex h) { return float(h.r) + float(h.q) * 0.5f; }
 
@@ -112,6 +124,7 @@ void MapView::bounds(const Game& g, float& minx, float& maxx, float& miny, float
         }
     if (!g.draft.active)
         for (const decor::Tile& t : decorTiles(g)) extend(t.pos);
+    for (const Hex& h : hiddenFracture(g)) extend(h);  // (0.73.5: its room is kept while it is hidden)
     if (minx > maxx) minx = maxx = miny = maxy = 0;
 }
 
@@ -139,6 +152,32 @@ void MapView::pan(const Game& g, float dx, float dy) {
     focusX_ -= dx / size;
     focusY_ -= dy / size;
     clampFocus(g);
+}
+
+void MapView::fitTo(const Game& g, Rect area) {
+    float minx = 1e9f, maxx = -1e9f, miny = 1e9f, maxy = -1e9f;
+    auto extend = [&](Hex h) {  // (as camera() does, at a tile size of 1)
+        float x, y;
+        hexToPixel(h, 1.f, x, y);
+        minx = std::min(minx, x - 1.f), maxx = std::max(maxx, x + 1.f);
+        miny = std::min(miny, y - 0.8660254f), maxy = std::max(maxy, y + 0.8660254f);
+    };
+    for (const SystemState& s : g.systems) extend(s.pos);
+    if (g.draft.active)
+        for (const DraftCell& d : g.draft.cells) extend(d.pos);
+    if (infoTiles_)
+        for (const InfoCells& ic : infoCells(g))
+            for (int k = 0; k < ic.n; ++k) extend(ic.cell[size_t(k)]);
+    if (!g.draft.active)
+        for (const decor::Tile& t : decorTiles(g)) extend(t.pos);
+    for (const Hex& h : hiddenFracture(g)) extend(h);  // (0.73.5: its room is kept while it is hidden)
+    if (maxx <= minx) return;
+    const float s = std::min((float(area.w) - 14.f) / (maxx - minx), (float(area.h) - 14.f) / (maxy - miny));
+    free_ = false;
+    size_ = sizeTarget_ = std::max(6.f, s);
+    cursor_ = -1;  // (a preview has no cursor)
+    setViewport(area);
+    setDrawArea(area);
 }
 
 void MapView::zoomBy(const Game& g, float notches, float ax, float ay) {
@@ -217,6 +256,37 @@ int MapView::hitTest(const Game& g, float x, float y) const {
     return -1;
 }
 
+int MapView::hitFreeSpot(const Game& g, float x, float y) const {
+    if (freeSpots_.empty()) return -1;
+    const float size = tileSize();
+    float ox, oy;
+    camera(g, size, ox, oy);
+    for (size_t i = 0; i < freeSpots_.size(); ++i) {
+        float hx, hy;
+        hexToPixel(freeSpots_[i], size, hx, hy);
+        if (insideHex(x, y, ox + hx, oy + hy, size)) return int(i);
+    }
+    return -1;
+}
+
+void MapView::drawFreeSpots(Canvas& c, float ox, float oy, float size, uint32_t now) const {
+    const float pulse = 0.5f + 0.5f * std::sin(float(now % 1000) / 1000.f * 2.f * kPi);
+    for (size_t i = 0; i < freeSpots_.size(); ++i) {
+        float x, y, xs[6], ys[6];
+        hexToPixel(freeSpots_[i], size, x, y);
+        x += ox;
+        y += oy;
+        hexCorners(x, y, size - 2.f, xs, ys);
+        const bool sel = int(i) == freeSel_;
+        c.fillPolygon(xs, ys, 6, sel ? rgb(40, 34, 14) : rgb(10, 14, 26), 200);
+        const uint32_t col = sel ? theme::gold : theme::cyan;
+        const int a = sel ? 200 + int(pulse * 55) : 110 + int(pulse * 110);
+        hexCorners(x, y, size - 3.f, xs, ys);
+        for (int k = 0; k < 6; ++k) c.line(xs[k], ys[k], xs[(k + 1) % 6], ys[(k + 1) % 6], col, sel ? 3.f : 2.f, a);
+        if (size >= 30) drawTextAligned(c, FONT_SMB, int(x - size), int(y) - 8, int(2 * size), Align::Center, "+", col);
+    }
+}
+
 int MapView::hitDraftCell(const Game& g, float x, float y) const {
     if (!g.draft.active) return -1;
     const float size = tileSize();
@@ -236,6 +306,17 @@ bool MapView::draftCellAt(const Game& g, int cell, float& x, float& y, float& si
     float ox, oy, hx, hy;
     camera(g, size, ox, oy);
     hexToPixel(g.draft.cells[size_t(cell)].pos, size, hx, hy);
+    x = ox + hx;
+    y = oy + hy;
+    return true;
+}
+
+bool MapView::systemAt(const Game& g, int sys, float& x, float& y, float& size) const {
+    if (sys < 0 || sys >= int(g.systems.size())) return false;
+    size = tileSize();
+    float ox, oy, hx, hy;
+    camera(g, size, ox, oy);
+    hexToPixel(g.systems[size_t(sys)].pos, size, hx, hy);
     x = ox + hx;
     y = oy + hy;
     return true;
@@ -644,6 +725,7 @@ void MapView::camera(const Game& g, float size, float& ox, float& oy) const {
             for (int k = 0; k < ic.n; ++k) extend(ic.cell[size_t(k)]);
     if (!g.draft.active)
         for (const decor::Tile& t : decorTiles(g)) extend(t.pos);
+    for (const Hex& h : hiddenFracture(g)) extend(h);  // (0.73.5: its room is kept while it is hidden)
     const float pad = 6.f;
     // centre a map that fits the viewport; otherwise follow the cursor in the viewport, but let
     // the map run on to the far edge of the draw area (under the see-through panels)
@@ -751,6 +833,9 @@ void MapView::drawBorders(Canvas& c, const Game& g, int sys, float cx, float cy,
     const SystemState& s = g.systems[size_t(sys)];
     const uint32_t col = playerColor(g, p), hi = offTone(col);
     const float th = std::max(2.f, size * 0.06f), r0 = size - 1.f, bw = size * 0.22f;
+    const int pc = pcolours::of(g, p);  // 0.62.0: the new colours' look along the edges
+    const bool fx = pc >= 0 && pcolours::animated(pc);
+    const float boost = fx ? pcolours::edgeGlow(pc) : 1.f;
     // Strips between two "radii" of the hex (corners pulled toward the centre),
     // so neighbouring edges meet in clean mitres. Plain spans: cheap on the Miyoo.
     static const float kCos[6] = {1.f, 0.5f, -0.5f, -1.f, -0.5f, 0.5f};
@@ -765,8 +850,31 @@ void MapView::drawBorders(Canvas& c, const Game& g, int sys, float cx, float cy,
             c.fillPolygon(xs, ys, 4, colr, a);
         };
         const float rin = r0 - th;
-        for (int k = 0; k < 3; ++k) strip(rin - bw * float(k) / 3.f, rin - bw * float(k + 1) / 3.f, col, kBand[k]);
-        strip(size - 1.f, rin, hi, 235);  // the bright edge line
+        if (!fx) {
+            for (int k = 0; k < 3; ++k) strip(rin - bw * float(k) / 3.f, rin - bw * float(k + 1) / 3.f, col, kBand[k]);
+            strip(size - 1.f, rin, hi, 235);  // the bright edge line
+            continue;
+        }
+        const float x1 = cx + r0 * kCos[i1], y1 = cy + r0 * kSin[i1], x2 = cx + r0 * kCos[i2], y2 = cy + r0 * kSin[i2];
+        const float mx = (x1 + x2) / 2.f, my = (y1 + y2) / 2.f, ml = std::max(0.01f, std::hypot(cx - mx, cy - my));
+        const uint32_t band = pcolours::edgeTone(pc, col, mx, my, false);
+        for (int k = 0; k < 3; ++k) strip(rin - bw * float(k) / 3.f, rin - bw * float(k + 1) / 3.f, band, std::min(255, int(float(kBand[k]) * boost)));
+        strip(size - 1.f, rin, pcolours::edgeTone(pc, hi, mx, my, true), 235);
+        pcolours::edgeExtras(c, pc, x1, y1, x2, y2, (cx - mx) / ml, (cy - my) / ml, bw, uint32_t(sys) * 8u + uint32_t(e));
+    }
+}
+
+// 0.62.0: a home's rim in an animated colour, edge by edge (between radii rOut and rIn)
+static void homeRim(Canvas& c, int pc, uint32_t col, float cx, float cy, float rOut, float rIn, int alpha, uint32_t seed) {
+    float xo[6], yo[6], xi[6], yi[6];
+    hexCorners(cx, cy, rOut, xo, yo);
+    hexCorners(cx, cy, rIn, xi, yi);
+    for (int i = 0; i < 6; ++i) {
+        const int j = (i + 1) % 6;
+        const float mx = (xo[i] + xo[j]) / 2.f, my = (yo[i] + yo[j]) / 2.f, ml = std::max(0.01f, std::hypot(cx - mx, cy - my));
+        float xs[4] = {xo[i], xo[j], xi[j], xi[i]}, ys[4] = {yo[i], yo[j], yi[j], yi[i]};
+        c.fillPolygon(xs, ys, 4, pcolours::edgeTone(pc, col, mx, my, true), alpha);
+        pcolours::edgeExtras(c, pc, xo[i], yo[i], xo[j], yo[j], (cx - mx) / ml, (cy - my) / ml, std::max(3.f, (rOut - rIn) * 2.f), seed * 8u + uint32_t(i));
     }
 }
 
@@ -935,6 +1043,7 @@ void MapView::draw(Canvas& c, const Game& g, uint32_t now) const {
         }
     }
     if (g.draft.active) drawDraft(c, g, ox, oy, size, now);
+    if (!freeSpots_.empty()) drawFreeSpots(c, ox, oy, size, now);  // (0.61.2)
     if (infoTiles_ && !g.draft.active) drawInfoTiles(c, g, ox, oy, size, now);
     if (!g.draft.active) {  // Thunder's Edge placeholders (0.24.0)
         const auto& dec = decorTiles(g);
@@ -1028,6 +1137,8 @@ void MapView::drawInfoTiles(Canvas& c, const Game& g, float ox, float oy, float 
                     const int tw = int(size * 0.42f);
                     for (int t = 0; t < 3; ++t) {
                         const float ty = y + (float(t) - 1.f) * size * 0.5f;
+                        pcolours::Finish fin(c, aroundRect(x + size * 0.12f, ty, float(tw) / 2.f + 1.f, float(cards::commandTokenHeight(tw)) / 2.f + 1.f),
+                                             pcolours::of(g, p), uint32_t(p) * 31u + uint32_t(t));
                         cards::commandToken(c, pl.faction, col, int(x + size * 0.12f), int(ty), tw, alpha, t == 1);
                         drawTextAligned(c, f, int(x - size * 0.75f), int(ty) - f.lineHeight / 2, int(size * 0.55f), Align::Right,
                                         std::to_string(v[t]), theme::text, alpha);
@@ -1560,17 +1671,29 @@ void MapView::drawSystem(Canvas& c, const Game& g, int sys, float cx, float cy, 
         retro::draw(c, retroTile(&g, sys, s.def), cx, cy, size, g_mapNow);
         if (fracNo) decor::fractureLook(c, fracNo, cx, cy, size - 1.f, g_mapNow, false);
         if (s.home >= 0) {  // the owner's colour round a home system
-            hexCorners(cx, cy, size - 1.5f, xs, ys);
             const float th = std::max(2.f, size * 0.06f);
-            for (int i = 0; i < 6; ++i) c.line(xs[i], ys[i], xs[(i + 1) % 6], ys[(i + 1) % 6], edge, th, 220);
+            const int hpc = pcolours::of(g, s.home);
+            if (hpc >= 0 && pcolours::animated(hpc)) {
+                homeRim(c, hpc, edge, cx, cy, size - 1.5f + th / 2.f, size - 1.5f - th / 2.f, 220, uint32_t(sys));
+            } else {
+                hexCorners(cx, cy, size - 1.5f, xs, ys);
+                for (int i = 0; i < 6; ++i) c.line(xs[i], ys[i], xs[(i + 1) % 6], ys[(i + 1) % 6], edge, th, 220);
+            }
         }
     } else if (fracNo) {
         decor::fractureLook(c, fracNo, cx, cy, size - 1.f, g_mapNow, true);
     } else {
-        hexCorners(cx, cy, size - 1.f, xs, ys);
-        c.fillPolygon(xs, ys, 6, edge, fillA);
-        hexCorners(cx, cy, size - (s.home >= 0 ? 4.f : 2.f), xs, ys);
-        c.fillPolygon(xs, ys, 6, fill, fillA);
+        const int hpc = s.home >= 0 ? pcolours::of(g, s.home) : -1;
+        if (hpc >= 0 && pcolours::animated(hpc)) {  // 0.62.0: the home's rim in its owner's new colour
+            hexCorners(cx, cy, size - 4.f, xs, ys);
+            c.fillPolygon(xs, ys, 6, fill, fillA);
+            homeRim(c, hpc, edge, cx, cy, size - 1.f, size - 4.f, fillA, uint32_t(sys));
+        } else {
+            hexCorners(cx, cy, size - 1.f, xs, ys);
+            c.fillPolygon(xs, ys, 6, edge, fillA);
+            hexCorners(cx, cy, size - (s.home >= 0 ? 4.f : 2.f), xs, ys);
+            c.fillPolygon(xs, ys, 6, fill, fillA);
+        }
     }
     // home systems: the owner's emblem, faint, behind the planets
     // (0.43.0, owner D132: the Ghoti's own tile - the Void, a home with no planet - always shows their emblem, clearly)
@@ -1693,13 +1816,26 @@ void MapView::drawSystem(Canvas& c, const Game& g, int sys, float cx, float cy, 
                                                  : traitColor(pd.trait);
         const bool station = (pd.flags & kPlanetStation) != 0;
         if (art) {  // the planet is in the art: the owner's colour as a ring round it
-            if (ps.owner >= 0) c.ring(px, py, pr + std::max(1.5f, size * 0.045f), std::max(1.5f, size * 0.05f), playerColor(g, ps.owner), 235);
+            if (ps.owner >= 0) {
+                const float rr = pr + std::max(1.5f, size * 0.045f) + std::max(1.5f, size * 0.05f);
+                pcolours::Finish fin(c, aroundRect(px, py, rr, rr), pcolours::of(g, ps.owner), uint32_t(pl) * 13u);
+                c.ring(px, py, pr + std::max(1.5f, size * 0.045f), std::max(1.5f, size * 0.05f), playerColor(g, ps.owner), 235);
+            }
         } else if (station) {  // a space station: its controller's colour as a ring round it
-            if (ps.owner >= 0) c.ring(px, py, pr * 0.95f + std::max(1.f, size * 0.03f), std::max(1.5f, size * 0.05f), playerColor(g, ps.owner), 235);
+            if (ps.owner >= 0) {
+                const float rr = pr + std::max(1.f, size * 0.03f) + std::max(1.5f, size * 0.05f);
+                pcolours::Finish fin(c, aroundRect(px, py, rr, rr), pcolours::of(g, ps.owner), uint32_t(pl) * 13u);
+                c.ring(px, py, pr * 0.95f + std::max(1.f, size * 0.03f), std::max(1.5f, size * 0.05f), playerColor(g, ps.owner), 235);
+            }
             drawStation(c, px, py, pr, ps.exhausted);
         } else {
-            if (ps.owner >= 0) c.fillCircle(px, py, pr + std::max(2.f, size * 0.07f), playerColor(g, ps.owner));
-            else c.fillCircle(px, py, pr + 1.2f, shade(col, 0.35f));
+            if (ps.owner >= 0) {
+                const float rr = pr + std::max(2.f, size * 0.07f);
+                pcolours::Finish fin(c, aroundRect(px, py, rr, rr), pcolours::of(g, ps.owner), uint32_t(pl) * 13u);
+                c.fillCircle(px, py, rr, playerColor(g, ps.owner));
+            } else {
+                c.fillCircle(px, py, pr + 1.2f, shade(col, 0.35f));
+            }
             drawPlanetDisc(c, px, py, pr, pd, col, ps.exhausted);
         }
         // 0.58.3: resources / influence (with attachments) beside the planet when zoomed in; on the right-hand planet
@@ -1714,8 +1850,11 @@ void MapView::drawSystem(Canvas& c, const Game& g, int sys, float cx, float cy, 
         // token when zoomed out"): zoomed out (the two farther levels) their control token on the planet; zoomed in
         // the flag (below). Units' badges are drawn over it.
         constexpr float kFlagFrom = 44.f;
-        if (ps.owner >= 0 && ps.owner < g.numPlayers && size < kFlagFrom)
-            cards::controlToken(c, g.players[ps.owner].faction, playerColor(g, ps.owner), int(px), int(py), std::max(12, int(size * 0.36f)));
+        if (ps.owner >= 0 && ps.owner < g.numPlayers && size < kFlagFrom) {
+            const int d = std::max(12, int(size * 0.36f));
+            pcolours::Finish fin(c, aroundRect(px, py, float(d) / 2.f + 1.f, float(d) / 2.f + 1.f), pcolours::of(g, ps.owner), uint32_t(pl) * 13u + 1u);
+            cards::controlToken(c, g.players[ps.owner].faction, playerColor(g, ps.owner), int(px), int(py), d);
+        }
         if (ps.sleeper) {  // Titans sleeper token: a small dark disc with a teal ring
             float sx = px - dir * pr * 0.85f, sy = py + pr * 0.75f, sr = std::max(2.5f, size * 0.08f);
             c.fillCircle(sx, sy, sr, rgb(20, 40, 44));
@@ -1733,7 +1872,12 @@ void MapView::drawSystem(Canvas& c, const Game& g, int sys, float cx, float cy, 
             c.fillPolygon(dx, dy, 4, hasAttachment(g, pl, "dmz") ? rgb(230, 230, 230) : theme::gold);
         }
         // 0.57.1 (tester): who holds the planet - a flag in their colour planted on it (0.58.4: zoomed in only)
-        if (ps.owner >= 0 && ps.owner < g.numPlayers && size >= kFlagFrom) planetFlag(c, playerColor(g, ps.owner), px + pr * 0.3f, py - pr * 0.78f, size);
+        if (ps.owner >= 0 && ps.owner < g.numPlayers && size >= kFlagFrom) {
+            const float fh = std::max(7.f, size * 0.24f);
+            pcolours::Finish fin(c, Rect{int(px + pr * 0.3f) - 1, int(py - pr * 0.78f - fh) - 2, int(fh * 0.8f) + 3, int(fh * 0.6f) + 4},
+                                 pcolours::of(g, ps.owner), uint32_t(pl) * 13u + 2u);
+            planetFlag(c, playerColor(g, ps.owner), px + pr * 0.3f, py - pr * 0.78f, size);
+        }
         // ... and the mechs standing on it (from the third zoom level; the badge then counts the rest)
         const bool mechArt = size >= 44;
         int lines = 0, mechRows = 0;
@@ -1744,13 +1888,15 @@ void MapView::drawSystem(Canvas& c, const Game& g, int sys, float cx, float cy, 
             const float len = std::max(10.f, size * 0.26f);
             const float y = py + pr * 0.35f - float(mechRows) * len * 0.85f;
             const int shown = std::min(mechs, 3);
+            pcolours::Finish fin(c, Rect{int(px - pr * 0.6f - len * 0.6f), int(y - len * 0.6f), int(len * (1.2f + 0.62f * float(shown))) + 2, int(len * 1.2f) + 2},
+                                 pcolours::of(g, q), uint32_t(pl) * 13u + 3u);
             for (int i = 0; i < shown; ++i)
                 mapUnitPicture(c, UnitType::Mech, px - pr * 0.6f + float(i) * len * 0.62f, y, len, playerColor(g, q));
             if (mechs > shown) {
                 const std::string t = "+" + std::to_string(mechs - shown);
                 const float x = px - pr * 0.6f + float(shown) * len * 0.62f;
                 c.fillRoundRect(int(x - 1), int(y - FONT_XS.lineHeight / 2.f), textWidth(FONT_XS, t) + 4, FONT_XS.lineHeight, 3, rgb(8, 10, 18), 210);
-                drawText(c, FONT_XS, int(x) + 1, int(y - FONT_XS.lineHeight / 2.f), t, playerColor(g, q));
+                drawText(c, FONT_XS, int(x) + 1, int(y - FONT_XS.lineHeight / 2.f), t, pcolours::readable(playerColor(g, q)));
             }
             ++mechRows;
         }
@@ -1771,8 +1917,11 @@ void MapView::drawSystem(Canvas& c, const Game& g, int sys, float cx, float cy, 
             const FontData& font = size >= 50 ? FONT_SMB : FONT_XS;
             int tw = textWidth(font, label);
             int bx = vr ? int(px - pr * 0.5f) - tw - 1 : int(px + pr * 0.5f), by = int(py + pr * 0.3f) + lines * (font.lineHeight + 1);
-            c.fillRoundRect(bx - 2, by, tw + 5, font.lineHeight, 4, playerColor(g, q), 230);
-            drawText(c, font, bx, by, label, rgb(10, 10, 10));
+            {
+                pcolours::Finish fin(c, Rect{bx - 2, by, tw + 5, font.lineHeight}, pcolours::of(g, q), uint32_t(pl) * 13u + 4u);
+                c.fillRoundRect(bx - 2, by, tw + 5, font.lineHeight, 4, playerColor(g, q), 230);
+            }
+            drawText(c, font, bx, by, label, pcolours::ink(pcolours::of(g, q), rgb(10, 10, 10)));  // (0.75.0: lit on Wireframe)
             ++lines;
         }
     }
@@ -1795,7 +1944,10 @@ void MapView::drawSystem(Canvas& c, const Game& g, int sys, float cx, float cy, 
         float x = cx - (nt * (w + 1) - 1) / 2.f + w / 2.f;
         for (int q = 0; q < g.numPlayers; ++q) {
             if (!s.hasToken(q)) continue;
-            cards::commandToken(c, g.players[q].faction, playerColor(g, q), int(std::lround(x)), int(std::lround(y)), w);
+            {
+                pcolours::Finish fin(c, aroundRect(x, y, float(w) / 2.f + 1.f, float(th) / 2.f + 1.f), pcolours::of(g, q), uint32_t(sys) * 17u + uint32_t(q));
+                cards::commandToken(c, g.players[q].faction, playerColor(g, q), int(std::lround(x)), int(std::lround(y)), w);
+            }
             x += float(w + 1);
         }
     }
@@ -1852,6 +2004,8 @@ void MapView::drawUnits(Canvas& c, const Game& g, int sys, float cx, float cy, f
             const float w = float(shown) * gap + (more > 0 ? float(textWidth(font, moreText)) + 3.f : 0.f) +
                             (extra.empty() ? 0.f : float(textWidth(font, extra)) + 3.f);
             float x = cx - w / 2.f + gap / 2.f;
+            pcolours::Finish fin(c, Rect{int(cx - w / 2.f) - 1, int(y - L * 0.6f), int(w) + 3, int(L * 1.2f) + FONT_XS.lineHeight},
+                                 pcolours::of(g, q), uint32_t(sys) * 17u + 9u);
             for (int i = 0; i < shown; ++i, x += gap) {
                 const One& o = row[size_t(i)];
                 const float len = o.t == UnitType::Fighter ? L * 0.62f : o.t == UnitType::Destroyer ? L * 0.8f : L;
@@ -1911,8 +2065,9 @@ void MapView::drawUnits(Canvas& c, const Game& g, int sys, float cx, float cy, f
         // little ship-shaped marker
         float h = float(font.lineHeight);
         float txs[3] = {bx, bx + h * 0.7f, bx}, tys[3] = {by, by + h / 2, by + h};
+        pcolours::Finish fin(c, Rect{int(bx), int(by), int(h * 0.7f) + tw + 6, int(h) + 1}, pcolours::of(g, q), uint32_t(sys) * 17u + 10u);
         c.fillPolygon(txs, tys, 3, playerColor(g, q));
         c.fillRoundRect(int(bx + h * 0.7f), int(by), tw + 5, int(h), 4, rgb(8, 10, 18), 220);
-        drawText(c, font, int(bx + h * 0.7f) + 2, int(by), label, playerColor(g, q));
+        drawText(c, font, int(bx + h * 0.7f) + 2, int(by), label, pcolours::readable(playerColor(g, q)));
     }
 }

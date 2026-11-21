@@ -78,7 +78,7 @@ bool Rules::usExplore(int p, int c, int sys, int planet) {
     if (exIs(c, "warforgeruins")) {  // War Forge Ruins (0.43.0, U1): a mech there, or an infantry given up - 1 mech or 2 infantry
         if (!mechOrInfantry("Place 1 mech or 2 infantry on this planet.")) return true;
         std::vector<Option> o;
-        if (unitsAvailable(G, p, UnitType::Mech) > 0) o.push_back({0, "1 mech", ""});
+        if (unitsForPlacement(G, p, UnitType::Mech) > 0) o.push_back({0, "1 mech", ""});
         if (unitsAvailable(G, p, UnitType::Infantry) > 0) o.push_back({1, "2 infantry", ""});
         if (o.empty()) return true;
         const int k = o.size() == 1 ? o[0].id : pick(p, Tag::ExploreChoice, name + ": place what on " + planetName(planet) + "?", o);
@@ -88,7 +88,9 @@ bool Rules::usExplore(int p, int c, int sys, int planet) {
         return true;
     }
     if (exIs(c, "forgottentradestation")) {  // Deserted Trade Station: 1 trade good per planet in the system
-        const int n = sys >= 0 ? int(G.systems[sys].planets.size()) : 0;
+        int n = sys >= 0 ? int(G.systems[sys].planets.size()) : 0;
+        if (G.fixes >= 31 && sys >= 0)  // (fixes 31, the exploration pass) a space station isn't a planet (Thunder's Edge)
+            for (int16_t x : G.systems[size_t(sys)].planets) n -= isStation(G, x) ? 1 : 0;
         if (n > 0) {
             gainTG(p, n);
             say(p, pn(p) + " gains " + std::to_string(n) + " trade good" + (n > 1 ? "s" : "") + " (" + name + ").");
@@ -158,7 +160,7 @@ bool Rules::usExplore(int p, int c, int sys, int planet) {
         return true;
     }
     if (exIs(c, "ancientshipyard")) {
-        if (sys >= 0 && !otherShipsIn(G, p, sys) && unitsAvailable(G, p, UnitType::Cruiser) > 0 &&
+        if (sys >= 0 && !otherShipsIn(G, p, sys) && unitsForPlacement(G, p, UnitType::Cruiser) > 0 &&
             yesNo(p, Tag::ExploreChoice, name + ": place 1 cruiser in " + sysName(sys) + "?", "")) {
             addUnits(p, UnitType::Cruiser, 1, sys, -1);
             say(p, pn(p) + " places 1 cruiser in " + sysName(sys) + " (" + name + ").", sys);
@@ -319,11 +321,14 @@ int Rules::placeNewSystem(int p, int def, Tag tag, const std::string& why) {
         }
         opts.push_back({spotId(h), "Beside " + next, std::to_string(n) + " systems next to it"});
     }
+    spotPick_ = true;  // (0.61.2: the spaces are picked on the map)
     const int id = opts.size() == 1 ? opts[0].id
                                     : pick(p, tag, why + ": place " + kSystems[def].name + " (" + kSystems[def].key + ") where?", opts,
                                            "At the edge of the board, next to at least 2 systems.");
+    spotPick_ = false;
     const int s = addBoardSystem(G, def, spotHex(id));
-    if (G.systems[size_t(s)].planets.empty()) G.systems[size_t(s)].frontier = true;  // RULES-CHECK: as at setup (LRR 38.1)
+    // RULES-CHECK: as at setup (LRR 38.1); (fixes 31) a space station isn't a planet (Thunder's Edge), as at setup
+    if (G.fixes >= 31 ? planetless(G, s) : G.systems[size_t(s)].planets.empty()) G.systems[size_t(s)].frontier = true;
     computeAdjacency(G);
     {
         Event e;

@@ -27,6 +27,9 @@ private:
     Rect clip_;
 };
 void drawPanel(Canvas& c, Rect r, uint32_t fill, uint32_t border, int radius = 8, int alpha = 235);
+// (0.72.0, owner: "every button / row lights up under the pointer the same way") the light the app draws over the button
+// or action under the pointer: a gold edge and a faint warm wash, round or boxed
+void drawHoverLight(Canvas& c, Rect r, bool round);
 // Small rounded badge with a button label inside ("A", "L1", ...). Returns width.
 int drawButtonBadge(Canvas& c, int x, int y, const std::string& label, bool lit = false);
 // Bottom bar of {button, action} hints.

@@ -1,0 +1,376 @@
+# The line each computer player opens YOUR offer screen with (0.64.0) - Discordant Stars factions, part 1.
+# See about_base.txt and BRIEF.md.
+
+[axis]
+hello: Welcome to the Shipwrights, {them}! Browsing, buying, or both? Every visit is a good visit.
+hello: Ah, a new customer! The Axis is open for business, {them}. What can we sell you?
+neighbour: You live right next to our showroom, {them}. Neighbours get the best delivery times.
+neighbour: Neighbour! Wars nearby are good for business - but we'd rather sell to you than shoot you.
+partner: A repeat customer! Our last deal with you, {them}, was a five-star sale. Let's do another.
+partner: Back again? We love loyalty. Loyalty discount applies. Mostly.
+kept: You kept your word, {them}. Good credit rating! We'll extend you more.
+kept: A customer who pays on time. You're our favourite kind, {them}.
+broken: You broke your word to the Axis, {them}. Your credit rating took a dive. Cash up front now.
+broken: Last time you skipped the bill. We remember every invoice, {them}.
+clash: You shot at our ships, {them}. Honestly? Great demo of our hull plating. Still, rude.
+clash: You attacked us. We'll talk - after we sell your enemies a few new dreadnoughts.
+leader: You're winning, {them}! And everyone who wants to stop you is shopping with us.
+leader: Top of the galaxy! Big target. Want to buy some armour?
+warm: {them}! Our best customer. Come in, come in!
+warm: For you, friend, the VIP lounge is open. What'll it be?
+wary: Browsing, {them}? Fine. We'll keep an eye on the merchandise.
+wary: Speak. We're still checking your credit history.
+hostile: You're on our "do not serve" list, {them}. Make it quick.
+hostile: We'll sell to you, {them}. At a markup. A big one. Talk.
+
+[bentor]
+hello: Bentor Conglomerate, ventures department. What's the pitch, {them}?
+hello: A new contact! Every call could be the next big find. Go ahead, {them}.
+neighbour: Your space borders our claims, {them}. Neighbours make the best joint ventures.
+neighbour: Next door to our dig sites! Let's keep the borders friendly and the profits flowing.
+partner: Our last venture with you paid out, {them}. Shareholders are delighted. Again?
+partner: Repeat partner! Your shares in our goodwill are up. Let's talk.
+kept: You kept your word, {them}. Solid investment. We like solid investments.
+kept: Promise kept. Your stock just went up with the board.
+broken: You broke a promise to the Conglomerate, {them}. That was a bad quarter for trust.
+broken: Your last deal defaulted, {them}. The board wants guarantees this time.
+clash: You hit our prospecting fleet, {them}. That's a write-off we haven't forgotten.
+clash: You attacked our claims. We'll talk business - with a risk premium.
+leader: You're ahead, {them}! The market's betting against you. We're watching the odds.
+leader: Market leader! Impressive. Expect hostile bids from everyone.
+warm: {them}! Our favourite partner. What venture shall we start?
+warm: Always a pleasure, friend. The board loves you.
+wary: Let's hear it, {them}. We're doing due diligence on you.
+wary: The board's undecided about you. Make a good pitch.
+hostile: You're a bad investment, {them}. Talk fast.
+hostile: The board says no, {them}. Convince them.
+
+[kjalengard]
+hello: Hail, {them}! The Berserkers hear you. Better if you'd come with an axe, but speak.
+hello: You call the halls of Kjalengard, {them}? Speak loud, we are hard of hearing after battle.
+neighbour: Your worlds sit right beside our longhalls, {them}. Good! Close enemies make the best sagas.
+neighbour: Neighbour! We hear your engines across the border. They sound like a challenge.
+partner: You traded with us before, {them}. It was boring. But you were honest. Again, then.
+partner: Another bargain? Fine. Our skalds won't sing of it, but we'll make it.
+kept: You kept your oath, {them}. An oath kept is worth a saga. Speak, oath-keeper.
+kept: Your word held like a good shield. The Berserkers respect that.
+broken: You broke your oath to Kjalengard, {them}. Oathbreakers end up in the worst sagas.
+broken: A broken oath! Our grandchildren will spit your name. Speak, if you must.
+clash: You fought us, {them}! Glorious! A worthy battle. We still owe you a bloody nose.
+clash: You crossed blades with the Berserkers. We will sing of it - and of our revenge.
+leader: You are mightiest now, {them}. Every warrior in the galaxy wants your head. So do we.
+leader: You lead! A fine champion. Champions are for challenging.
+warm: {them}! Shield-friend! Come, sit by the fire and speak.
+warm: The halls cheer your name, friend. Talk.
+wary: We watch you, {them}. Not friend, not foe. Yet.
+wary: Speak plainly. The Berserkers have no patience for clever words.
+hostile: You are a foe of Kjalengard, {them}. Speak before we grab our axes.
+hostile: Talk, {them}. Then meet us on the battlefield.
+
+[celdauri]
+hello: Welcome to the Celdauri trade port, {them}. Our docks are open. Our guns are polite.
+hello: Good day, {them}. The Trade Port is ready to do business. Respectfully.
+neighbour: You're right on our shipping lanes, {them}. Good neighbours pay low docking fees.
+neighbour: Neighbour. Our docks see your ships every day. We'd like that to stay peaceful.
+partner: Our ledgers show good business with you, {them}. Preferred client rates apply.
+partner: Back again! Our last transaction was very satisfactory. Let's continue.
+kept: You kept your agreement, {them}. That's noted in your client file. Favourably.
+kept: Reliable clients are the backbone of the port. Thank you, {them}.
+broken: You broke an agreement with the Celdauri, {them}. Your docking rights are under review.
+broken: A breach of contract, {them}. We're still talking - our dock guns are also listening.
+clash: You attacked our ships, {them}. Our defences remember. Let's keep this civil.
+clash: You fired on the Celdauri. Unwise. Business will be... formal for a while.
+leader: You're leading, {them}. Many will want to stop you. The port stays neutral. For a price.
+leader: You're ahead. Good for trade, bad for peace. Proceed carefully.
+warm: A preferred client! Welcome, {them}. How can the port help?
+warm: Always good to see you, friend. Best rates for you.
+wary: Proceed, {them}. Business only. The docks are watching.
+wary: We're cautious with you. You understand. Speak.
+hostile: You're not welcome at our docks, {them}. Say your piece.
+hostile: Our guns are ready, {them}. So is our patience. Barely.
+
+[cheiran]
+hello: Klk. The Horde hears you, {them}. Speak slow. We are not in a hurry.
+hello: A small voice calling the Horde. Klk-klk. Go on, {them}.
+neighbour: Your worlds touch our waters, {them}. Do not poke our shell, and we will not snap.
+neighbour: Neighbour. Klk. The Horde lives next to you now. Be quiet, be friendly.
+partner: You traded with the Horde before, {them}. It was fair. Klk. Again.
+partner: Another deal? The Horde remembers good deals. Speak.
+kept: You kept your word, {them}. Strong, like a good shell. Klk.
+kept: Promise kept. The Horde trusts you a little more.
+broken: You broke your word to the Horde, {them}. Cracked shells do not heal. Klk.
+broken: A broken promise. The Horde remembers. Slowly. Forever.
+clash: You poked the Horde, {them}. Klk-klk. We are slow to anger. We are angry.
+clash: You attacked our broods. The Horde does not forgive soft things.
+leader: You grow big, {them}. Big things draw many claws. Klk.
+leader: You lead the galaxy. The Horde does not care. Unless you come near.
+warm: Broodfriend {them}! Klk-klk. Come, speak.
+warm: The Horde is glad to hear you, friend.
+wary: The Horde watches you, {them}. Claws closed. For now.
+wary: Speak. We are deciding. Slowly. Klk.
+hostile: The Horde does not like you, {them}. Klk. Speak quick.
+hostile: Our claws are open, {them}. Talk.
+
+[cymiae]
+hello: {them}. You called us. We were busy wanting to HIT something. Speak.
+hello: Talk, {them}! Fast! Before our blades decide FOR us.
+neighbour: You live right next to us, {them}. So close. So easy to REACH.
+neighbour: Neighbour! We see your worlds every day. Every day we want to SMASH them. We don't. Yet.
+partner: You traded with us before, {them}. We didn't kill you. That's FRIENDSHIP, for us.
+partner: Another deal? Fine. FINE. The last one didn't make us angry. Much.
+kept: You kept your word, {them}. Rare. We respect that. We still want to HIT something.
+kept: Promise kept. Good. Very good. We will crush someone ELSE today.
+broken: You broke your word, {them}! LIAR! We are SO angry. Speak before it boils over.
+broken: You lied to us. We remember. We REMEMBER! Talk, liar.
+clash: You fought us, {them}! YES! More of that! But first... talk. If you must.
+clash: You hit us. We hit back. We want to hit again. Speak QUICKLY.
+leader: You're winning, {them}? Winners have the biggest heads. Biggest heads are easiest to SMASH.
+leader: Top of the galaxy! We want to knock you DOWN. Talk.
+warm: {them}! We like you. We won't smash you. PROMISE.
+warm: Friend! Speak. We are calm. Mostly calm.
+wary: We're watching you, {them}. Hands where we can see them. Blades where you can SEE them.
+wary: Speak. We haven't decided whether to smash you.
+hostile: We HATE you, {them}. Talk before we stop listening.
+hostile: Give us a reason, {them}. Any reason. Please refuse. We WANT a fight.
+
+[dihmohn]
+hello: The flotilla drifts near you, {them}. We pass through... and we listen.
+hello: A voice on the current. Speak softly, {them}. We are only passing by.
+neighbour: Our drift takes us close to your worlds, {them}. We mean no harm. We only pass.
+neighbour: Neighbours, for a while. The currents brought us here. Be gentle.
+partner: We traded before, {them}, as our paths crossed. It was kind. Again?
+partner: Another meeting on the current. Our last was good.
+kept: You kept your word, {them}. The flotilla will remember you warmly.
+kept: A promise kept. Rare, out here. Thank you.
+broken: You broke your word, {them}. We drift away from such things. Speak... carefully.
+broken: A broken promise is a strange current. We will not follow it again lightly.
+clash: You fired on the flotilla, {them}. We do not fight. We will not forget.
+clash: Your guns found our drifting ships. Why? Speak.
+leader: You lead the galaxy, {them}. Strong currents pull many ships. Some sink.
+leader: You are ahead. We will drift wide of you for a while.
+warm: {them}... a friendly light on the current. Speak.
+warm: The flotilla is glad to see you, friend.
+wary: We do not know you yet, {them}. Strangers are a mystery. Speak.
+wary: Our sails are ready to turn. Talk.
+hostile: The flotilla fears you, {them}. Speak, and let us pass.
+hostile: We will drift far from you, {them}. Be quick.
+
+[edyn]
+hello: Be welcome before the Lawgivers, {them}. Speak, and we will judge kindly.
+hello: The Edyn grant you audience, {them}. Speak your request.
+neighbour: Your worlds lie within the reach of our law, {them}. Be at peace, and be protected.
+neighbour: Neighbour. Our decrees extend to your borders. They are gentle decrees.
+partner: You have bargained with the Edyn before, {them}. We bless the continuation.
+partner: Our last accord was just. Let us make another.
+kept: You kept your word, {them}. The Lawgivers decree you trustworthy.
+kept: A promise honoured. Obedience is a kindness to us both.
+broken: You broke your word to the Edyn, {them}. The law remembers. We will hear you - sternly.
+broken: An oath broken before the Lawgivers. Speak, {them}. Your judgement is pending.
+clash: You raised arms against us, {them}. A grave offence. We are merciful. Speak.
+clash: Your attack is written in our records. Mercy remains possible.
+leader: You lead the galaxy, {them}. Power demands law. We will provide it.
+leader: You are ahead. Even the strong must answer to the Lawgivers.
+warm: Beloved subject {them}. The Edyn bless your call.
+warm: We are pleased, {them}. Speak, and be granted.
+wary: The Lawgivers weigh your heart, {them}. Speak.
+wary: You stand between favour and judgement. Choose your words.
+hostile: You stand condemned, {them}. Speak your defence.
+hostile: The Lawgivers' patience thins, {them}. Be brief.
+
+[florzen]
+hello: Oi, {them}! The Florzen are listening. What've you got, and how much is it worth?
+hello: You called pirates, {them}. Brave. Or stupid. Talk.
+neighbour: You live right next to our raiding grounds, {them}. Pay up and we'll raid somewhere else.
+neighbour: Neighbour! We can see your cargo bays from here. Lovely.
+partner: You've dealt with us before, {them}. You survived. Let's see if you're lucky twice.
+partner: Back for more? Last deal filled our holds. Let's fill 'em again.
+kept: You kept your word, {them}. Didn't think you had it in you. Talk.
+kept: Promise kept! Fine. We'll only rob you a little.
+broken: You broke your word to the Florzen, {them}. Nobody cheats a pirate twice.
+broken: Liar! We'll talk, {them} - but we're counting your ships while we do.
+clash: You shot at us, {them}. Good fight! Now pay for the damage.
+clash: You attacked the Florzen. We'll take it out of your cargo.
+leader: You're the richest prize in the galaxy, {them}. Every pirate's dream.
+leader: Top of the galaxy! More loot to take. Speak, while you've got it.
+warm: {them}! Our favourite mark - er, friend. Talk.
+warm: For you, mate, half the usual cut. Go on.
+wary: Hands off our loot, {them}. Speak.
+wary: We're watching your holds. Talk.
+hostile: We'd rather loot you than talk, {them}. Make it fast.
+hostile: Give us a reason not to board you, {them}.
+
+[freesystems]
+hello: Greetings from the Free Systems, {them}! Let's talk as equals.
+hello: Hello, comrade {them}. The independent worlds are listening.
+neighbour: You're our neighbour, {them}. Free people should stand together.
+neighbour: Your worlds and ours share a border. Let it be a border of friends, not walls.
+partner: We've traded fairly before, {them}. Fair trade is the root of freedom. Again?
+partner: Our last deal served both our peoples. Solidarity!
+kept: You kept your word, {them}. That's how free peoples build trust.
+kept: A promise kept between equals. That's worth more than any treasury.
+broken: You broke your word to the Free Systems, {them}. The people noticed. They're angry.
+broken: A broken promise is a betrayal of the people, {them}. Speak - we'll judge fairly.
+clash: You attacked free worlds, {them}. Tyrants do that. Prove you're not one.
+clash: Your guns hit our people. We'll talk - but the people want answers.
+leader: You lead the galaxy, {them}. Power gathers. Power corrupts. We're watching.
+leader: You're on top. The Free Systems will not bow to a new empire.
+warm: Comrade {them}! The people are glad to hear you.
+warm: Friend and equal. Speak freely.
+wary: We're listening, {them}. Freedom means caution, too.
+wary: Speak. We'll decide if you're a friend of the free.
+hostile: The people distrust you, {them}. Speak.
+hostile: You stand against freedom, {them}. Say your piece.
+
+[ghemina]
+hello: Ha! {them} calls the Raiders... || ...and we will decide if they're worth hearing.
+hello: Speak, {them}! My Lady and I are listening... || ...for something worth our time.
+neighbour: Your worlds lie close to our longhalls, {them}... || ...close enough to burn, should you displease us.
+neighbour: Neighbours! We see your shores from our ships... || ...and we have marked the softest ones.
+partner: You've traded with the Raiders before, {them}... || ...and you kept your head. Let's see if you're lucky twice.
+partner: Another bargain! Our last one filled the halls... || ...and left you poorer. Shall we repeat it?
+kept: You kept your word to us, {them}! Ha! Rare... || ...and noted. You may live a while longer.
+kept: An honest {them}! I could drink to that... || ...and I will remember it when we choose our targets.
+broken: You broke your word to the Raiders, {them}... || ...and liars feed the crows. Speak quickly.
+broken: My Lord is furious with you... || ...and I am far worse. Choose your words.
+clash: You struck at us, {them}! A good fight... || ...that you will pay for. In full.
+clash: Ha! You've got teeth, {them}... || ...and we have more. Speak.
+leader: You lead the galaxy, {them}! A great prize... || ...and great prizes get raided.
+leader: The richest hall in the galaxy is yours... || ...for now. Speak.
+warm: {them}, friend of our table! Speak... || ...we are listening kindly. Today.
+warm: My Lord likes you... || ...and so, surprisingly, do I.
+wary: We're watching you, {them}... || ...very, very closely.
+wary: Speak, {them}. My Lord is undecided... || ...and I have doubts.
+hostile: We'd rather raid you than hear you, {them}... || ...so make it worth our while.
+hostile: Talk, {them}... || ...then run.
+
+[ghoti]
+hello: The shoal turns toward you, {them}. Speak - the All Mother listens.
+hello: A ripple from your worlds, {them}. The current carries your voice to us. Go on.
+neighbour: Your stars are close to our waters, {them}. Let the currents flow gently between us.
+neighbour: Neighbours in the deep. The All Mother likes calm waters. Keep them calm.
+partner: We have swum together in trade before, {them}. The tide was kind. Again?
+partner: Our last exchange flowed well. Let the current carry us further.
+kept: You kept your word, {them}. Steady as the deep tides. The shoal trusts you.
+kept: A promise held. The All Mother is pleased with you.
+broken: You broke your word, {them}. The waters between us are muddied now. Speak.
+broken: A broken promise is a riptide, {them}. We swim carefully around you now.
+clash: You attacked the shoal, {them}. The All Mother felt every wound. Speak.
+clash: Your guns stirred the depths. The shoal is wary. Talk.
+leader: You swim highest, {them}. The surface is where the hunters wait.
+leader: You lead the galaxy. Strong currents pull everyone toward you - and against you.
+warm: {them}! A friend of the shoal. The water is warm. Speak.
+warm: The All Mother smiles on you, friend.
+wary: The shoal circles you, {them}. Speak, and we will see.
+wary: Unsure waters. Go on.
+hostile: The shoal turns its back to you, {them}. Speak quickly.
+hostile: Dark water between us, {them}. Talk.
+
+[gledge]
+hello: Union rep here. Make it quick, {them}, I've got a shift in ten minutes.
+hello: Yeah? Gledge Union. What do you want, {them}?
+neighbour: You're right next to our mines, {them}. Keep the noise down and we'll get along fine.
+neighbour: Neighbour. We dig, you do whatever you do. Don't dig on our side.
+partner: We've traded before, {them}. It got the job done. Same again?
+partner: Last deal was fair. Union approved. Let's do it again.
+kept: You kept your word, {them}. That's more than management ever does.
+kept: Promise kept. The Union respects that. Go on.
+broken: You broke your word, {them}. The Union's filed a grievance. Talk.
+broken: Last time you lied. The lads remember. Make it good.
+clash: You shot at our miners, {them}. Union's furious. We'll talk. Briefly.
+clash: You attacked us. That's a strike-worthy offence. Speak.
+leader: You're winning, {them}? Good for you. Don't expect us to work overtime for it.
+leader: Top of the galaxy. Somebody always does the heavy lifting. Usually us.
+warm: Hey, {them}. You're all right. What do you need?
+warm: Good to hear from you. Union's happy. Talk.
+wary: The Union's not sure about you, {them}. Speak.
+wary: We'll hear you out. Then we'll vote on it.
+hostile: Union says no, {them}. Talk, then clear off.
+hostile: The lads don't like you, {them}. Make it short.
+
+[augers]
+hello: We knew you would call, {them}. We have been waiting since before you decided to.
+hello: Ah, {them}. Right on time. As we foresaw.
+neighbour: Your worlds and ours lie side by side, {them}. In most futures, that matters a great deal.
+neighbour: Neighbour. We have seen our borders touch in every thread. Some threads are kinder.
+partner: We have traded before, {them}, and will again. We have already seen it.
+partner: You return, as we foresaw. The deal is half done already.
+kept: You kept your word, {them}. We knew you would. It was still pleasant to watch.
+kept: A promise kept - exactly as foretold. Speak.
+broken: You broke your word to us, {them}. We saw it coming. We trusted you anyway. Foolish of us.
+broken: The lie was in every future we saw. We will not be surprised again.
+clash: You attacked us, {them}. We saw the battle long before. We still bled.
+clash: You fought the Augurs. It ended as foreseen. Shall we move on?
+leader: You lead the galaxy now, {them}. We have seen how this ends. Do you wish to know?
+leader: You are ahead. In some futures you stay there. In most... speak.
+warm: {them}, a friend in every future we see. Speak.
+warm: We foresaw this pleasant conversation. Go on.
+wary: Your future is clouded, {them}. Unusual. Speak, and let us see.
+wary: Many threads branch from you. We watch them all.
+hostile: In every future, we find you troublesome, {them}. Speak.
+hostile: We know what you will say, {them}. Say it anyway.
+
+[kollecc]
+hello: Welcome, {them}. The Society is always pleased to meet a new... curiosity.
+hello: Ah, {them}. Do come in. Mind the exhibits. Some of them bite.
+neighbour: Your worlds lie close to our collection, {them}. Such interesting worlds. Rare, even.
+neighbour: Neighbour. We admire your systems from afar. Admire them very much.
+partner: You have traded with the Society before, {them}. The pieces you gave us are well loved.
+partner: Another exchange? Our last acquisition from you was delightful.
+kept: You kept your word, {them}. A rare quality. We collect rare qualities.
+kept: Reliable. How charming. Speak.
+broken: You broke your word to us, {them}. Disappointing. We do keep records of such things.
+broken: A broken promise, {them}. It has been catalogued. Speak.
+clash: You attacked the Society's ships, {them}. We have more than you saw. Many more.
+clash: You damaged part of our collection. We are... displeased. Quietly.
+leader: You lead the galaxy, {them}. How rare. How valuable. We are watching closely.
+leader: The most precious thing in the galaxy right now may be you. Interesting.
+warm: Dear {them}. A treasured friend of the Society. Speak.
+warm: We are delighted, {them}. Do go on.
+wary: The Society is cautious with you, {them}. Speak.
+wary: We are still appraising you, {them}.
+hostile: You are a flawed piece, {them}. Speak, then go.
+hostile: The Society has no place for you, {them}. Be brief.
+
+[kolume]
+hello: This one greets you, {them}. All things pass. This moment, too. Speak.
+hello: Peace, {them}. This one is listening, as the universe listens.
+neighbour: Your worlds lie beside ours, {them}. Like stones in a river, we share the current.
+neighbour: Neighbour. This one sees your stars each cycle. Their light is welcome.
+partner: We have exchanged before, {them}. The wheel turns, and brings us here again.
+partner: Another exchange. Balance seeks balance. Speak.
+kept: You kept your word, {them}. Stillness and truth. This one is grateful.
+kept: A promise kept, like a candle that does not flicker. Speak.
+broken: You broke your word, {them}. This one is not angry. This one is... cautious.
+broken: A broken promise disturbs the balance. Speak, and perhaps it can be restored.
+clash: You attacked this one, {them}. Pain passes. Memory remains. Speak.
+clash: Your guns found us. Even war is impermanent. Talk.
+leader: You rise high, {them}. All that rises must fall. This one wishes you a gentle fall.
+leader: You lead the galaxy. The wheel turns for all.
+warm: {them}. This one is at peace with you. Speak.
+warm: Friend. The balance between us is good.
+wary: This one watches, {them}. Calmly. Carefully.
+wary: Your path is not yet clear to this one. Speak.
+hostile: There is no balance between us, {them}. Speak.
+hostile: This one seeks distance from you, {them}. Be brief.
+
+[kortali]
+hello: The Tribunal is in session, {them}. State your case.
+hello: You stand before the Kortali, {them}. Speak, and be judged.
+neighbour: Your worlds fall within our jurisdiction, {them}. Conduct yourselves accordingly.
+neighbour: Neighbour. The Queen's law reaches your borders. Remember that.
+partner: Our records show prior agreements with you, {them}. All lawful. Proceed.
+partner: The Tribunal has dealt with you before. Fairly. Continue.
+kept: You honoured your word, {them}. The Tribunal finds you lawful.
+kept: Your record shows promises kept. Noted in your favour.
+broken: You stand accused of a broken promise, {them}. Your defence had better be strong.
+broken: The Tribunal has not forgotten your breach of faith. Speak.
+clash: You attacked the Queen's forces, {them}. The charge is grave. Speak.
+clash: An assault on the Kortali. Sentence is pending. Your statement, please.
+leader: You lead the galaxy, {them}. The Tribunal watches the powerful most closely.
+leader: Great power, great scrutiny. Proceed.
+warm: The Tribunal looks kindly on you, {them}. Speak freely.
+warm: A citizen in good standing. Proceed, {them}.
+wary: You are under review, {them}. Speak carefully.
+wary: The Tribunal has not reached a verdict on you yet.
+hostile: The Tribunal finds you guilty, {them}. Your last words?
+hostile: You stand condemned before the Queen, {them}. Speak.

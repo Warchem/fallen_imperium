@@ -1,16 +1,25 @@
 # Start a 6-player game at instant AI speed and click through the first decisions.
 wait 5
+# (0.63.0: New Game -> Game options -> AI speed) Instant
 press A
 wait 5
 shot newgame
 press UP
-wait 3
+wait 2
+press A
+wait 2
+press DOWN
+wait 2
+press DOWN
+wait 2
 press RIGHT
-wait 3
+wait 2
 press RIGHT
-wait 3
+wait 2
+press B
+wait 2
 press START
-wait 20
+wait 2
 shot first_decision
 press A
 wait 30

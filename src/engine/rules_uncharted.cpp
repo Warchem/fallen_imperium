@@ -42,7 +42,7 @@ bool Rules::usCardPlayable(int p, int card, const WinCtx& c) const {
             if (is("fulfillment_protocols_ds")) {
                 if (!hasShips(G, p, c.sys)) return false;
                 for (UnitType t : {UnitType::Dreadnought, UnitType::Carrier, UnitType::Cruiser, UnitType::Destroyer, UnitType::Fighter})
-                    if (unitsAvailable(G, p, t) > 0 && unitDef(G, p, t).cost2 <= 8) return true;
+                    if (unitsForPlacement(G, p, t) > 0 && unitDef(G, p, t).cost2 <= 8) return true;
             }
             return false;
         case Win::AfterLanding:  // Hostile World: ground forces landing on our planet
@@ -352,7 +352,7 @@ bool Rules::usResolve(int p, int card, const WinCtx* c) {
     if (is("fulfillment_protocols_ds")) {
         std::vector<Option> opts;
         for (UnitType t : {UnitType::Dreadnought, UnitType::Carrier, UnitType::Cruiser, UnitType::Destroyer, UnitType::Fighter})
-            if (unitsAvailable(G, p, t) > 0 && unitDef(G, p, t).cost2 <= 8) opts.push_back({int(t), unitTypeName(t), ""});
+            if (unitsForPlacement(G, p, t) > 0 && unitDef(G, p, t).cost2 <= 8) opts.push_back({int(t), unitTypeName(t), ""});
         if (opts.empty()) return true;
         const int t = pick(p, Tag::CardTarget, "Fulfillment Protocols: place which ship?", opts);
         addUnits(p, UnitType(t), 1, sys, -1);

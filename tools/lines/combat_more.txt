@@ -1,0 +1,861 @@
+# More combat reactions (owner 2026-11-19 15:35: "let's incorporate all 3" - more generic lines, rival lines, lines for
+# what is happening in the game). Same voices and rules as combat.txt / BRIEF.md. Per faction: two more of each kind
+# (attack / defend / invade / hold, as in combat.txt), and three situations:
+# rematch: it fights {them} again - the two have fought before in this game (either side, space or ground)
+# mecatol: the fight is at Mecatol Rex (either side, space or ground)
+# home:    {them} attacks its home system or invades its home world (spoken by the defender, to the attacker)
+
+# ---------------------------------------------------------------- base game
+
+[arborec]
+attack: Your fleet occupies space The Green requires, {them}. We will remove it. This is not personal. We do not do personal.
+attack: We have grown to the edge of your ships, {them}. Now we grow over them.
+defend: You cut at us, {them}. We have been cut before. Every scar becomes new wood.
+defend: Your weapons are noted, {them}. Our response is already growing. ...shhhrrr...
+invade: Seeds are falling on your world, {them}. They will not ask permission to sprout.
+invade: Our soldiers come down as spores, {them}. Where one lands, a forest follows.
+hold: You stand on our roots, {them}. They are under every step you take. They are tightening.
+hold: This soil feeds us, {them}. It will feed on you as well. That is not a threat. It is nutrition.
+rematch: You again, {them}. We remember the last cutting. We have grown since. Have you?
+mecatol: Even the throne world was soil once, {them}. We will make it soil again. The Green does not need a throne.
+home: This is our heart-grove, {them}. Here every root is awake. ...shhhrrr... You should not have come.
+
+[letnev]
+attack: Ah, {them}. The Barony requires this sector tidied, and you are the clutter. Gunners, if you please.
+attack: Do hold still, {them}. Our dreadnoughts are terribly expensive, and we dislike wasting a shot.
+defend: An attack, {them}? On us? Your audacity is almost charming. Almost.
+defend: How very common of you, {them}. The Barony will now demonstrate what breeding does in a war.
+invade: Our regiments are landing, {them}. Do have your garrison assemble in neat rows; we shall be brief.
+invade: Annexation is under way, {them}. The Barony will see your world properly governed - for once.
+hold: You land on Barony soil without an invitation, {them}? Our garrison will see you out. In pieces.
+hold: These walls were raised by the Barony, {them}. They have outlasted far grander fools than you.
+rematch: You return, {them}? How tedious. The Barony had hoped you learned your place the first time.
+mecatol: The throne world, {them}. It was always meant for a ruler of quality. Step aside for the Barony.
+home: You bring war to the Barony's own doorstep, {them}? Unforgivable. Every gun we own now points at you.
+
+[saar]
+attack: We do not want this fight, {them}. But the Clan has run long enough. Today we stand.
+attack: Pardon us, {them}. Our ships must have this space, and yours are in it.
+defend: Hunted again, {them}? The Clan knows this song. We know how to sing it back.
+defend: So you are the next to chase us, {them}. Many came before you. The Clan is still here.
+invade: The Clan is coming down, {them}. We have nowhere else to go - so we cannot fail.
+invade: Our people need this ground more than you do, {them}. We are sorry. We are landing.
+hold: Every world we ever had was taken, {them}. Not this one. Not while one of us stands.
+hold: We have lived on drifting stone, {them}. We know how to hold on to what little we have.
+rematch: You again, {them}. The Clan does not forget the ones who chase us.
+mecatol: Everyone wants the throne world, {them}. The Clan only wants a place where no one can chase us again.
+home: Our home, {them}. The only one we have left. The Clan will not be driven from another.
+
+[muaat]
+attack: You have flown too close to the sun, {them}. Now you burn.
+attack: Feel that heat on your hulls, {them}? That is the furnace opening its door.
+defend: You strike at fire, {them}? Fire only grows.
+defend: Every shot you fire, {them}, only feeds the flames. Keep going. We are enjoying it.
+invade: Our soldiers step out of the fire, {them}. Your world will learn to burn.
+invade: Embers are raining on your world, {them}. By morning, there will be no morning.
+hold: The rock here still glows, {them}. Land on it, and become part of it.
+hold: This world was forged in fire, {them}. Your boots will melt before our walls do.
+rematch: Back for more burns, {them}? We kept the furnace warm for you.
+mecatol: The throne world looks so pale, {them}. Let us give it some colour. Red. Then orange. Then ash.
+home: You are at the heart of the star, {them}. Here, we do not burn. We are the burning.
+
+[hacan]
+attack: Your fleet is blocking a trade lane, {them}. The Emirates are clearing it. Invoice to follow.
+attack: Nothing personal, {them} - a caravan must pass. Our guns are simply... expediting delivery.
+defend: Attacking a lion's caravan, {them}? The price of that mistake just went up.
+defend: You want our cargo, {them}? It is not for sale. And it is very well guarded.
+invade: A new branch opens on your world, {them}. The Emirates' staff are landing now.
+invade: Consider this a takeover, {them}. A lion takes what it has paid for - with claws, if needed.
+hold: Every stall in this market has a lion behind it, {them}. Each one will fight for it.
+hold: You thought you could take this world for free, {them}? Nothing in the Emirates is free.
+rematch: Back again, {them}? Your last visit is still on our books - unpaid.
+mecatol: Mecatol Rex, {them} - the greatest market in the galaxy. The Emirates will not be priced out of it.
+home: You bring your guns to the Emirates' own gates, {them}? Every lion in Hacan is roaring now.
+
+[sol]
+attack: All Federation ships, engage the {them} fleet. Keep it clean, keep it quick.
+attack: This sector is now under Federation protection, {them}. Your ships are not.
+defend: Contact! {them} has engaged. Shields up, return fire - by the book.
+defend: You started this, {them}. The Federation will finish it. That's a promise.
+invade: Marines, you have a green light. {them} garrison, this is your one warning.
+invade: Federation dropships inbound, {them}. We've done this a hundred times. You haven't.
+hold: Dig in, marines - {them} is coming. Nobody takes a Federation position without paying for it.
+hold: You want this world, {them}? Federation troops are holding it. Bring everything you've got.
+rematch: We have your fleet's profile on file, {them}. Last time was a warm-up.
+mecatol: Mecatol Rex is too important to leave to you, {them}. The Federation is taking responsibility for it.
+home: You've attacked the Federation's home, {them}. Every reserve we have is coming for you.
+
+[ghost]
+attack: The gate opens beside you, {them}... can you feel the cold? That is us.
+attack: Stillness, {them}... and then... we are all around you.
+defend: You fire at shadows, {them}... and hit only shadows.
+defend: Strike us, {them}... and we slip away... and return... behind you.
+invade: We pass through the gate onto your world, {them}... you never had a door that could keep us out.
+invade: A cold mist settles on your world, {them}... that mist is us.
+hold: You came looking for us here, {them}... but we are everywhere, and nowhere.
+hold: Nothing here makes a sound, {them}... soon, neither will you.
+rematch: Again, {them}?... We remember the last time... the cold remembers too.
+mecatol: The throne world, {them}... so loud... so bright... let us bring it the quiet.
+home: You found the way to our home, {them}... few do... fewer leave.
+
+[l1z1x]
+attack: {them} fleet identified. Threat level: negligible. The Lazax will dispose of it.
+attack: Sector reclamation in progress. {them} vessels are an obstruction. Removing obstruction.
+defend: Weapons fire from {them} detected. Calculating response. Result: total destruction.
+defend: Damage sustained. Irrelevant. The Lazax fleet will repair. The {them} fleet will not.
+invade: Deploying ground units. {them} defenders will be catalogued, then corrected.
+invade: Return of the Lazax to this world confirmed. The {them} occupants are an error. Error correction begins.
+hold: {them} landing detected. This world is Lazax property. Trespassers will be dismantled.
+hold: Ground defence active. Every {them} soldier is a resource. Resources will be harvested.
+rematch: {them} profile retrieved. Previous engagement analysed. Weaknesses mapped. Proceeding.
+mecatol: Mecatol Rex is the seat of the Lazax. {them} presence here is an insult. The insult will be deleted.
+home: Alert: {them} at the Lazax core. All units, priority override. Destroy.
+
+[mentak]
+attack: Hold it right there, {them}! This is a robbery. Hand over the ships and nobody gets spaced. Much.
+attack: Fresh hulls on the scanner, {them}! Lads, we've found our payday!
+defend: Oh, you want to rob the robbers, {them}? Cute. Let's dance.
+defend: Ambushing pirates, {them}? We invented that trick. Watch how it's done.
+invade: Shore leave, lads! {them}, keep your valuables close - it won't help.
+invade: Every vault on your world just got a new owner, {them}. Us!
+hold: You're trying to steal from pirates, {them}? Everyone's a comedian.
+hold: This rock's our hideout, {them}. Hideouts come with traps. Lots of traps.
+rematch: Well, well, {them}. Back for another beating? We kept your stuff from last time.
+mecatol: The richest rock in the galaxy, {them}! And here we are, with empty pockets. Let's fix that.
+home: You came to the Coalition's own docks, {them}? Brave. Stupid, but brave.
+
+[naalu]
+attack: Ssstand aside, {them}. We already know how thisss ends. You do not.
+attack: Poor {them}. You will never sssee the strike that finishes you.
+defend: Your attack wasss foreseen, {them}. Your defeat, too.
+defend: Ssso you ssstrike first, {them}? How very... predictable.
+invade: Sssilent feet ssslip onto your world, {them}. Your guards will not even hear them.
+invade: We have ssseen your world in our hands, {them}. Now we take what we have ssseen.
+hold: You land on our world, {them}? We ssset this trap long before you arrived.
+hold: Every path you take here leads to the sssame end, {them}. We made sure of it.
+rematch: Again, {them}? We sssaw you would come back. We sssaw you lose, too.
+mecatol: The throne wasss always meant for the Collective, {them}. Kneel before it, and before usss.
+home: You dare come to our home, {them}? You will not leave it. We have ssseen that.
+
+[nekro]
+attack: Targets | Located
+attack: Purge | Initiated
+defend: Threat | Assessed
+defend: Counterstrike | Engaged
+invade: Harvest | Commencing
+invade: Biomass | Detected
+hold: Intrusion | Denied
+hold: Perimeter | Locked
+rematch: Pattern | Recognized
+mecatol: Throne | Irrelevant
+home: Core | Threatened
+
+[sardakk]
+attack: N'orr see {them}! N'orr hungry! Charge! SKREEE!
+attack: Swarm fly at {them} now! No stop! No mercy! Glory!
+defend: {them} attack N'orr? Ha! Now N'orr have reason! SKREEE!
+defend: Brave {them}! Brave and soon dead! Swarm come!
+invade: N'orr drop on {them} world! Claws ready! Eat everything!
+invade: Down, down, down! N'orr take {them} world! SKREEE!
+hold: N'orr nest! {them} not take! N'orr guard with claws and teeth!
+hold: {them} land on N'orr world? Good! N'orr not need to fly to fight!
+rematch: {them} again! N'orr remember! N'orr win this time, and next time! SKREEE!
+mecatol: Big throne world! N'orr want it! {them} move, or be crushed!
+home: {them} at N'orr hive! Whole swarm wake up! Whole swarm angry! SKREEE!
+
+[jolnar]
+attack: Field trial beginning. {them} ships will serve as the control group. Survival not expected.
+attack: Our latest weapons need peer review, {them}. Your fleet has kindly volunteered.
+defend: A research vessel under fire from {them}? How crude. Defensive countermeasures: deploying.
+defend: Fascinating, {them}. You have chosen violence. We have chosen superior physics.
+invade: Survey teams landing on your world, {them}. Please do not interfere with the experiment.
+invade: Your world shows promising research potential, {them}. Our lab is moving in.
+hold: Every shield on this world was designed by tenured faculty, {them}. You are not on the faculty.
+hold: Your landing has been observed and modelled, {them}. The model says you lose.
+rematch: We have studied our last encounter, {them}. The findings have been published. You will not enjoy them.
+mecatol: Mecatol Rex is a site of immense academic interest, {them}. It requires proper supervision. Ours.
+home: You attack the Universities themselves, {them}? Every lab in Jol-Nar just became an armoury.
+
+[winnu]
+attack: The heirs of the throne will not be blocked, {them}. Move, or be swept aside.
+attack: Every world we take back is another step home, {them}. You are standing on one of those steps.
+defend: You strike the Winnu, {them}? History will remember you as a footnote. A short one.
+defend: We have been wronged before, {them}. We have learned to answer swiftly.
+invade: We return to this world as its rightful lords, {them}. Your claim ends today.
+invade: Our soldiers land to restore what was taken, {them}. Stand down, usurper.
+hold: Not one more step, {them}. The heirs have yielded enough ground for a thousand years.
+hold: You want this world, {them}? Its true rulers are here, and they are not leaving.
+rematch: You again, {them}? The Winnu remember every insult. Every single one.
+mecatol: The throne is ours by right, {them}. Step away from our inheritance.
+home: You attack the last home of the rightful heirs, {them}? Then the Winnu fight with nothing left to lose.
+
+[xxcha]
+attack: We tried every word we knew, {them}. These are the last ones. Fire.
+attack: Patience has limits, {them}, even ours. Today you have found them.
+defend: You leave us no choice, {them}. We will defend ourselves, slowly and thoroughly.
+defend: An attack, {them}? We are disappointed. Disappointment, for the Xxcha, is very dangerous.
+invade: We land with regret, {them}. We will remove your garrison as gently as it allows.
+invade: Slowly, our soldiers come to your world, {them}. They will not hurry, and they will not stop.
+hold: We have held this world through long seasons, {them}. Yours will be a short one.
+hold: Thick shells and thicker patience, {them}. Try to wait us out.
+rematch: We hoped never to meet you like this again, {them}. And yet, here we are.
+mecatol: Mecatol Rex should be a place for talking, {them}. Since you insist on fighting here, we will end it quickly.
+home: You bring war to our home, {them}. The Kingdom has been patient for too long.
+
+[yin]
+attack: The Brotherhood moves as one, {them}. Your fleet will be cleansed in our light.
+attack: Behold, {them}! The faithful are coming, and we are not afraid to die.
+defend: You strike at the faithful, {them}? Our martyrs thank you for the honour.
+defend: Every brother you kill, {them}, rises again in the Brotherhood. We are endless.
+invade: Descend, brothers! {them}, your world will hear the truth before nightfall.
+invade: The faithful land upon your world, {them}. Convert, or be remembered as an example.
+hold: This world is consecrated, {them}. Every brother here will die for it gladly.
+hold: You land among the faithful, {them}. We will not run. We have never run.
+rematch: You fight the faithful again, {them}? You have learned nothing. We have learned everything.
+mecatol: Mecatol Rex will be a temple, {them}. The Brotherhood will cleanse it first.
+home: You attack the heart of the Brotherhood, {them}? Every brother wakes, and every brother fights.
+
+[yssaril]
+attack: Surprise, {them}. You thought you knew where we were. You didn't.
+attack: We know your shield frequencies, {them}. And your crew rosters. And your lunch menu.
+defend: You found us, {them}? Odd. We let you.
+defend: Shooting at us, {them}? You're shooting at decoys. We're the ones next to you.
+invade: Our people have been on your world for weeks, {them}. Now they're just making it official.
+invade: The doors of your bunkers are already open, {them}. We opened them last night.
+hold: Land wherever you like, {them}. We've mined every spot you'll choose.
+hold: You'll be fighting in our jungle, {them}. You'll never see who shoots you.
+rematch: Back again, {them}? We kept watching after last time. We know even more now.
+mecatol: Everyone's watching Mecatol Rex, {them}. We've been watching the ones who watch it.
+home: Took you long enough to find our home, {them}. Now try leaving it.
+
+# ---------------------------------------------------------------- Prophecy of Kings
+
+[argent]
+attack: Wings spread, {them}. The Flight has marked your fleet, and the Flight never misses its mark.
+attack: We circled high above you, {them}. Now we dive.
+defend: You strike at a raptor, {them}? Now you will feel its talons.
+defend: A bold strike, {them}. The Flight respects boldness. We still tear it apart.
+invade: Talons first, {them}! The Flight lands on your world, and the hunt goes on.
+invade: Your garrison is small prey, {them}. The Flight is hungry.
+hold: You climb into an eyrie, {them}. Nothing climbs out.
+hold: Every perch on this world is watched, {them}. You will not take a single one.
+rematch: We remember your scent, {them}. This time, the hunt ends.
+mecatol: The highest perch in the galaxy, {them}. The Flight will roost on Mecatol Rex.
+home: You come for our nests, {them}? Then every wing of the Flight comes for you.
+
+[cabal]
+attack: Such a lovely fleet, {them}... so warm, so full. We will savour every hull.
+attack: Come here, {them}. Closer. We only want a little taste... and then the rest.
+defend: You fire upon us, {them}? Delicious. Fear makes the meat so much sweeter.
+defend: Struggle, {them}. Please. We do so enjoy it when our food struggles.
+invade: We descend to your table, {them}. Your world has been set so beautifully for us.
+invade: Down we go, {them}, into your little nest. We hope your people are well fed.
+hold: Welcome, {them}. Come in, come in. Nobody who comes in ever wants to leave... or can.
+hold: Every step you take here leads deeper, {them}. Deeper into us.
+rematch: Back again, {them}? How sweet. We still remember the taste of the last time.
+mecatol: The throne world, {them}... the richest meal in the galaxy. We will devour it slowly.
+home: All the way into our home, {them}? How thoughtful. We were getting so very hungry.
+
+[empyrean]
+attack: Something stirs in the dark around you, {them}... it is already too late to run.
+attack: You thought the void was empty, {them}. It never was.
+defend: Strike at the dark, {them}... and the dark leans closer.
+defend: Your shots vanish into the nebula, {them}. So will your fleet.
+invade: Shadows lengthen on your world, {them}... and then they move.
+invade: We come down without a sound, {them}. Your sentries will dream of us.
+hold: Walk carefully, {them}. The dark here has teeth.
+hold: You cannot see us on this world, {them}. You will only feel us.
+rematch: We have met before, {them}... the void remembers every face it has seen.
+mecatol: All that light on the throne world, {them}... we will put it out.
+home: You have come into the heart of the dark, {them}. Nothing here is what it seems. Nothing here lets go.
+
+[mahact]
+attack: Your fleet is already ours, {them}. It simply does not know it yet.
+attack: Bow, {them}. The Gene-Sorcerers have returned, and the galaxy will kneel again.
+defend: You dare strike the Mahact, {them}? We will make your own crews turn their guns on you.
+defend: Your rebellion amuses us, {them}. It will not last.
+invade: Our will descends upon your world, {them}. Your soldiers will salute us by nightfall.
+invade: The Mahact take what was always theirs, {them}. Your people will remember their masters.
+hold: Every soldier you land here, {them}, will be ours by morning. Send more.
+hold: This world kneels to the Mahact, {them}. So will you.
+rematch: You defy us again, {them}? This time we take more than your fleet. We take your will.
+mecatol: We ruled the galaxy before the Lazax ever sat on Mecatol Rex, {them}. We are only taking back our throne.
+home: You trespass in the house of the Sorcerers, {them}. Here, even your thoughts belong to us.
+
+[naaz]
+attack: Heads up, {them}! Our mechs are coming through. Please keep your hulls out of the dig zone.
+attack: Survey says there's a fight here, {them}. Survey's never wrong. Mechs, go!
+defend: Seriously, {them}? We just recalibrated the drills! Fine - recalibrating them for you.
+defend: Shots fired at the dig crew, {them}. That's an incident report. And then a counterattack.
+invade: Mechs landing on your world, {them}! We'll leave the ruins standing. You, not so much.
+invade: Big dig on your world, {them}! Shovels out, mechs out, you out.
+hold: This site is ours, {them}. Every mech here was built for digging, and they dig graves just fine.
+hold: Careful where you step, {them}. Half this site is unexploded relics, and the other half is us.
+rematch: Oh, it's you again, {them}. Our mechs remember your hulls. They kept the dents.
+mecatol: Do you know what's buried under Mecatol Rex, {them}? We do. And we're not sharing.
+home: You're shooting at our home, {them}? The whole Alliance just put down their tools and picked up guns.
+
+[nomad]
+attack: A hundred futures, {them}, and your fleet burns in every one. This is where it begins.
+attack: Move aside, {them}. I do not have time to be gentle. The future is running out.
+defend: Now you strike, {them}? I knew you would. I let you. It changes nothing.
+defend: I warned the galaxy about ones like you, {them}. Now I deal with you myself.
+invade: Landing now, {them}. Something on your world must be protected from what is coming.
+invade: Stand down, {them}. I need this world, and the galaxy needs me to have it.
+hold: I am on every hill of this world, {them}. You cannot take it from me. Not from all of me.
+hold: Not here, {them}. Not this world. I have seen what happens if it falls.
+rematch: We fought before, {them}. I remember it from both sides of time. You will not win this either.
+mecatol: Mecatol Rex is where it all begins to break, {them}. I will not let you be the one who breaks it.
+home: You found me here, {them}? Then you found only one of me. The rest of me is already coming.
+
+[titans]
+attack: The giants stir, {them}... and your little ships stand in their shadow.
+attack: Slowly... we turn toward you, {them}... and the stars turn with us.
+defend: Strike the mountain, {them}... the mountain does not notice. Then it does.
+defend: You wake us with fire, {them}... we answer with more.
+invade: We descend on your world, {them}... and the ground groans under us.
+invade: Your world is small, {them}... we will make it ours... one footstep at a time.
+hold: Dig in your heels, {them}... we are the bedrock. You are the dust.
+hold: We have held this ground longer than your people have had names, {them}... we will hold it longer still.
+rematch: Again, {them}?... we remember you... giants forget nothing.
+mecatol: The throne world, {them}... we remember when it was young... it will remember us.
+home: You come to the halls where the giants sleep, {them}?... we are awake now... all of us.
+
+# ---------------------------------------------------------------- Council Keleres
+
+[keleres]
+attack: All units, this is Keleres command. Suspect fleet {them} is resisting. Weapons free.
+attack: Keleres patrol to {them} - you are in violation. This is your only warning. Engaging.
+defend: 10-33! 10-33! Shots fired by {them}! All Keleres units, respond!
+defend: Officer down, officer down! {them} has fired on the Council's patrol. Full response authorized.
+invade: Tactical team deploying to a {them} world. Warrant in hand. Breaching now.
+invade: Keleres boots on the ground, {them}. Hands where we can see them!
+hold: Perimeter established, {them}. This world is under Council jurisdiction. You will not pass.
+hold: Barricades are up, {them}. Any further advance will be treated as an act of war on the Council.
+rematch: Repeat offender on scope - it's {them} again. Priors on file. No leniency this time.
+mecatol: Code red at the Council's seat, {them}. Mecatol Rex is under Keleres protection. Stand down or be removed.
+home: Keleres headquarters under attack by {them}! All units, all reserves - converge on home!
+
+# ---------------------------------------------------------------- Thunder's Edge
+
+[bastion]
+attack: Alright, {them}, let's get this over with. We've got a war schedule to keep.
+attack: Another fleet, another fight. Nothing personal, {them} - you're just next on the list.
+defend: You picked the wrong veterans to ambush, {them}. We've survived worse than you on a quiet day.
+defend: Incoming! Fine - {them} wants to learn the hard way. Everyone, battle stations!
+invade: Landing party, move out! {them}, we've taken tougher worlds than yours with half the troops.
+invade: We know how to take a world, {them}. We also know how to lose one. We're not doing that today.
+hold: Fortify! {them} is coming. Nobody takes a Bastion trench while one of us is breathing.
+hold: You want this world, {them}? We built these walls with our own hands. We'll defend them the same way.
+rematch: Oh, it's {them} again. We've still got the scars from last time. So should you.
+mecatol: Everyone's fought over Mecatol Rex, {them}. We're just the ones who'll still be standing.
+home: You've hit our home, {them}. Everybody here has already lost one. Think about how hard we'll fight for this one.
+
+[deepwrought]
+attack: Terribly sorry, {them}, but our research requires your fleet to be... submerged. Permanently.
+attack: Do forgive the intrusion, {them}! We must test a hypothesis about your hull integrity. It is going to be low.
+defend: Oh! {them}, you have fired upon a research vessel! Most irregular. We must respond in kind - apologies in advance.
+defend: Goodness, {them}, such aggression! Our torpedoes are dreadfully keen to make your acquaintance.
+invade: Our divers are surfacing on your world, {them}. Do pardon the puddles. And the battle.
+invade: Excuse us, {them}, we need a little beachhead for our fieldwork. A small war, nothing more.
+hold: We must insist you leave, {them}. These tide pools are a protected study site. With guns.
+hold: Our apologies, {them}, but this world is flooded with our defenders. Do mind the undertow.
+rematch: Ah, {them}, a returning specimen! We took such careful notes last time. They will be useful.
+mecatol: Mecatol Rex, {them}! Such a fascinating dry place. We would so like to study it - after you are gone.
+home: You have breached the Scholarate's home waters, {them}! We are most terribly sorry - for you.
+
+[firmament]
+attack: Be at peace, {them}. We bring an end to your war - by ending your fleet.
+attack: The galaxy asked to be protected, {them}. Your ships are what it needs protecting from.
+defend: Those who shelter you are the ones you strike, {them}. We forgive you. We will still disarm you.
+defend: Your anger is a sickness, {them}. We are the cure, and the cure is coming.
+invade: We come to your world with open hands, {them}. Lay down your weapons and take them.
+invade: Your people need shepherds, {them}. We are landing to guide them home.
+hold: All who live here are under our care, {them}. You will not harm them.
+hold: Turn back, {them}, and you will be forgiven. Come forward, and you will be stopped.
+rematch: Again you raise your hand, {them}. Again we will gently break it.
+mecatol: Mecatol Rex should be a sanctuary for all, {them}. We will make it one - once you are gone.
+home: This is our sanctuary, {them}. Even the gentlest guardians bare their teeth at the heart of their home.
+
+[obsidian]
+attack: Peace be upon your fleet, {them}. (PEACE IS SILENCE) We bring so much silence.
+attack: Rest now, {them}. (FOREVER) The galaxy is safe from you. (FROM ALL OF YOU)
+defend: You hurt us, {them}? (MORE) Oh, please. More.
+defend: Your weapons are a prayer, {them}. (WE ANSWER PRAYERS) We answer all of them.
+invade: We land among your people, {them}. (FEED) To guide them. To guide them.
+invade: Open your gates, {them}. (WE ARE ALREADY INSIDE) We only want to help.
+hold: This world is safe, {them}. (NOTHING LEAVES) So very safe.
+hold: Come closer, {them}. (CLOSER) The void wants to hold you.
+rematch: You came back to us, {them}. (THEY ALWAYS COME BACK) We are so glad.
+mecatol: The throne world shines, {them}. (PUT IT OUT) We will keep it safe... in the dark.
+home: You are in our home now, {them}. (OUR STOMACH) Welcome. Stay forever.
+
+[crimson]
+attack: All those ships, {them}... and none of them are ours. Not yet.
+attack: You never shared, {them}... so now we take.
+defend: Hit us, {them}... we have nothing left to lose. You have everything.
+defend: You think you can push us back down, {them}? We have been down. We are not going back.
+invade: Your world... your riches... your everything, {them}. Ours now.
+invade: The rebellion comes ashore, {them}... we take the vaults first. Then the rest.
+hold: We fought for every stone of this world, {them}... you will not have one of them.
+hold: Taking from the rebels, {them}? We will make you pay... we know all about paying.
+rematch: You again, {them}... we have not forgotten. We never forget who has more than us.
+mecatol: The throne world, {them}... the richest prize of all. At last it will belong to those who never had anything.
+home: You come to take the little we have, {them}? Then we will take everything you have left.
+
+[ralnel]
+attack: Op is green, {them}. Hit hard, hit fast, gone before your sensors catch up.
+attack: Three routes in, two routes out, one target: you, {them}. Moving!
+defend: Ambush! Fine, {them} - switching to contingency four. We love contingency four.
+defend: {them} opened fire. Noted. Our counter-plan was ready before you were.
+invade: Insertion team is down, {them}. Clock's running - this world is ours in ten.
+invade: Cargo pods dropping, {them}. Half supplies, half soldiers. You'll meet the soldiers first.
+hold: Every door here is rigged, {them}. Every tunnel has two exits. You have none.
+hold: Supply line holds, {them}. We've stocked this depot for a year. You've got maybe a day.
+rematch: Ah, {them}. We drew up a plan just for you after last time. Let's see it run.
+mecatol: Mecatol Rex is the biggest supply hub in the galaxy, {them}. We're taking over logistics.
+home: Hitting our home base, {them}? Every crew we have is already rerouting to you.
+
+# ---------------------------------------------------------------- Discordant Stars
+
+[augers]
+attack: Your fleet was destroyed here, {them}. We are simply arriving at the moment it happens.
+attack: Do not be alarmed, {them}. This battle is already in our past. It went well. For us.
+defend: Ah, the attack, {them}. Right on time. We remember how you lost it.
+defend: Strike as you must, {them}. We have already watched the ending, and we are calm.
+invade: Our soldiers are landing on your world, {them}, exactly where we saw them land.
+invade: The garrison you have here has already surrendered, {them}. They simply do not know it yet.
+hold: You will not take this world, {them}. We know, because we remember tomorrow.
+hold: Land if you wish, {them}. We have seen you leave again. Fewer of you.
+rematch: We knew you would come back, {them}. We saw this meeting long before the last one.
+mecatol: Mecatol Rex, {them}. In every future that matters, we are standing here. Not you.
+home: Even here, {them}? We foresaw this too. And we foresaw how badly it goes for you.
+
+[axis]
+attack: Special offer, {them}: one free demonstration of our newest broadside. Results guaranteed.
+attack: Watch closely, {them} - this is what next season's warships do. Sadly, you won't see next season.
+defend: Hostile customer, {them}? No problem. Every ship we sell comes with a very good warranty.
+defend: Oh, {them}, you've fired on our showroom. That voids your warranty. And your fleet.
+invade: Field trials on your world, {them}! Our new drop troops come with a satisfaction guarantee.
+invade: Landing a sales team on your world, {them}. Heavily armed. It's a hard sell.
+hold: Every gun on this world is premium stock, {them}. Try one. They're on the house.
+hold: Testing our defences, {them}? Excellent. Customers always buy after a demonstration.
+rematch: A returning customer, {them}! Did you like the last demonstration? We've upgraded since.
+mecatol: Mecatol Rex, {them} - the best advertising spot in the galaxy. Nothing sells guns like winning here.
+home: You're attacking the factory floor, {them}? Bad idea. This is where we keep the prototypes.
+
+[bentor]
+attack: New venture, {them}: salvaging your fleet. Our shareholders are very excited.
+attack: Your ships are sitting on a fortune in scrap, {them}. The Conglomerate is cashing in.
+defend: A hostile bid, {them}? Bold. The Conglomerate answers hostile bids with artillery.
+defend: You fired on a company vessel, {them}. Expect a lawsuit. And a broadside.
+invade: Prospectors landing on your world, {them}! Dig crews first, soldiers right behind.
+invade: Your world has been valued and acquired, {them}. Our crews are here to collect.
+hold: Every relic on this world is company property, {them}. So is every bullet.
+hold: Claim jumpers, {them}? The Conglomerate has a standard procedure for those. It is loud.
+rematch: You again, {them}? Our accountants still have your last attack on the books. Time to settle.
+mecatol: Mecatol Rex, {them} - the oldest treasure vault in the galaxy. The Conglomerate is opening it.
+home: Attacking company headquarters, {them}? Every share we own just turned into a gun.
+
+[kjalengard]
+attack: Sound the horns! {them}, you stand between us and a glorious death - yours!
+attack: Ha! A fleet worth fighting! {them}, may your end make a fine saga.
+defend: You strike first, {them}? Good! Now the skalds have a beginning for the song!
+defend: Blood on the waves of space! {them}, we thank you for this gift!
+invade: Shields high, axes higher! {them}, your world will feel the frost of Kjalengard!
+invade: Down to the shore, brothers and sisters! {them} waits, and so does glory!
+hold: Plant your feet, berserkers! {them} comes to our hall - let none of them leave!
+hold: Welcome to our hall, {them}! We have saved you a seat. It is in the ground.
+rematch: {them}! We fought before, and the saga was unfinished! Let us end it properly!
+mecatol: The throne world, {them}! What a place for a battle! The skalds will sing of this one forever!
+home: You attack our homeland, {them}? Every warrior of Kjalengard rises now - even the old ones!
+
+[celdauri]
+attack: Our apologies, {them}, but your fleet is obstructing a trade lane. The docks have authorized removal.
+attack: This is a final notice, {them}. Kindly leave, or be escorted out by our gunships.
+defend: An attack on a trade port, {them}? How unprofessional. Our defences will now be... professional.
+defend: We did warn you about the guns, {them}. Several times, in writing.
+invade: Customs inspection, {them}. Our officers are landing on your world. Please declare your weapons.
+invade: Your world is now under port authority, {them}. Do cooperate; it is much cheaper for everyone.
+hold: This port is closed to hostile traffic, {them}. The guns are very much open.
+hold: We value every client, {them}. Even the ones we have to shoot.
+rematch: Your account is still flagged from our last dispute, {them}. We will settle it now.
+mecatol: Mecatol Rex is the galaxy's most valuable port, {them}. The Confederation must protect its interests.
+home: You fire upon our home docks, {them}? Then every contract we hold with you is void. So are you.
+
+[cheiran]
+attack: klk-klk. Your ships are soft, {them}. The Horde likes soft things.
+attack: Poke the Horde, {them}, and the Horde pinches back.
+defend: Many shots, {them}. Few cracks. The claws are already coming.
+defend: You wake the brood, {them}. klk. The brood is very hungry when it wakes.
+invade: Claws on the shore, {them}. The Horde walks out of the sea and onto your world.
+invade: More of us than your soldiers, {them}. Always more. klk.
+hold: Thick shells, deep burrows, {them}. You cannot dig the Horde out.
+hold: Step into the tide pools, {them}. Something will grab your leg. That is us.
+rematch: klk. We know your ships, {them}. We remember how they sounded when they cracked.
+mecatol: Big world, {them}. Good shore. The Horde wants it. klk.
+home: The nests, {them}! You come near the nests! The whole Horde rises from the deep!
+
+[cymiae]
+attack: BLOOD! {them}, we want BLOOD! Open fire, open everything!
+attack: There you are, {them}! We've been hunting for a fight ALL DAY!
+defend: Oh, you want to FIGHT, {them}? GOOD! We were getting BORED!
+defend: That's it, {them}! Now we're ANGRY! Well - angrier!
+invade: DROP! DROP! DROP! {them}, your soldiers are going to have a VERY bad day!
+invade: Down the hatch and onto your world, {them}! Grab, smash, WIN!
+hold: Stay OFF our world, {them}! Or don't - we'd love to rip you apart!
+hold: Come here, {them}! Come HERE! We'll break you with our BARE HANDS!
+rematch: YOU! {them}! We remember you! Round TWO! No - round EVERYTHING!
+mecatol: The throne world! {them}, we're going to SMASH it, and then SIT on it!
+home: You came to OUR home, {them}?! Every Cymiae here wants a piece of you! EVERY ONE!
+
+[dihmohn]
+attack: Forgive us, {them}. The currents bring us here, and they bring us through you.
+attack: We drift toward you, {them}, slow and quiet. It will be over before you notice the tide.
+defend: You fire on drifting ships, {them}? The Flotilla does not sink so easily.
+defend: Even the calmest current turns into a whirlpool, {them}. You have stirred it.
+invade: The tide carries us onto your shore, {them}. We will not be pulled back out.
+invade: A quiet landing, {them}. We ask only for the ground beneath us - and you are standing on it.
+hold: We anchor here, {them}. Anchors do not lift for the ones who threaten them.
+hold: The Flotilla rests on this world, {them}. We will not be moved by force.
+rematch: We passed you once before, {them}. The currents remember. So do we.
+mecatol: All currents flow toward Mecatol Rex, {them}. Today, ours flow through you.
+home: Our mooring, {them}. The one place we stop drifting. You should not have come here.
+
+[edyn]
+attack: By decree of the Mandate, {them}, your fleet is to be dissolved. The sentence begins now.
+attack: Peace is the law, {them}. You have broken it. Now the law enforces itself.
+defend: You strike at the lawgivers, {them}? Then hear our ruling: you will fall.
+defend: Rebellion against the Mandate, {them}, is answered by the Mandate. Swiftly.
+invade: Envoys of the Mandate descend, {them}. Your world will be governed justly, whether it wishes it or not.
+invade: Rejoice, {them}. Law and order are landing on your world.
+hold: Every soul here lives under our protection, {them}. To harm them is a crime. Crimes are punished.
+hold: Our edicts guard these lands, {them}. Our soldiers guard the edicts.
+rematch: You come before the Mandate a second time, {them}. Repeat offenders receive no leniency.
+mecatol: Mecatol Rex was meant to be governed, {them}, not fought over. The Mandate will govern it.
+home: You wage war upon the seat of the Mandate, {them}? The highest law now declares you an enemy of all.
+
+[florzen]
+attack: Engines hot, guns hotter! {them}, everything you own is about to be ours.
+attack: Stand and deliver, {them}! The cargo, the crew, the ship - we'll take it all.
+defend: Ambush the Profiteers, {them}? Now we strip you for parts. Slowly.
+defend: Oh, that tickled, {them}. Our turn. We don't tickle.
+invade: Raid crews down! {them}, we're cleaning out your vaults - and your armouries, and your kitchens.
+invade: Loot drop on your world, {them}! Fill the holds, lads! Leave nothing!
+hold: Mine, mine, all mine, {them}! Nobody touches the Profiteers' haul!
+hold: Come and take it, {them} - if you want to be the next thing we sell.
+rematch: It's you again, {them}! Last time we took your cargo. This time we're taking the ships too.
+mecatol: Mecatol Rex is the biggest treasure chest in the galaxy, {them}, and we've brought a crowbar!
+home: You're raiding OUR base, {them}? You've got some nerve. We'll be selling your nerve on the market tomorrow.
+
+[freesystems]
+attack: For every free world, {them}! Compact fleets, together - forward!
+attack: Your fleet stands for tyranny, {them}. Ours stands for everyone. Guess who wins.
+defend: Attack one free world, {them}, and you attack them all. Here we come.
+defend: You fired on the Compact, {them}? Then the free worlds fire back - as one!
+invade: Liberation forces are landing, {them}. Your people will be free by sundown.
+invade: Comrades, to the ground! {them}'s garrison stands between this world and its freedom.
+hold: Every citizen here is a soldier today, {them}. Freedom has many defenders.
+hold: We voted to defend this world, {them} - unanimously. Turn back.
+rematch: Back to oppress us again, {them}? The free worlds remember. And we have more friends this time.
+mecatol: Mecatol Rex belongs to every world in the galaxy, {them} - not to you. We're taking it back for all of them.
+home: You strike at the heart of the free worlds, {them}? Every free system in the galaxy will hear of this.
+
+[ghemina]
+attack: Longships forward, {them}! The raid begins! || Try to scream quietly.
+attack: Your fleet will make a fine prize, {them}! || We will hang its banners in our hall.
+defend: Ambush us, {them}? You brave little fool! || Bravery is not enough.
+defend: You strike at the Lord and Lady, {them}?! || A mistake one makes only once.
+invade: Over the side and onto the beach, {them}! || Burn the hall, keep the gold.
+invade: We claim this world for the raiders, {them}! || And everything on it worth carrying.
+hold: Shield wall! {them} comes to our shore! || Let them break upon it.
+hold: You land among raiders, {them}? We are honoured! || We will give you a raider's farewell.
+rematch: {them} again! I still owe you a scar! || And I owe you a grave.
+mecatol: Mecatol Rex, {them}! The greatest prize of all! || Lord, I want it.
+home: You raid the raiders' own hall, {them}?! || Then you will learn why no one has done it before.
+
+[ghoti]
+attack: The school circles you now, {them}. There is no gap to swim through.
+attack: We move with the current, {them}, and the current has turned toward you.
+defend: Splash all you like, {them}. The deep is patient, and the deep is wide.
+defend: You stir the waters, {them}. Now the whole shoal turns to face you.
+invade: We wash onto your world like a high tide, {them}. Tides do not ask.
+invade: The All Mother sends her children to your shore, {them}. We will not be swept back.
+hold: The shoal holds together here, {them}. Break one of us, and the rest close the gap.
+hold: You have waded too deep, {them}. The bottom is very far down.
+rematch: The same waters again, {them}. We remember how you swim. We know where you sink.
+mecatol: All the galaxy's currents meet at Mecatol Rex, {them}. The shoal will gather there.
+home: You come to the All Mother herself, {them}? Then the deepest waters rise against you.
+
+[gledge]
+attack: Clock in, crew. {them}'s fleet is today's job. Let's get it done before lunch.
+attack: Union says we get hazard pay for this, {them}. You're the hazard.
+defend: Great. Now {them} wants a fight. As if the shift wasn't long enough.
+defend: Somebody tell {them} we've got drills that cut through rock. Hulls are easier.
+invade: Mining crews to the surface, {them}. We'll strip this world like any other seam.
+invade: New dig site, {them}. Sorry about your garrison - it's in the way of the ore.
+hold: Not one rock leaves this mine without a union stamp, {them}. That includes you.
+hold: You want to strike, {them}? Fine. The Union knows all about strikes.
+rematch: You again, {them}? Last time cost us a whole shift. We're billing you for it.
+mecatol: Mecatol Rex sits on a lot of good rock, {them}. Union's claiming every bit of it.
+home: You're hitting the Union hall, {them}? Every miner just dropped their pick and grabbed a cutter.
+
+[khrask]
+attack: The stars... are old, {them}. Your ships... are not. They will not... grow old.
+attack: Your fleet... poisons the void... {them}. We... will cleanse it.
+defend: Rain falls... on mountains, {them}... every day. The mountains... remain.
+defend: Your fire... cannot burn stone... {them}. Learn this... while you still can.
+invade: Like a landslide... {them}... slow at first... then everything.
+invade: Your world... cries out, {them}. We come... to answer it.
+hold: Roots... and rock... hold this world, {them}. Neither... can be pulled up.
+hold: Patience... is the strength of stone, {them}. We... can wait... longer than you.
+rematch: Again... {them}. Stone... remembers every blow. And returns it.
+mecatol: Even the throne world... is only a stone, {them}. Stones... belong to us.
+home: The oldest mountain... is our home, {them}. Feel it... wake.
+
+[kollecc]
+attack: Oh, what a charming fleet, {them}. We have just the display case for it.
+attack: Pardon us, {them}. Our curators have marked your flagship as a must-have.
+defend: Rude, {them}. Very rude. And now you will see how many ships we keep in storage.
+defend: Attacking collectors, {them}? We always keep the finest guns for ourselves.
+invade: Acquisition teams are landing, {them}. Do mind the fragile pieces. Especially yourselves.
+invade: We have catalogued every treasure on your world, {them}. Now we simply take delivery.
+hold: This world is part of our private collection, {them}. Admission is not available.
+hold: Hands off, {them}. Every piece here is priceless - and very well guarded.
+rematch: Ah, {them}. We kept a souvenir from our last meeting. We would like a matching set.
+mecatol: Mecatol Rex, {them} - the rarest piece in the galaxy. It must be ours. It simply must.
+home: You have entered the vault itself, {them}. Few visitors see it. None of them leave with anything.
+
+[kolume]
+attack: All fleets dissolve in time, {them}. Yours dissolves today. This one does not rejoice.
+attack: The wheel turns, {them}, and your ships lie under it.
+defend: Anger is a storm, {them}. Storms pass. This one remains when you have passed.
+defend: You strike, and the universe answers, {them}. Today it answers through this one.
+invade: Nothing belongs to anyone for long, {them}. This world passes to us now.
+invade: Silently, this one descends, {them}. Listen. That stillness is your garrison falling.
+hold: Be still, {them}. The ground here has seen a thousand invaders, and remembers none of them.
+hold: Breathe, {them}. Then turn back. Nothing here is worth your ending.
+rematch: We meet again, {them}. All things return. Even this. Especially this.
+mecatol: The throne is only a chair, {them}. Yet so many fall for it. Today, it is your turn to fall.
+home: Even the quiet temple must be defended, {them}. Balance asks this of this one.
+
+[kortali]
+attack: Order in the void! {them}, you are charged with trespass. Judgement follows immediately.
+attack: The verdict was reached before you arrived, {them}. We are here to carry it out.
+defend: You attack the court itself, {them}? Contempt. The penalty is severe.
+defend: Let the record show, {them}: you struck first. Let it also show what came next.
+invade: Bailiffs of the Tribunal are landing, {them}. Your world will answer for its crimes.
+invade: A warrant from the Queen, {them}. It names your world. Our soldiers are serving it.
+hold: No appeal, {them}. This world stays under the Queen's protection.
+hold: Trespassers on this world are tried on the spot, {them}. The court is in session.
+rematch: A repeat offender, {them}. The court remembers your case. The sentence doubles.
+mecatol: Mecatol Rex will be the Queen's courthouse, {them}. You will be its first case.
+home: You bring war to the Queen's own court, {them}? There is no crime greater. There is no mercy left.
+
+[kyro]
+attack: Rejoice, {them}! The holy fever comes to your fleet! Every crew will be blessed!
+attack: Open your hatches, {them}. We bring gifts. Coughing gifts.
+defend: You fire at the faithful, {them}? Then come closer, and receive the blessing.
+defend: Such passion, {them}! You will make a wonderful convert, once the fever takes you.
+invade: The sodality lands, {them}! Hymns, incense and a very contagious joy!
+invade: Your world will be anointed, {them}. Every soul. Whether they like it or not.
+hold: Holy ground, {them}. Breathe it in. Breathe it all in.
+hold: Every soldier you land, {them}, we will welcome with an embrace. A long, feverish embrace.
+rematch: You survived our last blessing, {them}? Remarkable. Let us try a stronger one.
+mecatol: Mecatol Rex, {them} - so many souls in one place! The blessing will spread so quickly!
+home: You have come to the holy sanctuary, {them}! Stay. Pray. Catch something.
+
+[lanefir]
+attack: Another chapter of war begins, {them}. Let us make yours a short one.
+attack: The chronicle demands this battle, {them}. We will write it in your wreckage.
+defend: You strike at the last of a lost people, {them}. We have little left. We will fight for all of it.
+defend: Every war we write down, {them}, ends with the same lesson. You will learn it now.
+invade: Chroniclers descend upon your world, {them}. It will be a page in our history now.
+invade: Lost worlds haunt us, {them}. Today we take one back.
+hold: The memory of our people lives on this world, {them}. You will not erase it.
+hold: Our ancestors held their ground until the end, {them}. We are their descendants.
+rematch: We wrote of our last battle with you, {them}. The ending was left blank. We will fill it in now.
+mecatol: Mecatol Rex has seen empires rise and fall, {them}. We will not let the throne fall to you.
+home: These are the last halls of our people, {them}. We will not write their ending today.
+
+[lizho]
+attack: Do come in, {them}! Oh dear - did nobody mention the minefield?
+attack: What a pleasure, {them}! We have arranged a little surprise. Several, in fact.
+defend: How thoughtful of you to attack, {them}! Our traps were getting so lonely.
+defend: Oh no, {them}, you found us! However will we... ah, there it is. The trap.
+invade: A small courtesy visit to your world, {them}. Please ignore the explosions.
+invade: We hope you don't mind guests, {them}. We brought gifts. They are ticking.
+hold: Welcome, welcome, {them}! Do watch your step. And the next one. And the one after that.
+hold: Please, make yourselves at home, {them}. The floor is ever so comfortable. And ever so hollow.
+rematch: Back so soon, {them}? We saved you a very special trap from last time. We improved it.
+mecatol: Mecatol Rex, {them}! Such a grand stage. A shame if something... happened to it while you stood there.
+home: You found our home, {them}! How lovely. We spent years preparing for your visit.
+
+[mirveda]
+attack: Attention, {them}: this area is restricted. Your fleet will now be removed for everyone's safety.
+attack: We are sorry for any inconvenience, {them}. Lethal force is being applied to your fleet.
+defend: Please remain calm, {them}. Your attack has been logged and will be answered shortly.
+defend: Threat confirmed, {them}. Drones are on their way. Thank you for choosing Mirveda security.
+invade: A security sweep of your world is now in progress, {them}. Please keep all limbs inside the safe zone.
+invade: For the safety of your population, {them}, your defenders are being neutralized.
+hold: Access denied, {them}. This world is a secured site. Unauthorized landings will be terminated.
+hold: Please return to your ships, {them}. This is your final courtesy notice.
+rematch: Our records show a prior incident with {them}. Enhanced measures are now in effect.
+mecatol: Mecatol Rex requires professional security, {them}. We are pleased to provide it. You are no longer needed here.
+home: An attack on the central facility, {them}? All drones, maximum response. This is not a drill.
+
+[mortheus]
+attack: Which light is the star, {them}, and which is the trap?... You chose wrong.
+attack: Your fleet sails into a mirror, {them}... and fights its own reflection.
+defend: You fire into the glow, {them}... and the glow fires back... from everywhere.
+defend: What is struck, {them}, when the target is only light?... Nothing... and then you.
+invade: Your sentries dream of us, {them}... and wake to find the dream has landed.
+invade: A shimmer on the horizon, {them}... a shimmer in your halls... a shimmer where your army stood.
+hold: Every road on this world bends back on itself, {them}... where will you march?
+hold: Look up, {them}... the sky here is watching... and it is not a sky.
+rematch: Have we met, {them}?... Or was that a dream?... Either way... it ended the same.
+mecatol: A throne, {them}, is only a seat for a reflection... let us see whose reflection remains.
+home: You have stepped into the heart of the glow, {them}... here there is no way out... only further in.
+
+[mykomentori]
+attack: The omens are rotten for your fleet, {them}. We read them twice to be sure.
+attack: Spores in your vents, {them}. Rot in your hulls. Now come the guns.
+defend: You cut a thread, {them}. A thousand more are reaching for you now.
+defend: The dice fell this way long ago, {them}. You are only catching up to the omen.
+invade: We fall on your world like soft rain, {them}. Where we fall, things begin to rot.
+invade: The network spreads to your world, {them}. Slowly. Patiently. Inevitably.
+hold: Every step you take here, {them}, wakes something beneath the soil.
+hold: Decay is patient, {them}. It will wait for your soldiers to tire. Then it will feed.
+rematch: Your return was foretold, {them}. So was the way you will leave.
+mecatol: Even the throne world rots, {them}. We will grow from what remains.
+home: You tread on the mother-mycelium, {them}. Every thread in the network now turns toward you.
+
+[nivyn]
+attack: The dark between the stars is our court, {them}. You have entered it without leave.
+attack: Kneel before the void, {them}. Its kings are displeased with you.
+defend: You dare strike at royalty, {them}? We have reigned since before your sun was lit.
+defend: Patience, {them}. We have all the time in the universe. You have only this battle.
+invade: Our banners of night fall upon your world, {them}. It is ours by royal decree.
+invade: As the stars slowly turn, {them}, so does your world turn to us.
+hold: You cannot reach what the night protects, {them}. And the night protects this world.
+hold: Thrones do not move, {them}. Neither do we.
+rematch: We have met before, {them}. For us, it was a heartbeat ago. For you, a lifetime of regret.
+mecatol: Mecatol Rex is a small throne beside ours, {them}. But we will take it all the same.
+home: You trespass in the royal dark itself, {them}. The Star Kings rise from their thrones.
+
+[nokar]
+attack: Job's on, {them}. Nothing personal - the client wants your fleet gone, and the client pays well.
+attack: Rates are up this season, {them}, and so are our guns. Let's earn the money.
+defend: Shooting at professionals, {them}? That's a mistake we'd charge extra to fix.
+defend: Hazard pay just kicked in, {them}. You're about to see why we're worth it.
+invade: Drop team's moving, {them}. Billable hours start now.
+invade: We get paid by the planet, {them}, and yours is next on the invoice.
+hold: Contract says nobody takes this rock, {them}. We honour our contracts.
+hold: You want this world, {them}? Make us a better offer than our client. Didn't think so.
+rematch: You again, {them}? We took your money last time. Wait - no, we took your ships.
+mecatol: A Mecatol Rex job, {them}. Biggest bonus in the galaxy. You're in the way of it.
+home: Hitting the company docks, {them}? That one's free. We'd do it for nothing.
+
+[olradin]
+attack: Emergency session! All in favour of blasting {them}? Motion passes - fire!
+attack: The Economy says fight, the People say fight, the Environment asks us to recycle the wreckage. Agreed, {them}!
+defend: You fired on the League, {them}? The committee is furious. All three members.
+defend: Point of order, {them}: you started this. Second point of order: we finish it.
+invade: By a narrow vote, {them}, we're invading your world. The Environment abstained.
+invade: Landing party approved, {them}! The People are excited. The Economy is very excited.
+hold: The motion to surrender has been rejected, {them}. Unanimously. Loudly.
+hold: Our world, our vote, {them}. And we voted to keep it.
+rematch: You again, {them}? We've already passed a resolution about you. It's not a nice one.
+mecatol: A motion to claim Mecatol Rex for the League, {them}! Seconded, thirded and carried!
+home: You're attacking the League's own assembly, {them}? That has united the whole committee. That never happens.
+
+[zealots]
+attack: Heresy detected in your fleet, {them}. The inquisition brings correction - by fire.
+attack: Every engine you run is a sin, {them}. Today we absolve you of all of them.
+defend: Blasphemers fire upon the faithful! {them}, your machines will be broken on the altar!
+defend: Your weapons are an abomination, {them}. Our faith is the only armour we need. And our guns.
+invade: Purifiers, descend! {them}, your world's machines will be judged and found wanting.
+invade: We land to cleanse your forges, {them}. Repent, and you may keep your tools.
+hold: Not one heretic machine will set foot on this holy world, {them}. Not one.
+hold: Turn back, {them}. This ground is sanctified, and your engines defile it.
+rematch: You return, {them}? Our inquisitors kept your name on the list of heretics.
+mecatol: Mecatol Rex is a reliquary of forbidden knowledge, {them}. It must be purified, and it must be ours.
+home: You defile the holy seat itself, {them}? Every zealot of the faith rises against you.
+
+[rohdhna]
+attack: Engagement Doctrine 04-11C, paragraph two: {them} fleet is in breach. Corrective fire authorized.
+attack: Per Fleet Regulation 88-2D, obstructions to production are to be scrapped. {them} vessels qualify.
+defend: Incident Report 19-07E filed: {them} opened fire. Retaliation Clause activated.
+defend: Defence Ordinance 63-1A: an attack on Roh'Dhna property voids the attacker. {them}, you are void.
+invade: Annexation Procedure 21-5M, step one: landing. Step two: {them} garrison removal. Proceeding.
+invade: Resource Survey Mandate 7-7X: your world is required for production, {them}. Compliance is mandatory.
+hold: Trespass Statute 10-4G, {them}: unauthorized landings are scrap. You are unauthorized.
+hold: Facility Lockdown Protocol 55-3R is in effect, {them}. All entrances sealed. All guns live.
+rematch: Repeat Violation Clause 2-2B: {them} has prior incidents on file. Penalties double.
+mecatol: Heritage Acquisition Order 1-0A assigns Mecatol Rex to Roh'Dhna management. {them}, vacate the site.
+home: Core Facility Defence Act 00-1Z: {them} has attacked headquarters. All production lines now produce war.
+
+[tnelis]
+attack: Nothing personal, {them}. The family just needs this sector. You understand.
+attack: We asked nicely, {them}. Twice. The family doesn't ask a third time.
+defend: You made a big mistake, {them}. Huge. The family never forgets a slight.
+defend: Shooting at the family, {them}? Now we have to send a message. A loud one.
+invade: The boys are landing, {them}. They'll be polite. Mostly.
+invade: Your world needs protection, {them}. We're here to provide it. You'll be paying for it.
+hold: Walk away, {them}. Walk away while you still can.
+hold: Everybody on this world knows the family, {them}. Nobody here will help you.
+rematch: We meet again, {them}. The family's been waiting. The family's very patient.
+mecatol: Mecatol Rex is a nice place, {them}. Be a shame if the wrong people ran it. People like you.
+home: You came to the family's house, {them}? With guns? Oh, that's a terrible lack of respect.
+
+[vaden]
+attack: Payment is overdue, {them}. Our collectors accept fleets as settlement.
+attack: Interest has been compounding, {them}. Today we collect - principal, interest and hull plating.
+defend: Shooting at the bank, {them}? That's a late fee, a penalty fee and a funeral fee.
+defend: Attack us, {them}, and your debt doubles. We always collect.
+invade: Repossession team landing, {them}. Everything on this world is listed as an asset now.
+invade: Foreclosure, {them}. Your world defaulted. Our bailiffs are here to clear the premises.
+hold: The vault stays closed, {them}. Break-ins are billed at the highest rate.
+hold: You cannot afford this world, {them}. Trust us. We have seen your accounts.
+rematch: Ah, {them}. Still owing from last time. We added it to today's bill.
+mecatol: Mecatol Rex has been in arrears for centuries, {them}. The clans are calling in the debt.
+home: An attack on the clan treasury, {them}? Every ledger in the galaxy now lists you in red.
+
+[vaylerian]
+attack: There you are, {them}. The chase was fun. The kill will be better.
+attack: Run, {them}. Please. It's so dull when prey just sits there.
+defend: Teeth out, {them}? Cute. The Scourge has better teeth.
+defend: Cornered prey fights hardest, {them}. We like that. It ends the same way.
+invade: The hunters are down, {them}. Your garrison has ten minutes. Make them count.
+invade: Fresh tracks on your world, {them}. We'll follow every one of them.
+hold: This is our hunting ground, {them}. You're not hunting here. You're being hunted.
+hold: Land, {them}. Go on. We've been waiting in the tall grass.
+rematch: Same prey, same scent, {them}. You got away last time. That won't happen twice.
+mecatol: All the galaxy's prey comes to Mecatol Rex, {them}. The best hunting ground of all.
+home: You followed us home, {them}? Bad idea. Every hunter in the Scourge is home tonight.
+
+[veldyr]
+attack: Restructuring your fleet, {them}. Unfortunately, every position has been eliminated.
+attack: Let's circle back to your fleet, {them}. We've decided to downsize it. To zero.
+defend: Aggressive move, {them}. The board admires it. The board is also going to crush it.
+defend: Escalating to senior management, {them}. They are very heavily armed.
+invade: Our merger team is landing, {them}. Synergies will be found. Resistance will not.
+invade: Welcome to the Veldyr family, {them}. Your world has been onboarded. Your garrison has been let go.
+hold: We are not accepting offers for this world, {them}. Especially hostile ones.
+hold: Corporate security is on site, {them}. Please exit the premises. Quickly.
+rematch: Per our last meeting, {them}, we have some action items. All of them are weapons.
+mecatol: Mecatol Rex: the ultimate head office, {them}. The Veldyr expansion plan has it on page one.
+home: An attack on head office, {them}? The board is calling an emergency meeting. The meeting is a battle.
+
+[zelian]
+attack: GRRRKKKRRGH... [You are in the path of the falling stone, {them}. There is no other path.]
+attack: KRRKKGHHH... [Impact is coming, {them}. Impact always comes.]
+defend: RRGHHKKRR... [You chip at the rock, {them}. The rock does not notice.]
+defend: KKGRRRHH... [Your weapons scratch, {them}. Ours crush.]
+invade: GRRRHHKKKRR... [We strike your world like a meteor, {them}. Craters will mark where your army stood.]
+invade: RRRKKGGHH... [Down we fall, {them}. Your world will be cleansed by the impact.]
+hold: KGRRRRHHK... [Stone does not yield, {them}. Not to fire. Not to you.]
+hold: HRRKKKGGRR... [You stand on us, {them}. We are the ground. We are angry ground.]
+rematch: GRRKKHH... [You again, {them}. Stone remembers every scratch.]
+mecatol: KRRRGGHHKK... [The throne world will be purified, {them}. One impact at a time.]
+home: RRRGGGKKHHH... [You strike at the heart of the rock, {them}. The whole mountain rises.]

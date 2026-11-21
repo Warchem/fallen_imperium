@@ -8,8 +8,11 @@
 #pragma once
 #include <cstdint>
 #include <deque>
+#include <memory>
 #include <string>
 #include <vector>
+
+#include "ai/ai.h"
 
 #include "engine/engine.h"
 
@@ -28,6 +31,12 @@ public:
     bool startNew(const ti::Setup& s);
     bool loadSaved(std::string* err);
     static bool saveExists();
+    static bool fileExists(const std::string& path);
+    // League mode (0.80.0): a league game keeps its own save file (its own slot) and says which league it belongs to
+    void setSavePath(const std::string& p) { path_ = p; }
+    const std::string& path() const { return path_.empty() ? savePath() : path_; }
+    void setLeague(const std::string& id) { league_ = id; }
+    const std::string& league() const { return league_; }
     bool save();
     void deleteSave();
 
@@ -83,12 +92,16 @@ public:
         if (inCombat_) skipCombat_ = true;
     }
     bool skippingCombat() const { return skipCombat_; }
+    bool hurrying() const { return hurry_; }  // (0.69.0) A held: the events fly by
+    // (0.74.0) An A.I. seat is playing its options out (the look-ahead): which seat, or -1
+    int thinking() const { return think_ ? engine_.decision().player : -1; }
 
 private:
     void absorbEvents();
     void rebuildFeed();
     int viewer() const { return viewer_ >= 0 ? viewer_ : engine_.setup().human; }
     int viewer_ = -1;  // hot-seat: the human seat at the device (-1 = the primary seat)
+    std::string path_, league_;
 
     ti::Engine engine_;
     ti::Rng aiRng_{1};
@@ -104,4 +117,5 @@ private:
     bool inCombat_ = false, combatSpace_ = false, skipCombat_ = false;
     int combatSides_[2] = {-1, -1};
     int unsavedAnswers_ = 0;
+    std::unique_ptr<ti::AiThinkJob> think_;  // (0.74.0) the A.I.'s look-ahead, run a little each frame
 };

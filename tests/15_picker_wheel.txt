@@ -1,6 +1,7 @@
 # The faction picker scrolls freely with the mouse wheel (0.44.1, owner: "it seems to snap to the factions instead
 # of allowing me to free-scroll"): the grid moves, the chosen faction stays the same.
 wait 5
+# (0.63.0) up to Factions & seats, A: the table, A: the faction picker
 press A
 wait 5
 press UP
@@ -11,14 +12,12 @@ press UP
 wait 2
 press UP
 wait 2
-press UP
+press A
 wait 2
 press A
-wait 3
-press A
-wait 3
+wait 2
 press RIGHT
-wait 3
+wait 2
 mouse 600 420
 wait 2
 shot picker_wheel_0

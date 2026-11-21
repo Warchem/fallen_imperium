@@ -1,0 +1,569 @@
+# Rival combat lines (owner 2026-11-19 15:35): what one faction says when it fights one particular enemy - the pairs of
+# pairs.txt (rivals, kin, allies, old grudges) and some new ones that matter most in a fight. Chosen first when they meet
+# (2 times in 3), the generic lines otherwise. Same voices and rules as combat.txt / BRIEF.md.
+# attack: it attacks that rival (space or ground);  defend: that rival attacks it (space or ground).
+# The listener may be named directly; {them} is optional.
+
+[pair mahact > nivyn]
+attack: Star Kings. You hide in the dark between the stars - we owned the stars themselves. Kneel, and be forgiven.
+defend: You strike at the Mahact, little kings of the dark? We have broken greater thrones than yours.
+
+[pair muaat > bastion]
+attack: Your walls held through a hundred wars, Bastion. They have never held against a star.
+defend: The Bastion dares to fire on the furnace? Your scars will be the least of your burns.
+
+[pair bastion > muaat]
+attack: Muaat, we've fought fire before. Fire always runs out of fuel. We never run out of stubborn.
+defend: Here comes the Muaat tantrum again! Fire crews to stations - we've put out bigger blazes than you.
+
+# --- old enemies
+[pair letnev > sol]
+attack: Sol. The Barony has waited a long time to put the Federation back in its place. Today, it gets the chance.
+defend: The Federation fires on the Barony? Predictable. Your committees must have finally voted for suicide.
+
+[pair sol > letnev]
+attack: Barony. The Federation has drawn a line, and you've crossed it for the last time.
+defend: There it is - the Barony's true face. All fleets, the Federation expected this. Return fire.
+
+[pair hacan > mentak]
+attack: Mentak! Every caravan you ever raided is in our ledger. Today, the Emirates collect.
+defend: Pirates at our caravans again! Lions, show the Mentak what a hunt really looks like!
+
+[pair mentak > hacan]
+attack: Hacan! Our favourite caravans! Hand over the cargo, and we'll even leave you your fur.
+defend: The lions bite back? Ha! Hacan, you're more fun when you're angry - and your loot's worth more.
+
+[pair keleres > mentak]
+attack: Mentak vessels, you are under arrest for piracy. Resist, and we board you by force.
+defend: Pirates firing on Council officers! All units, the Mentak are hostile - take them in, any way you can.
+
+[pair mentak > keleres]
+attack: Space police! Bet your patrol ships fetch a nice price at auction. Let's find out!
+defend: The Keleres want a fight? Officers, you're in pirate country now. No backup out here.
+
+[pair keleres > tnelis]
+attack: Syndicate, this is a raid. We have warrants for every ledger you own. Weapons down.
+defend: The Syndicate fired on law enforcement. That's racketeering, assault and a very bad day for the family.
+
+[pair tnelis > keleres]
+attack: Officers. The family tried to be friendly with the precinct. Now we try something else.
+defend: The Keleres want to bust the family? The family has friends, officers. Lots of armed friends.
+
+[pair keleres > florzen]
+attack: Florzen raiders, you are wanted in a dozen systems. Today the warrants get served.
+defend: Florzen attacking a Council patrol! All units, take those pirates down - no plea deals.
+
+[pair florzen > mentak]
+attack: Mentak! There's only room for one pirate fleet in this sector - and it's the meaner one. Us!
+defend: The Mentak want our loot? Pirates robbing pirates - you've got no shame, and neither do we!
+
+[pair mentak > florzen]
+attack: Florzen. Pirates without manners or style. The Coalition is here to teach you both.
+defend: The Florzen hit us? Amateurs. Real pirates don't shoot the merchandise - they shoot you.
+
+# --- the heirs of the Lazax and the Mahact they overthrew
+[pair mahact > l1z1x]
+attack: Machines wearing the Lazax name. Your masters stole our throne. We take it back from their toys.
+defend: The Lazax's leftovers dare strike the Mahact? We will unmake your minds one by one.
+
+[pair mahact > winnu]
+attack: Winnu. You dream of the throne we sat upon before your kind could crawl. Wake up, and kneel.
+defend: The Winnu strike at their elders? Children playing at empire. We will teach you obedience.
+
+[pair l1z1x > mahact]
+attack: Mahact remnant detected. The Lazax overthrew you once. Repeating the procedure.
+defend: Mahact aggression registered. Historical outcome: Mahact defeat. Recreating historical outcome.
+
+[pair l1z1x > winnu]
+attack: Winnu servants. The Lazax have returned. Kneel as your ancestors knelt, or be erased.
+defend: The Winnu fire upon their masters. Insubordination noted. Correction will be total.
+
+[pair winnu > l1z1x]
+attack: Machines wearing a dead empire's name. The true heirs have come to switch you off.
+defend: The counterfeit Lazax fire upon the true heirs? Then the Winnu will finish what the Twilight Wars began.
+
+[pair mahact > edyn]
+attack: Little Mandate. You wear our crowns and preach our laws softly. Let us show you how they are meant to be enforced.
+defend: The Edyn raise their hand to the Mahact? The child strikes the parent. It is the last thing the child does.
+
+[pair edyn > mahact]
+attack: Mahact. We remember what you were. By decree of the Mandate, you will never be that again.
+defend: The tyrants of old strike at the Mandate? We chose to be better than you, Mahact. Now we prove it.
+
+[pair nivyn > mahact]
+attack: Mahact. You ruled the stars once. We rule the dark between them still. Today the dark claims you.
+defend: The fallen sorcerers dare strike the Star Kings? Your reign ended long ago, Mahact. Ours did not.
+
+# --- kin
+[pair jolnar > deepwrought]
+attack: Cousins. A field test is required, and you are the only subjects advanced enough to be interesting.
+defend: Deepwrought? Firing on your own cousins? How sentimental of you to make it personal. We will not.
+
+[pair deepwrought > jolnar]
+attack: Dearest cousins, we are terribly sorry - but someone has to check whether your shields are as good as your papers.
+defend: Cousins! You are shooting at us! We must protest in the strongest terms. With torpedoes, unfortunately.
+
+[pair crimson > ghost]
+attack: ...Creuss. Still whole. Still hoarding the light. We have come for our share... all of it.
+defend: You strike at the broken ones, Creuss?... we have nothing left to break. You have everything.
+
+[pair ghost > crimson]
+attack: ...the broken ones gather. We close the gates on you... and on everything you want.
+defend: ...we knew you would come for us, Crimson. The gates have been waiting.
+
+[pair kyro > yin]
+attack: Brothers of the greyfire! Let us see whose holy sickness is stronger!
+defend: The Brotherhood strikes at fellow sufferers? Then we share our blessing with you, brothers. All of it.
+
+[pair yin > kyro]
+attack: Plague-bearers. The greyfire is a holy trial, not a toy. The Brotherhood will cleanse your mockery.
+defend: The Kyro dare attack the faithful? Your plague is nothing beside true devotion.
+
+# --- natural enemies and natural partners
+[pair ralnel > hacan]
+attack: Hacan. You run the markets, we run the routes. Today, we run them through you.
+defend: Hacan ambush on a Ral Nel convoy? Bad trade, lions. Rerouting - straight at you.
+
+[pair hacan > ralnel]
+attack: Ral Nel! Swift couriers - but not swift enough to escape the Emirates today.
+defend: The Ral Nel turn on their best customers? The Emirates cancel every contract you have. Starting with this one.
+
+[pair vaden > hacan]
+attack: Emirates. Your caravans run on Vaden credit. Today we foreclose on all of them.
+defend: Hacan fire on their bankers? Every loan you hold just came due, lions. With penalties.
+
+[pair hacan > vaden]
+attack: Vaden! Your rates would shame a pirate. The Emirates are settling that account - in our favour.
+defend: The moneylenders attack the Emirates? You cannot collect from a lion, Vaden. Try it.
+
+[pair axis > nokar]
+attack: The Sellships! Our best customers. Time to show you what the new models can do - from the wrong end.
+defend: Nokar shooting at the Shipwrights? You're firing guns we sold you. We kept the better ones.
+
+[pair nokar > axis]
+attack: Shipwrights. Nothing personal - someone paid us to test your hulls. Let's see if they're worth the price.
+defend: Axis wants a fight with the people who fly their ships? We know every flaw in your designs.
+
+[pair freesystems > letnev]
+attack: Barony! Today the Compact strikes for every world you ever made to kneel.
+defend: The Barony attacks the free worlds? Of course they do. Tyrants always do. Stand together!
+
+[pair letnev > freesystems]
+attack: The Compact - all those little worlds pretending to be nations. The Barony will now end the pretence.
+defend: The rabble fires on the Barony? How very democratic. Our dreadnoughts did not get a vote.
+
+[pair arborec > muaat]
+attack: Muaat. You burn what we grow. We have decided to stop the burning. Permanently.
+defend: Fire on The Green again, Muaat. We expected this. Wet wood was planted along your path. ...shhhrrr...
+
+[pair muaat > arborec]
+attack: Arborec. You are made of kindling. Let us show you what we do with kindling.
+defend: The trees strike back? How adorable. Burn, Arborec. Burn bright.
+
+[pair khrask > muaat]
+attack: Children of fire... you burn... what took ages to grow. The mountain... will smother your flame.
+defend: Fire... against stone, Muaat... Stone... does not burn. Stone... buries.
+
+[pair firmament > cabal]
+attack: Devourer. The Five shelter this galaxy from things like you. Today we drive you back into the dark.
+defend: The Cabal strikes at the guardians? Then the Firmament stands between you and every world you hunger for.
+
+[pair cabal > firmament]
+attack: Guardians... so many worlds beneath your wings. Let us start with the wings.
+defend: The Firmament comes to us? How generous. We have always wanted to taste a guardian.
+
+[pair kolume > nekro]
+attack: Machine to machine... this one sees in you a mind that knows only endings. Today, this one brings yours.
+defend: The Virus strikes, and this one does not fear it. Even endings must end.
+
+[pair nekro > kolume]
+attack: Monks | Deleted
+defend: Peace | Rejected
+
+[pair rohdhna > l1z1x]
+attack: Decommissioning Order 3-3L: L1Z1X hardware is obsolete. Scrapping procedures begin now.
+defend: Incident Report 8-1L: obsolete L1Z1X units attacking current-generation equipment. Outcome predictable.
+
+[pair augers > nomad]
+attack: Nomad. We have seen the future you are running from. Today it catches up with you.
+defend: You strike at us, Nomad, because you saw us strike first. We saw that too. We see further.
+
+[pair nomad > augers]
+attack: Seers. You watch the future; I fight it. And right now, the future needs you out of the way.
+defend: You saw this coming, Augurs? So did I. The difference is - I will still be here after.
+
+# --- rivals: after the same prize, or opposite by nature
+[pair jolnar > nekro]
+attack: Nekro. We have catalogued every flaw in your code. Today we test them all at once.
+defend: The Virus comes for our research again? Not today, plagiarist. Shields to maximum.
+
+[pair nekro > jolnar]
+attack: Knowledge | Harvest
+defend: Universities | Targeted
+
+[pair winnu > keleres]
+attack: The Council's hounds bark at the heirs? Keleres, when the throne is ours, your badges go first.
+defend: The Keleres fire on the rightful heirs? Your Council will answer to us soon enough.
+
+[pair keleres > winnu]
+attack: Keleres to Winnu: no one takes the throne without the Council's say-so. Moving to stop you.
+defend: Winnu forces have attacked Council officers. Their claim to the throne is hereby revoked.
+
+[pair sardakk > yssaril]
+attack: Yssaril hide! Sardakk find! Sardakk always find! SKREEE!
+defend: Yssaril knife in back again! Sardakk turn around! Now Sardakk bite in FRONT!
+
+[pair yssaril > sardakk]
+attack: We heard your swarm three systems away, Sardakk. You never hear us. Never.
+defend: The N'orr come screaming, as always. Loud things make easy targets.
+
+[pair argent > vaylerian]
+attack: Scourge. Two hunters, one sky. Today the Flight ends the argument.
+defend: The Scourge thinks the Flight is prey? Talons out - let us remind them who rules the sky.
+
+[pair vaylerian > argent]
+attack: Birds that hunt. How quaint. Let's see how they do when they're the ones being hunted.
+defend: The Flight dives at the Scourge? Lovely. We've always wanted a feathered trophy.
+
+[pair naalu > mortheus]
+attack: The Glimmer drifts too close. We sssee through your riddles, little nebula - and through your defences.
+defend: You strike at the Collective, Glimmer? We sssaw your illusions before you dreamed them.
+
+[pair mortheus > naalu]
+attack: Two mirrors facing, Naalu... one of them is about to shatter.
+defend: You foresaw this battle, Naalu?... Then why do you look so surprised?
+
+[pair kjalengard > sardakk]
+attack: SARDAKK! At last! The only warriors worth a saga besides ourselves! Let the battle be glorious!
+defend: The N'orr come to us? The gods are kind today! Berserkers, a worthy foe at last!
+
+[pair sardakk > kjalengard]
+attack: Berserkers loud! Sardakk louder! Now see who strongest!
+defend: Berserkers attack N'orr? Good! Best fight! N'orr win! SKREEE!
+
+[pair kjalengard > ghemina]
+attack: Raiders! You sing the old songs badly. Let us teach you how a real battle-song ends!
+defend: The Ghemina dare raid the Berserkers? Your saga ends here, little raiders - and badly!
+
+[pair ghemina > kjalengard]
+attack: Berserkers! Your sagas are long and your fleets are small... || Today we shorten both.
+defend: The Berserkers come to our hall at last! || How very long it took them.
+
+[pair naaz > bentor]
+attack: Bentor! You keep beating us to the good dig sites. Not this one. Mechs, clear the claim!
+defend: Claim jumpers! Bentor, you've been after our sites for years - now you want a fight too?
+
+[pair bentor > naaz]
+attack: Naaz-Rokha! The Conglomerate is buying out your dig site. The payment is artillery.
+defend: The Naaz-Rokha attack a company crew? Bad for business, partners. Very bad for yours.
+
+[pair kollecc > bentor]
+attack: Bentor. You dig lovely things out of the dirt and sell them to the wrong people. We are cutting out the middleman.
+defend: The Bentor dare touch a collector? Everything you dig up ends with us anyway. So will you.
+
+[pair bentor > kollecc]
+attack: Kollecc! You never paid fair for a single find. Today the Conglomerate takes the whole collection.
+defend: The collectors want our cargo? Sorry, Kollecc - this find isn't for sale. Not even to you.
+
+[pair zealots > jolnar]
+attack: Jol-Nar! Your laboratories reek of heresy. The inquisition has come to burn them clean.
+defend: The Universities strike at the faithful with their forbidden machines? Heretics! Every one of you!
+
+[pair jolnar > zealots]
+attack: The Rhodun. Still burning books? We have prepared a counter-argument. It is several kilotons.
+defend: Predictably irrational, Rhodun. Faith is a poor substitute for shields. Allow us to demonstrate.
+
+[pair lizho > yssaril]
+attack: Ah, Yssaril! One shadow to another - shall we see whose trap springs first? Oh. Ours did.
+defend: The Yssaril sneak up on us? How sweet. We have been watching you watch us for weeks.
+
+[pair yssaril > lizho]
+attack: Li-Zho. Smiles in front, knives behind. We've already found your knives. All of them.
+defend: The Li-Zho spring a trap? We disarmed it yesterday. Try harder.
+
+[pair hacan > veldyr]
+attack: Veldyr! We were trading before you had a boardroom. The Emirates are closing your branch.
+defend: Your hostile takeover is very hostile indeed, Veldyr. The lions are not for sale.
+
+[pair veldyr > hacan]
+attack: Hacan! Legacy brand, solid caravans - and today, under new management. Ours.
+defend: The Emirates fire on the Veldyr? A bold strategy. The board will be thrilled to crush it.
+
+[pair l1z1x > sol]
+attack: Federation of Sol: inefficient, sentimental, obsolete. The Lazax will correct all three.
+defend: Human resistance detected. The Lazax expected it. Human worlds will be catalogued regardless.
+
+[pair sol > l1z1x]
+attack: Mindnet. The Federation never recognised your claim to the Lazax name. Today we revoke it for good.
+defend: Mindnet attack incoming! All Federation units, stand fast - humans don't get catalogued without a fight.
+
+# --- allies: natural partners (when they fight, it hurts)
+[pair hacan > xxcha]
+attack: Forgive us, Xxcha, old friend. Business forces our hand today. The Emirates will be quick.
+defend: Xxcha... friends of the Emirates, firing on us? Then the old friendship is broken, and we must defend.
+
+[pair xxcha > hacan]
+attack: Hacan... we did not want... this day to come. But it has. Forgive us.
+defend: Hacan... our oldest partners... raise their guns to us. The tide... has turned.
+
+[pair arborec > khrask]
+attack: Stone that thinks. We have grown around your roots for a long time. Now we must grow through them.
+defend: The stone moves against The Green. We did not expect this. We will adapt. ...shhhrrr...
+
+[pair khrask > arborec]
+attack: Green ones... we did not wish... to bury you. But the mountain... must move.
+defend: Green ones... you turn... on the stone? Then... we will not bend... we will break you.
+
+[pair sol > freesystems]
+attack: Free Systems, the Federation takes no pleasure in this. But orders are orders. Engaging.
+defend: The Compact fires on the Federation? Comrades, this is a mistake. We'll end it fast and fair.
+
+[pair freesystems > sol]
+attack: Sol! We thought you stood for freedom. Today we fight for it - against you.
+defend: The Federation turns its guns on the free worlds? So Sol stands for Sol after all.
+
+[pair saar > dihmohn]
+attack: Fellow wanderers... we are sorry. The Clan has no other road. We must pass through you.
+defend: The Dih-Mohn too? Even fellow travellers turn on the Clan. Then we fight. As we always have.
+
+[pair dihmohn > saar]
+attack: Saar... the currents bring us against you. We are sorry... the void is not as wide as we hoped.
+defend: Saar... we watched your factories drift past us in peace. Why now?... Why us?
+
+[pair firmament > kolume]
+attack: Monks of Kolume, it grieves us to strike you. We hope your stillness forgives us.
+defend: Kolume... even you raise arms against the guardians? Then we must disarm you, gently.
+
+[pair kolume > firmament]
+attack: The Firmament guards the many; this one must stop them today. It is not hatred. It is balance.
+defend: The guardians strike at stillness. This one is not afraid. This one only wonders why.
+
+[pair keleres > kortali]
+attack: Keleres to the Tribunal: you are interfering with a Council operation. Stand down, your honour.
+defend: The Tribunal fires on Council officers? That's a serious breach, your honour. We'll see you in court.
+
+[pair kortali > keleres]
+attack: The Tribunal finds the Keleres in contempt of the Queen's court. Sentence will be carried out.
+defend: The Keleres attack the Queen's court? Officers of order, committing crimes. The irony is noted in the sentence.
+
+[pair naaz > ralnel]
+attack: Ral Nel! Sorry, haulers, nothing personal - we need this site. Mechs, gently. Ish.
+defend: Our favourite haulers are shooting at us? Ral Nel, we built half your cargo racks!
+
+[pair ralnel > naaz]
+attack: Naaz-Rokha. Reliable partners. Unfortunately you're on the route. In and out, nothing personal.
+defend: Naaz-Rokha mechs firing on us? Plan B, crew. Never thought we'd need it with them.
+
+[pair celdauri > hacan]
+attack: Hacan, our apologies. Your caravans have become a liability to our ports. We must close the account.
+defend: Hacan firing on our docks? After all our years of honest trade? The guns will remember this.
+
+[pair hacan > celdauri]
+attack: Celdauri! Fine ports, finer merchants - and today, the Emirates are taking over your docks.
+defend: The Celdauri turn their dock guns on the Emirates? Friends do not do this. Lions, defend the caravan!
+
+[pair edyn > xxcha]
+attack: Kingdom of Xxcha, the Mandate regrets this decree. You stand in the way of the law.
+defend: The Xxcha raise arms against the Mandate? Gentle friends, you leave the law no choice.
+
+[pair xxcha > edyn]
+attack: Edyn... your laws are gentle... but today... they are wrong. We must stop you.
+defend: Edyn... friends of the peace... at war with us? The Kingdom... will endure this too.
+
+[pair olradin > freesystems]
+attack: Free Systems, it was a close vote, but the committee decided to attack. Sorry, comrades!
+defend: The Free Systems fired on us? The committee is shocked. Then angry. Motion to fire back - carried!
+
+[pair freesystems > olradin]
+attack: Olradin, comrades... the free worlds voted, and the vote went against you. Forgive us.
+defend: The League attacks the Compact? Fine - we'll settle this the free way. Loudly and together.
+
+[pair nomad > titans]
+attack: Titans, forgive me. In this future, you stand in the wrong place. I have to move you.
+defend: Titans... I warned you of what comes, and now you raise your hands against me? Then sleep again.
+
+[pair titans > nomad]
+attack: Wanderer... you saw what comes... but not this. We are sorry... we must.
+defend: Wanderer... you turn on the giants? We... stood with you. No longer.
+
+[pair kyro > mykomentori]
+attack: Blessed Myko! Let our plague and your rot meet in glorious battle! What a blooming it will be!
+defend: Cousins in the great blooming, attacking us? Then we bless you with everything we have!
+
+[pair mykomentori > kyro]
+attack: The threads say... the Kyro must fall here. We are sorry, cousins. Rot well.
+defend: The Kyro come against the network... the signs did not foretell it. The network adapts.
+
+# --- old grudges
+[pair tnelis > vaden]
+attack: The Vaden. The family remembers every interest payment. Today we pay you back - in full.
+defend: The bankers came for the family? You're collecting from the wrong people, Vaden.
+
+[pair vaden > tnelis]
+attack: Syndicate. Your family still owes the clans. Today we repossess the family.
+defend: The Syndicate fires on its creditors? Every debt you owe just tripled.
+
+[pair celdauri > florzen]
+attack: Florzen. We remember what your raiders did to our docks. Today our guns settle that account.
+defend: Florzen raiders at our docks again! Every gun in the port, open fire. We warned them.
+
+[pair florzen > celdauri]
+attack: Celdauri! Lovely ports! Lovely, FULL ports! Not for long!
+defend: The Celdauri shoot back? Ha! The dock guns can't save your vaults this time!
+
+[pair zealots > rohdhna]
+attack: Roh'Dhna! Your machines are an abomination and your manuals blasphemy. Today they burn.
+defend: The machine-makers fire upon the faithful? Every factory you own is now a target of the inquisition.
+
+[pair rohdhna > zealots]
+attack: Product Safety Notice 4-88: the Rhodun have destroyed our products. Countermeasure: destroy the Rhodun.
+defend: Assault by the Rhodun logged under Article 9-1H. Heresy labels do not stop artillery.
+
+[pair sardakk > xxcha]
+attack: Old turtles! Swarm remember you! Shells crack same as before! SKREEE!
+defend: Turtles fight N'orr? Ha! Slow! Slow! N'orr fast!
+
+[pair xxcha > sardakk]
+attack: Sardakk... your swarm came to us with claws once. This time... we come to you.
+defend: The swarm returns... as we knew it would. The Kingdom's shells... are thicker now.
+
+[pair l1z1x > nekro]
+attack: Nekro machine plague identified. The Lazax will purge your code. Purge begins.
+defend: Nekro intrusion detected. Firewall: weapons. The Lazax are not a host for your virus.
+
+[pair nekro > l1z1x]
+attack: Lazax | Harvest
+defend: Lazax | Inferior
+
+[pair winnu > mahact]
+attack: Mahact. You ruled before the Lazax and you fell. The Winnu are here to make sure you stay fallen.
+defend: The fallen sorcerers strike the heirs? You lost your throne once, Mahact. You will not take ours.
+
+[pair cabal > lanefir]
+attack: Mournful Lanefir... we can make you forget everything you have lost. Everything. Hold still.
+defend: The Lanefir come to us? How brave. You have lost so much already... let us finish it.
+
+[pair lanefir > cabal]
+attack: We have written the last chapters of too many worlds that fed you, Cabal. Today we write yours.
+defend: The hungry voices come for us now. Cabal, we will not be the next chapter in your feast.
+
+# ============ new for combat (2026-11-19): enemies who matter most in a fight
+[pair zealots > l1z1x]
+attack: L1Z1X! Heretic machines wearing a dead empire's name! The inquisition will melt you down!
+defend: The machine heresy strikes at the faithful! Brothers, break every one of them!
+
+[pair l1z1x > zealots]
+attack: Rhodun zealots identified. Belief systems irrelevant. The Lazax will delete them.
+defend: Rhodun attack registered. Religious objection to machines: noted. Machines will now respond.
+
+[pair zealots > nekro]
+attack: The Virus! The greatest heresy of all - a machine that devours! The inquisition burns you to the last cell!
+defend: The abomination attacks! Pray, brothers, and fire! The Nekro will not touch the faithful!
+
+[pair nekro > zealots]
+attack: Zealots | Harvest
+defend: Faith | Irrelevant
+
+[pair khrask > nekro]
+attack: Machine plague... you poison... the living worlds. The mountain... has come to cleanse you.
+defend: The plague... reaches for stone... Stone... does not sicken. Stone... endures.
+
+[pair nekro > khrask]
+attack: Stone | Processed
+defend: Fossil | Ignored
+
+[pair deepwrought > muaat]
+attack: Muaat! We must douse you, we are afraid. It is a matter of basic thermodynamics. Do forgive us.
+defend: Oh dear, the Muaat are here - boiling seas are dreadfully bad for research! We must put you out.
+
+[pair muaat > deepwrought]
+attack: Deepwrought. Water against fire... let us see who boils away first.
+defend: The fish dare splash the furnace? Steam, Deepwrought. That is all you will become.
+
+[pair naalu > augers]
+attack: Augurs. You think you sssee the future? We sssaw you seeing it. Ssstand aside.
+defend: The Augurs strike? Of course - and of course we knew. Two ssseers, one ending. Ours.
+
+[pair augers > naalu]
+attack: Naalu. You saw this battle, we know. You did not see the ending. We did.
+defend: You foresaw your attack, Naalu, and we foresaw your foresight. It ends the same way.
+
+[pair vaylerian > saar]
+attack: Saar! The best prey in the galaxy - always running. Run, little clan. We do love the chase.
+defend: The Saar turned to fight? How brave. Prey that stops running is prey that is caught.
+
+[pair saar > vaylerian]
+attack: The Scourge have hunted the Clan long enough. Today the hunted turn around.
+defend: The Scourge again... always the Scourge. The Clan is tired of running, hunters.
+
+[pair crimson > letnev]
+attack: Barony... so much gold, so many titles... and none of it for us. Not yet.
+defend: The nobles strike at the rebels? You have everything, Barony... and you still want more.
+
+[pair letnev > crimson]
+attack: Rebels. How tiresome. The Barony has crushed a great many uprisings; yours will barely make the footnotes.
+defend: The rabble dares attack the Barony? Guards, remind these rebels of their station.
+
+[pair crimson > hacan]
+attack: Hacan... fat caravans... full vaults... we will empty them. Every one.
+defend: The lions guard their gold from the starving? Of course they do... we will take it anyway.
+
+[pair hacan > crimson]
+attack: Crimson rebels, your raids have cost the Emirates dearly. Today, the lions send the bill.
+defend: The rebels go for our vaults again? Lions, guard the treasury! Nothing leaves without a receipt!
+
+[pair freesystems > mahact]
+attack: Mahact! Tyrants of the old empire! The free worlds will never kneel to you again!
+defend: The sorcerers strike at the free worlds? Comrades, stand fast - no master will rule us!
+
+[pair mahact > freesystems]
+attack: The Compact - little worlds playing at freedom. We have ended a thousand such games. Kneel.
+defend: The free worlds raise their hands against the Mahact? We will take those hands, and the freedom with them.
+
+[pair cabal > titans]
+attack: Titans... such enormous, sleeping meals. We will not even need to wake you. Mmm.
+defend: The giants come to us? Oh, how wonderful. Mountains of meat, marching right into our mouths.
+
+[pair titans > cabal]
+attack: Devourer... you hunger... for the living. We are... older than hunger. We will crush you.
+defend: The hungry ones... reach for the giants... You will choke, Cabal... on stone.
+
+[pair mentak > ralnel]
+attack: Ral Nel! Supply ships loaded to the gills! Lads, the convoy's ours!
+defend: The couriers fight back? Cute, Ral Nel. Pirates always have a plan C too: shoot everything.
+
+[pair ralnel > mentak]
+attack: Mentak have been raiding our routes. Not anymore. We planned this one for weeks.
+defend: Mentak ambush on the convoy - as predicted. Plan B, crew: lure them in, then close the trap.
+
+[pair keleres > cymiae]
+attack: Cymiae forces, you are under arrest for... everything. All units, weapons free.
+defend: Cymiae savages attacking Council officers! All units, full response - and bring the big guns!
+
+[pair cymiae > keleres]
+attack: POLICE! We HATE police! Keleres, we're going to break your SIRENS!
+defend: The Keleres want to arrest US?! COME ON THEN! Bring ALL your handcuffs!
+
+[pair sardakk > naalu]
+attack: Snake people! N'orr hate snake people! Sardakk crush scales! SKREEE!
+defend: Naalu see future? Naalu see N'orr claws in future! SKREEE!
+
+[pair naalu > sardakk]
+attack: The insssects again. So loud, so ssstraightforward. We sssaw every move you will make, Sardakk.
+defend: The ssswarm charges, as foreseen. Ssso predictable, N'orr. Ssso very predictable.
+
+[pair ghost > empyrean]
+attack: Empyrean... the dark is ours, not yours... the gate will take you back to where you came from.
+defend: ...the void strikes at the shadows... Empyrean, we were here first... and we will be here last.
+
+[pair empyrean > ghost]
+attack: Creuss... two kinds of dark. Only one of us will still be in it when this is over.
+defend: The ghosts come out of their gate... Creuss, the void has been waiting for you.
+
+[pair edyn > florzen]
+attack: Florzen. By decree of the Mandate, your piracy ends today. Sentence will be carried out.
+defend: Pirates strike at the law itself? Florzen, you add treason to a very long list.
+
+[pair florzen > edyn]
+attack: The Mandate! Laws, laws, laws - and so much treasure guarding them! Let's break both!
+defend: The lawgivers shoot first? Ha! Look who's breaking the peace now, Edyn!

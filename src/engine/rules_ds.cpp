@@ -787,7 +787,7 @@ void Rules::dsUnitsDestroyed(int p, UnitType t, int k, int sys, int planet, int 
         for (int i = 0; i < k; ++i) {
             std::vector<Option> opts;
             if (unitsAvailable(G, p, UnitType::Fighter) > 0) opts.push_back({int(UnitType::Fighter), "1 fighter", ""});
-            if (two && unitsAvailable(G, p, UnitType::Destroyer) > 0) opts.push_back({int(UnitType::Destroyer), "1 destroyer", ""});
+            if (two && unitsForPlacement(G, p, UnitType::Destroyer) > 0) opts.push_back({int(UnitType::Destroyer), "1 destroyer", ""});
             if (opts.empty()) break;
             opts.push_back({-1, "Nothing", ""});
             const int u = fpick(p, Ab::DsChitin, "Chitin Hulk: what crawls out of the wreck?", opts);
@@ -982,7 +982,7 @@ void Rules::dsActivated(int p, int sys) {
             }
         }
         // Minuteman (Celdauri mech): 1 trade good or commodity for a mech on a planet with their dock here
-        if (fac(q, "celdauri") && mechAbilities(G) && unitsAvailable(G, q, UnitType::Mech) > 0 && ql.tradeGoods + ql.commodities > 0) {
+        if (fac(q, "celdauri") && mechAbilities(G) && unitsForPlacement(G, q, UnitType::Mech) > 0 && ql.tradeGoods + ql.commodities > 0) {
             std::vector<Option> opts;
             for (int16_t x : G.systems[size_t(sys)].planets)
                 if (G.planets[size_t(x)].units[size_t(q)].count(UnitType::SpaceDock)) opts.push_back({x, planetName(x), ""});
@@ -1008,7 +1008,7 @@ void Rules::dsActivated(int p, int sys) {
                     planet = true;
                     if (!G.planets[size_t(x)].units[size_t(q)].count(UnitType::SpaceDock)) opts.push_back({x, planetName(x), ""});
                 }
-            const bool dockOk = unitsAvailable(G, q, UnitType::SpaceDock) > 0;
+            const bool dockOk = unitsForPlacement(G, q, UnitType::SpaceDock) > 0;
             if (!dockOk) opts.clear();
             // (fixes 28, the Celdauri review - owner 2026-11-15: the card's effects are joined by "and", so with no space dock to
             // place (their planet here already has one, or none is left) the rest still happens - LRR 1.9; AsyncTI4's
@@ -1106,7 +1106,7 @@ void Rules::dsEndTactical(int p, int sys) {
         return;
     }
     const int user = agentUser(p, "celdauri");
-    if (user >= 0 && unitsAvailable(G, p, UnitType::SpaceDock) > 0 && pl.tradeGoods + pl.commodities >= 2) {
+    if (user >= 0 && unitsForPlacement(G, p, UnitType::SpaceDock) > 0 && pl.tradeGoods + pl.commodities >= 2) {
         std::vector<Option> opts;
         for (int16_t x : G.systems[size_t(sys)].planets)
             if (G.planets[size_t(x)].owner == p && !G.planets[size_t(x)].units[size_t(p)].count(UnitType::SpaceDock) && !isDMZ(G, x))
@@ -1138,7 +1138,7 @@ void Rules::dsEndTactical(int p, int sys) {
 // nobinQuiet_ -, a bot when it promised the agent, as Garv and Gunn), then "that player" picks the planet (or none)
 void Rules::nobin28(int p, int sys) {
     Player& pl = G.players[size_t(p)];
-    if (unitsAvailable(G, p, UnitType::SpaceDock) <= 0 || (pl.commodities < 2 && pl.tradeGoods < 2)) return;
+    if (unitsForPlacement(G, p, UnitType::SpaceDock) <= 0 || (pl.commodities < 2 && pl.tradeGoods < 2)) return;
     std::vector<Option> opts;
     for (int16_t x : G.systems[size_t(sys)].planets)
         if (G.planets[size_t(x)].owner == p && !G.planets[size_t(x)].units[size_t(p)].count(UnitType::SpaceDock) && !isDMZ(G, x))
@@ -1205,7 +1205,7 @@ void Rules::dsTurnStart(int p) {
             if (q != p && std::find(v.begin(), v.end(), note) != v.end()) returnNote(q, note);
         }
     // Troubadour (Lanefir mech): a relic fragment for a mech on one of their planets
-    if (fac(p, "lanefir") && mechAbilities(G) && fragmentCount(G, p) > 0 && unitsAvailable(G, p, UnitType::Mech) > 0) {
+    if (fac(p, "lanefir") && mechAbilities(G) && fragmentCount(G, p) > 0 && unitsForPlacement(G, p, UnitType::Mech) > 0) {
         std::vector<Option> opts;
         for (int x : controlledPlanets(G, p))
             if (!isDMZ(G, x)) opts.push_back({x, planetName(x), ""});
@@ -1307,7 +1307,7 @@ bool Rules::thakt28(int p) {
     std::vector<int> used;
     for (const StartUnit& u : kFactions[pl.faction].fleet)
         for (int i = 0; i < u.count; ++i) {
-            if (unitsAvailable(G, p, u.type) <= 0) break;
+            if (unitsForPlacement(G, p, u.type) <= 0) break;
             std::vector<Option> opts;
             if (isShip(u.type)) opts = space;
             else if (isGroundForce(u.type)) {
@@ -1790,7 +1790,7 @@ bool Rules::dsAction(int p, Ab ab) {
             Force made;
             for (const StartUnit& u : kFactions[pl.faction].fleet) {
                 if (u.count <= 0) continue;
-                const int n = std::min<int>(u.count, unitsAvailable(G, p, u.type));
+                const int n = std::min<int>(u.count, unitsForPlacement(G, p, u.type));
                 if (n <= 0) continue;
                 if (isShip(u.type)) {
                     addUnits(p, u.type, n, s, -1);

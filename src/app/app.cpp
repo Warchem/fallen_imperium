@@ -6,6 +6,7 @@
 #include "audio/audio.h"
 #include "core/log.h"
 #include "ui/hits.h"
+#include "ui/pcolors.h"
 #include "ui/theme.h"
 #include "ui/widgets.h"
 
@@ -67,8 +68,18 @@ void App::mouseAndPan(const KeyEvent& e, uint32_t now) {
     };
     const bool pan = !stack_.empty() && stack_.back()->keysPan();
     switch (e.raw) {
+        case kRawMouseLeave:  // (0.72.0) the pointer left the window / the focus went elsewhere
+            m.inside = false;
+            dirty_ = true;
+            break;
+        case kRawPanFast:  // (0.72.0) Shift: the camera goes faster
+            if (panFast_ != e.down) LOG("app: camera faster %s", e.down ? "on" : "off");
+            panFast_ = e.down;
+            break;
         case kRawMouseMove: {
             const float dx = e.x - m.x, dy = e.y - m.y;
+            m.inside = true;
+            pointerAt_ = now;
             if (m.right && m.active) {
                 dragDist_ += std::fabs(dx) + std::fabs(dy);
                 if (dragDist_ > 5.f) m.dragging = true;
@@ -133,6 +144,10 @@ void App::mouseAndPan(const KeyEvent& e, uint32_t now) {
             m.active = true;
             input_.touch();
             break;
+        case kRawDigit0 + 0: case kRawDigit0 + 1: case kRawDigit0 + 2: case kRawDigit0 + 3: case kRawDigit0 + 4:
+        case kRawDigit0 + 5: case kRawDigit0 + 6: case kRawDigit0 + 7: case kRawDigit0 + 8: case kRawDigit0 + 9:
+            if (e.down) input_.type(char('0' + (e.raw - kRawDigit0)));  // (0.63.0) number fields
+            break;
         case kRawPanUp:
         case kRawPanDown:
         case kRawPanLeft:
@@ -154,6 +169,16 @@ void App::mouseAndPan(const KeyEvent& e, uint32_t now) {
     }
 }
 
+// (0.72.0) the button or action under the pointer lights up the same way on every screen (hits::lit); rows show it by being
+// selected. Not while a key or button was pressed after the mouse last moved, nor while dragging.
+void App::drawPointerLight(const Scene& top) {
+    const Mouse& m = input_.mouse();
+    if (!m.active || !m.inside || m.dragging || top.wantsAllButtons() || int32_t(pointerAt_ - keyAt_) < 0) return;
+    Rect r;
+    hits::Light l = hits::Light::None;
+    if (hits::lit(m.x, m.y, r, l)) drawHoverLight(canvas_, r, l == hits::Light::Round);
+}
+
 int App::run() {
     std::vector<KeyEvent> events;
     uint32_t fpsWindowStart = platform_.ticks();
@@ -172,6 +197,8 @@ int App::run() {
         for (Btn b : injected_) input_.handle(b, false, frameStart);  // clicks from last frame let go
         injected_.clear();
         for (const KeyEvent& e : events) {
+            if (e.down && e.raw != kRawMouseMove && e.raw != kRawMouseLeft && e.raw != kRawMouseRight && e.raw != kRawWheel)
+                keyAt_ = frameStart;  // (0.72.0: a key or button puts the pointer's light out until the mouse moves)
             if (e.btn != Btn::None) input_.handle(e.btn, e.down, frameStart);
             else mouseAndPan(e, frameStart);
             if (e.raw == kRawMouseMove) continue;  // (not in the button test's list)
@@ -184,6 +211,24 @@ int App::run() {
             if (pan) {
                 px = float((panHeld_[3] && !panAsDpad_[3]) - (panHeld_[2] && !panAsDpad_[2]));
                 py = float((panHeld_[1] && !panAsDpad_[1]) - (panHeld_[0] && !panAsDpad_[0]));
+                // (0.72.0, owner: "Keep the edge scrolling off but available in the main menu options") the pointer at
+                // the edge of the window moves the camera that way, while no mouse button is held
+                const Mouse& m = input_.mouse();
+                if (m.active && m.inside && !m.left && !m.right && settings_.getInt("edge_scroll", 0) != 0) {
+                    const float mg = std::max(2.f, 8.f / canvas_.scale()), w = float(canvas_.width()), h = float(canvas_.height());
+                    const float ex = m.x < mg ? -1.f : m.x > w - mg ? 1.f : 0.f, ey = m.y < mg ? -1.f : m.y > h - mg ? 1.f : 0.f;
+                    const bool edge = ex != 0.f || ey != 0.f;
+                    if (edge != edging_) LOG("app: edge scrolling %s", edge ? "starts" : "stops");
+                    edging_ = edge;
+                    px += ex;
+                    py += ey;
+                    px = std::max(-1.f, std::min(1.f, px));
+                    py = std::max(-1.f, std::min(1.f, py));
+                }
+                if (panFast_) {  // (0.72.0, owner: WASD speed-up with Shift)
+                    px *= 2.5f;
+                    py *= 2.5f;
+                }
             }
             input_.setPan(px, py);
         }
@@ -229,6 +274,7 @@ int App::run() {
         const bool anim = top->animating();
         if (dirty_ || anim) {
             uint32_t t0 = monotonicMs();
+            pcolours::setNow(frameStart);  // (0.62.0: the clock the new colours' finishes run on)
             hits::clear();  // the screen says again where its rows and buttons are
             if (top->wide() || canvas_.width() <= theme::kScreenW) {
                 top->draw(*this, canvas_, frameStart);
@@ -239,6 +285,7 @@ int App::run() {
                 CentredView view(canvas_);
                 top->draw(*this, canvas_, frameStart);
             }
+            drawPointerLight(*top);
             uint32_t t1 = monotonicMs();
             platform_.present(canvas_, rotateOutput());
             uint32_t t2 = monotonicMs();

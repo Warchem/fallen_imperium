@@ -769,7 +769,7 @@ void Rules::ds3Fragments(int p) {
         ds3Event(E, p, "Ancient Blueprints", pn(p) + " places a " + exploreTypeName(kExploreCards[c].type) + " Fragment token on their sheet (" +
                                                 std::to_string(bits(pl.dsFrags)) + " of 4).");
         // Auctioneer (Bentor mech): Deploy - a mech on a planet they control
-        if (mechAbilities(G) && unitsAvailable(G, p, UnitType::Mech) > 0) {
+        if (mechAbilities(G) && unitsForPlacement(G, p, UnitType::Mech) > 0) {
             std::vector<Option> opts;
             for (int x : controlledPlanets(G, p))
                 if (!isDMZ(G, x)) opts.push_back({x, planetName(x), ""});
@@ -1069,7 +1069,7 @@ void Rules::ds3Researched(int p, int t) {
     const int u = upgradeUnitType(t);
     if (fac(p, "dihmohn") && u >= 0 && isShip(UnitType(u))) G.players[size_t(p)].dsUnlock = true;
     // Iledrith (Augurs mech): Deploy - a mech on a legendary planet or one with a specialty
-    if (fac(p, "augers") && mechAbilities(G) && unitsAvailable(G, p, UnitType::Mech) > 0) {
+    if (fac(p, "augers") && mechAbilities(G) && unitsForPlacement(G, p, UnitType::Mech) > 0) {
         std::vector<Option> opts;
         for (int x : controlledPlanets(G, p))
             if (techPlanet(G, x) && !isDMZ(G, x)) opts.push_back({x, planetName(x), ""});

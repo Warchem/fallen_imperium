@@ -1,0 +1,49 @@
+# The screen buttons in the top banner (0.67.0, owner: Placements, Draft C), run at 854 units wide (16:9): the name after
+# 1 s pointing at a button, a click opens the screen in its pop-out window, another button switches it, the window folds.
+wait 5
+# (0.63.0: New Game -> Game options -> AI speed) Instant; up to Galaxy, left = Random
+press A
+wait 5
+press UP
+wait 2
+press A
+wait 2
+press DOWN
+wait 2
+press DOWN
+wait 2
+press RIGHT
+wait 2
+press RIGHT
+wait 2
+press B
+wait 2
+press UP
+wait 2
+press LEFT
+wait 2
+press START
+wait 2
+mouse 300 300
+wait 6
+shot sb_map
+mouse 316 10
+wait 30
+shot sb_half_second
+wait 40
+shot sb_name
+click 316 10
+wait 10
+shot sb_open
+click 436 10
+wait 10
+shot sb_switched
+click 529 36
+wait 8
+mouse 300 300
+wait 6
+shot sb_folded
+click 600 36
+wait 8
+shot sb_reopened
+quit

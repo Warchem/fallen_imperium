@@ -19,6 +19,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <deque>
 #include <memory>
 #include <string>
@@ -37,6 +38,7 @@
 #include "platform/platform.h"
 #include "ui/deal_ui.h"
 #include "ui/retro.h"
+#include "ui/theme.h"
 
 std::unique_ptr<Scene> makeGameScene(std::unique_ptr<GameSession> session);
 
@@ -75,7 +77,14 @@ struct Recorder {
     GameSession* sp = nullptr;
     std::unique_ptr<Scene> scene;
     Input in;
-    Canvas c{640, 480, std::getenv("TI4_SCALE") ? float(std::atof(std::getenv("TI4_SCALE"))) : 1.f};
+    // (TI4_SCREENW=853: the 16:9 PC picture - the game screen is laid out for that width)
+    static int screenW() {
+        const char* e = std::getenv("TI4_SCREENW");
+        const int w = e ? std::max(640, std::min(1120, std::atoi(e))) : 640;
+        theme::screenWRef() = w;
+        return w;
+    }
+    Canvas c{screenW(), 480, std::getenv("TI4_SCALE") ? float(std::atof(std::getenv("TI4_SCALE"))) : 1.f};
     const uint32_t shotMs = std::getenv("TI4_PREVIEW_MS") ? uint32_t(std::atoi(std::getenv("TI4_PREVIEW_MS"))) : 100U;
     uint32_t t = 1000;
     std::string dir;
@@ -100,10 +109,12 @@ struct Recorder {
         return true;
     }
     void speed(int s) { settings.setInt("ai_speed", s); }
+    uint32_t firstFrameT = 0;  // the time of the first frame saved (the lead-in included)
     void record(const std::string& d) {
         dir = d;
         makeDir(dir);
         rec = true;
+        firstFrameT = nextShot - shotMs * uint32_t(ring.size());
         nextShot = t;
         frames = 0;
         // the lead-in kept in the ring first
@@ -606,6 +617,60 @@ int clipTilesets(const std::string& out, uint32_t seed) {
     return r.frames;
 }
 
+// ---------------------------------------------------------------- 0.71.0: combat reactions
+// A watched game until a space (or ground) combat that lasts long enough for both lines; run with TI4_TALK_EVERY=1 (every
+// fight talks) and TI4_SCREENW=853 TI4_SCALE=2.25 for the 16:9 PC picture. Prints the record start time; with
+// TI4_TALKLOG=1 the scene prints the lines and the voices' times (for the sound track).
+int clipCombatTalk(const std::string& out, uint32_t seed, bool ground) {
+    Recorder r;
+    ti::Setup s;
+    s.players = 6;
+    s.human = std::max(0, ti::southernmostSeat(6));
+    s.autoplay = true;
+    s.seed = seed;
+    if (!r.start(s, out)) return 0;
+    while (!r.sp->over() && r.sp->game().round < 2) r.frame();
+    r.speed(1);
+    r.settings.setInt("card_pause", 2);
+    const std::string dir = out + (ground ? "/talk_ground" : "/talk_space");
+    const char* want = ground ? "Ground combat on " : "Space combat in ";
+    const uint32_t minLen = std::getenv("TI4_TALK_MINMS") ? uint32_t(std::atoi(std::getenv("TI4_TALK_MINMS"))) : 9500U;
+    for (int tries = 0; tries < 40 && !r.sp->over() && r.sp->game().round <= 6; ++tries) {
+        r.ringMax = std::max<size_t>(12, 1500 / std::max(1U, r.shotMs));  // 1.5 s of lead-in
+        r.nextShot = r.t;
+        uint32_t last = r.t;
+        bool found = false;
+        uint32_t startT = 0;
+        for (int guard = 0; guard < 60000 && !found && !r.sp->over(); ++guard) {
+            r.run(100);
+            for (const FeedLine& f : r.sp->feed())
+                if (f.time >= last && f.kind == ti::EventKind::CombatStart && f.text.compare(0, std::strlen(want), want) == 0) {
+                    found = true;
+                    startT = f.time;
+                }
+            last = r.t;
+        }
+        if (!found) return 0;
+        std::remove(dir.c_str());
+        r.record(dir);
+        std::fprintf(stderr, "combattalk record start %u (combat %u)\n", unsigned(r.firstFrameT), unsigned(startT));
+        r.run(int(minLen) + 3000, 1500);
+        r.stop();
+        uint32_t endT = 0;
+        for (const FeedLine& f : r.sp->feed())
+            if (f.time >= startT && f.kind == ti::EventKind::CombatEnd && !endT) endT = f.time;
+        std::fprintf(stderr, "combattalk try %d: combat %u..%u (%d ms), %d frames\n", tries, unsigned(startT), unsigned(endT),
+                     endT ? int(endT - startT) : -1, r.frames);
+        if (!endT || endT - startT >= minLen) {
+            std::printf("preview: %s %d frames (round %d, seed %u)\n", ground ? "talk_ground" : "talk_space", r.frames, r.sp->game().round,
+                        unsigned(seed));
+            return r.frames;
+        }
+        for (int k = 1; k <= r.frames; ++k) std::remove((dir + "/f" + Recorder::num(k) + ".ppm").c_str());
+    }
+    return 0;
+}
+
 // ---------------------------------------------------------------- looking round the map / the expanded tile
 int clipNavigate(const std::string& out, bool tile, uint32_t seed) {
     Recorder r;
@@ -698,6 +763,16 @@ int runPreview(const std::string& outDir) {
         int b = 0;
         for (uint32_t seed = 4242; seed < 4262 && !b; ++seed) b = clipCodecBetrayal(outDir, seed);
         ok = b > 0 && ok;
+    }
+    if (!only.empty() && want("talkspace")) {  // (draft, by name only)
+        int t = 0;
+        for (uint32_t seed = 4242; seed < 4250 && !t; ++seed) t = clipCombatTalk(outDir, seed, false);
+        ok = t > 0 && ok;
+    }
+    if (!only.empty() && want("talkground")) {
+        int t = 0;
+        for (uint32_t seed = 4242; seed < 4250 && !t; ++seed) t = clipCombatTalk(outDir, seed, true);
+        ok = t > 0 && ok;
     }
     if (want("navigate")) ok = clipNavigate(outDir, false, 31) > 0 && ok;
     if (want("tile")) ok = clipNavigate(outDir, true, 31) > 0 && ok;

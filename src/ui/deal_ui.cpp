@@ -1,9 +1,12 @@
 #include "ui/deal_ui.h"
 
+#include "audio/audio.h"
+
 #include <cctype>
 
 #include "ui/codec.h"
 #include "ui/speech.h"
+#include "ui/nego_talk.h"
 #include "ui/hits.h"
 
 #include <algorithm>
@@ -21,6 +24,7 @@
 #include "ui/icons.h"
 #include "ui/theme.h"
 #include "ui/widgets.h"
+#include "ui/pcolors.h"
 
 using namespace ti;
 
@@ -28,9 +32,15 @@ namespace {
 
 constexpr float kPi = 3.14159265f;
 const Rect kFull{4, 24, 632, 424};  // the deal screens use the whole screen above the hint bar
+}  // namespace
+int& dealLook() {
+    static int look = 2;  // (owner 2026-11-18: "Offer B looks like the best one")
+    return look;
+}
+namespace {
 
 uint32_t pcol(const Game& g, int p) {
-    return p == kNeutral ? theme::neutral : p >= 0 && p < g.numPlayers ? theme::player[g.players[p].color % 8] : theme::text;
+    return p == kNeutral ? theme::neutral : p >= 0 && p < g.numPlayers ? pcolours::base(g.players[p].color) : theme::text;
 }
 
 uint32_t relationColor(Relation r) {
@@ -90,7 +100,10 @@ void errorBox(Canvas& c, const std::string& err, int x, int y, int w, bool warni
 // A faction disc: emblem in a ring of the player's colour.
 void factionDisc(Canvas& c, const Game& g, int p, float x, float y, float r, int alpha = 255) {
     c.fillCircle(x, y, r, rgb(10, 14, 26), alpha);
-    c.ring(x, y, r, 3.f, pcol(g, p), alpha);
+    {
+        pcolours::Finish fin(c, pcolours::around(x, y, r + 3.f, r + 3.f), alpha >= 200 ? pcolours::of(g, p) : -1, uint32_t(p) * 19u);
+        c.ring(x, y, r, 3.f, pcol(g, p), alpha);
+    }
     int s = int(r * 1.45f);
     drawFactionIcon(c, g.players[p].faction, int(x) - s / 2, int(y) - s / 2, s, alpha);
 }
@@ -126,7 +139,8 @@ std::vector<Item> sideItems(const Game& g, const DealSide& s, int giver, int rec
         v.push_back({"secret", (void(o), std::string("A secret objective")), "Unscored; it joins the receiver's secret objectives."});
     if (s.planet >= 0 && s.planet < int(g.planets.size()))
         v.push_back({"legendary", std::string("The planet ") + kPlanets[g.planets[s.planet].def].name,
-                     playerName(g, giver) + "'s units there move to another of its planets."});
+                     dmzTradeable(g, giver, s.planet) ? std::string("Its planet card (a Demilitarized Zone).")
+                                                      : playerName(g, giver) + "'s units there move to another of its planets."});
     if (!s.captured.empty())
         v.push_back({nullptr, std::to_string(s.captured.size()) + " captured unit" + (s.captured.size() > 1 ? "s" : "") + " returned", ""});
     for (int o : s.orders)  // Arms Dealers (Discordant Stars)
@@ -244,7 +258,7 @@ void drawFactionWeb(Canvas& c, const Game& g, const FactionWeb& w, int viewer, i
         const int aw = arch.empty() ? 0 : textWidth(FONT_XS, arch);
         const int bw = std::max(tw, aw);
         c.fillRoundRect(int(w.x[p]) - bw / 2 - 4, ty, bw + 8, arch.empty() ? 14 : 27, 4, rgb(4, 6, 12), 170 * alpha / 255);
-        drawText(c, FONT_XS, int(w.x[p]) - tw / 2, ty, name, p == viewer ? theme::text : pcol(g, p), alpha);
+        drawText(c, FONT_XS, int(w.x[p]) - tw / 2, ty, name, p == viewer ? theme::text : pcolours::readable(pcol(g, p)), alpha);
         if (!arch.empty()) {
             Attitude at = viewer >= 0 ? attitudeOf(g, p, viewer) : Attitude::Wary;
             uint32_t ac = at == Attitude::Friendly ? theme::green : at == Attitude::Hostile ? theme::red : rgb(230, 200, 110);
@@ -345,7 +359,7 @@ void drawRelationsPanel(Canvas& c, const Game& g, Rect r, int me, int q) {
     const Player& pl = g.players[q];
     factionDisc(c, g, q, float(r.x + 30), float(r.y + 30), 21.f);
     const int tx = r.x + 58, tw = r.w - 64;
-    drawText(c, FONT_MDB, tx, r.y + 9, fitText(FONT_MDB, q == me ? std::string("You") : playerName(g, q), tw), pcol(g, q));
+    drawText(c, FONT_MDB, tx, r.y + 9, fitText(FONT_MDB, q == me ? std::string("You") : playerName(g, q), tw), pcolours::readable(pcol(g, q)));
     drawText(c, FONT_XS, tx, r.y + 30, fitText(FONT_XS, kFactions[pl.faction].name, tw), theme::faint);
     int y = r.y + 58;
     const int x = r.x + 10, w = r.w - 20;
@@ -445,7 +459,7 @@ void drawRelationsPanel(Canvas& c, const Game& g, Rect r, int me, int q) {
         for (const Promise* p : prom) {
             for (const std::string& l : wrapMax(FONT_XS, promiseText(g, *p), w, 3)) {
                 if (y + 13 > bottom) break;
-                drawText(c, FONT_XS, x, y, l, p->by == me ? theme::text : pcol(g, q));
+                drawText(c, FONT_XS, x, y, l, p->by == me ? theme::text : pcolours::readable(pcol(g, q)));
                 y += 13;
             }
             y += 3;
@@ -633,19 +647,33 @@ public:
             }
             answer_ = Answer();
             answer_.picks = {o.id};
+            if (o.id == 1) audio::play(audio::Sfx::CodecAccept, 0.7f);  // (0.70.0) your answer over the channel
+            else if (o.id == 0) audio::play(audio::Sfx::CodecDecline, 0.7f);
             return true;
         }
         if (in.pressed(Btn::B)) {
             answer_ = Answer();
             answer_.picks = {0};
+            audio::play(audio::Sfx::CodecDecline, 0.7f);
             return true;
         }
         return false;
     }
 
     void draw(Canvas& c, uint32_t now) override {
-        if (start_ == 0) start_ = now | 1U;
+        if (start_ == 0) {
+            start_ = now | 1U;
+            // (0.70.0) the call coming in - a counter-offer or a threat has its own sound
+            audio::play(cat_ == speech::Cat::Counter ? audio::Sfx::CodecCounter
+                        : cat_ == speech::Cat::Threat ? audio::Sfx::CodecThreat
+                                                      : audio::Sfx::CodecIncoming,
+                        0.65f);
+        }
         const uint32_t age = now - start_;
+        if (speaks_ && !said_ && age > kTalkAt && deal_.from >= 0 && deal_.from < g_.numPlayers) {  // (0.70.0) their voice
+            said_ = true;
+            audio::play(audio::voiceSound(g_.players[size_t(deal_.from)].faction), 0.8f);
+        }
         const int me = d_.player, them = deal_.from;
         const bool alert = cat_ == speech::Cat::Threat;
         codec::backdrop(c, now, alert, 22, 452);
@@ -780,7 +808,7 @@ private:
     int shown(uint32_t now) const {
         if (start_ == 0) return 0;
         const uint32_t age = now - start_;
-        return age < 450 ? 0 : speech::typed(speech_, age - 450);
+        return age < kTalkAt ? 0 : speech::typed(speech_, age - kTalkAt);
     }
 
     MapView& map_;
@@ -788,8 +816,10 @@ private:
     int cursor_ = 0;
     bool highlighted_ = false;
     speech::Cat cat_ = speech::Cat::Offer;
+    // (0.70.0) the line starts once the incoming call has rung (it started at 450 ms before the call had a sound)
+    static constexpr uint32_t kTalkAt = 1250;
     uint32_t seed_ = 0, start_ = 0;
-    bool speaks_ = false;
+    bool speaks_ = false, said_ = false;
     std::string line_;
     speech::Speech speech_;
 };
@@ -844,7 +874,8 @@ public:
         if (in.pressed(Btn::Down)) moveCursor(1, false);
         if (in.pressed(Btn::L1)) for (int k = 0; k < 5; ++k) moveCursor(-1, false);
         if (in.pressed(Btn::R1)) for (int k = 0; k < 5; ++k) moveCursor(1, false);
-        if (cursor_ >= 0 && cursor_ < int(rows_.size()) && !rows_[size_t(cursor_)].header) {
+        const bool sendRow = cursor_ >= 0 && cursor_ < int(rows_.size()) && rows_[size_t(cursor_)].key == "send";
+        if (cursor_ >= 0 && cursor_ < int(rows_.size()) && !rows_[size_t(cursor_)].header && !sendRow) {
             int step = 0;
             if (in.pressed(Btn::Right) || in.pressed(Btn::A)) step = 1;
             if (in.pressed(Btn::Left)) step = -1;
@@ -873,9 +904,10 @@ public:
         }
         if (in.pressed(Btn::B)) {
             answer_ = Answer();  // empty = cancelled
+            if (opened_) audio::play(audio::Sfx::CodecClose, 0.6f);  // (0.70.0) the channel closed
             return true;
         }
-        if (in.pressed(Btn::Start)) {
+        if (in.pressed(Btn::Start) || (sendRow && in.pressed(Btn::A))) {
             answer_ = Answer();
             answer_.data = encodeDeal(current());
             std::string e = d_.validate ? d_.validate(answer_) : "";
@@ -885,15 +917,62 @@ public:
         return false;
     }
 
-    void draw(Canvas& c, uint32_t) override {
+    void draw(Canvas& c, uint32_t now) override {
         fullPanel(c);
         const Rect r = kFull;
+        // (0.64.0, owner) the opponent comes on and says a line about you - computer players only
+        const int look = them_ >= 0 && them_ < g_.numPlayers && !g_.players[size_t(them_)].human ? dealLook() : 0;
+        if (look && !opened_) {
+            opened_ = true;
+            openedAt_ = now;
+            audio::play(audio::Sfx::CodecOpen, 0.65f);  // (0.70.0) the channel opening
+            mood_ = negotalk::moodOf(g_, them_, me_);
+            talkSeed_ = speech::seedOf(uint32_t(g_.round), uint32_t(me_ * 8 + them_), uint32_t(g_.players[size_t(me_)].vp), uint32_t(mood_.why));
+            talkLine_ = negotalk::quip(g_, them_, me_, mood_.why, talkSeed_);
+        }
+        const bool alertTalk = mood_.why == negotalk::Why::Broken || mood_.why == negotalk::Why::Clash || mood_.why == negotalk::Why::Hostile;
+        const uint32_t themCol = pcol(g_, them_);
+        auto drawTalk = [&](Rect pw, Rect box) {  // the portrait switching on, then the line typing out
+            const uint32_t age = now - openedAt_;
+            codec::window(c, g_.players[size_t(them_)].faction, pw, themCol, now, age, 255, 0, alertTalk);
+            if (talkLine_.empty()) return;
+            const Rect a = codec::speechArea(box);
+            if (talkSp_.words.empty() || talkBoxW_ != a.w) {
+                talkSp_ = speech::layoutFit(g_.players[size_t(them_)].faction, talkLine_, a.w, a.h, themCol, rgb(236, 238, 250), talkSeed_);
+                talkBoxW_ = a.w;
+            }
+            const int shown = age < 380 ? 0 : speech::typed(talkSp_, age - 380);
+            if (age >= 380 && !said_) {  // (0.70.0) their voice as the words start
+                said_ = true;
+                audio::play(audio::voiceSound(g_.players[size_t(them_)].faction), 0.8f);
+            }
+            codec::speechBox(c, box, upper(playerName(g_, them_)), themCol, talkSp_, shown, now, alertTalk);
+        };
+        auto drawTags = [&](int x, int y, int w, int most) {  // what lies between you
+            int n = 0;
+            for (const std::string& t : mood_.tags) {
+                if (n++ >= most) break;
+                const bool bad = t.find("broke") != std::string::npos || t.find("attacked") != std::string::npos || t == "Hostile" ||
+                                 t.find("lead") != std::string::npos;
+                const bool good = t.find("kept") != std::string::npos || t.find("deal") != std::string::npos || t == "Friendly";
+                const uint32_t tc = bad ? rgb(255, 130, 120) : good ? rgb(130, 230, 150) : rgb(170, 190, 230);
+                const int tw = std::min(w, textWidth(FONT_XS, t) + 10);
+                c.fillRoundRect(x, y, tw, 13, 6, mix(rgb(10, 12, 24), tc, 40), 235);
+                drawText(c, FONT_XS, x + 5, y, fitText(FONT_XS, t, tw - 8), tc);
+                y += 15;
+            }
+            return y;
+        };
         factionDisc(c, g_, me_, float(r.x + 26), float(r.y + 26), 18.f);
         drawText(c, FONT_LG, r.x + 52, r.y + 6, fitText(FONT_LG, d_.prompt, 330), theme::gold);
         drawText(c, FONT_XS, r.x + 52, r.y + 32, fitText(FONT_XS, d_.context, 340), theme::dim);
         // rows on the left
         const int lx = r.x + 6, lw = 392;
-        const int top = r.y + 52, rowH = 21;
+        const int top = r.y + 52 + (look == 2 ? 106 : 0), rowH = 21;
+        if (look == 2) {  // a band above the rows: the portrait, the speech box (owner: layout B)
+            c.fillRoundRect(lx, r.y + 50, lw, 102, 8, rgb(6, 8, 20), 235);
+            drawTalk(Rect{lx + 3, r.y + 53, 96, 96}, Rect{lx + 104, r.y + 53, lw - 107, 96});
+        }
         const int bottom = r.y + r.h - 8 - ((error_.empty() && live_.empty()) ? 0 : 34);
         const int visible = std::max(1, (bottom - top) / rowH);
         if (cursor_ < scroll_) scroll_ = cursor_;
@@ -916,6 +995,14 @@ public:
             }
             bool sel = i == cursor_;
             hits::add(Rect{lx + 2, y, lw - 4, rowH - 2}, [this, i]() { cursor_ = i; });  // 0.43.0 (P12): rows and arrows take the mouse
+            if (row.key == "send") {  // (0.61.2) a button: A / Space / a click sends the offer
+                const Rect b{lx + 60, y - 1, lw - 120, rowH};
+                c.fillRoundRect(b.x, b.y, b.w, b.h, 6, sel ? rgb(40, 76, 44) : rgb(22, 40, 28), 245);
+                c.frameRoundRect(b.x, b.y, b.w, b.h, 6, sel ? theme::gold : theme::green, 1);
+                drawTextAligned(c, FONT_SMB, b.x, y + 2, b.w, Align::Center, row.label, sel ? theme::text : theme::green);
+                y += rowH;
+                continue;
+            }
             if (sel) c.fillRoundRect(lx + 2, y, lw - 4, rowH - 2, 5, theme::panelHi, 245);
             int x = lx + 12 + row.indent * 14;
             if (row.icon && icons::draw(c, row.icon, x - 2, y + 2, 15)) x += 18;
@@ -938,13 +1025,15 @@ public:
         // the deal so far, on the right
         const Rect s{r.x + 404, r.y + 48, r.w - 410, r.h - 54};
         drawPanel(c, s, theme::panel, theme::border, 8);
-        factionDisc(c, g_, them_, float(s.x + 24), float(s.y + 24), 17.f);
-        drawText(c, FONT_SMB, s.x + 48, s.y + 8, fitText(FONT_SMB, playerName(g_, them_), s.w - 54), pcol(g_, them_));
+        const int hx = look == 1 ? s.x + 104 : s.x + 48;  // (draft A: the portrait takes the panel's top left)
+        if (look == 1) drawTalk(Rect{s.x + 6, s.y + 6, 92, 92}, Rect{s.x + 4, s.y + 102, s.w - 8, 84});
+        else factionDisc(c, g_, them_, float(s.x + 24), float(s.y + 24), 17.f);
+        drawText(c, FONT_SMB, hx, s.y + 8, fitText(FONT_SMB, playerName(g_, them_), s.x + s.w - hx - 6), pcolours::readable(pcol(g_, them_)));
         {
             const Player& tp = g_.players[them_];
             std::string nums = std::to_string(tp.vp) + " VP";
-            drawText(c, FONT_XS, s.x + 48, s.y + 26, nums, theme::gold);
-            int ix = s.x + 48 + textWidth(FONT_XS, nums) + 8;
+            drawText(c, FONT_XS, hx, s.y + 26, nums, theme::gold);
+            int ix = hx + textWidth(FONT_XS, nums) + 8;
             if (icons::draw(c, "trade_good", ix, s.y + 25, 13)) ix += 15;
             drawText(c, FONT_XS, ix, s.y + 26, std::to_string(tp.tradeGoods), theme::text);
             ix += 18;
@@ -952,6 +1041,12 @@ public:
             drawText(c, FONT_XS, ix, s.y + 26, std::to_string(tp.commodities), theme::text);
         }
         int yy = s.y + 50;
+        if (look == 1) {
+            drawTags(hx, s.y + 44, s.x + s.w - hx - 6, 3);
+            yy = s.y + 194;
+        } else if (look == 2) {
+            yy = drawTags(s.x + 8, s.y + 44, s.w - 16, 4) + 6;
+        }
         const int sx = s.x + 8, sw = s.w - 16, sb = s.y + s.h - 50;
         Deal cur = current();
         auto block = [&](const std::string& title, const std::string& text, uint32_t col) {
@@ -1014,6 +1109,13 @@ public:
     }
 
 private:
+    // (0.64.0) the opponent's line as the screen opens
+    bool opened_ = false, said_ = false;
+    uint32_t openedAt_ = 0, talkSeed_ = 0;
+    negotalk::Mood mood_;
+    std::string talkLine_;
+    speech::Speech talkSp_;
+    int talkBoxW_ = 0;
     struct SideSt {
         int tg = 0, comm = 0, note = -1, planet = -1, cap = 0;
         int debt = 0;  // Discordant Stars (Binding Debts): control tokens onto the Vaden's sheet
@@ -1310,14 +1412,18 @@ private:
                 r.change = [&v](int, bool) { v = 1 - v; };
                 rows_.push_back(r);
             }
-        if (isFaction(g_, who, "hacan") && mechAbilities(g_)) {
+        bool dmz = false;  // (0.61.0) a Demilitarized Zone's planet card, in the agenda phase
+        for (int x : controlledPlanets(g_, who)) dmz = dmz || dmzTradeable(g_, who, x);
+        if ((isFaction(g_, who, "hacan") && mechAbilities(g_)) || dmz) {
             std::vector<int> planets = {-1};
+            const bool kenara = isFaction(g_, who, "hacan") && mechAbilities(g_);
             for (int x : controlledPlanets(g_, who))
-                if (g_.planets[x].units[who].count(UnitType::Mech) && !isHomePlanet(g_, x)) planets.push_back(x);
+                if ((kenara && g_.planets[x].units[who].count(UnitType::Mech) && !isHomePlanet(g_, x)) || dmzTradeable(g_, who, x))
+                    planets.push_back(x);
             if (planets.size() > 1) {
                 DRow r;
                 r.key = pre + "planet";
-                r.label = "Planet (Pride of Kenara)";
+                r.label = kenara ? (dmz ? "Planet (Pride of Kenara / DMZ)" : "Planet (Pride of Kenara)") : "Planet (Demilitarized Zone)";
                 r.icon = "legendary";
                 r.value = st.planet >= 0 ? kPlanets[g_.planets[st.planet].def].name : "None";
                 r.change = [&st, planets](int step, bool) { cycle(planets, st.planet, step); };
@@ -1491,6 +1597,14 @@ private:
                 r.change = [this, sys](int step, bool) { cycle(sys, threat_, step); };
                 rows_.push_back(r);
             }
+        }
+        {  // 0.61.2 (owner: "I have to press the enter button to confirm. Can this be changed to space instead?"): the last row sends it
+            header("h.send", "", -1, theme::faint);
+            DRow r;
+            r.key = "send";
+            r.label = counter_ ? "Send the counter-offer" : "Send the offer";
+            r.value = "Send";
+            rows_.push_back(r);
         }
         // the systems named in the deal light up on the map (R2 to look)
         std::vector<int> hl;

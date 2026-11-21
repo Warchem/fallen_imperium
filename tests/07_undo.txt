@@ -2,25 +2,29 @@
 # speed, on a random galaxy (no draft) so the first decisions are the setup and strategy picks.
 # (0.58.4: the strategy card wheel takes two presses of A - choose, then confirm.)
 wait 5
+# (0.63.0: New Game -> Game options -> AI speed) Instant; up to Galaxy, left = Random
 press A
 wait 5
 press UP
-wait 3
+wait 2
+press A
+wait 2
+press DOWN
+wait 2
+press DOWN
+wait 2
 press RIGHT
-wait 3
+wait 2
 press RIGHT
-wait 3
-# (0.58.0: up past Mecatol Rex (0.54.0) and Hyperlanes to Galaxy; left = Random)
-press UP
+wait 2
+press B
 wait 2
 press UP
 wait 2
-press UP
-wait 3
 press LEFT
-wait 3
+wait 2
 press START
-wait 30
+wait 2
 press A
 wait 12
 shot step00

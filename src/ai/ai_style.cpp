@@ -611,6 +611,19 @@ void factionQuirk(Style& st, const Game& g, int p) {
     // swapped for a war sun for 6 resources - Construction (a dock out on the board) is the way to it. REVISIT (checkpoint 2, 90 forced games
     // each, +1): 9 wins / 6.66 VP against 8 / 6.68, second sample 12 / 7.06 against 13 / 6.98 - no gain, off
     if (isFaction(g, p, "rohdhna") && aiTune("rhcons", 0.f) > 0.f) st.card[3] += aiTune("rhcons", 0.f);
+    // (balance pass 0.66.0 - test knobs zrmech / cymech / rhmech; above 2.15 at Competitive - competitiveDamp keeps 35%, 1.6 left
+    // every game unchanged) mechs as favourite units, as dwmech did for the Deepwrought (29% -> 39% of their games): the Zealots'
+    // Templar (+1 for each faction technology of the opponent; 0 built in 45 games), the Cymiae's Revenant (repairs every ground
+    // round when alone), the Roh'Dhna's Autofabricator. REVISIT (2.5, 360 games each): Zealots 35 wins / 6.38 VP against 31 / 6.39
+    // - not clear; Cymiae (with cyauto 3) 38 / 6.56 against 44 / 6.60 - no gain; Roh'Dhna (540 games) 58 / 6.71 against 65 / 6.65 -
+    // worse in the third sample (18 against 26)
+    {
+        float m = 0.f;
+        if (isFaction(g, p, "zealots")) m = aiTune("zrmech", 0.f);
+        else if (isFaction(g, p, "cymiae")) m = aiTune("cymech", 0.f);
+        else if (isFaction(g, p, "rohdhna")) m = aiTune("rhmech", 0.f);
+        if (m > 0.f) st.unit[int(UnitType::Mech)] = std::max(st.unit[int(UnitType::Mech)], m);
+    }
     // (the Tnelis review, checkpoint 2 - test switch tnimp) Plausible Deniability + Information Brokers: every secret drawn is 2 to pick
     // from and they hold 1 more - Imperial (a secret from its primary or secondary) is worth more to them. REVISIT (checkpoint 2, 90 forced
     // games each, +1): 12 wins / 7.07 VP against 11 / 7.01, second sample 9 / 6.63 against 11 / 6.83 - not clear in both, off
@@ -1137,9 +1150,12 @@ const Style& aiStyle(const Game& g, int p) {
         AiSeat seat(p);  // its own difficulty
         cache[p] = compute(g, p);
         if (aiCompetitiveSeat(g, p)) competitiveDamp(cache[p]);
-        if (cache[p].on) aiCoreApply(cache[p], g, p);  // the Strategy Core: not damped, it is how the faction plays well
+        // the Strategy Core: not damped, it is how the faction plays well. (0.74.0) The A.I. has no personality (its Style
+        // stays neutral, `on` false) but plays its faction by the guide, never straying from it.
+        const bool core = cache[p].on || aiIsAISeat(g, p);
+        if (core) aiCoreApply(cache[p], g, p);
         // (0.59.1, owner: the Creuss almost never take the custodians - 0.07 a game, Sol 0.47) Mecatol Rex counts more for them
-        if (cache[p].on && isFaction(g, p, "ghost") && g.round >= 2 && g.round <= 5) cache[p].mecatol *= aiTune("creussmec", 1.3f);
+        if (core && isFaction(g, p, "ghost") && g.round >= 2 && g.round <= 5) cache[p].mecatol *= aiTune("creussmec", 1.3f);
         // (test knobs, the Firmament bot review) an earlier, wider slice; Construction early (a second dock)
         if (cache[p].on && isFaction(g, p, "firmament") && g.round <= 3) {
             cache[p].expansion *= aiTune("firmexp", 1.f);

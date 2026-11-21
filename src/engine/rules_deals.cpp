@@ -353,8 +353,9 @@ bool Rules::executeDeal(const Deal& d) {
                     }
             for (int t = 0; t < kUnitTypes; ++t)  // structures can't move: they go back to reinforcements
                 if (ps.units[from].n[t]) ps.units[from].remove(UnitType(t), ps.units[from].n[t], false);
+            const bool dmz = dmzTradeable(G, from, s.planet);
             setControl(s.planet, to);
-            say(to, pn(to) + " gains " + planetName(s.planet) + " from " + pn(from) + " (Pride of Kenara).");
+            say(to, pn(to) + " gains " + planetName(s.planet) + " from " + pn(from) + (dmz ? " (its planet card, a Demilitarized Zone)." : " (Pride of Kenara)."));
         }
         for (int c : s.captured) {  // Vuil'raith gives captured units back
             auto it = std::find(f.captured.begin(), f.captured.end(), int16_t(c));

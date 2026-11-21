@@ -14,6 +14,12 @@ namespace ti {
 
 // Modules (0.31.0): Setup::modules / Game::modules bits
 constexpr int kModCodex = 1, kModUncharted = 2, kModThundersEdge = 4, kModDiscordant = 8;
+// Computer difficulty levels (Setup::aiLevel / levels, Game::aiLevel, Player::aiLevel). 4 = A.I. (0.74.0, experimental):
+// Competitive's play with no personality - no archetype, traits, B-Factor or betrayals - and its own extra thinking
+// (src/ai/ai_ai.cpp). Older saves never hold 4, so they replay unchanged.
+constexpr int kAiLevelCompetitive = 3, kAiLevelAI = 4;
+// Player colours a game can use (Player::color): the classic 8, the 8 of 0.62.0, the 8 of 0.75.0 (src/ui/pcolors.*).
+constexpr int kPlayerColours = 24;
 
 constexpr int kMaxPlayers = 8;
 constexpr int kCommandTokens = 16;  // per player
@@ -198,6 +204,7 @@ struct Player {
     std::array<int16_t, kUnitTypes> unit{};  // current definition per unit type
     int16_t homeSystem = -1;
     bool eliminated = false;
+    int8_t knockedOutBy = -1;  // (0.80.0, state only) whose turn it was when this player was eliminated (league bonus)
     std::vector<int16_t> actionCards;  // hand (kActionCards indices), hidden from the others
     std::vector<int16_t> notes;        // promissory notes in hand (makeNote)
     std::vector<int16_t> notesInPlay;  // other players' notes face up in this player's play area
@@ -257,6 +264,9 @@ struct Player {
     // Discordant Stars batch 6 (0.42.0)
     bool dsGhotiExhausted = false;     // Spawning Grounds (Ghoti): their planet card (3/3, not on the board) is exhausted
                                        // (also The Grove: Khrask breakthrough, 2/0)
+    // 0.65.0 (the agenda voting plan, task #494): agendas this player saw and put on top of the deck (Politics) - the AI
+    // knows the next agenda while one of these is still the deck's top card. Display / AI only: nothing reads it in the rules.
+    int16_t agendaSeen[2] = {-1, -1};
     // Faction abilities (Stage 5)
     std::vector<LeaderState> leaders;  // agents first, then commander, then hero
     int8_t infantryOnCard = 0;         // Infantry II / Spec Ops II waiting to return home
@@ -475,7 +485,7 @@ struct Game {
     int round = 0;
     int8_t speaker = 0;
     int vpGoal = 10;
-    int8_t aiLevel = 2;  // computer players' difficulty: 0 Easy, 1 Normal, 2 Hard, 3 Competitive (Setup::aiLevel)
+    int8_t aiLevel = 2;  // computer players' difficulty: 0 Easy, 1 Normal, 2 Hard, 3 Competitive, 4 A.I. (Setup::aiLevel)
     int8_t tradeRules = 0;  // Setup::trade: bit 0 X-1 trades, bit 1 round-1 free refills, bit 2 humans choose in round 1,
                             // bit 3 the community X-1 (0.17.0: wash X commodities for X-1, Trade Agreement buy, debts)
     uint32_t seed = 0;   // Setup::seed (personality randomness: prand)
@@ -502,7 +512,11 @@ struct Game {
     int stage1Revealed = 0;
 
     bool custodiansRemoved = false;
+    int8_t custodiansBy = -1;  // (0.80.0, state only) who removed them - the league's "Mecatol Rex first" bonus
     bool agendaNoticeShown = false;
+    // 0.73.0 (display only, never saved - set again by the replay): the first war sun technology of the game has been gained
+    // (owner 2026-11-19: the War Sun scene plays once a game, for the first player to get one)
+    bool warSunAge = false;
 
     // Cards (Stage 3)
     std::vector<int16_t> actionDeck, actionDiscard;  // kActionCards indices, top = back()

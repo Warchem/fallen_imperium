@@ -32,6 +32,7 @@
 #include <SDL2/SDL.h>
 
 #include "app/app.h"
+#include "core/keymap.h"
 #include "core/log.h"
 #include "core/settings.h"
 #include "platform/platform.h"
@@ -75,33 +76,53 @@ struct Api {
 // Raw codes in KeyEvent: keyboard = SDL keycode, pad buttons and axes above these.
 constexpr int kRawPad = 0x20000, kRawAxis = 0x21000;
 
-// keyboard & mouse: WASD = the camera (returns -10 - direction)
-int mapKey(SDL_Keycode k, bool controller) {
-    if (!controller) switch (k) {
-            case SDLK_w: return -10;
-            case SDLK_s: return -11;
-            case SDLK_a: return -12;
-            case SDLK_d: return -13;
-            default: break;
-        }
+// (0.72.0) SDL's key codes -> the portable keys of the key bindings (core/keymap)
+int portableKey(SDL_Keycode k) {
+    using namespace keymap;
+    if (k >= SDLK_a && k <= SDLK_z) return 'A' + int(k - SDLK_a);
+    if (k >= SDLK_0 && k <= SDLK_9) return '0' + int(k - SDLK_0);
+    if (k >= SDLK_F1 && k <= SDLK_F12) return KF1 + int(k - SDLK_F1);
+    if (k >= SDLK_KP_1 && k <= SDLK_KP_9) return KNum0 + 1 + int(k - SDLK_KP_1);
     switch (k) {
-        case SDLK_w: case SDLK_UP: return int(Btn::Up);
-        case SDLK_s: case SDLK_DOWN: return int(Btn::Down);
-        case SDLK_a: case SDLK_LEFT: return int(Btn::Left);
-        case SDLK_d: case SDLK_RIGHT: return int(Btn::Right);
-        case SDLK_SPACE: return int(Btn::A);
-        case SDLK_BACKSPACE: return int(Btn::B);
-        case SDLK_x: return int(Btn::X);
-        case SDLK_v: return int(Btn::Y);
-        case SDLK_q: return int(Btn::L1);
-        case SDLK_e: return int(Btn::R1);
-        case SDLK_z: return int(Btn::L2);
-        case SDLK_c: case SDLK_TAB: return int(Btn::R2);  // Tab: view the map
-        case SDLK_RETURN: case SDLK_KP_ENTER: return int(Btn::Start);
-        case SDLK_r: return int(Btn::Select);
-        case SDLK_ESCAPE: return int(Btn::Menu);  // Esc: the game menu (owner, 0.27.0)
-        default: return int(Btn::None);
+        case SDLK_KP_0: return KNum0;
+        case SDLK_SPACE: return KSpace;
+        case SDLK_BACKSPACE: return KBackspace;
+        case SDLK_TAB: return KTab;
+        case SDLK_RETURN: return KEnter;
+        case SDLK_KP_ENTER: return KNumEnter;
+        case SDLK_ESCAPE: return KEsc;
+        case SDLK_UP: return KUp;
+        case SDLK_DOWN: return KDown;
+        case SDLK_LEFT: return KLeft;
+        case SDLK_RIGHT: return KRight;
+        case SDLK_LSHIFT: case SDLK_RSHIFT: return KShift;
+        case SDLK_LCTRL: case SDLK_RCTRL: return KCtrl;
+        case SDLK_LALT: case SDLK_RALT: return KAlt;
+        case SDLK_INSERT: return KInsert;
+        case SDLK_DELETE: return KDelete;
+        case SDLK_HOME: return KHome;
+        case SDLK_END: return KEnd;
+        case SDLK_PAGEUP: return KPageUp;
+        case SDLK_PAGEDOWN: return KPageDown;
+        case SDLK_CAPSLOCK: return KCapsLock;
+        case SDLK_KP_PLUS: return KNumAdd;
+        case SDLK_KP_MINUS: return KNumSub;
+        case SDLK_KP_MULTIPLY: return KNumMul;
+        case SDLK_KP_DIVIDE: return KNumDiv;
+        case SDLK_KP_PERIOD: return KNumDot;
+        case SDLK_MINUS: case SDLK_EQUALS: case SDLK_LEFTBRACKET: case SDLK_RIGHTBRACKET: case SDLK_SEMICOLON: case SDLK_QUOTE:
+        case SDLK_COMMA: case SDLK_PERIOD: case SDLK_SLASH: case SDLK_BACKSLASH: case SDLK_BACKQUOTE:
+            return int(k);  // (their characters)
+        default: return KNone;
     }
+}
+
+// keys -> buttons, the camera (-10 - direction) or its speed-up (-20): the key bindings (0.72.0; the defaults are the old
+// fixed keys - WASD the camera, arrows the cursor, Space A, Backspace B, X, V Y, Q / E, Z, Tab / C, Enter START, R SELECT,
+// Esc MENU, Shift faster)
+int mapKey(SDL_Keycode k, bool controller) {
+    const int r = keymap::route(portableKey(k), controller);
+    return r == -1 ? int(Btn::None) : r;
 }
 
 Btn mapPad(int b) {
@@ -263,9 +284,14 @@ public:
                         fullscreenKey();
                         break;
                     }
+                    if (down && k >= SDLK_0 && k <= SDLK_9) out.push_back({Btn::None, true, kRawDigit0 + int(k - SDLK_0)});  // (0.63.0) digits
+                    if (down && k >= SDLK_KP_1 && k <= SDLK_KP_9) out.push_back({Btn::None, true, kRawDigit0 + 1 + int(k - SDLK_KP_1)});
+                    if (down && k == SDLK_KP_0) out.push_back({Btn::None, true, kRawDigit0});
+                    if (down) keymap::noteKey(portableKey(k));  // (0.72.0: "press a key" in the key bindings)
                     const int m = down ? mapKey(k, controller_) : (keyMapped_.count(k) ? keyMapped_[k] : mapKey(k, controller_));
                     if (down) keyMapped_[k] = m;
-                    if (m <= -10) out.push_back({Btn::None, down, kRawPanUp + (-10 - m), 0, 0});  // the camera
+                    if (m == -20) out.push_back({Btn::None, down, kRawPanFast, 0, 0});  // (0.72.0) the camera's speed-up
+                    else if (m <= -10) out.push_back({Btn::None, down, kRawPanUp + (-10 - m), 0, 0});  // the camera
                     else press(out, Btn(m), down, int(k));
                     break;
                 }
@@ -290,6 +316,10 @@ public:
                     out.push_back({Btn::None, true, kRawWheel, std::max(-3.f, std::min(3.f, y)), 0});
                     break;
                 }
+                case SDL_WINDOWEVENT:  // (0.72.0) the pointer left the window / the focus went elsewhere: no edge scrolling
+                    if (e.window.event == SDL_WINDOWEVENT_LEAVE || e.window.event == SDL_WINDOWEVENT_FOCUS_LOST)
+                        out.push_back({Btn::None, false, kRawMouseLeave, 0, 0});
+                    break;
                 case SDL_CONTROLLERDEVICEADDED: openPad(e.cdevice.which); break;
                 case SDL_CONTROLLERBUTTONDOWN:
                 case SDL_CONTROLLERBUTTONUP:
@@ -374,6 +404,7 @@ public:
         controller_ = st.getInt("controls", 0) == 1;
         setKeyboardKeys(!controller_);
         setDeckKeys(controller_);
+        keymap::load(st);  // (0.72.0) the key bindings
         const bool full = st.getInt("fullscreen", 1) == 1;
         if (full != fullscreen()) toggleFullscreen();
         LOG("sdl2: picture %s%s, controls %s", sharp_ ? "sharp" : "original", wide_ ? " widescreen" : " 4:3",
@@ -390,6 +421,7 @@ public:
         if (raw == kRawMouseRight) return "Right mouse button";
         if (raw == kRawWheel) return "Mouse wheel";
         if (raw >= kRawPanUp && raw <= kRawPanRight) return "Camera (WASD / right stick)";
+        if (raw == kRawPanFast) return "Shift (camera faster)";
         if (raw >= kRawAxis) return raw - kRawAxis < 4 ? "Left stick" : "Trigger";
         if (raw >= kRawPad) {
             static const char* names[15] = {"Pad A", "Pad B", "Pad X", "Pad Y", "Pad View", "Pad Guide", "Pad Menu", "Left stick click",

@@ -7,6 +7,7 @@
 //  3. runs the real game screen with computer players only at normal speed
 //     and saves frames of the announcements, flashes and combat panel
 //     (watch_*.ppm).
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -33,6 +34,7 @@
 #include "ui/play_area.h"
 #include "ui/transition.h"
 #include "ui/cards.h"
+#include "ui/deal_ui.h"
 #include "ui/decision_ui.h"
 #include "ui/info_screens.h"
 #include "ui/map_view.h"
@@ -44,10 +46,13 @@
 #include "ui/hits.h"
 #include "ui/icons.h"
 #include "ui/painted.h"
+#include "ui/pcolors.h"
 #include "ui/space_battle.h"
+#include "ui/speech.h"
 #include "ui/tile_view.h"
 #include "ui/voidfall.h"
 #include "ui/theme.h"
+#include "ui/newgame_bg.h"
 #include "ui/title_bg.h"
 #include "ui/title_war.h"
 #include "ui/widgets.h"
@@ -371,6 +376,58 @@ int decisionScreens(const std::string& outDir) {
         if (!done.count(w)) std::printf("uitest: no '%s' screen came up\n", w.c_str());
     std::printf("uitest: %zu decision screens captured\n", done.size());
     return int(done.size());
+}
+
+// (0.74.0) The A.I. difficulty thinking on the real game screen: a watched game with one A.I. seat; frames of the
+// "is thinking" marker while it plays its options out (the screen keeps moving meanwhile). TI4_UITEST_ONLY=think
+static int thinkScreens(const std::string& outDir) {
+    std::unique_ptr<Platform> plat = makeHeadlessPlatform("", outDir);
+    Settings settings;
+    settings.setInt("ai_speed", 2);
+    App app(*plat, settings);
+    GameSession::savePath() = outDir + "/think_save.ti4";
+    std::unique_ptr<GameSession> session(new GameSession());
+    ti::Setup s;
+    s.players = 6;
+    s.human = -1;
+    s.seed = 7000;
+    s.levels = {3, 3, ti::kAiLevelAI, 3, 3, 3};
+    if (!session->startNew(s)) return 0;
+    GameSession* sp = session.get();
+    std::unique_ptr<Scene> scene = makeGameScene(std::move(session));
+    Input in;
+    Canvas c(testW(), 480, testScale());
+    int shots = 0, frames = 0;
+    uint32_t since = 0;
+    bool releaseA = false;
+    for (uint32_t t = 1000; t < 1000 + 20 * 60 * 1000 && shots < 3; t += 33) {
+        in.beginFrame();
+        in.update(t);
+        if (releaseA) {
+            in.handle(Btn::A, false, t);
+            releaseA = false;
+        } else if (sp->holding()) {
+            in.handle(Btn::A, true, t);
+            releaseA = true;
+        }
+        scene->update(app, in, t);
+        if (sp->thinking() >= 0) {
+            if (!since) since = t;
+            ++frames;
+            if (int32_t(t - since) >= 600) {
+                drawTop(*scene, app, c, t);
+                savePpm(c, outDir + "/think_" + std::to_string(++shots) + ".ppm");
+                std::printf("uitest: think_%d at %.1f s (round %d)\n", shots, (t - 1000) / 1000.0, int(sp->game().round));
+                since = 0;
+            }
+        } else {
+            since = 0;
+        }
+        if (sp->over()) break;
+    }
+    std::printf("uitest: %d frames drawn while the A.I. thought\n", frames);
+    std::remove(GameSession::savePath().c_str());
+    return shots;
 }
 
 // Watch the computer players on the real game screen and save frames of the
@@ -1657,6 +1714,13 @@ int battleScreens(const std::string& outDir) {
                 g.players[0].unit[int(UnitType::PDS)] = int16_t(u);
                 a.add(UnitType::PDS, 2);
             }
+    if (const char* cols = std::getenv("TI4_BATTLE_COLOURS")) {  // 0.62.0 (test only): "a,b" the two sides' colours (0-15)
+        int ca = -1, cb = -1;
+        if (std::sscanf(cols, "%d,%d", &ca, &cb) == 2) {
+            g.players[0].color = int8_t(ca);
+            g.players[1].color = int8_t(cb);
+        }
+    }
     const Rect area{0, 22, 420, 366};
     int drawn = 0;
     for (const auto& pk : picks) {
@@ -1706,6 +1770,7 @@ int battleScreens(const std::string& outDir) {
             const bool bench = std::getenv("TI4_BATTLEBENCH") != nullptr;
             if (!shot && !bench && t % 40 != 0) continue;
             drawSpaceBackground(c, false);
+            pcolours::setNow(now);
             const uint32_t m0 = monotonicMs();
             bt.draw(c, g, area, now, t >= 12000 ? std::string("A: Continue") : std::string());
             ms += double(monotonicMs() - m0);
@@ -3162,6 +3227,384 @@ static double monotonicUs() {
     monotonicNow(&ts);
     return double(ts.tv_sec) * 1e6 + double(ts.tv_nsec) / 1e3;
 }
+// 0.62.0 draft (owner 2026-11-18: "draft a small sample of each of the introduced colors"): the 8 new player colours on the
+// things a colour paints - its swatch, a dreadnought, a carrier, a control token, a command token, a stretch of territory
+// border and its name - plus all 16 side by side. Frames for a GIF (TI4_UITEST_ONLY=colours; TI4_COLOUR_FRAMES, default
+// 60 frames 80 ms apart = one seamless 4.8 s loop; colours_NN.ppm).
+int leagueDraftScreens(const std::string& outDir);  // sim/league_drafts.cpp
+int leagueRunTest(const std::string& outDir);       // sim/league_test.cpp (0.80.0)
+int colourSamples(const std::string& outDir) {
+    const char* fe = std::getenv("TI4_COLOUR_FRAMES");
+    const int frames = fe ? std::max(1, std::atoi(fe)) : 60;
+    auto border = [](Canvas& c, float cx, float cy, float size, uint32_t col) {  // three edges, as MapView::drawBorders
+        static const float kCos[6] = {1.f, 0.5f, -0.5f, -1.f, -0.5f, 0.5f};
+        static const float kSin[6] = {0.f, 0.8660254f, 0.8660254f, 0.f, -0.8660254f, -0.8660254f};
+        static const int kBand[3] = {70, 36, 14};
+        int r = int((col >> 16) & 255), g = int((col >> 8) & 255), b = int(col & 255);
+        const int l = (r * 3 + g * 6 + b) / 10;
+        r = (r * 3 + l) / 4, g = (g * 3 + l) / 4, b = (b * 3 + l) / 4;
+        const uint32_t hi = mix(rgb(r, g, b), rgb(255, 255, 255), 100);
+        const float th = std::max(2.f, size * 0.06f), r0 = size - 1.f, bw = size * 0.22f;
+        for (int e = 0; e < 6; ++e) {  // a faint hex first
+            const int i1 = (4 + e) % 6, i2 = (5 + e) % 6;
+            c.line(cx + size * kCos[i1], cy + size * kSin[i1], cx + size * kCos[i2], cy + size * kSin[i2], rgb(60, 70, 96), 1.f, 200);
+        }
+        for (int e : {0, 1, 5}) {
+            const int i1 = (4 + e) % 6, i2 = (5 + e) % 6;
+            auto strip = [&](float ra, float rb, uint32_t colr, int a) {
+                float xs[4] = {cx + ra * kCos[i1], cx + ra * kCos[i2], cx + rb * kCos[i2], cx + rb * kCos[i1]};
+                float ys[4] = {cy + ra * kSin[i1], cy + ra * kSin[i2], cy + rb * kSin[i2], cy + rb * kSin[i1]};
+                c.fillPolygon(xs, ys, 4, colr, a);
+            };
+            const float rin = r0 - th;
+            for (int k = 0; k < 3; ++k) strip(rin - bw * float(k) / 3.f, rin - bw * float(k + 1) / 3.f, col, kBand[k]);
+            strip(size - 1.f, rin, hi, 235);
+        }
+    };
+    int n = 0;
+    // (0.75.0) one page per eight new colours: colours_NN (0.62.0's), colours2_NN (0.75.0's)
+    for (int page = 0; page < (pcolours::kCount - pcolours::kClassic) / 8; ++page)
+    for (int f = 0; f < frames; ++f) {
+        const uint32_t now = uint32_t(f) * 80u;
+        pcolours::setNow(now);
+        Canvas c(640, 480, testScale());
+        hits::clear();
+        c.verticalGradient(0, 0, 640, 480, rgb(12, 15, 30), rgb(4, 6, 14));
+        drawText(c, FONT_MDB, 14, 8, page ? "New player colours (0.75.0)" : "New player colours - drafts", theme::gold);
+        drawText(c, FONT_XS, 14, 28,
+                 "Each one on its swatch, a dreadnought, a carrier, a control token, a command token and a stretch of border.",
+                 theme::dim);
+        for (int i = 0; i < 8; ++i) {
+            const int col = pcolours::kClassic + page * 8 + i;
+            const pcolours::Colour& k = pcolours::info(col);
+            const int cx = 10 + (i % 2) * 314, cy = 44 + (i / 2) * 92;
+            drawPanel(c, Rect{cx, cy, 306, 88}, rgb(14, 18, 32), theme::border, 8, 245);
+            const std::string name = k.name;
+            {
+                pcolours::Finish fin(c, Rect{cx + 9, cy + 5, textWidth(FONT_SMB, name) + 3, 16}, col, 11u + uint32_t(i));
+                drawText(c, FONT_SMB, cx + 10, cy + 6, name, pcolours::text(col));
+            }
+            drawText(c, FONT_XS, cx + 10, cy + 24, k.look, theme::dim);
+            const int ey = cy + 62, fac = i * 3 + 1;
+            {
+                pcolours::Finish fin(c, Rect{cx + 13, ey - 11, 23, 23}, col, 21u + uint32_t(i));
+                c.fillCircle(float(cx + 24), float(ey), 10.f, k.base);
+            }
+            c.ring(float(cx + 24), float(ey), 10.5f, 1.f, rgb(10, 10, 16));
+            {
+                pcolours::Finish fin(c, Rect{cx + 44, ey - 15, 60, 30}, col, 31u + uint32_t(i));
+                icons::drawUnitArt(c, "unit/dreadnought", float(cx + 74), float(ey), 58, 28, k.base);
+            }
+            {
+                pcolours::Finish fin(c, Rect{cx + 108, ey - 13, 46, 26}, col, 41u + uint32_t(i));
+                icons::drawUnitArt(c, "unit/carrier", float(cx + 131), float(ey), 44, 24, k.base);
+            }
+            {
+                pcolours::Finish fin(c, Rect{cx + 160, ey - 13, 27, 27}, col, 51u + uint32_t(i));
+                cards::controlToken(c, fac, k.base, cx + 173, ey, 25);
+            }
+            {
+                pcolours::Finish fin(c, Rect{cx + 194, ey - 14, 31, 28}, col, 61u + uint32_t(i));
+                cards::commandToken(c, fac, k.base, cx + 209, ey, 29);
+            }
+            {
+                pcolours::Finish fin(c, Rect{cx + 238, ey - 26, 58, 52}, col, 71u + uint32_t(i));
+                border(c, float(cx + 266), float(ey + 2), 26.f, k.base);
+            }
+        }
+        // all of them: the classic 8 on top, the new ones below
+        for (int row = 0; row < pcolours::kCount / 8; ++row) {
+            const int y = 424 + row * 19;
+            drawText(c, FONT_XS, 14, y - 4, row ? "New" : "Classic", theme::faint);
+            for (int j = 0; j < 8; ++j) {
+                const int col = row * 8 + j, x = 58 + j * 74;
+                const pcolours::Colour& k = pcolours::info(col);
+                {
+                    pcolours::Finish fin(c, Rect{x - 7, y - 7, 15, 15}, col, 91u + uint32_t(col));
+                    c.fillCircle(float(x), float(y), 6.f, k.base);
+                }
+                drawText(c, FONT_XS, x + 10, y - 5, k.brief, theme::dim);
+            }
+        }
+        char buf[64];
+        std::snprintf(buf, sizeof buf, page ? "/colours2_%02d.ppm" : "/colours_%02d.ppm", f);
+        savePpm(c, outDir + buf);
+        ++n;
+    }
+    hits::clear();
+    if (std::getenv("TI4_COLOURBENCH")) {  // what one finish costs over a dreadnought, per colour
+        Canvas c(640, 480, testScale());
+        for (int col = pcolours::kClassic; col < pcolours::kCount; ++col) {
+            const uint32_t t0 = monotonicMs();
+            for (int k = 0; k < 400; ++k) {
+                pcolours::setNow(uint32_t(k) * 37u);
+                c.fillRect(0, 0, 120, 60, rgb(12, 16, 30));
+                pcolours::Finish fin(c, Rect{20, 10, 60, 30}, col, uint32_t(k));
+                icons::drawUnitArt(c, "unit/dreadnought", 50.f, 25.f, 58, 28, pcolours::base(col));
+            }
+            std::printf("finish %-18s %.1f us (draw + finish)\n", pcolours::info(col).name, float(monotonicMs() - t0) * 1000.f / 400.f);
+        }
+        const uint32_t t0 = monotonicMs();
+        for (int k = 0; k < 400; ++k) {
+            c.fillRect(0, 0, 120, 60, rgb(12, 16, 30));
+            icons::drawUnitArt(c, "unit/dreadnought", 50.f, 25.f, 58, 28, pcolours::base(0));
+        }
+        std::printf("finish %-18s %.1f us (draw only)\n", "(none)", float(monotonicMs() - t0) * 1000.f / 400.f);
+    }
+    return n;
+}
+// 0.62.0: the 16 colours in a played game (TI4_UITEST_ONLY=colourgame): 8 players in the 8 new colours, played by the
+// computer into round TI4_CG_ROUND (default 4); the map at each zoom (frames for a GIF: cg_zZ_NN.ppm), an expanded tile, the
+// faction web; TI4_COLOURBENCH=1: map draw ms with the new colours vs the same game in the classic ones.
+int colourGameScreens(const std::string& outDir) {
+    using namespace ti;
+    Engine e;
+    Setup s;
+    s.players = 8;
+    s.human = -1;
+    s.seed = 7771;
+    s.draft = 0;
+    s.colors = {8, 9, 10, 11, 12, 13, 14, 15};
+    if (std::getenv("TI4_CG_SET") && std::atoi(std::getenv("TI4_CG_SET")) == 2) s.colors = {16, 17, 18, 19, 20, 21, 22, 23};  // (0.75.0's)
+    e.start(s);
+    Rng rng(5);
+    const int round = std::getenv("TI4_CG_ROUND") ? std::atoi(std::getenv("TI4_CG_ROUND")) : 4;
+    for (int steps = 0; e.waiting() && steps < 60000; ++steps) {
+        const Game& g = e.game();
+        if (g.round >= round && g.phase == Phase::Action) break;
+        Answer a = aiAnswer(g, e.decision(), rng);
+        if (!e.answer(a)) break;
+        e.takeEvents();
+    }
+    const Game& g = e.game();
+    std::printf("uitest: colourgame round %d, colours", g.round);
+    for (int p = 0; p < g.numPlayers; ++p) std::printf(" %s", pcolours::info(g.players[size_t(p)].color).brief);
+    std::printf("\n");
+    const int frames = std::getenv("TI4_COLOUR_FRAMES") ? std::max(1, std::atoi(std::getenv("TI4_COLOUR_FRAMES"))) : 12;
+    int n = 0, busiest = -1, most = -1;
+    for (size_t x = 0; x < g.systems.size(); ++x) {
+        int u = 0;
+        for (int p = 0; p < g.numPlayers; ++p) u += g.systems[x].space[size_t(p)].total();
+        if (u > most) most = u, busiest = int(x);
+    }
+    for (int z = 0; z < 4; ++z) {
+        MapView map;
+        map.setViewport(Rect{0, 22, 640, 430});
+        map.setDrawArea(Rect{0, 22, 640, 430});
+        map.setZoom(z);
+        map.setCursor(g, busiest >= 0 ? busiest : 0);
+        for (int f = 0; f < (z == 2 ? frames : 1); ++f) {
+            const uint32_t now = 1000u + uint32_t(f) * 80u;
+            pcolours::setNow(now);
+            Canvas cv(640, 480, testScale());
+            drawSpaceBackground(cv, false);
+            for (int k = 0; k < 3; ++k) map.tick(g, now);
+            map.draw(cv, g, now);
+            char buf[64];
+            std::snprintf(buf, sizeof buf, "/cg_z%d_%02d.ppm", z, f);
+            savePpm(cv, outDir + buf);
+            ++n;
+        }
+    }
+    {
+        pcolours::setNow(2000);
+        Canvas cv(640, 480, testScale());
+        drawSpaceBackground(cv, false);
+        tileview::draw(cv, g, busiest >= 0 ? busiest : 0, Rect{10, 10, 620, 460}, 2000);
+        savePpm(cv, outDir + "/cg_tile.ppm");
+        Canvas wv(640, 480, testScale());
+        drawSpaceBackground(wv, false);
+        const FactionWeb w = factionWebLayout(g, Rect{10, 10, 620, 460}, 0);
+        drawFactionWeb(wv, g, w, 0, 1, 2000);
+        savePpm(wv, outDir + "/cg_web.ppm");
+        n += 2;
+    }
+    if (std::getenv("TI4_COLOURBENCH")) {
+        Game classic = g;
+        for (int p = 0; p < classic.numPlayers; ++p) classic.players[size_t(p)].color = int8_t(p);
+        for (int z = 0; z < 4; ++z) {
+            MapView map;
+            map.setViewport(Rect{0, 22, 640, 430});
+            map.setDrawArea(Rect{0, 22, 640, 430});
+            map.setZoom(z);
+            map.setCursor(g, busiest >= 0 ? busiest : 0);
+            Canvas cv(640, 480, testScale());
+            for (int k = 0; k < 5; ++k) map.tick(g, 1000);
+            Game one = classic;  // (just one player in a new colour - the usual game)
+            one.players[0].color = int8_t(8 + z * 2);
+            for (int pass = 0; pass < 3; ++pass) {
+                const Game& gg = pass == 1 ? classic : pass == 2 ? one : g;
+                for (int w = 0; w < 3; ++w) map.draw(cv, gg, 1000);
+                const uint32_t t0 = monotonicMs();
+                for (int k = 0; k < 20; ++k) {
+                    pcolours::setNow(1000u + uint32_t(k) * 50u);
+                    map.draw(cv, gg, 1000u + uint32_t(k) * 50u);
+                }
+                std::printf("colourbench zoom %d %s: %.2f ms per map\n", z, pass == 1 ? "classic" : pass == 2 ? "one new" : "all new", float(monotonicMs() - t0) / 20.f);
+            }
+        }
+    }
+    return n;
+}
+
+// 0.63.0 (TI4_UITEST_ONLY=galaxymix): "Fair slices" vs unbalanced - every player count and layout, 60 maps each way: every
+// one must build, and the spread between the richest and the poorest slice (best value of each planet) is printed.
+int galaxyMixCheck() {
+    using namespace ti;
+    int bad = 0;
+    for (int layout = 0; layout < 2; ++layout)
+        for (int n = 3; n <= 8; ++n) {
+            double spread[2] = {0, 0};
+            for (int unb = 0; unb < 2; ++unb)
+                for (int k = 0; k < 60; ++k) {
+                    Game g;
+                    g.numPlayers = n;
+                    g.layout = uint8_t(layout);
+                    g.modules = kModCodex;
+                    g.players.assign(size_t(n), Player());
+                    std::vector<int> homes;
+                    for (int i = 0; i < n; ++i) homes.push_back(i), g.players[size_t(i)].faction = int8_t(i);
+                    Rng rng(uint32_t(9000 + k * 31 + n));
+                    std::vector<int> owner;
+                    std::string err;
+                    if (!buildGalaxy(g, rng, homes, &err, false, &owner, unb != 0)) {
+                        ++bad;
+                        std::printf("galaxymix: %d players layout %d %s failed: %s\n", n, layout, unb ? "unbalanced" : "fair", err.c_str());
+                        continue;
+                    }
+                    const std::vector<SliceStats> st = sliceStats(g, owner, n);
+                    int lo = 99, hi = 0;
+                    for (const SliceStats& x : st) lo = std::min(lo, x.optimal), hi = std::max(hi, x.optimal);
+                    spread[unb] += double(hi - lo) / 60.0;
+                    Game d;  // the draft's hands too
+                    d.numPlayers = n;
+                    d.layout = uint8_t(layout);
+                    d.modules = kModCodex;
+                    d.players.assign(size_t(n), Player());
+                    for (int i = 0; i < n; ++i) d.players[size_t(i)].faction = int8_t(i);
+                    Rng r2(uint32_t(7000 + k * 17 + n));
+                    if (!startGalaxyDraft(d, r2, homes, &err, unb != 0)) {
+                        ++bad;
+                        std::printf("galaxymix: draft %d players layout %d failed: %s\n", n, layout, err.c_str());
+                    }
+                }
+            std::printf("galaxymix: %d players, layout %d: spread fair %.1f, unbalanced %.1f\n", n, layout, spread[0], spread[1]);
+        }
+    return bad;
+}
+
+// 0.64.0: every opening line (Hello .. Hostile) of every faction fits the speech box of your offer screen's band (layout 2 at
+// 640 wide: 265 x 66), said to the faction with the longest name. Prints how many need a smaller font; fails on any that
+// doesn't fit even in FONT_XS. TI4_UITEST_ONLY=talkfit (also part of the full run).
+int talkFitCheck() {
+    using namespace ti;
+    int listener = 0;
+    for (int f = 0; f < kFactionCount; ++f)
+        if (speech::address(f).size() > speech::address(listener).size()) listener = f;
+    int lines = 0, md = 0, sm = 0, xs = 0, bad = 0;
+    for (int f = 0; f < kFactionCount; ++f) {
+        if (f == listener) continue;
+        for (int cat = int(speech::Cat::Hello); cat <= int(speech::Cat::Hostile); ++cat) {
+            std::vector<std::string> seen;
+            for (uint32_t s = 0; s < 48; ++s) {
+                const std::string t = speech::pick(f, listener, speech::Cat(cat), speech::seedOf(s, uint32_t(cat), uint32_t(f)));
+                if (t.empty() || std::find(seen.begin(), seen.end(), t) != seen.end()) continue;
+                seen.push_back(t);
+                const speech::Speech sp = speech::layoutFit(f, t, 265, 66, rgb(200, 60, 60), rgb(236, 238, 250), 7);
+                ++lines;
+                if (sp.height > 66) {
+                    ++bad;
+                    std::printf("talkfit: %s %d does not fit (%d px): %s\n", kFactions[f].key, cat, sp.height, t.c_str());
+                } else if (sp.font == &FONT_MD) ++md;
+                else if (sp.font == &FONT_SM) ++sm;
+                else ++xs;
+            }
+            if (seen.empty()) {
+                ++bad;
+                std::printf("talkfit: %s %d has no line\n", kFactions[f].key, cat);
+            }
+        }
+    }
+    std::printf("uitest: talkfit %d lines to %s: %d normal size, %d small, %d extra small, %d too long\n", lines,
+                speech::address(listener).c_str(), md, sm, xs, bad);
+    return bad;
+}
+
+// 0.64.0 draft (owner: "Let's add the animated negotiation of the opponent that says a quip. Can you send me a draft of what
+// the negotiations page would look like?"): your offer screen with the opponent talking about you, in the two layouts (dealLook
+// 1 = in the right-hand panel, 2 = a band above the rows), for four opponents in four moods (a deal partner, a promise you broke,
+// a fight you started, a promise you kept). TI4_UITEST_ONLY=negodraft: negodraft_<look>_<who>_NN.ppm frames (every 80 ms).
+// The owner chose 2 (0.64.0, the game's look); TI4_NEGO_LOOK1=1 also draws layout 1.
+int negoDraftScreens(const std::string& outDir) {
+    using namespace ti;
+    int n = 0;
+    for (uint32_t seed = 1; seed < 120 && n == 0; ++seed) {
+        Engine e;
+        Setup s;
+        s.players = 6;
+        s.factions = {-1, findFaction("sol")};
+        s.human = -1;
+        s.seed = seed * 101;
+        e.start(s);
+        Rng rng(seed);
+        for (int steps = 0; e.waiting() && steps < 8000; ++steps) {
+            const Decision& d = e.decision();
+            if (d.player == 1 && d.kind == DecisionKind::Deal && screenName(e.game(), d) == "deal" && e.game().round >= 2) {
+                const struct {
+                    const char* faction;
+                    const char* name;
+                    int broke, attacks, kept, deals;
+                } kWho[] = {{"hacan", "partner", 0, 0, 0, 2}, {"sol", "broken", 1, 0, 0, 1}, {"l1z1x", "clash", 0, 2, 0, 0}, {"ghost", "kept", 0, 0, 1, 1}};
+                for (int look = std::getenv("TI4_NEGO_LOOK1") ? 1 : 2; look <= 2; ++look)  // (the owner chose 2; 1 on request)
+                    for (const auto& w : kWho) {
+                        Game g = e.game();
+                        const int them = d.targetPlayer, me = d.player;
+                        if (them < 0) continue;
+                        if (g.players[size_t(me)].faction == findFaction(w.faction)) g.players[size_t(me)].faction = int8_t(findFaction("xxcha"));
+                        g.players[size_t(them)].faction = int8_t(findFaction(w.faction));
+                        g.players[size_t(them)].name = factionShortName(g.players[size_t(them)].faction);
+                        Personality& pe = g.players[size_t(them)].pers;
+                        pe.broke[size_t(me)] = int8_t(w.broke), pe.attacks[size_t(me)] = int8_t(w.attacks);
+                        pe.kept[size_t(me)] = int8_t(w.kept), pe.deals[size_t(me)] = int8_t(w.deals);
+                        if (w.broke || w.attacks) pe.bf[size_t(me)] += 22.f;  // (a grudge to go with it)
+                        dealLook() = look;
+                        MapView map;
+                        map.setViewport(Rect{0, 22, 420, 430});
+                        Decision dd = d;
+                        dd.prompt = std::string("Offer to ") + factionShortName(g.players[size_t(them)].faction);
+                        std::unique_ptr<DecisionUI> ui = makeDecisionUI(g, dd, map);
+                        {
+                            Input in;
+                            in.beginFrame();
+                            in.handle(Btn::Y, true, 100);  // (a suggested deal filled in)
+                            ui->update(in, 100);
+                        }
+                        const int frames = std::getenv("TI4_NEGO_FRAMES") ? std::atoi(std::getenv("TI4_NEGO_FRAMES")) : 50;
+                        for (int f = 0; f < frames; ++f) {
+                            const uint32_t now = 10000u + uint32_t(f) * 80u;
+                            pcolours::setNow(now);
+                            Canvas c(640, 480, testScale());
+                            drawSpaceBackground(c, false);
+                            ui->draw(c, now);
+                            drawHintBar(c, ui->hints());
+                            char buf[96];
+                            std::snprintf(buf, sizeof buf, "/negodraft_%d_%s_%02d.ppm", look, w.name, f);
+                            savePpm(c, outDir + buf);
+                            ++n;
+                        }
+                    }
+                dealLook() = 2;  // (the game's look)
+                break;
+            }
+            Answer a = aiAnswer(e.game(), d, rng);
+            if (!e.answer(a)) break;
+            e.takeEvents();
+        }
+    }
+    std::printf("uitest: negodraft %d frames\n", n);
+    return n;
+}
+
 // 0.59.70: the Retrowave title backdrop (TI4_UITEST_ONLY=titlebg): the pan from empty space to the planet, a few moments of
 // the finished picture, how long the planet takes to make and a frame to draw (TI4_SCREENW for widescreen).
 int titleBgScreens(const std::string& outDir) {
@@ -3194,6 +3637,67 @@ int titleBgScreens(const std::string& outDir) {
         }
         std::printf("title backdrop %s: %.2f ms a frame, worst %.2f\n", pass ? "panning" : "still", total / 60.0, worst);
     }
+    return n;
+}
+// 0.60.1 (owner: the Retrowave New Game backdrop "as high detailed as the Main menu"): the New Game backdrop through a dragon cycle
+// (TI4_UITEST_ONLY=newgamebg; TI4_SCREENW / TI4_SCALE for the PC sizes; TI4_NGBG_CLIP="from,to" saves every frame in between as
+// clip_NNNN.ppm for a preview), the first frame (the sky is made then) and a frame's time.
+int newGameBgScreens(const std::string& outDir) {
+    int n = 0;
+    if (const char* clip = std::getenv("TI4_NGBG_CLIP")) {
+        unsigned from = 0, to = 0;
+        std::sscanf(clip, "%u,%u", &from, &to);
+        Canvas c(testW(), 480, testScale());
+        c.setView((c.fullWidth() - 640) / 2, 640);  // (as the app lays out the New Game screen)
+        int cx = 0, cy = 0, cw = c.pw(), ch = c.ph();  // TI4_NGBG_CROP="x,y,w,h" (real pixels): only that part
+        if (const char* cr = std::getenv("TI4_NGBG_CROP")) std::sscanf(cr, "%d,%d,%d,%d", &cx, &cy, &cw, &ch);
+        cx = std::max(0, std::min(cx, c.pw() - 1));
+        cy = std::max(0, std::min(cy, c.ph() - 1));
+        cw = std::min(cw, c.pw() - cx);
+        ch = std::min(ch, c.ph() - cy);
+        int k = 0;
+        for (uint32_t now = from; now < to; now += 33) {
+            newgamebg::draw(c, now);
+            char name[32];
+            std::snprintf(name, sizeof name, "/clip_%04d.ppm", k++);
+            FILE* f = std::fopen((outDir + name).c_str(), "wb");
+            if (!f) continue;
+            std::fprintf(f, "P6\n%d %d\n255\n", cw, ch);
+            for (int y = cy; y < cy + ch; ++y)
+                for (int x = cx; x < cx + cw; ++x) {
+                    const uint32_t p = c.pixels()[y * c.pw() + x];
+                    const unsigned char rgbv[3] = {uint8_t(p >> 16), uint8_t(p >> 8), uint8_t(p)};
+                    std::fwrite(rgbv, 1, 3, f);
+                }
+            std::fclose(f);
+        }
+        return k;
+    }
+    {
+        Canvas c(testW(), 480, testScale());
+        c.setView((c.fullWidth() - 640) / 2, 640);  // (as the app lays out the New Game screen)
+        const double a = monotonicUs();
+        newgamebg::draw(c, 1000);
+        std::printf("new game backdrop: first frame %.1f ms (%dx%d)\n", (monotonicUs() - a) / 1000.0, c.pw(), c.ph());
+    }
+    for (uint32_t now : {2000u, 9000u, 14500u, 19000u, 3000000000u}) {
+        Canvas c(testW(), 480, testScale());
+        c.setView((c.fullWidth() - 640) / 2, 640);  // (as the app lays out the New Game screen)
+        newgamebg::draw(c, now);
+        savePpm(c, outDir + "/newgamebg_" + std::to_string(now) + ".ppm");
+        ++n;
+    }
+    Canvas c(testW(), 480, testScale());
+    c.setView((c.fullWidth() - 640) / 2, 640);
+    double worst = 0, total = 0;
+    for (int f = 0; f < 120; ++f) {
+        const double a = monotonicUs();
+        newgamebg::draw(c, 12000u + uint32_t(f) * 16u);
+        const double ms = (monotonicUs() - a) / 1000.0;
+        worst = std::max(worst, ms);
+        total += ms;
+    }
+    std::printf("new game backdrop: %.2f ms a frame, worst %.2f\n", total / 120.0, worst);
     return n;
 }
 // 0.59.70 (owner 12:45): the Voidfall title backdrop - the battlefield (TI4_UITEST_ONLY=titlewar): the pan, then the battle over a
@@ -3338,6 +3842,20 @@ int retroScreens(const std::string& outDir) {
                 std::printf("retrobench %-8s zoom %d: %.2f ms per map, worst %.2f ms, first draw %u ms; steady %.2f ms, worst %.2f ms\n",
                             tag.c_str(), z, double(monotonicMs() - t0) / std::max(1, n), worst, coldMs, steady / std::max(1, ns),
                             steadyWorst);
+            }
+            if (std::getenv("TI4_PANBENCH")) {  // (0.61.2, owner: "moving the map left/right causes screen tearing") panning at 60 fps
+                double sum = 0, worst = 0;
+                int n = 0, over = 0;
+                for (uint32_t now = 8000; n < 240; now += 16, ++n) {
+                    map.pan(g, n % 120 < 60 ? -9.3f : 9.3f, 0.f);
+                    const double f0 = monotonicUs();
+                    map.draw(c, g, now);
+                    const double ms = (monotonicUs() - f0) / 1000.0;
+                    sum += ms;
+                    worst = std::max(worst, ms);
+                    over += ms > 12.0 ? 1 : 0;
+                }
+                std::printf("panbench %-8s zoom %d: %.2f ms per frame, worst %.2f ms, %d of %d over 12 ms\n", tag.c_str(), z, sum / n, worst, over, n);
             }
         }
     }
@@ -46905,6 +47423,2531 @@ int agendasCheck(const std::string&) {
 // The relics (debug pass, owner 2026-11-17 13:50 "then we can do the pass on the agenda and relic cards"; TI4_UITEST_ONLY=relics,
 // TI4_RELICFIXES=29 the old rules): the Prophecy of Kings, Uncharted Space and Thunder's Edge relics against their cards. Seat 0
 // the Letnev, 1 the Hacan (the relic's holder), 2 Sol; turn cases with muRun, agenda / status phase cases with agRun.
+// 0.61.0 (owner 2026-11-17 21:24: the card-wording passes) the public objectives (TI4_UITEST_ONLY=objectives; TI4_OBJFIXES = the
+// rules version, default 31): every card met and not met on a board built from a real game's opening (6 players, base + PoK),
+// its edge cases (non-home systems, the edge of the board, attachments, spending), and the progress the bots plan with agreeing.
+namespace {
+int objectivePlanetCountForTest(const ti::Game& g, int q) {
+    int n = 0;
+    for (const ti::PlanetState& x : g.planets) n += x.owner == q && !x.destroyed ? 1 : 0;
+    return n;
+}
+ti::Game objBoard(int lvl, std::vector<int> factions, int modules, uint32_t seed) {
+    using namespace ti;
+    Engine e;
+    Setup s;
+    s.players = int(factions.size());
+    s.human = -1;
+    s.seed = seed;
+    s.draft = 0;
+    s.fixes = lvl;
+    s.modules = modules;
+    s.factions = factions;
+    e.start(s);
+    Rng rng(3);
+    for (int steps = 0; e.waiting() && steps < 20000; ++steps) {
+        if (e.game().phase == Phase::Action) break;
+        if (!e.answer(aiAnswer(e.game(), e.decision(), rng))) break;
+    }
+    return e.game();
+}
+}  // namespace
+
+int objectivesCheck(const std::string&) {
+    using namespace ti;
+    int bad = 0, done = 0;
+    const int lvl = std::getenv("TI4_OBJFIXES") ? std::atoi(std::getenv("TI4_OBJFIXES")) : 31;
+    const int LET = findFaction("letnev"), HAC = findFaction("hacan"), SOL = findFaction("sol"), JOL = findFaction("jolnar"),
+              SAR = findFaction("sardakk"), L1 = findFaction("l1z1x"), GHOST = findFaction("ghost"), TIT = findFaction("titans");
+    const Game base = objBoard(lvl, {LET, HAC, SOL, JOL, SAR, L1}, 0, 5151);
+    const Game withCreuss = objBoard(lvl, {LET, HAC, SOL, JOL, SAR, GHOST}, 0, 5151);
+    const int p = 0;
+    auto report = [&](const std::string& name, bool ok, const std::string& what) {
+        std::printf("objectives: %s - %s: %s\n", name.c_str(), what.c_str(), ok ? "OK" : "WRONG");
+        bad += ok ? 0 : 1;
+        ++done;
+    };
+    // a clean player: no units anywhere, no planets but the home ones, no techs, no trade goods, tokens 0
+    auto clean = [&](Game g) {
+        for (SystemState& s : g.systems) s.space[size_t(p)] = Force{};
+        for (PlanetState& x : g.planets) {
+            x.units[size_t(p)] = Force{};
+            if (x.owner == p && g.systems[size_t(x.system)].home != p) x.owner = -1;
+        }
+        Player& pl = g.players[size_t(p)];
+        pl.techs.clear();
+        pl.tradeGoods = 0;
+        pl.commodities = 0;
+        pl.tactic = 0;
+        pl.strategy = 0;
+        for (PlanetState& x : g.planets)
+            if (x.owner == p) x.exhausted = true;  // (the home planets don't pay for anything unless a case readies them)
+        return g;
+    };
+    auto freeP = [&](const Game& g, std::function<bool(int)> pred) {  // unowned planets outside every home system, Mecatol and stations
+        std::vector<int> v;
+        for (size_t i = 0; i < g.planets.size(); ++i) {
+            const PlanetState& x = g.planets[i];
+            if (x.destroyed || x.owner >= 0 || x.system < 0 || g.systems[size_t(x.system)].home >= 0 || isStation(g, int(i))) continue;
+            if (!std::strcmp(g.systems[size_t(x.system)].d().key, "18")) continue;
+            if (!pred || pred(int(i))) v.push_back(int(i));
+        }
+        return v;
+    };
+    auto own = [&](Game& g, const std::vector<int>& v, int n) {
+        for (int i = 0; i < n && i < int(v.size()); ++i) {
+            g.planets[size_t(v[size_t(i)])].owner = int8_t(p);
+            g.planets[size_t(v[size_t(i)])].exhausted = false;
+        }
+        return int(v.size()) >= n;
+    };
+    auto put = [&](Game& g, int sys, UnitType t, int n) { g.systems[size_t(sys)].space[size_t(p)].n[int(t)] = uint8_t(n); };
+    auto onPlanet = [&](Game& g, int x, UnitType t, int n) { g.planets[size_t(x)].units[size_t(p)].n[int(t)] = uint8_t(n); };
+    auto systemsWhere = [&](const Game& g, std::function<bool(int)> pred) {
+        std::vector<int> v;
+        for (size_t s = 0; s < g.systems.size(); ++s)
+            if (!g.systems[s].isHyperlane() && pred(int(s))) v.push_back(int(s));
+        return v;
+    };
+    auto trait = [&](const Game& g, Trait t) { return [&g, t](int x) { return hasTraitOf(g, x, t); }; };
+    // the case: built from `from`, met or not; the progress agrees (for the ones that aren't spent)
+    auto kase = [&](const std::string& name, const char* key, const Game& g, bool expect) {
+        const int o = findObjective(key);
+        const bool m = meetsObjective(g, p, o);
+        bool ok = m == expect;
+        std::string what = std::string(expect ? "met" : "not met") + (m != expect ? (m ? " (but it is met)" : " (but it isn't met)") : "");
+        if (!objectiveSpend(o).any()) {
+            const ObjProgress pr = objectiveProgress(g, p, o);
+            if ((pr.have >= pr.need) != m) {
+                ok = false;
+                what += " - the bots' progress says " + std::to_string(pr.have) + "/" + std::to_string(pr.need);
+            }
+        }
+        report(name, ok, what);
+    };
+    const int mec = base.mecatol();
+    const int home = base.players[size_t(p)].homeSystem;
+    const int otherHome = base.players[1].homeSystem;
+
+    // --- Corner the Market / Unify the Colonies: planets that each have the same planet trait
+    {
+        Game g = clean(base);
+        own(g, freeP(g, trait(g, Trait::Cultural)), 4);
+        kase("Corner the Market", "corner", g, true);
+        Game h = clean(base);
+        own(h, freeP(h, trait(h, Trait::Cultural)), 3);
+        own(h, freeP(h, trait(h, Trait::Industrial)), 1);
+        kase("Corner the Market (3 cultural + 1 industrial)", "corner", h, false);
+        Game u = clean(base);
+        own(u, freeP(u, trait(u, Trait::Hazardous)), 6);
+        kase("Unify the Colonies", "unify_colonies", u, true);
+        Game v = clean(base);
+        own(v, freeP(v, trait(v, Trait::Hazardous)), 5);
+        kase("Unify the Colonies (5)", "unify_colonies", v, false);
+        Game w = clean(base);
+        own(w, freeP(w, trait(w, Trait::Cultural)), 3);
+        if (mec >= 0) w.planets[size_t(base.systems[size_t(mec)].planets[0])].owner = int8_t(p);
+        kase("Corner the Market (Mecatol Rex has no trait)", "corner", w, false);
+    }
+    // --- Develop Weaponry / Revolutionize Warfare: unit upgrade technologies; Diversify Research / Master the Sciences: colours
+    {
+        auto techs = [&](std::vector<const char*> ks) {
+            Game g = clean(base);
+            for (const char* k : ks) g.players[size_t(p)].techs.push_back(int16_t(findTech(k)));
+            return g;
+        };
+        kase("Develop Weaponry", "develop", techs({"dd2", "cr2"}), true);
+        kase("Develop Weaponry (1 upgrade + 1 coloured)", "develop", techs({"dd2", "gd"}), false);
+        kase("Revolutionize Warfare", "revolutionize", techs({"dd2", "cr2", "inf2"}), true);
+        kase("Revolutionize Warfare (2)", "revolutionize", techs({"dd2", "cr2", "amd"}), false);
+        kase("Diversify Research", "diversify", techs({"amd", "gd", "nm", "dxa"}), true);
+        kase("Diversify Research (2 + 1 + 1)", "diversify", techs({"amd", "gd", "nm", "ps"}), false);
+        kase("Diversify Research (unit upgrades have no colour)", "diversify", techs({"amd", "gd", "nm", "dd2", "cr2"}), false);
+        kase("Master the Sciences", "master_science", techs({"amd", "gd", "nm", "dxa", "ps", "da", "st", "gls"}), true);
+        kase("Master the Sciences (3 colours)", "master_science", techs({"amd", "gd", "nm", "dxa", "ps", "da", "st"}), false);
+    }
+    // --- spending: resources, influence, trade goods, tokens
+    {
+        auto withPlanets = [&](int res, int inf, int tg) {  // ready planets worth at least res resources / inf influence (separate)
+            Game g = clean(base);
+            int r = 0, i = 0;
+            for (int x : freeP(g, nullptr)) {
+                const PlanetDef& d = kPlanets[g.planets[size_t(x)].def];
+                if (r < res && d.res >= d.inf && r + d.res <= res) {
+                    g.planets[size_t(x)].owner = int8_t(p);
+                    g.planets[size_t(x)].exhausted = false;
+                    r += d.res;
+                } else if (i < inf && d.inf > d.res && i + d.inf <= inf) {
+                    g.planets[size_t(x)].owner = int8_t(p);
+                    g.planets[size_t(x)].exhausted = false;
+                    i += d.inf;
+                }
+            }
+            g.players[size_t(p)].tradeGoods = int8_t(tg);
+            return std::make_pair(g, std::make_pair(r, i));
+        };
+        auto exact = [&](const char* name, const char* key, int res, int inf, int tg) {  // just enough (trade goods fill the gap), then 1 short
+            auto pr = withPlanets(res, inf, tg);
+            Game g = pr.first;
+            g.players[size_t(p)].tradeGoods = int8_t(tg + (res - pr.second.first) + (inf - pr.second.second));
+            kase(name, key, g, true);
+            g.players[size_t(p)].tradeGoods = int8_t(g.players[size_t(p)].tradeGoods - 1);
+            kase(std::string(name) + " (1 short)", key, g, false);
+        };
+        exact("Erect a Monument", "monument", 8, 0, 0);
+        {
+            auto pr = withPlanets(7, 0, 0);
+            kase("Erect a Monument (7 resources)", "monument", pr.first, false);
+            pr.first.players[size_t(p)].tradeGoods = 1;
+            kase("Erect a Monument (7 resources + 1 trade good)", "monument", pr.first, true);
+        }
+        exact("Sway the Council", "sway_council", 0, 8, 0);
+        {
+            auto pr = withPlanets(0, 7, 0);
+            kase("Sway the Council (7 influence)", "sway_council", pr.first, false);
+        }
+        exact("Found a Golden Age", "golden_age", 16, 0, 0);
+        exact("Manipulate Galactic Law", "manipulate_law", 0, 16, 0);
+        {
+            Game g = clean(base);
+            g.players[size_t(p)].tradeGoods = 5;
+            kase("Negotiate Trade Routes", "trade_routes", g, true);
+            g.players[size_t(p)].tradeGoods = 4;
+            g.players[size_t(p)].commodities = 3;
+            kase("Negotiate Trade Routes (4 trade goods, commodities don't count)", "trade_routes", g, false);
+            g.players[size_t(p)].tradeGoods = 10;
+            kase("Centralize Galactic Trade", "centralize_trade", g, true);
+            g.players[size_t(p)].tradeGoods = 9;
+            kase("Centralize Galactic Trade (9)", "centralize_trade", g, false);
+        }
+        exact("Amass Wealth (3 influence, 3 resources, 3 trade goods)", "amass_wealth", 3, 3, 3);
+        {
+            auto pr = withPlanets(6, 6, 2);
+            kase("Amass Wealth (2 trade goods)", "amass_wealth", pr.first, false);
+            Game g = clean(base);
+            g.players[size_t(p)].tradeGoods = 9;
+            kase("Amass Wealth (9 trade goods: 3 of them as resources, 3 as influence)", "amass_wealth", g, true);
+            g.players[size_t(p)].tradeGoods = 8;
+            kase("Amass Wealth (8 trade goods)", "amass_wealth", g, false);
+        }
+        exact("Hold Vast Reserves", "vast_reserves", 6, 6, 6);
+        {
+            Game g = clean(base);
+            g.players[size_t(p)].tactic = 2;
+            g.players[size_t(p)].strategy = 1;
+            kase("Lead From the Front (2 tactic + 1 strategy)", "lead", g, true);
+            g.players[size_t(p)].strategy = 0;
+            g.players[size_t(p)].fleet = 6;
+            kase("Lead From the Front (fleet tokens don't count)", "lead", g, false);
+            g.players[size_t(p)].tactic = 3;
+            g.players[size_t(p)].strategy = 3;
+            kase("Galvanize the People", "galvanize", g, true);
+            g.players[size_t(p)].strategy = 2;
+            kase("Galvanize the People (5)", "galvanize", g, false);
+        }
+    }
+    // --- control: non-home systems, technology specialties, another player's home
+    {
+        Game g = clean(base);
+        own(g, freeP(g, nullptr), 6);
+        kase("Expand Borders", "expand_borders", g, true);
+        Game h = clean(base);
+        own(h, freeP(h, nullptr), 5);
+        for (int16_t x : h.systems[size_t(otherHome)].planets) h.planets[size_t(x)].owner = int8_t(p);
+        kase("Expand Borders (5 + another player's home planets: home systems)", "expand_borders", h, false);
+        kase("Conquer the Weak", "conquer", h, true);
+        kase("Conquer the Weak (none)", "conquer", g, false);
+        Game s = clean(base);
+        own(s, freeP(s, nullptr), 11);
+        kase("Subdue the Galaxy", "subdue", s, true);
+        Game s2 = clean(base);
+        own(s2, freeP(s2, nullptr), 10);
+        kase("Subdue the Galaxy (10)", "subdue", s2, false);
+        Game r = clean(base);
+        own(r, freeP(r, [&](int x) { return planetHasSkip(r, x); }), 3);
+        kase("Found Research Outposts", "research_outposts", r, true);
+        Game r2 = clean(base);
+        own(r2, freeP(r2, [&](int x) { return planetHasSkip(r2, x); }), 2);
+        kase("Found Research Outposts (2)", "research_outposts", r2, false);
+        Game b = clean(base);
+        own(b, freeP(b, [&](int x) { return planetHasSkip(b, x); }), 5);
+        kase("Form Galactic Brain Trust", "brain_trust", b, true);
+    }
+    // --- Intimidate Council: ships in 2 systems adjacent to Mecatol Rex's system
+    if (mec >= 0) {
+        Game g = clean(base);
+        const auto& adj = g.systems[size_t(mec)].adj;
+        put(g, adj[0], UnitType::Fighter, 1);
+        put(g, adj[1], UnitType::Destroyer, 1);
+        kase("Intimidate Council (a fighter and a destroyer)", "intimidate", g, true);
+        Game h = clean(base);
+        put(h, mec, UnitType::Cruiser, 1);
+        put(h, adj[0], UnitType::Cruiser, 1);
+        kase("Intimidate Council (Mecatol Rex itself isn't adjacent to itself)", "intimidate", h, false);
+        for (int16_t a : adj) {
+            if (base.systems[size_t(a)].planets.empty()) continue;
+            Game k = clean(base);
+            onPlanet(k, k.systems[size_t(a)].planets[0], UnitType::Infantry, 2);
+            put(k, a == adj[0] ? adj[1] : adj[0], UnitType::Cruiser, 1);
+            kase("Intimidate Council (ground forces aren't ships)", "intimidate", k, false);
+            break;
+        }
+    }
+    // --- structures
+    {
+        auto withStructs = [&](int docks, int pds, bool onePlanet) {
+            Game g = clean(base);
+            std::vector<int> pl = freeP(g, nullptr);
+            int k = 0;
+            for (int i = 0; i < docks; ++i, ++k) onPlanet(g, pl[size_t(onePlanet ? 0 : k)], UnitType::SpaceDock, 1);
+            for (int i = 0; i < pds; ++i, ++k)
+                g.planets[size_t(pl[size_t(onePlanet ? 0 : k)])].units[size_t(p)].n[int(UnitType::PDS)] += 1;
+            for (int i = 0; i < k; ++i) g.planets[size_t(pl[size_t(onePlanet ? 0 : i)])].owner = int8_t(p);
+            return g;
+        };
+        kase("Build Defenses (2 space docks + 2 PDS)", "build_defenses", withStructs(2, 2, false), true);
+        kase("Build Defenses (3)", "build_defenses", withStructs(1, 2, false), false);
+        kase("Construct Massive Cities", "massive_cities", withStructs(3, 4, false), true);
+        kase("Construct Massive Cities (6)", "massive_cities", withStructs(3, 3, false), false);
+        kase("Improve Infrastructure", "infrastructure", withStructs(1, 2, false), true);
+        kase("Improve Infrastructure (3 structures on 1 planet)", "infrastructure", withStructs(1, 2, true), false);
+        Game h = withStructs(1, 1, false);
+        h.planets[size_t(h.systems[size_t(home)].planets[0])].units[size_t(p)].n[int(UnitType::SpaceDock)] = 1;
+        kase("Improve Infrastructure (2 + the home system)", "infrastructure", h, false);
+        Game o = withStructs(1, 1, false);
+        const int ox = o.systems[size_t(otherHome)].planets[0];
+        o.planets[size_t(ox)].units[size_t(p)].n[int(UnitType::PDS)] = 1;
+        o.planets[size_t(ox)].owner = int8_t(p);
+        kase("Improve Infrastructure (another player's home planet is outside yours)", "infrastructure", o, true);
+        kase("Protect the Border", "protect_border", withStructs(2, 3, false), true);
+        kase("Protect the Border (4)", "protect_border", withStructs(2, 2, false), false);
+    }
+    // --- attachments
+    {
+        auto attached = [&](int n) {
+            Game g = clean(base);
+            std::vector<int> pl = freeP(g, nullptr);
+            const int16_t card = int16_t(findExploreCard("ds"));
+            for (int i = 0; i < n; ++i) {
+                g.planets[size_t(pl[size_t(i)])].owner = int8_t(p);
+                g.planets[size_t(pl[size_t(i)])].attachments.push_back(card);
+            }
+            return g;
+        };
+        kase("Discover Lost Outposts", "lost_outposts", attached(2), true);
+        kase("Discover Lost Outposts (1)", "lost_outposts", attached(1), false);
+        Game t = attached(1);
+        const int tx = freeP(t, nullptr)[0];
+        t.planets[size_t(tx)].owner = int8_t(p);
+        t.planets[size_t(tx)].terraform = true;
+        kase("Discover Lost Outposts (1 + Terraform, an attachment)", "lost_outposts", t, lvl >= 31);
+        Game n = attached(2);
+        const int nx = freeP(n, nullptr)[0];
+        n.planets[size_t(nx)].owner = int8_t(p);
+        n.planets[size_t(nx)].nanoForge = true;
+        kase("Reclaim Ancient Monuments (2 + the Nano-Forge, an attachment)", "ancient_monuments", n, lvl >= 31);
+        kase("Reclaim Ancient Monuments", "ancient_monuments", attached(3), true);
+    }
+    // --- flagships and war suns
+    {
+        Game g = clean(base);
+        put(g, otherHome, UnitType::Flagship, 1);
+        kase("Engineer a Marvel", "engineer_marvel", g, true);
+        kase("Achieve Supremacy (flagship in another player's home system)", "supremacy", g, true);
+        Game m = clean(base);
+        if (mec >= 0) put(m, mec, UnitType::WarSun, 1);
+        kase("Achieve Supremacy (war sun at Mecatol Rex)", "supremacy", m, mec >= 0);
+        Game h = clean(base);
+        put(h, home, UnitType::Flagship, 1);
+        kase("Achieve Supremacy (flagship at home)", "supremacy", h, false);
+        kase("Engineer a Marvel (flagship at home)", "engineer_marvel", h, true);
+        kase("Engineer a Marvel (none)", "engineer_marvel", clean(base), false);
+    }
+    // --- systems that do not contain planets; legendary planets, Mecatol Rex, anomalies; the edge of the board
+    {
+        auto unitsIn = [&](const Game& from, const std::vector<int>& sys, int n) {
+            Game g = from;
+            for (int i = 0; i < n && i < int(sys.size()); ++i) put(g, sys[size_t(i)], UnitType::Destroyer, 1);
+            return g;
+        };
+        Game c = clean(base);
+        const std::vector<int> empty = systemsWhere(c, [&](int s) { return c.systems[size_t(s)].planets.empty() && c.systems[size_t(s)].home < 0 && !c.systems[size_t(s)].offBoard; });
+        kase("Explore Deep Space", "deep_space", unitsIn(c, empty, 3), int(empty.size()) >= 3);
+        kase("Explore Deep Space (2)", "deep_space", unitsIn(c, empty, 2), false);
+        kase("Patrol Vast Territories", "vast_territories", unitsIn(c, empty, 5), int(empty.size()) >= 5);
+        const std::vector<int> leg = systemsWhere(c, [&](int s) {
+            if (c.systems[size_t(s)].home >= 0) return false;
+            if (isAnomaly(c, s) || !std::strcmp(c.systems[size_t(s)].d().key, "18")) return true;
+            for (int16_t x : c.systems[size_t(s)].planets)
+                if (kPlanets[c.planets[size_t(x)].def].legendary) return true;
+            return false;
+        });
+        kase("Make History", "make_history", unitsIn(c, leg, 2), int(leg.size()) >= 2);
+        kase("Make History (1)", "make_history", unitsIn(c, leg, 1), false);
+        kase("Become a Legend", "become_legend", unitsIn(c, leg, 4), int(leg.size()) >= 4);
+        const std::vector<int> edge = systemsWhere(c, [&](int s) { return c.systems[size_t(s)].edge && c.systems[size_t(s)].home != p; });
+        kase("Populate the Outer Rim", "outer_rim", unitsIn(c, edge, 3), int(edge.size()) >= 3);
+        Game h = unitsIn(c, edge, 2);
+        put(h, home, UnitType::Destroyer, 1);
+        kase("Populate the Outer Rim (2 + the home system)", "outer_rim", h, false);
+        kase("Control the Borderlands", "control_borderlands", unitsIn(c, edge, 5), int(edge.size()) >= 5);
+        // LRR 39.2: an edge system is one with a side not touching another system tile (hyperlanes are tiles of the board)
+        int notEdge = -1;
+        for (size_t s = 0; s < c.systems.size(); ++s)
+            if (!c.systems[s].edge && c.systems[s].home < 0 && !c.systems[s].isHyperlane() && int(s) != mec) notEdge = int(s);
+        Game ne = unitsIn(c, edge, 2);
+        if (notEdge >= 0) put(ne, notEdge, UnitType::Destroyer, 1);
+        kase("Populate the Outer Rim (2 + a system in the middle)", "outer_rim", ne, false);
+        // LRR 39.2a: the Ghosts of Creuss' home system is on the edge of the game board
+        Game gc = clean(withCreuss);
+        const int creussHome = gc.players[5].homeSystem;
+        const std::vector<int> edge2 = systemsWhere(gc, [&](int s) { return gc.systems[size_t(s)].edge && gc.systems[size_t(s)].home != p && s != creussHome; });
+        Game cr = unitsIn(gc, edge2, 2);
+        put(cr, creussHome, UnitType::Destroyer, 1);
+        kase("Populate the Outer Rim (2 + the Creuss home system, on the edge - LRR 39.2a)", "outer_rim", cr, lvl >= 31);
+    }
+    // --- ships in one system; neighbours; distant lands
+    {
+        Game g = clean(base);
+        put(g, home, UnitType::Dreadnought, 2);
+        put(g, home, UnitType::Cruiser, 3);
+        put(g, home, UnitType::Fighter, 6);
+        kase("Raise a Fleet", "raise_fleet", g, true);
+        g.systems[size_t(home)].space[size_t(p)].n[int(UnitType::Cruiser)] = 2;
+        kase("Raise a Fleet (4 + fighters)", "raise_fleet", g, false);
+        g.systems[size_t(home)].space[size_t(p)].n[int(UnitType::Cruiser)] = 6;
+        kase("Command an Armada", "command_armada", g, true);
+        g.systems[size_t(home)].space[size_t(p)].n[int(UnitType::Cruiser)] = 5;
+        kase("Command an Armada (7)", "command_armada", g, false);
+        // Push Boundaries: more planets than each of 2 neighbours (seat 0's neighbours have their home planets only)
+        Game n = clean(base);
+        int nb = 0;
+        for (int q = 1; q < n.numPlayers; ++q)
+            if (areNeighbours(n, p, q)) ++nb;
+        own(n, freeP(n, nullptr), 4);
+        kase("Push Boundaries (" + std::to_string(nb) + " neighbours)", "push_boundaries", n, nb >= 2);
+        // ships next to two other players' home systems make them neighbours (LRR 59.1)
+        std::vector<int> qs;
+        for (int q = 1; q < n.numPlayers && qs.size() < 2; ++q) {
+            const int hq = n.players[size_t(q)].homeSystem;
+            for (int16_t a : n.systems[size_t(hq)].adj)
+                if (n.systems[size_t(a)].home < 0 && !n.systems[size_t(a)].isHyperlane()) {
+                    put(n, a, UnitType::Destroyer, 1);
+                    qs.push_back(q);
+                    break;
+                }
+        }
+        int nb2 = 0;
+        for (int q = 1; q < n.numPlayers; ++q)
+            if (areNeighbours(n, p, q)) ++nb2;
+        kase("Push Boundaries (" + std::to_string(nb2) + " neighbours, more planets than each)", "push_boundaries", n, nb2 >= 2);
+        if (qs.size() == 2) {
+            Game m = n;
+            for (int x : freeP(m, nullptr))  // the second neighbour takes as many planets as seat 0 has
+                if (objectivePlanetCountForTest(m, qs[1]) < objectivePlanetCountForTest(m, p)) m.planets[size_t(x)].owner = int8_t(qs[1]);
+            kase("Push Boundaries (a neighbour with as many planets)", "push_boundaries", m, nb2 >= 3);
+        }
+        // Rule Distant Lands: two planets each in or adjacent to a different other player's home system
+        Game d = clean(base);
+        std::vector<int> near1, near2;
+        const int h1 = base.players[2].homeSystem, h2 = base.players[4].homeSystem;
+        for (int x : freeP(d, nullptr)) {
+            const int s = d.planets[size_t(x)].system;
+            const auto& adj = d.systems[size_t(s)].adj;
+            if (std::find(adj.begin(), adj.end(), int16_t(h1)) != adj.end()) near1.push_back(x);
+            if (std::find(adj.begin(), adj.end(), int16_t(h2)) != adj.end()) near2.push_back(x);
+        }
+        if (!near1.empty() && !near2.empty()) {
+            Game d1 = d;
+            d1.planets[size_t(near1[0])].owner = int8_t(p);
+            d1.planets[size_t(near2[0])].owner = int8_t(p);
+            kase("Rule Distant Lands", "distant_lands", d1, true);
+            if (near1.size() >= 2) {
+                Game d2 = d;
+                d2.planets[size_t(near1[0])].owner = int8_t(p);
+                d2.planets[size_t(near1[1])].owner = int8_t(p);
+                bool alsoOther = false;  // (unless one of them is next to a second home as well)
+                for (int x : {near1[0], near1[1]})
+                    for (int16_t a : d2.systems[size_t(d2.planets[size_t(x)].system)].adj)
+                        if (d2.systems[size_t(a)].home >= 0 && d2.systems[size_t(a)].home != p && a != h1) alsoOther = true;
+                kase("Rule Distant Lands (both next to the same home system)", "distant_lands", d2, alsoOther);
+            }
+        } else {
+            report("Rule Distant Lands", false, "the board has no planets next to those homes");
+        }
+    }
+    // --- LRR 61.16: no public objectives without every home planet
+    {
+        Game g = clean(base);
+        own(g, freeP(g, nullptr), 6);
+        g.planets[size_t(g.systems[size_t(home)].planets[0])].owner = int8_t(1);
+        report("LRR 61.16 (a home planet lost)", !controlsHomePlanets(g, p), "no public objectives scored");
+    }
+    (void)TIT;
+    std::printf("objectives: %d checked, %d wrong (rules version %d)\n", done, bad, lvl);
+    return bad == 0 ? 1 : 0;
+}
+
+// 0.61.0 the secret objectives (the card-wording passes; TI4_UITEST_ONLY=secrets, TI4_SECFIXES = the rules version, default 31):
+// the status-phase secrets met / not met on a real game's opening board (as the public objectives), and the action / agenda-phase
+// ones in play - a combat that fulfils several scores one of them (LRR 61.7), Turn Their Fleets to Dust as printed and as the
+// Codex has it, Betray a Friend's play area, Dictate Policy at the start of the agenda phase. TI4_SECDEBUG=1 prints each run's log.
+namespace {
+struct SecRun {
+    bool setUp = false, acted = false, finished = false;
+    std::vector<std::string> log, refused;
+    std::vector<int> scoreAsked;  // the option counts of each "Score which secret objective?"
+    std::vector<std::string> asked;  // seat 0's questions from the action on (prompt -> answer's first pick)
+    std::vector<std::pair<std::string, std::vector<int>>> options;  // ... and their option ids
+    int cannonHits = -1;          // seat 0's space cannon hits (the first roll)
+    ti::Game end;
+};
+// seat 0's first turn of round 1: `setup` builds the board (T = the system to activate, moves = the movement plan), seat 0 activates T
+// and moves; everything else is the computer's
+std::function<bool(const ti::Game&, const ti::Decision&, ti::Answer&)> g_secDrive;  // (0.61.0) answers of the case's own
+uint32_t g_secEvents = 0;  // (0.61.0) galactic events in play
+SecRun secRun1(int fixes, int modules, const std::vector<int>& factions, uint32_t seed,
+               const std::function<bool(ti::Game&, int&, std::vector<int>&)>& setup) {
+    using namespace ti;
+    SecRun r;
+    Engine e;
+    Setup s;
+    s.players = int(factions.size());
+    s.human = -1;
+    s.seed = seed;
+    s.draft = 0;
+    s.fixes = fixes;
+    s.modules = modules;
+    s.events = g_secEvents;
+    s.factions = factions;
+    e.start(s);
+    Rng rng(4);
+    int T = -1;
+    std::vector<int> moves;
+    bool activated = false, moved = false;
+    for (int steps = 0; e.waiting() && steps < 60000 && !r.finished; ++steps) {
+        const Game& g = e.game();
+        const Decision& d = e.decision();
+        Answer a = aiAnswer(g, d, rng);
+        if (!r.acted && g.phase == Phase::Action && d.player == 0 && d.tag == Tag::ActionChoice) {
+            Game& gm = e.g();
+            for (Player& pq : gm.players) pq.actionCards.clear();
+            r.setUp = setup(gm, T, moves);
+            if (!r.setUp) break;
+            computeAdjacency(gm);
+            r.acted = true;
+            a = Answer{};
+            a.picks = {0};
+        } else if (r.acted && !activated && d.player == 0 && d.tag == Tag::Activate) {
+            activated = true;
+            a = Answer{};
+            a.picks = {T};
+        } else if (activated && !moved && d.player == 0 && d.kind == DecisionKind::Move && d.tag == Tag::Movement) {
+            moved = true;
+            a = Answer{};
+            a.data = moves;
+        } else if (r.acted && d.tag == Tag::Retreat) {  // (the fights are fought out)
+            a = Answer{};
+            a.picks = {0};
+        } else if (r.acted && d.tag == Tag::ScoreSecret) {
+            r.scoreAsked.push_back(int(d.options.size()));
+        }
+        if (r.acted && d.player == 0) {
+            std::vector<int> ids;
+            for (const Option& o : d.options) ids.push_back(o.id);
+            r.options.push_back({d.prompt, ids});
+        }
+        if (r.acted && g_secDrive) {
+            Answer b = a;
+            if (g_secDrive(g, d, b)) a = b;
+        }
+        if (r.acted && d.player == 0) r.asked.push_back(d.prompt + " [tag " + std::to_string(int(d.tag)) + " explore " + std::to_string(d.explore) + "] -> " + (a.picks.empty() ? std::string("-") : std::to_string(a.picks[0])));
+        std::string why;
+        if (!e.answer(a, &why)) {
+            r.refused.push_back(d.prompt + " [" + why + "]");
+            break;
+        }
+        for (const Event& ev : e.takeEvents()) {
+            if (r.acted && !ev.text.empty()) r.log.push_back(ev.text);
+            if (r.acted && ev.kind == EventKind::Dice && ev.player == 0 && r.cannonHits < 0 && ev.label.find("Space cannon") != std::string::npos)
+                r.cannonHits = ev.hits;
+            if (r.acted && ev.kind == EventKind::TurnEnd && ev.player == 0) r.finished = true;
+        }
+    }
+    r.end = e.game();
+    if (std::getenv("TI4_SECDEBUG")) {
+        std::printf("secrets debug: seed %u set %d acted %d finished %d asked %d\n", seed, r.setUp, r.acted, r.finished, int(r.scoreAsked.size()));
+        for (const std::string& l : r.log) std::printf("secrets debug:   %s\n", l.c_str());
+        for (const std::string& l : r.refused) std::printf("secrets debug: REFUSED at '%s'\n", l.c_str());
+    }
+    return r;
+}
+// an empty, plain system (no planets when planets == 0) next to `t`, one hex away
+int secPlainNext(const ti::Game& g, int t, int planets) {
+    using namespace ti;
+    for (int16_t x : g.systems[size_t(t)].adj) {
+        const SystemState& xs = g.systems[size_t(x)];
+        if (xs.offBoard || xs.isHyperlane() || xs.home >= 0 || x == g.mecatol() || isAnomaly(g, x) || int(xs.planets.size()) != planets) continue;
+        if (hexDistance(xs.pos, g.systems[size_t(t)].pos) != 1) continue;
+        bool empty = true;
+        for (int q = 0; q < kSides; ++q) {
+            if (!xs.space[size_t(q)].empty()) empty = false;
+            for (int16_t pl : xs.planets)
+                if (!g.planets[size_t(pl)].units[size_t(q)].empty() || g.planets[size_t(pl)].owner >= 0) empty = false;
+        }
+        if (empty) return x;
+    }
+    return -1;
+}
+bool secEmpty(const ti::Game& g, int t) {
+    for (int q = 0; q < ti::kSides; ++q) {
+        if (!g.systems[size_t(t)].space[size_t(q)].empty()) return false;
+        for (int16_t pl : g.systems[size_t(t)].planets)
+            if (!g.planets[size_t(pl)].units[size_t(q)].empty() || g.planets[size_t(pl)].owner >= 0) return false;
+    }
+    return true;
+}
+}  // namespace
+
+int secretsCheck(const std::string&) {
+    using namespace ti;
+    int bad = 0, done = 0;
+    const int lvl = std::getenv("TI4_SECFIXES") ? std::atoi(std::getenv("TI4_SECFIXES")) : 31;
+    const int LET = findFaction("letnev"), HAC = findFaction("hacan"), SOL = findFaction("sol"), JOL = findFaction("jolnar"),
+              SAR = findFaction("sardakk"), L1 = findFaction("l1z1x"), TIT = findFaction("titans");
+    const Game base = objBoard(lvl, {LET, HAC, SOL, JOL, SAR, L1}, 0, 5151);
+    const Game titans = objBoard(lvl, {TIT, HAC, SOL, JOL, SAR, L1}, 0, 5151);
+    const int p = 0;
+    auto report = [&](const std::string& name, bool ok, const std::string& what) {
+        std::printf("secrets: %s - %s: %s\n", name.c_str(), what.c_str(), ok ? "OK" : "WRONG");
+        bad += ok ? 0 : 1;
+        ++done;
+    };
+    auto clean = [&](Game g) {
+        for (SystemState& s : g.systems) s.space[size_t(p)] = Force{};
+        for (PlanetState& x : g.planets) {
+            x.units[size_t(p)] = Force{};
+            if (x.owner == p && g.systems[size_t(x.system)].home != p) x.owner = -1;
+        }
+        Player& pl = g.players[size_t(p)];
+        pl.techs.clear();
+        pl.tradeGoods = 0;
+        pl.commodities = 0;
+        pl.actionCards.clear();
+        pl.fragments.clear();
+        pl.notes.clear();
+        pl.notesInPlay.clear();
+        return g;
+    };
+    auto freeP = [&](const Game& g, std::function<bool(int)> pred) {
+        std::vector<int> v;
+        for (size_t i = 0; i < g.planets.size(); ++i) {
+            const PlanetState& x = g.planets[i];
+            if (x.destroyed || x.owner >= 0 || x.system < 0 || g.systems[size_t(x.system)].home >= 0 || isStation(g, int(i))) continue;
+            if (!std::strcmp(g.systems[size_t(x.system)].d().key, "18")) continue;
+            if (!pred || pred(int(i))) v.push_back(int(i));
+        }
+        return v;
+    };
+    auto own = [&](Game& g, const std::vector<int>& v, int n) {
+        for (int i = 0; i < n && i < int(v.size()); ++i) g.planets[size_t(v[size_t(i)])].owner = int8_t(p);
+        return int(v.size()) >= n;
+    };
+    auto put = [&](Game& g, int sys, UnitType t, int n) { g.systems[size_t(sys)].space[size_t(p)].n[int(t)] = uint8_t(n); };
+    auto onPlanet = [&](Game& g, int x, UnitType t, int n) { g.planets[size_t(x)].units[size_t(p)].n[int(t)] = uint8_t(n); };
+    auto systemsWhere = [&](const Game& g, std::function<bool(int)> pred) {
+        std::vector<int> v;
+        for (size_t s = 0; s < g.systems.size(); ++s)
+            if (!g.systems[s].isHyperlane() && !g.systems[s].offBoard && pred(int(s))) v.push_back(int(s));
+        return v;
+    };
+    auto trait = [&](const Game& g, Trait t) { return [&g, t](int x) { return hasTraitOf(g, x, t); }; };
+    auto kase = [&](const std::string& name, const char* key, const Game& g, bool expect) {
+        const int o = findObjective(key);
+        const bool m = meetsObjective(g, p, o);
+        bool ok = m == expect;
+        std::string what = std::string(expect ? "met" : "not met") + (m != expect ? (m ? " (but it is met)" : " (but it isn't met)") : "");
+        const ObjProgress pr = objectiveProgress(g, p, o);
+        if (pr.need > 0 && (pr.have >= pr.need) != m) {
+            ok = false;
+            what += " - the bots' progress says " + std::to_string(pr.have) + "/" + std::to_string(pr.need);
+        }
+        report(name, ok, what);
+    };
+    const int mec = base.mecatol();
+    const int home = base.players[size_t(p)].homeSystem;
+
+    // ================= status phase
+    {  // Adapt New Strategies: 2 faction technologies, the Valefar Assimilators don't count
+        std::vector<int> mine;
+        for (int t = 0; t < kTechCount; ++t)
+            if (kTechs[t].faction == base.players[size_t(p)].faction) mine.push_back(t);
+        Game g = clean(base);
+        for (int i = 0; i < 2 && i < int(mine.size()); ++i) g.players[size_t(p)].techs.push_back(int16_t(mine[size_t(i)]));
+        kase("Adapt New Strategies", "ans", g, mine.size() >= 2);
+        Game h = clean(base);
+        if (!mine.empty()) h.players[size_t(p)].techs.push_back(int16_t(mine[0]));
+        h.players[size_t(p)].techs.push_back(int16_t(findTech("vax")));
+        kase("Adapt New Strategies (1 + a Valefar Assimilator)", "ans", h, false);
+    }
+    {  // Become the Gatekeeper: ships in an alpha and in a beta system
+        const auto alpha = systemsWhere(base, [&](int s) { return int(s) != base.nexus && (wormholesOf(base, s) & kAlpha); });
+        const auto beta = systemsWhere(base, [&](int s) { return int(s) != base.nexus && (wormholesOf(base, s) & kBeta); });
+        if (!alpha.empty() && !beta.empty()) {
+            Game g = clean(base);
+            put(g, alpha[0], UnitType::Destroyer, 1);
+            put(g, beta[0], UnitType::Destroyer, 1);
+            kase("Become the Gatekeeper", "btgk", g, true);
+            Game h = clean(base);
+            put(h, alpha[0], UnitType::Destroyer, 1);
+            for (int16_t x : h.systems[size_t(alpha[0])].planets) h.planets[size_t(x)].units[size_t(p)].n[int(UnitType::Infantry)] = 3;
+            kase("Become the Gatekeeper (alpha only; ground forces at a beta don't count)", "btgk", h, false);
+            Game k = clean(base);
+            put(k, beta[0], UnitType::Destroyer, 1);
+            for (int16_t x : k.systems[size_t(alpha[0])].planets) k.planets[size_t(x)].units[size_t(p)].n[int(UnitType::Infantry)] = 3;
+            kase("Become the Gatekeeper (beta + ground forces at the alpha)", "btgk", k, false);
+        } else {
+            report("Become the Gatekeeper", false, "the board has no alpha / beta wormhole");
+        }
+        if (base.nexus >= 0) {
+            Game g = clean(base);
+            put(g, base.nexus, UnitType::Destroyer, 1);
+            g.systems[size_t(base.nexus)].nexusActive = false;
+            kase("Become the Gatekeeper (an inactive wormhole nexus: gamma only)", "btgk", g, false);
+            g.systems[size_t(base.nexus)].nexusActive = true;
+            kase("Become the Gatekeeper (the active wormhole nexus: alpha and beta in one system)", "btgk", g, true);
+        }
+    }
+    {  // Control the Region: ships in 6 systems
+        const auto any = systemsWhere(base, [&](int s) { return base.systems[size_t(s)].home < 0; });
+        Game g = clean(base);
+        for (int i = 0; i < 6; ++i) put(g, any[size_t(i)], UnitType::Fighter, 1);
+        kase("Control the Region (fighters count)", "ctr", g, true);
+        Game h = clean(base);
+        for (int i = 0; i < 5; ++i) put(h, any[size_t(i)], UnitType::Destroyer, 1);
+        for (int16_t x : h.systems[size_t(any[5])].planets) h.planets[size_t(x)].units[size_t(p)].n[int(UnitType::Infantry)] = 2;
+        kase("Control the Region (5 + ground forces in a 6th)", "ctr", h, false);
+    }
+    {  // Cut Supply Lines: ships in the same system as another player's space dock
+        const int oh = base.players[1].homeSystem;
+        Game g = clean(base);
+        put(g, oh, UnitType::Destroyer, 1);
+        kase("Cut Supply Lines", "csl", g, true);
+        Game h = clean(base);
+        put(h, home, UnitType::Destroyer, 1);
+        h.planets[size_t(h.systems[size_t(home)].planets[0])].units[size_t(p)].n[int(UnitType::SpaceDock)] = 1;
+        kase("Cut Supply Lines (your own space dock)", "csl", h, false);
+        Game k = clean(base);
+        for (int16_t x : k.systems[size_t(oh)].planets) k.planets[size_t(x)].units[size_t(p)].n[int(UnitType::Infantry)] = 1;
+        kase("Cut Supply Lines (ground forces only)", "csl", k, false);
+    }
+    {  // Establish a Perimeter / Fuel the War Machine / Gather a Mighty Fleet: units on the game board
+        const auto planets = freeP(base, nullptr);
+        Game g = clean(base);
+        for (int i = 0; i < 2; ++i) onPlanet(g, planets[size_t(i)], UnitType::PDS, 2);
+        kase("Establish a Perimeter (4 PDS)", "eap", g, true);
+        onPlanet(g, planets[1], UnitType::PDS, 1);
+        kase("Establish a Perimeter (3 PDS)", "eap", g, false);
+        Game h = clean(base);
+        for (int i = 0; i < 3; ++i) onPlanet(h, planets[size_t(i)], UnitType::SpaceDock, 1);
+        kase("Fuel the War Machine (3 space docks)", "fwm", h, true);
+        onPlanet(h, planets[2], UnitType::SpaceDock, 0);
+        kase("Fuel the War Machine (2)", "fwm", h, false);
+        Game k = clean(base);
+        put(k, home, UnitType::Dreadnought, 3);
+        put(k, mec, UnitType::Dreadnought, 2);
+        kase("Gather a Mighty Fleet (5 dreadnoughts, 2 systems)", "gamf", k, true);
+        put(k, mec, UnitType::Dreadnought, 1);
+        kase("Gather a Mighty Fleet (4)", "gamf", k, false);
+    }
+    {  // Forge an Alliance / Mine Rare Metals / Monopolize Production: 4 planets of the trait
+        const std::pair<const char*, Trait> tr[] = {{"faa", Trait::Cultural}, {"mrm", Trait::Hazardous}, {"mp", Trait::Industrial}};
+        const char* names[] = {"Forge an Alliance", "Mine Rare Metals", "Monopolize Production"};
+        for (int i = 0; i < 3; ++i) {
+            Game g = clean(base);
+            own(g, freeP(g, trait(g, tr[i].second)), 4);
+            kase(names[i], tr[i].first, g, true);
+            Game h = clean(base);
+            own(h, freeP(h, trait(h, tr[i].second)), 3);
+            kase(std::string(names[i]) + " (3)", tr[i].first, h, false);
+        }
+    }
+    {  // Learn the Secrets of the Cosmos: ships in 3 systems each adjacent to an anomaly
+        const auto near = systemsWhere(base, [&](int s) {
+            for (int16_t a : base.systems[size_t(s)].adj)
+                if (isAnomaly(base, a)) return true;
+            return false;
+        });
+        const auto far = systemsWhere(base, [&](int s) {
+            for (int16_t a : base.systems[size_t(s)].adj)
+                if (isAnomaly(base, a)) return false;
+            return true;
+        });
+        if (near.size() >= 3 && !far.empty()) {
+            Game g = clean(base);
+            for (int i = 0; i < 3; ++i) put(g, near[size_t(i)], UnitType::Destroyer, 1);
+            kase("Learn the Secrets of the Cosmos", "lsc", g, true);
+            put(g, near[2], UnitType::Destroyer, 0);
+            put(g, far[0], UnitType::Destroyer, 1);
+            kase("Learn the Secrets of the Cosmos (2 + 1 not next to one)", "lsc", g, false);
+        } else {
+            report("Learn the Secrets of the Cosmos", false, "the board has too few systems next to anomalies");
+        }
+    }
+    {  // Master the Laws of Physics: 4 technologies of the same colour
+        auto techs = [&](std::vector<const char*> ks) {
+            Game g = clean(base);
+            for (const char* k : ks) g.players[size_t(p)].techs.push_back(int16_t(findTech(k)));
+            return g;
+        };
+        kase("Master the Laws of Physics (4 red)", "mlp", techs({"ps", "md_base", "da", "asc"}), true);
+        kase("Master the Laws of Physics (3 red + 1 blue)", "mlp", techs({"ps", "md_base", "da", "gd"}), false);
+        kase("Master the Laws of Physics (unit upgrades have no colour)", "mlp", techs({"ps", "md_base", "da", "dd2"}), false);
+    }
+    {  // Occupy the Seat of the Empire: control Mecatol Rex and 3 ships in its system
+        Game g = clean(base);
+        g.planets[size_t(g.systems[size_t(mec)].planets[0])].owner = int8_t(p);
+        put(g, mec, UnitType::Destroyer, 2);
+        put(g, mec, UnitType::Fighter, 1);
+        kase("Occupy the Seat of the Empire (2 destroyers + a fighter)", "ose", g, true);
+        put(g, mec, UnitType::Fighter, 0);
+        kase("Occupy the Seat of the Empire (2 ships)", "ose", g, false);
+        Game h = clean(base);
+        put(h, mec, UnitType::Destroyer, 3);
+        kase("Occupy the Seat of the Empire (3 ships, Mecatol Rex not controlled)", "ose", h, false);
+    }
+    {  // Threaten Enemies: ships in a system adjacent to another player's home system
+        const int oh = base.players[1].homeSystem;
+        int next = -1;
+        for (int16_t a : base.systems[size_t(oh)].adj)
+            if (!base.systems[size_t(a)].isHyperlane() && base.systems[size_t(a)].home < 0) next = a;
+        int mineOnly = -1;
+        for (int16_t a : base.systems[size_t(home)].adj) {
+            bool other = false;
+            for (int16_t b : base.systems[size_t(a)].adj)
+                if (base.systems[size_t(b)].home >= 0 && base.systems[size_t(b)].home != p) other = true;
+            if (!other && !base.systems[size_t(a)].isHyperlane()) mineOnly = a;
+        }
+        Game g = clean(base);
+        put(g, next, UnitType::Destroyer, 1);
+        kase("Threaten Enemies", "te", g, next >= 0);
+        Game h = clean(base);
+        if (mineOnly >= 0) put(h, mineOnly, UnitType::Destroyer, 1);
+        kase("Threaten Enemies (next to your own home only)", "te", h, false);
+        Game k = clean(base);
+        put(k, oh, UnitType::Destroyer, 1);
+        bool ohNextToHome = false;  // (in the other's home - adjacent to a home only if another home is next to it)
+        for (int16_t b : base.systems[size_t(oh)].adj)
+            if (base.systems[size_t(b)].home >= 0 && base.systems[size_t(b)].home != p) ohNextToHome = true;
+        kase("Threaten Enemies (in the other player's home system itself)", "te", k, ohNextToHome);
+    }
+    {  // Establish Hegemony / Hoard Raw Materials: 12 influence / resources, home planets included
+        auto sum = [&](const Game& g, bool inf) {
+            int n = 0;
+            for (int x : controlledPlanets(g, p)) n += inf ? planetInfluence(g, x) : planetResources(g, x);
+            return n;
+        };
+        for (int inf = 0; inf < 2; ++inf) {
+            Game g = clean(base);
+            for (int x : freeP(g, nullptr)) {
+                if (sum(g, inf) >= 12) break;
+                const PlanetDef& d = kPlanets[g.planets[size_t(x)].def];
+                if (sum(g, inf) + (inf ? d.inf : d.res) <= 12) g.planets[size_t(x)].owner = int8_t(p);
+            }
+            const char* key = inf ? "eh" : "hrm";
+            const std::string name = inf ? "Establish Hegemony" : "Hoard Raw Materials";
+            kase(name + " (" + std::to_string(sum(g, inf)) + ", home planets included)", key, g, sum(g, inf) >= 12);
+            Game e = g;  // exhausted planets still count (they are controlled)
+            for (int x : controlledPlanets(e, p)) e.planets[size_t(x)].exhausted = true;
+            kase(name + " (all exhausted)", key, e, sum(e, inf) >= 12);
+            // one planet less
+            for (int x : controlledPlanets(g, p))
+                if (g.systems[size_t(g.planets[size_t(x)].system)].home != p && (inf ? planetInfluence(g, x) : planetResources(g, x)) > 0) {
+                    g.planets[size_t(x)].owner = -1;
+                    break;
+                }
+            kase(name + " (" + std::to_string(sum(g, inf)) + ")", key, g, sum(g, inf) >= 12);
+        }
+    }
+    {  // Foster Cohesion: neighbours with every other player
+        Game g = clean(base);
+        for (int q = 1; q < g.numPlayers; ++q) put(g, g.players[size_t(q)].homeSystem, UnitType::Destroyer, 1);
+        kase("Foster Cohesion (ships in each other home)", "fc", g, true);
+        Game h = clean(base);
+        for (int q = 1; q < h.numPlayers - 1; ++q) put(h, h.players[size_t(q)].homeSystem, UnitType::Destroyer, 1);
+        bool all = true;
+        for (int q = 1; q < h.numPlayers; ++q) all = all && areNeighbours(h, p, q);
+        kase("Foster Cohesion (one player left out)", "fc", h, all);
+    }
+    {  // Form a Spy Network: discard 5 action cards (a cost); Destroy Heretical Works: purge 2 relic fragments
+        Game g = clean(base);
+        for (int i = 0; i < 5; ++i) g.players[size_t(p)].actionCards.push_back(int16_t(i));
+        kase("Form a Spy Network (5 cards)", "fsn", g, true);
+        g.players[size_t(p)].actionCards.pop_back();
+        kase("Form a Spy Network (4)", "fsn", g, false);
+        Game h = clean(base);
+        for (int i = 0; i < kExploreCardCount && h.players[size_t(p)].fragments.size() < 2; ++i)
+            if (isRelicFragment(i)) h.players[size_t(p)].fragments.push_back(int16_t(i));
+        kase("Destroy Heretical Works (2 fragments)", "dhw", h, true);
+        h.players[size_t(p)].fragments.pop_back();
+        kase("Destroy Heretical Works (1)", "dhw", h, false);
+    }
+    {  // Defy Space and Time: units in the wormhole nexus
+        if (base.nexus >= 0) {
+            Game g = clean(base);
+            put(g, base.nexus, UnitType::Fighter, 1);
+            kase("Defy Space and Time", "dfat", g, true);
+            kase("Defy Space and Time (none there)", "dfat", clean(base), false);
+        }
+    }
+    {  // Strengthen Bonds: another player's promissory note in your play area
+        Game g = clean(base);
+        g.players[size_t(p)].notesInPlay.push_back(makeNote(1, 8));
+        kase("Strengthen Bonds (an Alliance in play)", "sb", g, true);
+        Game h = clean(base);
+        h.players[size_t(p)].notes.push_back(makeNote(1, kNoteCeasefire));
+        kase("Strengthen Bonds (a note in hand only)", "sb", h, false);
+    }
+    {  // Mechanize the Military: 1 mech on each of 4 planets
+        const auto planets = freeP(base, nullptr);
+        Game g = clean(base);
+        for (int i = 0; i < 4; ++i) onPlanet(g, planets[size_t(i)], UnitType::Mech, 1);
+        kase("Mechanize the Military", "mtm", g, true);
+        onPlanet(g, planets[3], UnitType::Mech, 0);
+        onPlanet(g, planets[0], UnitType::Mech, 2);
+        kase("Mechanize the Military (4 mechs on 3 planets)", "mtm", g, false);
+    }
+    {  // Occupy the Fringe: 9 ground forces on a planet without your space dock (the Titans' Hel-Titans are ground forces)
+        const auto planets = freeP(base, nullptr);
+        Game g = clean(base);
+        onPlanet(g, planets[0], UnitType::Infantry, 7);
+        onPlanet(g, planets[0], UnitType::Mech, 2);
+        kase("Occupy the Fringe (7 infantry + 2 mechs)", "otf", g, true);
+        onPlanet(g, planets[0], UnitType::SpaceDock, 1);
+        kase("Occupy the Fringe (with your space dock)", "otf", g, false);
+        Game h = clean(base);
+        onPlanet(h, planets[0], UnitType::Infantry, 8);
+        kase("Occupy the Fringe (8)", "otf", h, false);
+        Game t = clean(titans);
+        const auto tp = freeP(t, nullptr);
+        t.planets[size_t(tp[0])].units[size_t(p)].n[int(UnitType::Infantry)] = 8;
+        t.planets[size_t(tp[0])].units[size_t(p)].n[int(UnitType::PDS)] = 1;
+        kase("Occupy the Fringe (the Titans: 8 infantry + a Hel-Titan)", "otf", t, lvl >= 31);
+    }
+    {  // Produce en Masse: combined PRODUCTION 8 in one system
+        Game g = clean(base);
+        const auto& hp = g.systems[size_t(home)].planets;
+        for (int16_t x : hp) g.planets[size_t(x)].units[size_t(p)].n[int(UnitType::SpaceDock)] = 1;
+        int cap = productionCapacity(g, p, home);
+        kase("Produce en Masse (space docks on the home planets: " + std::to_string(cap) + ")", "pem", g, cap >= 8);
+        Game h = clean(base);
+        h.planets[size_t(hp[0])].units[size_t(p)].n[int(UnitType::SpaceDock)] = 1;
+        cap = productionCapacity(h, p, home);
+        kase("Produce en Masse (one space dock: " + std::to_string(cap) + ")", "pem", h, cap >= 8);
+    }
+    {  // Seize an Icon: control a legendary planet
+        const auto leg = freeP(base, [&](int x) { return isLegendaryPlanet(base, x); });
+        if (!leg.empty()) {
+            Game g = clean(base);
+            own(g, leg, 1);
+            kase("Seize an Icon", "sai", g, true);
+        }
+        Game h = clean(base);
+        own(h, freeP(h, [&](int x) { return !isLegendaryPlanet(h, x); }), 5);
+        kase("Seize an Icon (no legendary planet)", "sai", h, false);
+    }
+    {  // Stake Your Claim: a planet in a system with a planet another player controls
+        int a = -1, b = -1;
+        for (const SystemState& s : base.systems)
+            if (s.planets.size() >= 2 && s.home < 0 && base.planets[size_t(s.planets[0])].owner < 0 && base.planets[size_t(s.planets[1])].owner < 0) {
+                a = s.planets[0];
+                b = s.planets[1];
+                break;
+            }
+        if (a >= 0) {
+            Game g = clean(base);
+            g.planets[size_t(a)].owner = int8_t(p);
+            g.planets[size_t(b)].owner = 2;
+            kase("Stake Your Claim", "syc", g, true);
+            g.planets[size_t(b)].owner = -1;
+            kase("Stake Your Claim (the other planet unowned)", "syc", g, false);
+            g.planets[size_t(b)].owner = int8_t(p);
+            kase("Stake Your Claim (both yours)", "syc", g, false);
+        } else {
+            report("Stake Your Claim", false, "no 2-planet system");
+        }
+    }
+
+    // ================= action phase: in play
+    const std::vector<int> six = {LET, HAC, SOL, JOL, SAR, L1};
+    auto secrets = [&](Game& g, std::vector<const char*> ks) {
+        g.players[0].secrets.clear();
+        for (const char* k : ks) g.players[0].secrets.push_back(int16_t(findObjective(k)));
+    };
+    auto scored = [&](const Game& g, const char* k) { return hasScored(g, 0, findObjective(k)); };
+    // a fight in an anomaly (a gravity rift or a nebula without planets): seat 0 brings the flagship + 3 dreadnoughts, seat 1 holds
+    // it with `enemy`
+    auto anomalyFight = [&](int fixes, uint32_t seed, std::vector<const char*> ks, std::function<void(Game&, int)> enemy) {
+        return secRun1(fixes, 0, six, seed, [&](Game& g, int& T, std::vector<int>& moves) {
+            int X = -1;
+            for (size_t s = 0; s < g.systems.size() && T < 0; ++s) {
+                const char* k = g.systems[s].d().key;
+                if ((std::strcmp(k, "41") && std::strcmp(k, "42")) || !secEmpty(g, int(s))) continue;
+                X = secPlainNext(g, int(s), 0);
+                if (X < 0) X = secPlainNext(g, int(s), 1);
+                if (X >= 0) T = int(s);
+            }
+            if (T < 0) return false;
+            for (SystemState& sy : g.systems) sy.tokens &= uint16_t(~1u);
+            g.players[0].fleet = 8;
+            g.systems[size_t(X)].space[0].add(UnitType::Flagship, 1);
+            g.systems[size_t(X)].space[0].add(UnitType::Dreadnought, 3);
+            enemy(g, T);
+            secrets(g, ks);
+            moves = {X, -1, int(UnitType::Flagship), 1, X, -1, int(UnitType::Dreadnought), 3};
+            return true;
+        });
+    };
+    auto runUntil = [&](std::function<SecRun(uint32_t)> f, std::function<bool(const SecRun&)> fit) {
+        SecRun r;
+        for (uint32_t k = 0; k < 24; ++k) {
+            r = f(9100 + k * 37);
+            if (r.setUp && r.finished && r.refused.empty() && fit(r)) return r;
+        }
+        return r;
+    };
+    {  // Brave the Void + Demonstrate Your Power + Unveil Flagship from one space combat: one of them (LRR 61.7)
+        for (int v : {30, 31}) {
+            SecRun r = runUntil([&](uint32_t sd) { return anomalyFight(v, sd, {"btv", "dyp", "uf"}, [](Game& g, int T) { g.systems[size_t(T)].space[1].add(UnitType::Destroyer, 1); }); },
+                                [&](const SecRun& x) { return unitsOnBoard(x.end, 0, UnitType::Flagship) == 1 && x.end.systems.size() > 0; });
+            const int n = int(scored(r.end, "btv")) + int(scored(r.end, "dyp")) + int(scored(r.end, "uf"));
+            const bool asked = r.scoreAsked.size() == 1 && r.scoreAsked[0] == 3;
+            const bool ok = r.setUp && r.finished && (v >= 31 ? n == 1 && asked : n == 3);
+            report(std::string("one space combat fulfils Brave the Void, Demonstrate Your Power and Unveil Flagship (rules ") + std::to_string(v) + ")", ok,
+                   std::to_string(n) + " scored" + (asked ? ", the player picked one of 3" : r.scoreAsked.empty() ? ", no pick asked" : ", asked oddly") +
+                       (v >= 31 ? " (LRR 61.7: one)" : " (the old rules: all)"));
+        }
+    }
+    {  // Destroy Their Greatest Ship during the combat + Brave the Void after it: one
+        for (int v : {30, 31}) {
+            SecRun r = runUntil([&](uint32_t sd) { return anomalyFight(v, sd, {"dtgs", "btv"}, [](Game& g, int T) { g.systems[size_t(T)].space[1].add(UnitType::Flagship, 1); }); },
+                                [&](const SecRun& x) { return unitsOnBoard(x.end, 1, UnitType::Flagship) == 0; });
+            const int n = int(scored(r.end, "dtgs")) + int(scored(r.end, "btv"));
+            const bool asked = r.scoreAsked.size() == 1 && r.scoreAsked[0] == 2;
+            const bool ok = r.setUp && r.finished && (v >= 31 ? n == 1 && asked && scored(r.end, "dtgs") : n == 2);
+            report(std::string("a flagship destroyed in a combat won in an anomaly: Destroy Their Greatest Ship + Brave the Void (rules ") + std::to_string(v) + ")", ok,
+                   std::to_string(n) + " scored" + (scored(r.end, "dtgs") ? " (Destroy Their Greatest Ship)" : "") + (asked ? ", picked one of 2" : ""));
+        }
+    }
+    {  // Betray a Friend: the note in the play area counts, one in hand doesn't (fixes 31)
+        for (int v : {30, 31})
+            for (int inPlay = 0; inPlay < 2; ++inPlay) {
+                SecRun r = runUntil([&](uint32_t sd) {
+                    return anomalyFight(v, sd, {"baf"}, [&](Game& g, int T) {
+                        g.systems[size_t(T)].space[1].add(UnitType::Destroyer, 1);
+                        if (inPlay) g.players[0].notesInPlay.push_back(makeNote(1, 8));  // the Hacan's Alliance
+                        else g.players[0].notes.push_back(makeNote(1, kNoteTradeAgreement));
+                    });
+                },
+                                    [&](const SecRun&) { return true; });
+                const bool s = scored(r.end, "baf");
+                const bool expect = inPlay || v < 31;
+                report(std::string("Betray a Friend - the Hacan's note ") + (inPlay ? "in the play area" : "in hand") + " (rules " + std::to_string(v) + ")",
+                       r.setUp && r.finished && s == expect, s ? "scored" : "not scored");
+            }
+    }
+    {  // Turn Their Fleets to Dust: seat 0's 2 PDS in the active system shoot seat 1's lone fighter / destroyer
+        auto cannon = [&](int fixes, int modules, uint32_t seed, UnitType enemy) {
+            return secRun1(fixes, modules, six, seed, [&, enemy](Game& g, int& T, std::vector<int>& moves) {
+                int X = -1;
+                for (size_t s = 0; s < g.systems.size() && T < 0; ++s) {
+                    const SystemState& sy = g.systems[s];
+                    if (sy.offBoard || sy.isHyperlane() || sy.home >= 0 || int(s) == g.mecatol() || isAnomaly(g, int(s)) || sy.planets.size() != 1 ||
+                        !secEmpty(g, int(s)))
+                        continue;
+                    X = secPlainNext(g, int(s), 0);
+                    if (X < 0) X = secPlainNext(g, int(s), 1);
+                    if (X >= 0) T = int(s);
+                }
+                if (T < 0) return false;
+                for (SystemState& sy : g.systems) sy.tokens &= uint16_t(~1u);
+                const int P = g.systems[size_t(T)].planets[0];
+                g.planets[size_t(P)].owner = 0;
+                g.planets[size_t(P)].units[0].add(UnitType::PDS, 2);
+                g.planets[size_t(P)].units[0].add(UnitType::Infantry, 1);
+                g.systems[size_t(T)].space[1].add(enemy, 1);
+                if (enemy == UnitType::Fighter) {  // (Fighter II: the lone fighter needs no carrier)
+                    g.players[1].techs.push_back(int16_t(findTech("ff2")));
+                    g.players[1].unit[int(UnitType::Fighter)] = int16_t(findUnit("fighter2"));
+                }
+                g.systems[size_t(X)].space[0].add(UnitType::Dreadnought, 1);
+                g.players[0].fleet = 8;
+                secrets(g, {"ttfd"});
+                moves = {X, -1, int(UnitType::Dreadnought), 1};
+                return true;
+            });
+        };
+        struct C {
+            int v, modules;
+            UnitType enemy;
+            bool expect;
+            const char* what;
+        } cs[] = {{31, 0, UnitType::Fighter, true, "as printed: a lone fighter is the last ship"},
+                  {31, kModCodex, UnitType::Fighter, false, "the Codex's: non-fighter ships"},
+                  {30, 0, UnitType::Fighter, false, "the old rules: non-fighter ships"},
+                  {31, 0, UnitType::Destroyer, true, "as printed: a destroyer"},
+                  {31, kModCodex, UnitType::Destroyer, true, "the Codex's: a destroyer"}};
+        for (const C& c : cs) {
+            SecRun r = runUntil([&](uint32_t sd) { return cannon(c.v, c.modules, sd, c.enemy); }, [&](const SecRun& x) { return x.cannonHits >= 1; });
+            const bool s = scored(r.end, "ttfd");
+            report(std::string("Turn Their Fleets to Dust - ") + c.what + " (rules " + std::to_string(c.v) + ")", r.cannonHits >= 1 && s == c.expect,
+                   std::string(s ? "scored" : "not scored") + (r.cannonHits < 1 ? " (no space cannon hit in 24 games)" : ""));
+        }
+    }
+    // ================= agenda phase: Dictate Policy with 3 laws already in play - at the start of the agenda phase (fixes 31)
+    for (int v : {30, 31}) {
+        AgCase c;
+        c.name = "dictate policy";
+        c.fixes = v;
+        c.factions = six;
+        c.agendas = {"incentive"};
+        c.atStart = [&](Game& g) {
+            for (const char* k : {"conventions", "regulations", "censure"}) {
+                Law l;
+                l.agenda = int16_t(findAgenda(k));
+                l.owner = int8_t(std::strcmp(k, "censure") ? -1 : 3);
+                if (l.agenda < 0) return false;
+                g.laws.push_back(l);
+            }
+            g.players[2].secrets.clear();
+            g.players[2].secrets.push_back(int16_t(findObjective("dp")));
+            return true;
+        };
+        AgResult r = agRun(c);
+        const bool early = hasScored(r.before, 2, findObjective("dp"));
+        const bool later = hasScored(r.after, 2, findObjective("dp"));
+        report(std::string("Dictate Policy with 3 laws in play (rules ") + std::to_string(v) + ")", r.setUp && r.seen && later && early == (v >= 31),
+               std::string(early ? "scored before the first agenda" : "scored after the first agenda") + (later ? "" : " - NOT scored"));
+    }
+    std::printf("secrets: %d checked, %d wrong (rules version %d)\n", done, bad, lvl);
+    return bad == 0 ? 1 : 0;
+}
+
+// 0.61.0 the exploration cards (TI4_UITEST_ONLY=explores; TI4_EXFIXES = the rules version, default 31): Codex III's frontier cards in
+// the deck (with the Codex, new games), the new ones resolved, Merchant Station's replenish answered by a Trade Agreement, the trade
+// good or commodity of Functioning Base / Local Fabricators, a Demilitarized Zone's planet card traded in the agenda phase, every
+// card's text.
+int exploresCheck(const std::string&) {
+    using namespace ti;
+    int bad = 0, done = 0;
+    const int lvl = std::getenv("TI4_EXFIXES") ? std::atoi(std::getenv("TI4_EXFIXES")) : 31;
+    const int LET = findFaction("letnev"), HAC = findFaction("hacan"), SOL = findFaction("sol"), JOL = findFaction("jolnar"),
+              SAR = findFaction("sardakk"), L1 = findFaction("l1z1x");
+    const std::vector<int> six = {LET, HAC, SOL, JOL, SAR, L1};
+    auto report = [&](const std::string& name, bool ok, const std::string& what) {
+        std::printf("explores: %s - %s: %s\n", name.c_str(), what.c_str(), ok ? "OK" : "WRONG");
+        bad += ok ? 0 : 1;
+        ++done;
+    };
+    // --- the deck: Codex III's 6 frontier cards with the Codex (rules 31)
+    for (int v : {30, 31})
+        for (int codex = 0; codex < 2; ++codex) {
+            const Game g = objBoard(v, six, codex ? kModCodex : 0, 5151);
+            int n = 0, all = 0;
+            for (const auto* pile : {&g.exploreDeck[int(ExploreType::Frontier)], &g.exploreDiscard[int(ExploreType::Frontier)]})
+                for (int16_t c : *pile) {
+                    ++all;
+                    n += codex3Explore(c) ? 1 : 0;
+                }
+            const int want = v >= 31 && codex ? 6 : 0;
+            report(std::string("the frontier deck (rules ") + std::to_string(v) + (codex ? ", Codex" : ", no Codex") + ")", n == want,
+                   std::to_string(n) + " Codex III cards of " + std::to_string(all));
+        }
+    // --- frontier cards explored with Dark Energy Tap: seat 0 moves a destroyer into a frontier system with `top` on the deck
+    auto frontier = [&](int fixes, uint32_t seed, const char* top, std::function<void(Game&)> more) {
+        return secRun1(fixes, kModCodex, six, seed, [&, top](Game& g, int& T, std::vector<int>& moves) {
+            int X = -1;
+            for (size_t s = 0; s < g.systems.size() && T < 0; ++s) {
+                const SystemState& sy = g.systems[s];
+                if (!sy.frontier || sy.offBoard || sy.isHyperlane() || isAnomaly(g, int(s)) || !secEmpty(g, int(s))) continue;
+                X = secPlainNext(g, int(s), 0);
+                if (X < 0) X = secPlainNext(g, int(s), 1);
+                if (X >= 0) T = int(s);
+            }
+            if (T < 0) return false;
+            for (SystemState& sy : g.systems) sy.tokens &= uint16_t(~1u);
+            g.systems[size_t(X)].space[0].add(UnitType::Destroyer, 1);
+            if (!g.players[0].hasTech(findTech("det"))) g.players[0].techs.push_back(int16_t(findTech("det")));
+            const int c = findExploreCard(top);
+            auto& deck = g.exploreDeck[int(ExploreType::Frontier)];
+            deck.erase(std::remove(deck.begin(), deck.end(), int16_t(c)), deck.end());
+            deck.push_back(int16_t(c));
+            g.players[0].tactic = 3;
+            g.players[0].fleet = 3;
+            g.players[0].strategy = 2;
+            g.players[0].tradeGoods = 0;
+            if (more) more(g);
+            moves = {X, -1, int(UnitType::Destroyer), 1};
+            return true;
+        });
+    };
+    auto tokens = [](const Game& g) { return g.players[0].tactic + g.players[0].fleet + g.players[0].strategy; };
+    auto explored = [](const SecRun& r, const char* name) {
+        for (const std::string& l : r.log)
+            if (l.find("explores the frontier token") != std::string::npos && l.find(name) != std::string::npos) return true;
+        return false;
+    };
+    {
+        SecRun r = frontier(lvl, 9300, "minent", nullptr);
+        const bool ok = explored(r, "Minor Entropic Field") && r.end.players[0].tradeGoods >= 1 && tokens(r.end) == 8;  // (8 - 1 activated + 1)
+        report("Minor Entropic Field", ok, std::to_string(r.end.players[0].tradeGoods) + " trade goods, " + std::to_string(tokens(r.end)) + " command tokens (8 - 1 for the activation + 1)");
+    }
+    {
+        SecRun r = frontier(lvl, 9300, "majent", nullptr);
+        const bool ok = explored(r, "Major Entropic Field") && r.end.players[0].tradeGoods >= 3 && tokens(r.end) == 8;
+        report("Major Entropic Field", ok, std::to_string(r.end.players[0].tradeGoods) + " trade goods, " + std::to_string(tokens(r.end)) + " command tokens");
+    }
+    {
+        SecRun r = frontier(lvl, 9300, "kel", nullptr);
+        const bool ok = explored(r, "Keleres Ship") && tokens(r.end) == 9;
+        report("Keleres Ship", ok, std::to_string(tokens(r.end)) + " command tokens (8 - 1 + 2)");
+    }
+    {
+        int before = 0;
+        SecRun r = frontier(lvl, 9300, "dw", [&](Game& g) { before = int(g.players[0].relics.size()); });
+        const bool ok = explored(r, "Dead World") && int(r.end.players[0].relics.size()) == before + 1;
+        report("Dead World", ok, std::to_string(r.end.players[0].relics.size() - size_t(before)) + " relic drawn");
+    }
+    // --- Merchant Station: replenishing answers the Hacan's Trade Agreement (it holds seat 0's)
+    for (int v : {30, 31}) {
+        int hacTg = 0;
+        SecRun r = frontier(v, 9300, "ms", [&](Game& g) {
+            g.players[0].commodities = 0;
+            g.players[1].notes.push_back(makeNote(0, kNoteTradeAgreement));
+            hacTg = g.players[1].tradeGoods;
+        });
+        bool returned = true;
+        for (int16_t n : r.end.players[1].notes) returned = returned && n != makeNote(0, kNoteTradeAgreement);
+        const int got = r.end.players[1].tradeGoods - hacTg;
+        const bool expect = v >= 31;
+        const bool ok = explored(r, "Merchant Station") && (expect ? got == kFactions[LET].commodities && returned : got == 0 && !returned);
+        report(std::string("Merchant Station's replenish and a Trade Agreement (rules ") + std::to_string(v) + ")", ok,
+               "the Hacan gains " + std::to_string(got) + " trade goods" + (returned ? ", the note goes back" : ""));
+    }
+    // --- Functioning Base on an industrial planet seat 0 takes: with a commodity and a trade good, the player picks (rules 31)
+    for (int v : {30, 31}) {
+        int comm = 0, tg = 0;
+        bool asked = false;
+        SecRun r;
+        for (uint32_t k = 0; k < 12; ++k) {
+            r = secRun1(v, kModCodex, six, 9400 + k * 31, [&](Game& g, int& T, std::vector<int>& moves) {
+                int X = -1;
+                for (size_t s = 0; s < g.systems.size() && T < 0; ++s) {
+                    const SystemState& sy = g.systems[s];
+                    if (sy.offBoard || sy.isHyperlane() || sy.home >= 0 || int(s) == g.mecatol() || isAnomaly(g, int(s)) || sy.planets.size() != 1 ||
+                        !secEmpty(g, int(s)) || kPlanets[g.planets[size_t(sy.planets[0])].def].trait != Trait::Industrial ||
+                        kPlanets[g.planets[size_t(sy.planets[0])].def].trait2 != Trait::None)
+                        continue;
+                    X = secPlainNext(g, int(s), 0);
+                    if (X < 0) X = secPlainNext(g, int(s), 1);
+                    if (X >= 0) T = int(s);
+                }
+                if (T < 0) return false;
+                for (SystemState& sy : g.systems) sy.tokens &= uint16_t(~1u);
+                g.systems[size_t(X)].space[0].add(UnitType::Carrier, 1);
+                g.systems[size_t(X)].space[0].add(UnitType::Infantry, 2);
+                const int c = findExploreCard("fb");
+                auto& deck = g.exploreDeck[int(ExploreType::Industrial)];
+                deck.erase(std::remove(deck.begin(), deck.end(), int16_t(c)), deck.end());
+                deck.push_back(int16_t(c));
+                g.players[0].commodities = 1;
+                g.players[0].tradeGoods = 1;
+                g.players[0].tactic = 3;
+                moves = {X, -1, int(UnitType::Carrier), 1, X, -1, int(UnitType::Infantry), 2};
+                return true;
+            });
+            bool ex = false;
+            for (const std::string& l : r.log) ex = ex || l.find(": Functioning Base.") != std::string::npos;
+            if (ex) break;
+        }
+        for (const std::string& l : r.asked) asked = asked || l.find("spend which") != std::string::npos;
+        if (std::getenv("TI4_SECDEBUG"))
+            for (const std::string& l : r.asked) std::printf("explores debug: %s\n", l.c_str());
+        comm = r.end.players[0].commodities;
+        tg = r.end.players[0].tradeGoods;
+        bool ex = false;
+        for (const std::string& l : r.log) ex = ex || l.find(": Functioning Base.") != std::string::npos;
+        // (the computer spends the commodity either way; the question itself shows in the pick count below)
+        report(std::string("Functioning Base: spend a commodity, keep the trade good (rules ") + std::to_string(v) + ")", ex && comm == 0 && tg == 1 && asked == (v >= 31),
+               std::string(ex ? "explored" : "NOT explored") + ", " + std::to_string(comm) + " commodities / " + std::to_string(tg) + " trade goods left" +
+                   (asked ? ", asked which to spend" : ", not asked which"));
+    }
+    // --- a Demilitarized Zone's planet card in a transaction: in the agenda phase only (rules 31)
+    {
+        Game g = objBoard(lvl, six, kModCodex, 5151);
+        int x = -1;
+        for (size_t i = 0; i < g.planets.size() && x < 0; ++i)
+            if (g.planets[i].owner < 0 && !g.planets[i].destroyed && g.systems[size_t(g.planets[i].system)].home < 0 && !isStation(g, int(i))) x = int(i);
+        g.planets[size_t(x)].owner = 0;
+        g.planets[size_t(x)].attachments.push_back(int16_t(findExploreCard("dmz")));
+        Deal d;
+        d.from = 0;
+        d.to = 3;
+        d.give.planet = x;
+        g.phase = Phase::Agenda;
+        const std::string inAgenda = checkDeal(g, d);
+        g.phase = Phase::Action;
+        const std::string inAction = checkDeal(g, d);
+        report("a Demilitarized Zone's planet card offered in the agenda phase", inAgenda.empty() == (lvl >= 31), inAgenda.empty() ? "accepted" : "refused: " + inAgenda);
+        report("... and in the action phase", !inAction.empty(), inAction.empty() ? "accepted" : "refused: " + inAction);
+        Game h = g;
+        h.phase = Phase::Agenda;
+        h.planets[size_t(x)].attachments.clear();
+        report("... a planet without it, in the agenda phase", !checkDeal(h, d).empty(), checkDeal(h, d).empty() ? "accepted" : "refused");
+    }
+    // --- every card has its text
+    {
+        std::string missing;
+        for (int c = 0; c < kExploreCardCount; ++c)
+            if (!*exploreText(c)) missing += std::string(missing.empty() ? "" : ", ") + kExploreCards[c].key;
+        report("every exploration card's text", missing.empty(), missing.empty() ? std::to_string(kExploreCardCount) + " cards" : "missing: " + missing);
+    }
+    std::printf("explores: %d checked, %d wrong (rules version %d)\n", done, bad, lvl);
+    return bad == 0 ? 1 : 0;
+}
+
+// 0.61.0 the strategy cards (TI4_UITEST_ONLY=strategycards): every card's two abilities in the cards' words (Thunder's Edge's
+// Construction and Warfare too), Politics' new speaker (anyone without the token - themselves too), Diplomacy's "a planet you
+// control" (not a space station, rules 31). Seat 0 takes `card` in round 1 and resolves it on its first turn.
+namespace {
+struct StratRun {
+    bool picked = false, acted = false, finished = false;
+    std::vector<std::pair<std::string, std::vector<int>>> asked;  // seat 0's questions from the action on: prompt, option ids
+    std::vector<std::string> refused;
+    ti::Game end;
+};
+StratRun stratRun(int fixes, int modules, const std::vector<int>& factions, uint32_t seed, int card, int speaker,
+                  const std::function<void(ti::Game&)>& setup) {
+    using namespace ti;
+    StratRun r;
+    Engine e;
+    Setup s;
+    s.players = int(factions.size());
+    s.human = -1;
+    s.seed = seed;
+    s.draft = 0;
+    s.fixes = fixes;
+    s.modules = modules;
+    s.factions = factions;
+    e.start(s);
+    Rng rng(4);
+    bool set = false;
+    for (int steps = 0; e.waiting() && steps < 60000 && !r.finished; ++steps) {
+        const Game& g = e.game();
+        const Decision& d = e.decision();
+        if (!set && g.phase == Phase::Strategy) {
+            set = true;
+            Game& gm = e.g();
+            gm.speaker = int8_t(speaker);
+            if (setup) setup(gm);
+        }
+        Answer a = aiAnswer(g, d, rng);
+        if (set && g.phase == Phase::Strategy && d.tag == Tag::StrategyPick) {  // seat 0 takes `card`, the others anything else
+            int pickId = -1;
+            for (const Option& o : d.options)
+                if (d.player == 0 ? o.id == card : o.id != card && pickId < 0) pickId = o.id;
+            if (pickId >= 0) {
+                a = Answer{};
+                a.picks = {pickId};
+                if (d.player == 0) r.picked = true;
+            }
+        } else if (r.picked && !r.acted && g.phase == Phase::Action && d.player == 0 && d.tag == Tag::ActionChoice) {
+            r.acted = true;
+            a = Answer{};
+            a.picks = {10 + card};
+        }
+        if (r.acted && d.player == 0) {
+            std::vector<int> ids;
+            for (const Option& o : d.options) ids.push_back(o.id);
+            r.asked.push_back({d.prompt, ids});
+        }
+        std::string why;
+        if (!e.answer(a, &why)) {
+            r.refused.push_back(d.prompt + " [" + why + "]");
+            break;
+        }
+        for (const Event& ev : e.takeEvents())
+            if (r.acted && ev.kind == EventKind::TurnEnd && ev.player == 0) r.finished = true;
+    }
+    r.end = e.game();
+    return r;
+}
+}  // namespace
+
+int strategyCardsCheck(const std::string&) {
+    using namespace ti;
+    int bad = 0, done = 0;
+    auto report = [&](const std::string& name, bool ok, const std::string& what) {
+        std::printf("strategycards: %s - %s: %s\n", name.c_str(), what.c_str(), ok ? "OK" : "WRONG");
+        bad += ok ? 0 : 1;
+        ++done;
+    };
+    const std::vector<int> six = {findFaction("letnev"), findFaction("hacan"), findFaction("sol"), findFaction("jolnar"), findFaction("sardakk"),
+                                  findFaction("l1z1x")};
+    // --- the texts
+    {
+        std::string missing;
+        for (int te = 0; te < 2; ++te) {
+            setStrategyTexts(te == 1);
+            for (int c = 0; c < kStrategyCards; ++c) {
+                if (!*strategyPrimary(c) || !*strategySecondary(c)) missing += std::string(missing.empty() ? "" : ", ") + strategyName(c);
+                if (te && (c == 3 || c == 5) && !std::strstr(strategyPrimary(c), c == 3 ? "structure" : "tactical action"))
+                    missing += std::string(" (Thunder's Edge ") + strategyName(c) + ")";
+            }
+        }
+        setStrategyTexts(false);
+        report("the 8 cards' primary and secondary texts (and Thunder's Edge's Construction / Warfare)", missing.empty(), missing.empty() ? "all there" : "missing: " + missing);
+    }
+    // --- Politics: the new speaker is anyone without the speaker token - the active player too
+    for (int spk : {3, 0}) {
+        StratRun r = stratRun(31, 0, six, 9500, 2, spk, nullptr);
+        std::vector<int> opts;
+        for (const auto& q : r.asked)
+            if (q.first.find("Politics: choose the new speaker") != std::string::npos) opts = q.second;
+        const bool self = std::find(opts.begin(), opts.end(), 0) != opts.end();
+        const bool speaker = std::find(opts.begin(), opts.end(), spk) != opts.end();
+        const bool ok = !opts.empty() && !speaker && (spk == 0 ? !self : self) && int(opts.size()) == 5;
+        report(std::string("Politics' new speaker (the speaker is seat ") + std::to_string(spk) + ")", ok,
+               opts.empty() ? "not asked" : std::to_string(opts.size()) + " choices" + (self ? ", yourself among them" : ", not yourself") +
+                                                (speaker ? ", the speaker among them!" : ""));
+    }
+    // --- Diplomacy: a system where the only planet you control is a space station (Thunder's Edge) can't be chosen (rules 31)
+    for (int v : {30, 31}) {
+        int S = -1;
+        StratRun r;
+        for (uint32_t k = 0; k < 10 && S < 0; ++k) {
+            S = -1;
+            r = stratRun(v, kModThundersEdge | kModCodex, six, 9600 + k * 17, 1, 3, [&](Game& g) {
+                for (size_t x = 0; x < g.planets.size() && S < 0; ++x)
+                    if (isStation(g, int(x)) && g.planets[x].owner < 0 && g.systems[size_t(g.planets[x].system)].home < 0) {
+                        bool other = false;
+                        for (int16_t y : g.systems[size_t(g.planets[x].system)].planets) other = other || (int(y) != int(x) && g.planets[size_t(y)].owner == 0);
+                        if (other) continue;
+                        g.planets[x].owner = 0;
+                        S = g.planets[x].system;
+                    }
+            });
+        }
+        std::vector<int> opts;
+        for (const auto& q : r.asked)
+            if (q.first.find("Diplomacy: protect which system?") != std::string::npos) opts = q.second;
+        const bool offered = std::find(opts.begin(), opts.end(), S) != opts.end();
+        const bool ok = S >= 0 && !opts.empty() && offered == (v < 31);
+        report(std::string("Diplomacy on a system with only your space station (rules ") + std::to_string(v) + ")", ok,
+               S < 0 ? "no station found" : opts.empty() ? "not asked" : offered ? "offered" : "not offered");
+    }
+    std::printf("strategycards: %d checked, %d wrong\n", done, bad);
+    return bad == 0 ? 1 : 0;
+}
+
+// 0.61.0 the generic promissory notes (TI4_UITEST_ONLY=genericnotes): the texts; the Alliance goes back when its holder activates a
+// system with its owner's units (rules 31); Political Secret also stops the owner's faction abilities on that agenda (Quash).
+int genericNotesCheck(const std::string&) {
+    using namespace ti;
+    int bad = 0, done = 0;
+    auto report = [&](const std::string& name, bool ok, const std::string& what) {
+        std::printf("genericnotes: %s - %s: %s\n", name.c_str(), what.c_str(), ok ? "OK" : "WRONG");
+        bad += ok ? 0 : 1;
+        ++done;
+    };
+    const int LET = findFaction("letnev"), HAC = findFaction("hacan"), XX = findFaction("xxcha");
+    const std::vector<int> six = {LET, HAC, findFaction("sol"), findFaction("jolnar"), findFaction("sardakk"), findFaction("l1z1x")};
+    {
+        std::string missing;
+        for (int t = 0; t < kNoteTypes; ++t)
+            if (!*noteText(t)) missing += noteName(t);
+        if (!*factionNoteText(LET, kNoteAlliance)) missing += " Alliance";
+        report("the five generic notes' texts", missing.empty(), missing.empty() ? "all there" : "missing: " + missing);
+    }
+    // --- the Alliance: seat 0 holds the Hacan's and attacks a Hacan destroyer
+    for (int v : {30, 31}) {
+        SecRun r;
+        for (uint32_t k = 0; k < 12; ++k) {
+            r = secRun1(v, 0, six, 9700 + k * 23, [&](Game& g, int& T, std::vector<int>& moves) {
+                int X = -1;
+                for (size_t s = 0; s < g.systems.size() && T < 0; ++s) {
+                    const SystemState& sy = g.systems[s];
+                    if (sy.offBoard || sy.isHyperlane() || sy.home >= 0 || int(s) == g.mecatol() || isAnomaly(g, int(s)) || !sy.planets.empty() ||
+                        !secEmpty(g, int(s)))
+                        continue;
+                    X = secPlainNext(g, int(s), 0);
+                    if (X < 0) X = secPlainNext(g, int(s), 1);
+                    if (X >= 0) T = int(s);
+                }
+                if (T < 0) return false;
+                for (SystemState& sy : g.systems) sy.tokens &= uint16_t(~1u);
+                g.systems[size_t(T)].space[1].add(UnitType::Destroyer, 1);
+                g.systems[size_t(X)].space[0].add(UnitType::Dreadnought, 2);
+                g.players[0].fleet = 6;
+                auto& h1 = g.players[1].notes;
+                h1.erase(std::remove(h1.begin(), h1.end(), makeNote(1, kNoteAlliance)), h1.end());
+                g.players[0].notesInPlay.push_back(makeNote(1, kNoteAlliance));
+                moves = {X, -1, int(UnitType::Dreadnought), 2};
+                return true;
+            });
+            if (r.setUp && r.finished) break;
+        }
+        bool kept = false;
+        for (int16_t n : r.end.players[0].notesInPlay) kept = kept || n == makeNote(1, kNoteAlliance);
+        bool back = false;
+        for (int16_t n : r.end.players[1].notes) back = back || n == makeNote(1, kNoteAlliance);
+        const bool ok = r.setUp && r.finished && (v >= 31 ? !kept && back : kept);
+        report(std::string("the Hacan's Alliance when its holder attacks the Hacan (rules ") + std::to_string(v) + ")", ok,
+               kept ? "kept" : back ? "went back to the Hacan" : "gone?");
+    }
+    // --- Political Secret on the Xxcha: no Quash on that agenda (rules 31)
+    for (int v : {30, 31}) {
+        AgCase c;
+        c.name = "political secret";
+        c.fixes = v;
+        c.factions = {LET, HAC, XX, findFaction("jolnar"), findFaction("sardakk"), findFaction("l1z1x")};
+        c.agendas = {"incentive"};
+        c.atStart = [&](Game& g) {
+            auto& h2 = g.players[2].notes;
+            h2.erase(std::remove(h2.begin(), h2.end(), makeNote(2, kNotePoliticalSecret)), h2.end());
+            g.players[1].notes.push_back(makeNote(2, kNotePoliticalSecret));
+            return true;
+        };
+        c.drive = [&](const Game& g, const Decision& d, Answer& a) {
+            if (g.phase == Phase::Agenda && d.player == 1 && d.tag == Tag::PlayNote && d.prompt.find("Political Secret") != std::string::npos) {
+                a = Answer{};
+                a.picks = {makeNote(2, kNotePoliticalSecret)};
+                return true;
+            }
+            return false;
+        };
+        c.atReveal = [](Game& g) { g.players[2].strategy = 2; };  // (the Xxcha can pay for Quash)
+        AgResult r = agRun(c);
+        bool played = false, quashAsked = false;
+        for (const std::string& l : r.log) played = played || l.find("can't vote") != std::string::npos;
+        int firstAgenda = -1;
+        for (const AgAsk& k : r.asked)
+            if (k.phase == Phase::Agenda && firstAgenda < 0) firstAgenda = k.agendaNumber;
+        for (const AgAsk& k : r.asked)
+            if (k.phase == Phase::Agenda && k.player == 2 && k.agendaNumber == firstAgenda && k.prompt.find("Quash") == 0) quashAsked = true;
+        const bool ok = played && (v >= 31 ? !quashAsked : quashAsked);
+        report(std::string("Political Secret played on the Xxcha: Quash offered? (rules ") + std::to_string(v) + ")", ok,
+               std::string(played ? "played" : "NOT played") + (quashAsked ? ", Quash offered" : ", no Quash"));
+    }
+    std::printf("genericnotes: %d checked, %d wrong\n", done, bad);
+    return bad == 0 ? 1 : 0;
+}
+
+// 0.61.0 the legendary planets (TI4_UITEST_ONLY=legendary): every ability's text; Bi-Phasic Generators in a supernova and not where a
+// space station is the only "planet" (rules 31); Mystic Library gains any technology with as many prerequisites - a unit upgrade too.
+int legendaryCheck(const std::string&) {
+    using namespace ti;
+    int bad = 0, done = 0;
+    auto report = [&](const std::string& name, bool ok, const std::string& what) {
+        std::printf("legendary: %s - %s: %s\n", name.c_str(), what.c_str(), ok ? "OK" : "WRONG");
+        bad += ok ? 0 : 1;
+        ++done;
+    };
+    {
+        std::string missing;
+        int n = 0;
+        for (int d = 0; d < kPlanetCount; ++d)
+            if (*legendaryName(d)) {
+                ++n;
+                if (!*legendaryText(d)) missing += std::string(missing.empty() ? "" : ", ") + kPlanets[d].name;
+            }
+        report("every legendary ability's text", missing.empty() && n >= 18, std::to_string(n) + " abilities" + (missing.empty() ? "" : ", missing: " + missing));
+    }
+    const std::vector<int> six = {findFaction("letnev"), findFaction("hacan"), findFaction("sol"), findFaction("jolnar"), findFaction("sardakk"),
+                                  findFaction("l1z1x")};
+    // seat 0 holds `planet` and moves a destroyer next door; at the end of the turn it uses the ability (`answer` answers the rest)
+    auto withLegend = [&](int fixes, uint32_t seed, const char* planet, const std::function<void(Game&)>& more) {
+        return secRun1(fixes, kModUncharted | kModCodex, six, seed, [&, planet](Game& g, int& T, std::vector<int>& moves) {
+            int L = -1;
+            for (size_t x = 0; x < g.planets.size(); ++x)
+                if (!std::strcmp(kPlanets[g.planets[x].def].key, planet)) L = int(x);
+            if (L < 0) return false;
+            int X = -1;
+            for (size_t s = 0; s < g.systems.size() && T < 0; ++s) {
+                const SystemState& sy = g.systems[s];
+                if (sy.offBoard || sy.isHyperlane() || sy.home >= 0 || int(s) == g.mecatol() || isAnomaly(g, int(s)) || !secEmpty(g, int(s))) continue;
+                X = secPlainNext(g, int(s), 0);
+                if (X < 0) X = secPlainNext(g, int(s), 1);
+                if (X >= 0) T = int(s);
+            }
+            if (T < 0) return false;
+            for (SystemState& sy : g.systems) sy.tokens &= uint16_t(~1u);
+            g.planets[size_t(L)].owner = 0;
+            g.planets[size_t(L)].abilityExhausted = false;
+            g.systems[size_t(X)].space[0].add(UnitType::Destroyer, 1);
+            if (more) more(g);
+            moves = {X, -1, int(UnitType::Destroyer), 1};
+            return true;
+        });
+    };
+    auto optionsOf = [](const SecRun& r, const char* prompt) {
+        for (const auto& q : r.options)
+            if (q.first.find(prompt) != std::string::npos) return q.second;
+        return std::vector<int>();
+    };
+    // --- Bi-Phasic Generators (Echo): a supernova without a frontier token is a system without a planet
+    for (int v : {30, 31}) {
+        int nova = -1;
+        g_secDrive = [](const Game&, const Decision& d, Answer& a) {
+            if (d.player == 0 && d.tag == Tag::LegendaryAbility && d.prompt.find("Bi-Phasic Generators (") == 0) {
+                a = Answer{};
+                a.picks = {1};
+                return true;
+            }
+            return false;
+        };
+        SecRun r;
+        for (uint32_t k = 0; k < 30; ++k) {
+            nova = -1;
+            r = withLegend(v, 9800 + k * 41, "echo", [&](Game& g) {
+                for (size_t s = 0; s < g.systems.size(); ++s)  // (its frontier token from the setup explored already)
+                    if ((g.systems[s].d().anomalies & kSupernova) && g.systems[s].planets.empty() && g.systems[s].home < 0) {
+                        nova = int(s);
+                        g.systems[s].frontier = false;
+                    }
+            });
+            if (std::getenv("TI4_SECDEBUG")) std::printf("legendary debug: seed %u set %d finished %d nova %d\n", 9800 + k * 41, r.setUp, r.finished, nova);
+            if (r.setUp && r.finished && nova >= 0) break;
+        }
+        g_secDrive = nullptr;
+        const std::vector<int> o = optionsOf(r, "Bi-Phasic Generators: put the frontier token where?");
+        const bool has = std::find(o.begin(), o.end(), nova) != o.end();
+        // (rules 30: with the supernova the only system left, the ability isn't offered at all)
+        report(std::string("Bi-Phasic Generators and a supernova (rules ") + std::to_string(v) + ")",
+               nova >= 0 && (v >= 31 ? !o.empty() && has : !has),
+               o.empty() ? "not asked" : std::to_string(o.size()) + " systems offered, the supernova " + (has ? "among them" : "not among them"));
+    }
+    // --- Mystic Library (Prism): purge Fleet Logistics (2 prerequisites) - the gain list has Destroyer II (2) too (rules 31)
+    for (int v : {30, 31}) {
+        const int fl = findTech("fl"), dd2 = findTech("dd2");
+        g_secDrive = [fl](const Game&, const Decision& d, Answer& a) {
+            if (d.player != 0 || d.tag != Tag::LegendaryAbility) return false;
+            if (d.prompt.find("Mystic Library (") == 0) {
+                a = Answer{};
+                a.picks = {1};
+                return true;
+            }
+            if (d.prompt.find("Mystic Library: purge which technology?") == 0) {
+                a = Answer{};
+                a.picks = {fl};
+                return true;
+            }
+            return false;
+        };
+        SecRun r;
+        for (uint32_t k = 0; k < 30; ++k) {
+            r = withLegend(v, 9900 + k * 43, "prism", [&](Game& g) {
+                Player& pl = g.players[0];
+                for (const char* t : {"gd", "amd", "fl"})
+                    if (!pl.hasTech(findTech(t))) pl.techs.push_back(int16_t(findTech(t)));
+            });
+            if (r.setUp && r.finished) break;
+        }
+        g_secDrive = nullptr;
+        const std::vector<int> o = optionsOf(r, "Mystic Library: gain which technology?");
+        const bool has = std::find(o.begin(), o.end(), dd2) != o.end();
+        report(std::string("Mystic Library: Destroyer II among the technologies to gain (rules ") + std::to_string(v) + ")", !o.empty() && has == (v >= 31),
+               o.empty() ? "not asked" : std::to_string(o.size()) + " offered, Destroyer II " + (has ? "among them" : "not among them"));
+    }
+    std::printf("legendary: %d checked, %d wrong\n", done, bad);
+    return bad == 0 ? 1 : 0;
+}
+
+// 0.61.0 the Thunder's Edge action cards (TI4_UITEST_ONLY=tecards): every card's text; Brilliance's "or choose 1 player to gain
+// their breakthrough" (rules 31). actRun: the board set at round 1's strategy phase, seat 0's first action = `action` (an option id
+// of its action list: 1000 + card for an action card); g_secDrive answers the case's own questions.
+namespace {
+struct ActRun {
+    bool set = false, offered = false, acted = false, finished = false;
+    std::vector<std::pair<std::string, std::vector<int>>> options;  // seat 0's questions from the action on
+    std::vector<std::string> log, refused;
+    ti::Game end;
+};
+ActRun actRun(int fixes, int modules, const std::vector<int>& factions, uint32_t seed, int action, const std::function<bool(ti::Game&)>& setup) {
+    using namespace ti;
+    ActRun r;
+    Engine e;
+    Setup s;
+    s.players = int(factions.size());
+    s.human = -1;
+    s.seed = seed;
+    s.draft = 0;
+    s.fixes = fixes;
+    s.modules = modules;
+    s.factions = factions;
+    e.start(s);
+    Rng rng(4);
+    for (int steps = 0; e.waiting() && steps < 60000 && !r.finished; ++steps) {
+        const Game& g = e.game();
+        const Decision& d = e.decision();
+        if (!r.set && g.phase == Phase::Strategy) {
+            r.set = true;
+            Game& gm = e.g();
+            for (Player& pq : gm.players) pq.actionCards.clear();
+            if (!setup(gm)) break;
+        }
+        Answer a = aiAnswer(g, d, rng);
+        if (r.set && !r.acted && g.phase == Phase::Action && d.player == 0 && d.tag == Tag::ActionChoice) {
+            r.acted = true;
+            for (const Option& o : d.options) r.offered = r.offered || o.id == action;
+            if (!r.offered) break;
+            a = Answer{};
+            a.picks = {action};
+        } else if (r.acted && g_secDrive) {
+            Answer b = a;
+            if (g_secDrive(g, d, b)) a = b;
+        }
+        if (r.acted && d.player == 0) {
+            std::vector<int> ids;
+            for (const Option& o : d.options) ids.push_back(o.id);
+            r.options.push_back({d.prompt, ids});
+        }
+        std::string why;
+        if (!e.answer(a, &why)) {
+            r.refused.push_back(d.prompt + " [" + why + "]");
+            break;
+        }
+        for (const Event& ev : e.takeEvents()) {
+            if (r.acted && !ev.text.empty()) r.log.push_back(ev.text);
+            if (r.acted && ev.kind == EventKind::TurnEnd && ev.player == 0) r.finished = true;
+        }
+    }
+    r.end = e.game();
+    return r;
+}
+}  // namespace
+
+int teCardsCheck(const std::string&) {
+    using namespace ti;
+    int bad = 0, done = 0;
+    auto report = [&](const std::string& name, bool ok, const std::string& what) {
+        std::printf("tecards: %s - %s: %s\n", name.c_str(), what.c_str(), ok ? "OK" : "WRONG");
+        bad += ok ? 0 : 1;
+        ++done;
+    };
+    {
+        std::string missing;
+        int n = 0;
+        for (int c = 0; c < kActionCardCount; ++c)
+            if (kActionCards[c].source == Source::ThundersEdge) {
+                ++n;
+                if (!*actionCardText(c)) missing += std::string(missing.empty() ? "" : ", ") + kActionCards[c].name;
+            }
+        report("every Thunder's Edge action card's text", missing.empty() && n > 0, std::to_string(n) + " cards" + (missing.empty() ? "" : ", missing: " + missing));
+    }
+    const std::vector<int> six = {findFaction("letnev"), findFaction("hacan"), findFaction("sol"), findFaction("jolnar"), findFaction("sardakk"),
+                                  findFaction("l1z1x")};
+    // --- Brilliance with no exhausted specialty planet: seat 0 gains its breakthrough (rules 31); not offered at 30
+    for (int v : {30, 31}) {
+        const int card = findActionCard("brilliance");
+        g_secDrive = [](const Game&, const Decision& d, Answer& a) {
+            if (d.player == 0 && d.tag == Tag::CardTarget && d.prompt.find("Brilliance") == 0) {
+                a = Answer{};
+                a.picks = {100000};
+                return true;
+            }
+            return false;
+        };
+        ActRun r = actRun(v, kModThundersEdge | kModCodex, six, 9950, 1000 + card, [&](Game& g) {
+            g.players[0].actionCards.push_back(int16_t(card));
+            g.players[0].breakthrough = false;
+            for (int x : controlledPlanets(g, 0)) g.planets[size_t(x)].exhausted = false;
+            return true;
+        });
+        g_secDrive = nullptr;
+        const bool got = r.end.players[0].breakthrough;
+        const bool ok = v >= 31 ? r.offered && got : !r.offered;
+        report(std::string("Brilliance: your own breakthrough (rules ") + std::to_string(v) + ")", ok,
+               std::string(r.offered ? "offered" : "not offered") + (got ? ", breakthrough gained" : ""));
+    }
+    std::printf("tecards: %d checked, %d wrong\n", done, bad);
+    return bad == 0 ? 1 : 0;
+}
+
+// 0.61.0 the Uncharted Space action cards (TI4_UITEST_ONLY=uscards): every card's text; Contagion after a bombardment that destroys
+// infantry (rules 31 - before, only in ground combat).
+int usCardsCheck(const std::string&) {
+    using namespace ti;
+    int bad = 0, done = 0;
+    auto report = [&](const std::string& name, bool ok, const std::string& what) {
+        std::printf("uscards: %s - %s: %s\n", name.c_str(), what.c_str(), ok ? "OK" : "WRONG");
+        bad += ok ? 0 : 1;
+        ++done;
+    };
+    {
+        std::string missing;
+        int n = 0;
+        for (int c = 0; c < kActionCardCount; ++c)
+            if (kActionCards[c].source == Source::Uncharted) {
+                ++n;
+                if (!*actionCardText(c)) missing += std::string(missing.empty() ? "" : ", ") + kActionCards[c].name;
+            }
+        report("every Uncharted Space action card's text", missing.empty() && n == 30, std::to_string(n) + " cards" + (missing.empty() ? "" : ", missing: " + missing));
+    }
+    const std::vector<int> six = {findFaction("letnev"), findFaction("hacan"), findFaction("sol"), findFaction("jolnar"), findFaction("sardakk"),
+                                  findFaction("l1z1x")};
+    const int card = findActionCard("contagion");
+    for (int v : {30, 31}) {
+        int P = -1;
+        bool hit = false;
+        SecRun r;
+        for (uint32_t k = 0; k < 24 && !hit; ++k) {
+            g_secDrive = [&P](const Game&, const Decision& d, Answer& a) {
+                if (d.player == 0 && d.tag == Tag::BombardPlan && P >= 0) {
+                    a = Answer{};
+                    a.data = {P, int(UnitType::Dreadnought), 3};
+                    return true;
+                }
+                return false;
+            };
+            r = secRun1(v, kModUncharted | kModCodex, six, 10100 + k * 29, [&](Game& g, int& T, std::vector<int>& moves) {
+                int X = -1;
+                for (size_t s = 0; s < g.systems.size() && T < 0; ++s) {
+                    const SystemState& sy = g.systems[s];
+                    if (sy.offBoard || sy.isHyperlane() || sy.home >= 0 || int(s) == g.mecatol() || isAnomaly(g, int(s)) || sy.planets.size() != 1 ||
+                        !secEmpty(g, int(s)))
+                        continue;
+                    X = secPlainNext(g, int(s), 0);
+                    if (X < 0) X = secPlainNext(g, int(s), 1);
+                    if (X >= 0) T = int(s);
+                }
+                if (T < 0) return false;
+                for (SystemState& sy : g.systems) sy.tokens &= uint16_t(~1u);
+                P = g.systems[size_t(T)].planets[0];
+                g.planets[size_t(P)].owner = 1;
+                g.planets[size_t(P)].units[1].add(UnitType::Infantry, 4);
+                g.systems[size_t(X)].space[0].add(UnitType::Dreadnought, 3);
+                g.players[0].fleet = 6;
+                g.players[0].actionCards.push_back(int16_t(card));
+                moves = {X, -1, int(UnitType::Dreadnought), 3};
+                return true;
+            });
+            for (const std::string& l : r.log) hit = hit || (l.find("Bombardment of") != std::string::npos && l.find(" 0 hits") == std::string::npos);
+            int left = -1;
+            if (P >= 0) left = r.end.planets[size_t(P)].units[1].count(UnitType::Infantry);
+            hit = hit && left >= 0 && left < 4;
+        }
+        g_secDrive = nullptr;
+        bool offered = false;
+        for (const auto& q : r.options)
+            for (int id : q.second) offered = offered || id == card;
+        report(std::string("Contagion after a bombardment (rules ") + std::to_string(v) + ")", hit && offered == (v >= 31),
+               std::string(hit ? "infantry destroyed" : "no hit in 24 games") + ", Contagion " + (offered ? "offered" : "not offered"));
+    }
+    std::printf("uscards: %d checked, %d wrong\n", done, bad);
+    return bad == 0 ? 1 : 0;
+}
+
+// 0.61.0 the galactic events (TI4_UITEST_ONLY=eventcards): every event's text; Weird Wormholes - "War Sun (if researched)": a flagship
+// that rolls 6-10 without the war sun technology stays a flagship (rules 31).
+int eventCardsCheck(const std::string&) {
+    using namespace ti;
+    int bad = 0, done = 0;
+    auto report = [&](const std::string& name, bool ok, const std::string& what) {
+        std::printf("eventcards: %s - %s: %s\n", name.c_str(), what.c_str(), ok ? "OK" : "WRONG");
+        bad += ok ? 0 : 1;
+        ++done;
+    };
+    {
+        std::string missing;
+        for (int k = 0; k < kEventCount; ++k)
+            if (!*galacticEvent(k).text || !*galacticEvent(k).name) missing += std::string(missing.empty() ? "" : ", ") + std::to_string(k);
+        report("every galactic event's text", missing.empty(), missing.empty() ? std::to_string(kEventCount) + " events" : "missing: " + missing);
+    }
+    const std::vector<int> six = {findFaction("letnev"), findFaction("hacan"), findFaction("sol"), findFaction("jolnar"), findFaction("sardakk"),
+                                  findFaction("l1z1x")};
+    // seat 0's flagship goes through an alpha wormhole (from one alpha system to the other)
+    for (int v : {30, 31}) {
+        g_secEvents = 1u << kEvWormholes;
+        bool rolledHigh = false, warSun = false, flagship = false;
+        for (uint32_t k = 0; k < 40 && !rolledHigh; ++k) {
+            int A = -1;
+            SecRun r = secRun1(v, kModThundersEdge | kModCodex, six, 10200 + k * 31, [&](Game& g, int& T, std::vector<int>& moves) {
+                std::vector<int> alpha;
+                for (size_t s = 0; s < g.systems.size(); ++s)
+                    if (!g.systems[s].offBoard && int(s) != g.nexus && (wormholesOf(g, int(s)) & kAlpha) && secEmpty(g, int(s))) alpha.push_back(int(s));
+                if (alpha.size() < 2) return false;
+                A = alpha[0];
+                T = alpha[1];
+                for (SystemState& sy : g.systems) sy.tokens &= uint16_t(~1u);
+                g.systems[size_t(A)].space[0].add(UnitType::Flagship, 1);
+                moves = {A, -1, int(UnitType::Flagship), 1};
+                return true;
+            });
+            if (!r.setUp || !r.finished || A < 0) continue;
+            for (const std::string& l : r.log)
+                if (l.find("Weird Wormholes (1-5 smaller, 6-10 bigger)") != std::string::npos)  // "...: 7* = 1 hit" - 6 or more
+                    rolledHigh = l.find("= 1 hit") != std::string::npos;
+            if (!rolledHigh) continue;
+            for (const SystemState& sy : r.end.systems) {
+                warSun = warSun || sy.space[0].count(UnitType::WarSun) > 0;
+                flagship = flagship || sy.space[0].count(UnitType::Flagship) > 0;
+            }
+        }
+        g_secEvents = 0;
+        const bool ok = rolledHigh && flagship && !warSun;  // (both rule versions: unitsAvailable has no war sun without the technology)
+        report(std::string("Weird Wormholes: a flagship rolls 6-10 without War Sun (rules ") + std::to_string(v) + ")", ok,
+               !rolledHigh ? "no high roll found" : warSun ? "it became a war sun" : flagship ? "it stayed a flagship" : "it vanished?");
+    }
+    std::printf("eventcards: %d checked, %d wrong\n", done, bad);
+    return bad == 0 ? 1 : 0;
+}
+
+// 0.61.1 LRR 23.4a (TI4_UITEST_ONLY=reclaim, owner 2026-11-18 W19: "yes please. Make sure that a warning appears if a player is about to
+// remove a piece"): with none of a unit left in the reinforcements, a unit comes back off the board from a system without your command
+// token (rules 32) - production past the reinforcements, the pick of the piece (damaged ones too), the bots' idle choice, Construction's
+// PDS from the board; rules 31 games keep the old limit. Screens: the production warning and the "Take this piece off the board?" box.
+namespace {
+struct RcRun {
+    bool set = false, acted = false, finished = false;
+    std::vector<std::string> log, refused;
+    std::vector<std::pair<std::string, std::vector<int>>> reclaim;  // the Tag::ReclaimUnit questions: prompt, option ids
+    std::vector<std::pair<std::string, std::vector<ti::Option>>> asked;  // seat 0's questions from the action on
+    ti::Game end;
+};
+std::function<bool(const ti::Game&, const ti::Decision&, ti::Answer&)> g_rcDrive;
+std::function<void(const ti::Game&, const ti::Decision&)> g_rcShot;  // (draws a screen of the question as it comes)
+// seat 0's first action of round 1: card < 0 = a tactical action into its home system (no movement), else that strategy card's
+// primary (seat 0 takes it in the strategy phase); `setup` builds the board just before
+RcRun rcRun(int fixes, uint32_t seed, int card, const std::function<bool(ti::Game&)>& setup) {
+    using namespace ti;
+    RcRun r;
+    Engine e;
+    Setup s;
+    s.players = 6;
+    s.human = -1;
+    s.seed = seed;
+    s.draft = 0;
+    s.fixes = fixes;
+    s.modules = kModCodex;
+    s.factions = {findFaction("letnev"), findFaction("hacan"), findFaction("sol"), findFaction("jolnar"), findFaction("sardakk"), findFaction("l1z1x")};
+    e.start(s);
+    Rng rng(4);
+    bool activated = false, moved = false;
+    for (int steps = 0; e.waiting() && steps < 60000 && !r.finished; ++steps) {
+        const Game& g = e.game();
+        const Decision& d = e.decision();
+        Answer a = aiAnswer(g, d, rng);
+        if (card >= 0 && g.phase == Phase::Strategy && d.tag == Tag::StrategyPick) {
+            int pickId = -1;
+            for (const Option& o : d.options)
+                if (d.player == 0 ? o.id == card : o.id != card && pickId < 0) pickId = o.id;
+            if (pickId >= 0) {
+                a = Answer{};
+                a.picks = {pickId};
+            }
+        } else if (!r.acted && g.phase == Phase::Action && d.player == 0 && d.tag == Tag::ActionChoice) {
+            Game& gm = e.g();
+            for (Player& pq : gm.players) pq.actionCards.clear();
+            r.set = setup(gm);
+            if (!r.set) break;
+            computeAdjacency(gm);
+            r.acted = true;
+            a = Answer{};
+            a.picks = {card >= 0 ? 10 + card : 0};
+        } else if (r.acted && card < 0 && !activated && d.player == 0 && d.tag == Tag::Activate) {
+            activated = true;
+            a = Answer{};
+            a.picks = {g.players[0].homeSystem};
+        } else if (activated && !moved && d.player == 0 && d.kind == DecisionKind::Move && d.tag == Tag::Movement) {
+            moved = true;
+            a = Answer{};
+        }
+        if (r.acted && d.tag == Tag::ReclaimUnit) {
+            std::vector<int> ids;
+            for (const Option& o : d.options) ids.push_back(o.id);
+            r.reclaim.push_back({d.prompt, ids});
+        }
+        if (r.acted && d.player == 0) r.asked.push_back({d.prompt, d.options});
+        if (r.acted && g_rcShot) g_rcShot(g, d);
+        if (r.acted && g_rcDrive) {
+            Answer b = a;
+            if (g_rcDrive(g, d, b)) a = b;
+        }
+        std::string why;
+        if (!e.answer(a, &why)) {
+            r.refused.push_back(d.prompt + " [" + why + "]");
+            break;
+        }
+        for (const Event& ev : e.takeEvents()) {
+            if (r.acted && !ev.text.empty()) r.log.push_back(ev.text);
+            if (r.acted && ev.kind == EventKind::TurnEnd && ev.player == 0) r.finished = true;
+        }
+    }
+    r.end = e.game();
+    if (std::getenv("TI4_RCDEBUG")) {
+        std::printf("reclaim debug: fixes %d seed %u set %d acted %d finished %d\n", fixes, seed, r.set, r.acted, r.finished);
+        for (const std::string& l : r.log) std::printf("reclaim debug:   %s\n", l.c_str());
+        for (const auto& q : r.asked) std::printf("reclaim debug:   ? %s (%zu options)\n", q.first.c_str(), q.second.size());
+        for (const std::string& l : r.refused) std::printf("reclaim debug: REFUSED at '%s'\n", l.c_str());
+    }
+    return r;
+}
+// an empty plain system (no units, no planets owned) with no other player's ships within `far` systems of it, not `not1` / `not2`
+int rcQuiet(const ti::Game& g, int p, int far, int not1, int not2) {
+    using namespace ti;
+    for (size_t s = 0; s < g.systems.size(); ++s) {
+        const SystemState& sy = g.systems[s];
+        if (sy.offBoard || sy.isHyperlane() || sy.home >= 0 || int(s) == g.mecatol() || isAnomaly(g, int(s)) || int(s) == not1 || int(s) == not2) continue;
+        bool ok = true;
+        for (int q = 0; q < kSides && ok; ++q) {
+            if (!sy.space[size_t(q)].empty()) ok = false;
+            for (int16_t x : sy.planets)
+                if (!g.planets[size_t(x)].units[size_t(q)].empty() || g.planets[size_t(x)].owner >= 0) ok = false;
+        }
+        for (int s2 : systemsWithin(g, int(s), far))
+            for (int q = 0; q < kSides && ok; ++q)
+                if (q != p && g.systems[size_t(s2)].space[size_t(q)].ships() > 0) ok = false;
+        if (ok) return int(s);
+    }
+    return -1;
+}
+int rcCount(const ti::Game& g, int p, ti::UnitType t, int sys) {
+    int n = g.systems[size_t(sys)].space[size_t(p)].count(t);
+    for (int16_t x : g.systems[size_t(sys)].planets) n += g.planets[size_t(x)].units[size_t(p)].count(t);
+    return n;
+}
+void rcClear(ti::Game& g, int p, ti::UnitType t) {
+    for (ti::SystemState& sy : g.systems) {
+        sy.space[size_t(p)].n[int(t)] = 0;
+        sy.space[size_t(p)].dmg[int(t)] = 0;
+    }
+    for (ti::PlanetState& pl : g.planets) {
+        pl.units[size_t(p)].n[int(t)] = 0;
+        pl.units[size_t(p)].dmg[int(t)] = 0;
+    }
+}
+// draws a decision's screen; `keys` pressed first (A = Btn::A, U = Up, S = Start)
+void rcScreen(const ti::Game& g, const ti::Decision& d, const std::string& keys, const std::string& file) {
+    using namespace ti;
+    MapView map;
+    map.setViewport(Rect{0, 22, 640, 440});
+    map.setZoom(0);
+    if (d.system >= 0) map.setCursor(g, d.system);
+    std::unique_ptr<DecisionUI> ui = makeDecisionUI(g, d, map);
+    Input in;
+    uint32_t now = 1000;
+    for (char k : keys) {
+        const Btn b = k == 'A' ? Btn::A : k == 'U' ? Btn::Up : k == 'D' ? Btn::Down : k == 'Y' ? Btn::Y : k == 'X' ? Btn::X : Btn::Start;
+        in.beginFrame();
+        in.handle(b, true, now);
+        ui->update(in, now);
+        now += 30;
+        in.beginFrame();
+        in.handle(b, false, now);
+        now += 30;
+    }
+    Canvas c(640, 480, testScale());
+    hits::clear();
+    drawSpaceBackground(c, false);
+    map.draw(c, g, 250);
+    ui->draw(c, 250);
+    drawHintBar(c, ui->hints());
+    savePpm(c, file);
+}
+}  // namespace
+
+// 0.61.2 Minor Factions (task #424, TI4_UITEST_ONLY=minor): the Ghosts of Creuss / the Crimson Rebellion bring their gate / the Sorrow
+// to the spot and their home beside the board (joined by wormhole), the Keleres one of the Mentak / Xxcha / Argent homes not in play,
+// the Firmament / the Obsidian a random side; rules 32 never drew them. Every minor home: its planets marked, 3 neutral infantry.
+int minorCheck(const std::string& outDir) {
+    using namespace ti;
+    int bad = 0, done = 0;
+    auto report = [&](const std::string& name, bool ok, const std::string& what) {
+        std::printf("minor: %s - %s: %s\n", name.c_str(), what.c_str(), ok ? "OK" : "WRONG");
+        bad += ok ? 0 : 1;
+        ++done;
+    };
+    const char* sides[] = {"ghost", "crimson", "keleres", "firmament", "obsidian"};
+    for (int v : {32, 33}) {
+        int seen[5] = {}, games = 0, broken = 0, homeTwice = 0, kelBad = 0;
+        bool shot = false;
+        std::string why;
+        for (uint32_t seed = 1; seed <= 80; ++seed) {
+            Engine e;
+            Setup s;
+            s.players = 6;
+            s.human = -1;
+            s.seed = 7100 + seed;
+            s.draft = 0;
+            s.fixes = v;
+            s.modules = kModThundersEdge | kModCodex;
+            s.events = 1u << kEvMinor;
+            s.factions = {findFaction("letnev"), findFaction("hacan"), findFaction("sol"), findFaction("jolnar"), findFaction("sardakk"),
+                          findFaction("l1z1x")};
+            e.start(s);
+            Rng rng(5);
+            for (int steps = 0; e.waiting() && e.game().phase != Phase::Strategy && steps < 3000; ++steps) {  // (setup's questions)
+                std::string why;
+                if (!e.answer(aiAnswer(e.game(), e.decision(), rng), &why)) break;
+            }
+            const Game& g = e.game();
+            ++games;
+            std::vector<int> defs;
+            for (const SystemState& sy : g.systems) defs.push_back(sy.def);
+            for (int d : defs) homeTwice += std::count(defs.begin(), defs.end(), d) > 1 && kSystems[d].back == Back::Home && d != findSystem("82b") ? 1 : 0;
+            std::vector<int> minors;
+            for (size_t x = 0; x < g.planets.size(); ++x)
+                if (g.planets[x].minor >= 0 && !g.planets[x].destroyed &&
+                    std::find(minors.begin(), minors.end(), int(g.planets[x].system)) == minors.end())
+                    minors.push_back(g.planets[x].system);
+            for (int ms : minors) {
+                const SystemState& sy = g.systems[size_t(ms)];
+                int neutral = 0, f = -1;
+                for (int16_t x : sy.planets) {
+                    neutral += g.planets[size_t(x)].units[kNeutral].count(UnitType::Infantry);
+                    f = g.planets[size_t(x)].minor;
+                }
+                if (neutral != 3) {
+                    ++broken;
+                    why += " " + std::string(kFactions[f].key) + ":" + std::to_string(neutral) + "inf";
+                }
+                for (int k = 0; k < 5; ++k)
+                    if (!std::strcmp(kFactions[f].key, sides[k])) ++seen[k];
+                const bool gated = !std::strcmp(kFactions[f].key, "ghost") || !std::strcmp(kFactions[f].key, "crimson");
+                if (gated && v >= 33 && !shot) {  // (a look at the board: the gate in the second ring, the home beside the board)
+                    shot = true;
+                    MapView map;
+                    map.setViewport(Rect{0, 22, 640, 440});
+                    map.setZoom(0);
+                    map.setCursor(g, ms);
+                    for (int fr = 0; fr < 3; ++fr) {
+                        Canvas c(640, 480, testScale());
+                        drawSpaceBackground(c, false);
+                        map.draw(c, g, 1000 + uint32_t(fr) * 200);
+                        if (fr == 2) savePpm(c, outDir + "/minor_" + kFactions[f].key + ".ppm");
+                    }
+                }
+                if (gated) {  // beside the board, joined to its gate in the second ring
+                    const int gate = findSystem(!std::strcmp(kFactions[f].key, "ghost") ? "17" : "94");
+                    bool joined = false;
+                    for (int16_t a : sy.adj)
+                        if (g.systems[size_t(a)].def == gate && hexRingOf(g.systems[size_t(a)].pos) == 2) joined = true;
+                    if (!sy.offBoard || !joined) {
+                        ++broken;
+                        why += std::string(" ") + kFactions[f].key + (sy.offBoard ? ":not joined" : ":on the board");
+                    }
+                } else if (hexRingOf(sy.pos) != 2 || sy.offBoard) {
+                    ++broken;
+                    why += std::string(" ") + kFactions[f].key + ":not in ring 2";
+                }
+                if (!std::strcmp(kFactions[f].key, "keleres")) {
+                    bool ok = false;
+                    for (const char* t : {"mentak", "xxcha", "argent"}) ok = ok || sy.def == kFactions[findFaction(t)].homeSystem;
+                    kelBad += ok ? 0 : 1;
+                }
+            }
+        }
+        std::string counts;
+        for (int k = 0; k < 5; ++k) counts += std::string(k ? ", " : "") + sides[k] + " " + std::to_string(seen[k]);
+        if (v < 33)
+            report("minor factions (rules 32)", seen[0] + seen[1] + seen[2] + seen[4] == 0 && broken == 0, counts + why);
+        else
+            report("minor factions (rules 33)", seen[0] && seen[1] && seen[2] && seen[3] && seen[4] && broken == 0 && homeTwice == 0 && kelBad == 0,
+                   counts + " in " + std::to_string(games) + " games" + why + (homeTwice ? ", a home tile twice" : "") + (kelBad ? ", a wrong Keleres home" : ""));
+    }
+    std::printf("minor: %d checked, %d wrong\n", done, bad);
+    return bad == 0 ? 1 : 0;
+}
+
+// 0.61.2 the map list (TI4_UITEST_ONLY=mapfixes): the Your cards tabs beside a long title (five tabs: a faction with its own cards),
+// a choose-several list's Confirm row, a new tile's edge spaces picked on the map
+int mapFixesCheck(const std::string& outDir) {
+    using namespace ti;
+    int bad = 0, done = 0;
+    auto report = [&](const std::string& name, bool ok, const std::string& what) {
+        std::printf("mapfixes: %s - %s: %s\n", name.c_str(), what.c_str(), ok ? "OK" : "WRONG");
+        bad += ok ? 0 : 1;
+        ++done;
+    };
+    Engine e;
+    Setup s;
+    s.players = 6;
+    s.human = -1;
+    s.seed = 6120;
+    s.draft = 0;
+    s.modules = kModThundersEdge | kModCodex | kModUncharted;
+    s.factions = {findFaction("firmament"), findFaction("hacan"), findFaction("sol"), findFaction("jolnar"), findFaction("sardakk"),
+                  findFaction("l1z1x")};
+    e.start(s);
+    Rng rng(5);
+    for (int steps = 0; e.waiting() && e.game().phase != Phase::Strategy && steps < 3000; ++steps) {
+        std::string why;
+        if (!e.answer(aiAnswer(e.game(), e.decision(), rng), &why)) break;
+    }
+    const Game& g = e.game();
+    {  // the hand: five tabs (the Firmament's plots) never over the title
+        drawInfo(*makeHandScreen(g, 0), outDir + "/mapfix_hand_tabs.ppm", {});
+        report("Your cards tabs", true, "shot mapfix_hand_tabs");
+    }
+    {  // a choose-several list ends in a Confirm row; A on it confirms
+        Decision d;
+        d.player = 0;
+        d.kind = DecisionKind::Pick;
+        d.tag = Tag::TradeX1Offer;
+        d.prompt = "Trade: offer an X-1 trade to which players?";
+        d.minPick = 0;
+        d.maxPick = 3;
+        d.options = {{1, "Hacan", ""}, {2, "Sol", ""}, {3, "Jol-Nar", ""}};
+        MapView map;
+        std::unique_ptr<DecisionUI> ui = makeDecisionUI(g, d, map);
+        Input in;
+        uint32_t now = 1000;
+        auto press = [&](Btn b) {
+            in.beginFrame();
+            in.handle(b, true, now);
+            const bool r = ui->update(in, now);
+            now += 30;
+            in.beginFrame();
+            in.handle(b, false, now);
+            now += 30;
+            return r;
+        };
+        press(Btn::A);  // Hacan chosen
+        press(Btn::Down);
+        press(Btn::Down);
+        press(Btn::Down);  // the Confirm row
+        Canvas c(640, 480, testScale());
+        drawSpaceBackground(c, false);
+        ui->draw(c, 250);
+        drawHintBar(c, ui->hints());
+        savePpm(c, outDir + "/mapfix_confirm_row.ppm");
+        const bool answered = press(Btn::A);
+        report("choose-several list: A on the Confirm row", answered && ui->answer().picks == std::vector<int>{1},
+               answered ? "answered " + std::to_string(ui->answer().picks.size()) + " pick(s)" : "not answered");
+    }
+    {  // a new tile's place on the map
+        const std::vector<Hex> spots = boardEdgeSpots(g);
+        Decision d;
+        d.player = 0;
+        d.kind = DecisionKind::Pick;
+        d.tag = Tag::ExploreChoice;
+        d.prompt = "Star Charts: place Silence (d104) where?";
+        d.context = "At the edge of the board, next to at least 2 systems.";
+        d.onSpots = true;
+        for (const Hex& h : spots) d.options.push_back({spotId(h), "Beside a system", ""});
+        MapView map;
+        map.setViewport(Rect{0, 22, 640, 440});
+        map.setZoom(0);
+        std::unique_ptr<DecisionUI> ui = makeDecisionUI(g, d, map);
+        Input in;
+        uint32_t now = 1000;
+        for (Btn b : {Btn::Right, Btn::Right}) {
+            in.beginFrame();
+            in.handle(b, true, now);
+            ui->update(in, now);
+            now += 30;
+            in.beginFrame();
+            in.handle(b, false, now);
+            now += 30;
+        }
+        Canvas c(640, 480, testScale());
+        drawSpaceBackground(c, false);
+        map.draw(c, g, 250);
+        ui->draw(c, 250);
+        drawHintBar(c, ui->hints());
+        savePpm(c, outDir + "/mapfix_spots.ppm");
+        in.beginFrame();
+        in.handle(Btn::A, true, now);
+        const bool answered = ui->update(in, now);
+        report("edge spaces on the map", spots.size() >= 3 && answered && !ui->answer().picks.empty() && ui->answer().picks[0] == spotId(spots[2]),
+               std::to_string(spots.size()) + " spaces, the third picked");
+    }
+    std::printf("mapfixes: %d checked, %d wrong\n", done, bad);
+    return bad == 0 ? 1 : 0;
+}
+
+int reclaimCheck(const std::string& outDir) {
+    using namespace ti;
+    int bad = 0, done = 0;
+    auto report = [&](const std::string& name, bool ok, const std::string& what) {
+        std::printf("reclaim: %s - %s: %s\n", name.c_str(), what.c_str(), ok ? "OK" : "WRONG");
+        bad += ok ? 0 : 1;
+        ++done;
+    };
+    const UnitType CV = UnitType::Carrier;
+    // --- production past the reinforcements: 4 carriers on the board (1 at home, 2 in X - one damaged - and 1 in Z with seat 0's
+    // command token); seat 0 produces a carrier at home. Rules 31: refused. Rules 32: one question, X's carriers only (the damaged
+    // one too); the damaged one is picked: X keeps 1 undamaged, home has 2, still 4 on the board.
+    for (int v : {31, 32}) {
+        int X = -1, Z = -1;
+        bool shots = v == 32;
+        g_rcDrive = [](const Game&, const Decision& d, Answer& a) {
+            if (d.player == 0 && d.kind == DecisionKind::Produce && d.tag == Tag::Production) {
+                a = Answer{};
+                a.data.assign(kUnitTypes + 1, 0);
+                a.data[int(UnitType::Carrier)] = 1;
+                a.data[kUnitTypes] = -1;
+                return true;
+            }
+            if (d.player == 0 && d.tag == Tag::ReclaimUnit) {
+                for (const Option& o : d.options)
+                    if (o.id >= 0 && (o.id & 1)) {
+                        a = Answer{};
+                        a.picks = {o.id};
+                        return true;
+                    }
+            }
+            return false;
+        };
+        g_rcShot = [&](const Game& g, const Decision& d) {
+            if (!shots || d.player != 0) return;
+            if (d.kind == DecisionKind::Produce && d.tag == Tag::Production) {
+                rcScreen(g, d, "U", outDir + "/reclaim_produce.ppm");
+                rcScreen(g, d, "US", outDir + "/reclaim_produce_warning.ppm");
+            }
+            if (d.tag == Tag::ReclaimUnit) {
+                rcScreen(g, d, "", outDir + "/reclaim_pick.ppm");
+                rcScreen(g, d, "A", outDir + "/reclaim_pick_confirm.ppm");
+            }
+        };
+        RcRun r = rcRun(v, 9700, -1, [&](Game& g) {
+            const int home = g.players[0].homeSystem;
+            X = rcQuiet(g, 0, 2, home, -1);
+            Z = rcQuiet(g, 0, 1, home, X);
+            if (X < 0 || Z < 0) return false;
+            rcClear(g, 0, CV);
+            g.systems[size_t(home)].space[0].add(CV, 1);
+            g.systems[size_t(X)].space[0].add(CV, 2);
+            g.systems[size_t(X)].space[0].dmg[int(CV)] = 1;
+            g.systems[size_t(Z)].space[0].add(CV, 1);
+            g.systems[size_t(Z)].tokens |= 1;
+            g.players[0].tradeGoods = 10;
+            return true;
+        });
+        g_rcDrive = nullptr;
+        g_rcShot = nullptr;
+        if (!r.set) {
+            report("production past the reinforcements (rules " + std::to_string(v) + ")", false, "no board");
+            continue;
+        }
+        const int home = r.end.players[0].homeSystem;
+        if (v < 32) {
+            bool refused = false;
+            for (const std::string& l : r.refused) refused = refused || l.find("Not enough") != std::string::npos;
+            report("production past the reinforcements (rules 31)", refused && r.reclaim.empty(), refused ? "a 5th carrier refused" : "not refused");
+            continue;
+        }
+        bool onlyX = r.reclaim.size() == 1, damagedOffered = false;
+        for (const auto& q : r.reclaim)
+            for (int id : q.second) {
+                if (id < 0) continue;
+                int s = 0, pl = -1;
+                bool dmg = false;
+                reclaimDecode(id, s, pl, dmg);
+                onlyX = onlyX && s == X;
+                damagedOffered = damagedOffered || dmg;
+            }
+        report("the piece's question (rules 32)", onlyX && damagedOffered && r.refused.empty(),
+               std::to_string(r.reclaim.size()) + " question(s), " + (onlyX ? "only the system without your token" : "other systems offered") +
+                   (damagedOffered ? ", the damaged one offered" : ""));
+        const int hx = rcCount(r.end, 0, CV, X), hh = rcCount(r.end, 0, CV, home), hz = rcCount(r.end, 0, CV, Z);
+        const int dx = r.end.systems[size_t(X)].space[0].damaged(CV);
+        report("production past the reinforcements (rules 32)", hx == 1 && dx == 0 && hh == 2 && hz == 1 && unitsOnBoard(r.end, 0, CV) == 4,
+               "X " + std::to_string(hx) + " (" + std::to_string(dx) + " damaged), home " + std::to_string(hh) + ", Z " + std::to_string(hz) +
+                   ", on the board " + std::to_string(unitsOnBoard(r.end, 0, CV)));
+        bool said = false;
+        for (const std::string& l : r.log) said = said || l.find("LRR 23.4a") != std::string::npos;
+        report("the log says so (rules 32)", said, said ? "\"takes a damaged carrier off ...\"" : "no line");
+    }
+    // --- the bot's pick: X is quiet, Y has an enemy ship next to it - the bot takes X's carrier
+    {
+        int X = -1, Y = -1;
+        g_rcDrive = [](const Game&, const Decision& d, Answer& a) {
+            if (d.player == 0 && d.kind == DecisionKind::Produce && d.tag == Tag::Production) {
+                a = Answer{};
+                a.data.assign(kUnitTypes + 1, 0);
+                a.data[int(UnitType::Carrier)] = 1;
+                a.data[kUnitTypes] = -1;
+                return true;
+            }
+            return false;
+        };
+        RcRun r = rcRun(32, 9700, -1, [&](Game& g) {
+            const int home = g.players[0].homeSystem;
+            X = rcQuiet(g, 0, 2, home, -1);
+            if (X < 0) return false;
+            const std::vector<int> nearX = systemsWithin(g, X, 3);
+            int N = -1;  // Y: an empty system 4+ from X, with a neighbour N (not a home) for seat 1's destroyer
+            for (size_t q = 0; q < g.systems.size() && N < 0; ++q) {
+                const SystemState& sy = g.systems[q];
+                if (sy.offBoard || sy.isHyperlane() || sy.home >= 0 || int(q) == g.mecatol() || int(q) == home ||
+                    std::find(nearX.begin(), nearX.end(), int(q)) != nearX.end() || sy.space[0].ships() || sy.space[1].ships())
+                    continue;
+                for (int16_t a : sy.adj)
+                    if (N < 0 && a != home && g.systems[size_t(a)].home < 0 && !g.systems[size_t(a)].offBoard && !g.systems[size_t(a)].isHyperlane() &&
+                        std::find(nearX.begin(), nearX.end(), int(a)) == nearX.end() && g.systems[size_t(a)].space[0].empty()) {
+                        Y = int(q);
+                        N = a;
+                    }
+            }
+            if (N < 0) return false;
+            rcClear(g, 0, CV);
+            g.systems[size_t(home)].space[0].add(CV, 2);
+            g.systems[size_t(X)].space[0].add(CV, 1);
+            g.systems[size_t(Y)].space[0].add(CV, 1);
+            g.systems[size_t(N)].space[1].add(UnitType::Destroyer, 1);
+            g.players[0].tradeGoods = 10;
+            return true;
+        });
+        g_rcDrive = nullptr;
+        report("the bot takes the idle one (rules 32)", r.set && r.reclaim.size() == 1 && rcCount(r.end, 0, CV, X) == 0 && rcCount(r.end, 0, CV, Y) == 1,
+               !r.set ? "no board" : "X " + std::to_string(rcCount(r.end, 0, CV, X)) + ", Y (enemy next to it) " + std::to_string(rcCount(r.end, 0, CV, Y)));
+    }
+    // --- Construction: 6 PDS on the board (2 on P1, 2 on P2, 2 on P3 - P3's system with seat 0's command token); Construction's first
+    // placement: a PDS on a home planet comes off P1 / P2 (rules 32; "None left" in its line); rules 31: no PDS offered
+    for (int v : {31, 32}) {
+        int S1 = -1, S2 = -1, S3 = -1, P1 = -1, P2 = -1, P3 = -1, H = -1;
+        bool pdsOffered = false, noted = false, first = true;
+        g_rcDrive = [&](const Game& g, const Decision& d, Answer& a) {
+            if (d.player == 0 && d.tag == Tag::ConstructionWhere) {
+                a = Answer{};
+                a.picks = {-1};
+                for (const Option& o : d.options)
+                    if (o.id >= 0 && o.id % 2 == 0 && o.id / 2 == H) {
+                        pdsOffered = true;
+                        noted = o.detail.find("None left") != std::string::npos;
+                        if (first) a.picks = {o.id};
+                    }
+                first = false;
+                (void)g;
+                return true;
+            }
+            return false;
+        };
+        g_rcShot = [&](const Game& g, const Decision& d) {  // (0.61.2: the structures picked on the map)
+            if (v < 32 || d.player != 0 || d.tag != Tag::ConstructionWhere || !first) return;
+            rcScreen(g, d, "", outDir + "/planetpick_map.ppm");
+            rcScreen(g, d, "X", outDir + "/planetpick_next.ppm");
+            rcScreen(g, d, "Y", outDir + "/planetpick_list.ppm");
+        };
+        RcRun r = rcRun(v, 9720, 3, [&](Game& g) {
+            const int home = g.players[0].homeSystem;
+            H = g.systems[size_t(home)].planets[0];
+            std::vector<int> picked;  // (3 different quiet systems with planets)
+            for (size_t q = 0; q < g.systems.size() && picked.size() < 3; ++q) {
+                const SystemState& sy = g.systems[q];
+                if (sy.home >= 0 || sy.offBoard || int(q) == g.mecatol() || sy.planets.empty()) continue;
+                bool empty = true;
+                for (int16_t x : sy.planets) empty = empty && g.planets[size_t(x)].owner < 0;
+                for (int qq = 0; qq < kSides; ++qq) empty = empty && sy.space[size_t(qq)].empty();
+                if (empty) picked.push_back(int(q));
+            }
+            if (picked.size() < 3) return false;
+            S1 = picked[0], S2 = picked[1], S3 = picked[2];
+            P1 = g.systems[size_t(S1)].planets[0], P2 = g.systems[size_t(S2)].planets[0], P3 = g.systems[size_t(S3)].planets[0];
+            rcClear(g, 0, UnitType::PDS);
+            for (int x : {P1, P2, P3}) {
+                g.planets[size_t(x)].owner = 0;
+                g.planets[size_t(x)].units[0].add(UnitType::PDS, 2);
+                g.planets[size_t(x)].units[0].add(UnitType::Infantry, 1);
+            }
+            g.systems[size_t(S3)].tokens |= 1;
+            return true;
+        });
+        g_rcDrive = nullptr;
+        g_rcShot = nullptr;
+        if (!r.set) {
+            report("Construction: a PDS from the board (rules " + std::to_string(v) + ")", false, "no board");
+            continue;
+        }
+        const int onH = r.end.planets[size_t(H)].units[0].count(UnitType::PDS);
+        if (v < 32) {
+            report("Construction: a PDS from the board (rules 31)", !pdsOffered && onH == 0, pdsOffered ? "offered" : "not offered");
+            continue;
+        }
+        bool fromOk = r.reclaim.size() == 1;
+        for (const auto& q : r.reclaim)
+            for (int id : q.second) {
+                if (id < 0) continue;
+                int s = 0, pl = -1;
+                bool dmg = false;
+                reclaimDecode(id, s, pl, dmg);
+                fromOk = fromOk && (s == S1 || s == S2) && pl >= 0;
+            }
+        const int left = r.end.planets[size_t(P1)].units[0].count(UnitType::PDS) + r.end.planets[size_t(P2)].units[0].count(UnitType::PDS);
+        report("Construction: a PDS from the board (rules 32)",
+               pdsOffered && noted && fromOk && onH == 1 && left == 3 && r.end.planets[size_t(P3)].units[0].count(UnitType::PDS) == 2 &&
+                   unitsOnBoard(r.end, 0, UnitType::PDS) == 6,
+               std::string(pdsOffered ? "offered" : "not offered") + (noted ? " (\"None left\")" : "") + ", from " +
+                   (fromOk ? "P1 / P2 only" : "elsewhere") + ", home planet " + std::to_string(onH) + ", P1+P2 " + std::to_string(left));
+    }
+    // --- (0.61.2, rules 33 - owner X1) an ability's placement: Self-Assembly Routines after a production at home, all 4 mechs on the board
+    // (in X's space area with a carrier). Rules 32: not offered (no mech in the reinforcements). Rules 33: offered; the take-back question
+    // has "Don't take one back"; a mech comes off X and stands on the home planet.
+    for (int v : {32, 33}) {
+        int X = -1;
+        bool sarAsked = false, dontOffered = false;
+        g_rcDrive = [&](const Game&, const Decision& d, Answer& a) {
+            if (d.player != 0) return false;
+            if (d.kind == DecisionKind::Produce && d.tag == Tag::Production) {
+                a = Answer{};
+                a.data.assign(kUnitTypes + 1, 0);
+                a.data[int(UnitType::Fighter)] = 1;
+                a.data[kUnitTypes] = -1;
+                return true;
+            }
+            if (d.tag == Tag::UseTech && d.prompt.find("Self-Assembly") != std::string::npos) {
+                sarAsked = true;
+                for (const Option& o : d.options)
+                    if (o.id >= 0) {
+                        a = Answer{};
+                        a.picks = {o.id};
+                        return true;
+                    }
+            }
+            if (d.tag == Tag::ReclaimUnit) {
+                for (const Option& o : d.options) dontOffered = dontOffered || o.id == -1;
+                for (const Option& o : d.options)
+                    if (o.id >= 0) {
+                        a = Answer{};
+                        a.picks = {o.id};
+                        return true;
+                    }
+            }
+            return false;
+        };
+        RcRun r = rcRun(v, 9730, -1, [&](Game& g) {
+            const int home = g.players[0].homeSystem;
+            X = rcQuiet(g, 0, 2, home, -1);
+            if (X < 0) return false;
+            rcClear(g, 0, UnitType::Mech);
+            g.systems[size_t(X)].space[0].add(UnitType::Carrier, 1);
+            g.systems[size_t(X)].space[0].add(UnitType::Mech, 4);
+            if (!g.players[0].hasTech(findTech("sar"))) g.players[0].techs.push_back(int16_t(findTech("sar")));
+            g.players[0].tradeGoods = 10;
+            return true;
+        });
+        g_rcDrive = nullptr;
+        if (!r.set) {
+            report("an ability's placement (rules " + std::to_string(v) + ")", false, "no board");
+            continue;
+        }
+        const int home = r.end.players[0].homeSystem;
+        const int atHome = rcCount(r.end, 0, UnitType::Mech, home), atX = rcCount(r.end, 0, UnitType::Mech, X);
+        if (v < 33) {
+            report("an ability's placement (rules 32)", !sarAsked && atX == 4 && atHome == 0,
+                   std::string(sarAsked ? "Self-Assembly Routines offered" : "not offered") + ", X " + std::to_string(atX));
+            continue;
+        }
+        report("an ability's placement (rules 33)", sarAsked && dontOffered && atX == 3 && atHome == 1 && unitsOnBoard(r.end, 0, UnitType::Mech) == 4,
+               std::string(sarAsked ? "offered" : "not offered") + (dontOffered ? ", \"don't\" offered" : ", no \"don't\"") + ", X " +
+                   std::to_string(atX) + ", home " + std::to_string(atHome));
+    }
+    std::printf("reclaim: %d checked, %d wrong\n", done, bad);
+    return bad == 0 ? 1 : 0;
+}
+
 int relicsCheck(const std::string&) {
     using namespace ti;
     int bad = 0, done = 0;
@@ -53551,6 +56594,7 @@ int runUiTest(const std::string& outDir) {
     if (std::getenv("TI4_VOIDFALL")) retro::setTileset(retro::kVoidfall);  // ... or in Voidfall (0.32.0)
     if (const char* only = std::getenv("TI4_UITEST_ONLY")) {  // test only: just the deal screens
         if (std::string(only) == "watch") return watchScreens(outDir) >= 14 ? 0 : 1;
+        if (std::string(only) == "think") return thinkScreens(outDir) > 0 ? 0 : 1;  // 0.74.0
         if (std::string(only) == "editors") return decisionScreens(outDir) > 0 ? 0 : 1;  // 0.58.4
         if (std::string(only) == "art") {
             artScreens(outDir);
@@ -53660,6 +56704,18 @@ int runUiTest(const std::string& outDir) {
         if (std::string(only) == "cards") return cardsCheck(outDir) > 0 ? 0 : 1;             // the action cards
         if (std::string(only) == "agendas") return agendasCheck(outDir) > 0 ? 0 : 1;         // the agendas
         if (std::string(only) == "relics") return relicsCheck(outDir) > 0 ? 0 : 1;           // the relics
+        if (std::string(only) == "objectives") return objectivesCheck(outDir) > 0 ? 0 : 1;   // the public objectives (0.61.0)
+        if (std::string(only) == "secrets") return secretsCheck(outDir) > 0 ? 0 : 1;         // the secret objectives (0.61.0)
+        if (std::string(only) == "explores") return exploresCheck(outDir) > 0 ? 0 : 1;       // the exploration cards (0.61.0)
+        if (std::string(only) == "strategycards") return strategyCardsCheck(outDir) > 0 ? 0 : 1;  // the strategy cards (0.61.0)
+        if (std::string(only) == "genericnotes") return genericNotesCheck(outDir) > 0 ? 0 : 1;    // the generic promissory notes (0.61.0)
+        if (std::string(only) == "legendary") return legendaryCheck(outDir) > 0 ? 0 : 1;          // the legendary planets (0.61.0)
+        if (std::string(only) == "tecards") return teCardsCheck(outDir) > 0 ? 0 : 1;              // Thunder's Edge action cards (0.61.0)
+        if (std::string(only) == "uscards") return usCardsCheck(outDir) > 0 ? 0 : 1;              // Uncharted Space action cards (0.61.0)
+        if (std::string(only) == "eventcards") return eventCardsCheck(outDir) > 0 ? 0 : 1;        // galactic events (0.61.0)
+        if (std::string(only) == "reclaim") return reclaimCheck(outDir) > 0 ? 0 : 1;              // LRR 23.4a (0.61.1)
+        if (std::string(only) == "minor") return minorCheck(outDir) > 0 ? 0 : 1;                  // Minor Factions (0.61.2)
+        if (std::string(only) == "mapfixes") return mapFixesCheck(outDir) > 0 ? 0 : 1;            // the map list (0.61.2)
         if (std::string(only) == "nekro") return nekroCheck(outDir) > 0 ? 0 : 1;             // Nekro review
         if (std::string(only) == "augers") return augersCheck(outDir) > 0 ? 0 : 1;           // Augurs review (Discordant Stars)
         if (std::string(only) == "axis") return axisCheck(outDir) > 0 ? 0 : 1;               // Axis review (Discordant Stars)
@@ -53789,6 +56845,14 @@ int runUiTest(const std::string& outDir) {
         }
         if (std::string(only) == "retro") return retroScreens(outDir) > 0 ? 0 : 1;
         if (std::string(only) == "titlebg") return titleBgScreens(outDir) > 0 ? 0 : 1;
+        if (std::string(only) == "leaguedrafts") return leagueDraftScreens(outDir) > 0 ? 0 : 1;  // (0.80.0, sim/league_drafts.cpp)
+        if (std::string(only) == "leaguerun") return leagueRunTest(outDir) > 0 ? 0 : 1;          // (0.80.0, sim/league_test.cpp)
+        if (std::string(only) == "colours") return colourSamples(outDir) > 0 ? 0 : 1;
+        if (std::string(only) == "colourgame") return colourGameScreens(outDir) > 0 ? 0 : 1;
+        if (std::string(only) == "negodraft") return negoDraftScreens(outDir) > 0 ? 0 : 1;
+        if (std::string(only) == "talkfit") return talkFitCheck() == 0 ? 0 : 1;
+        if (std::string(only) == "galaxymix") return galaxyMixCheck() == 0 ? 0 : 1;
+        if (std::string(only) == "newgamebg") return newGameBgScreens(outDir) > 0 ? 0 : 1;
         if (std::string(only) == "titlewar") return titleWarScreens(outDir) > 0 ? 0 : 1;
         if (std::string(only) == "titlewar_assets") {  // 0.59.70: the battlefield's pieces on one page
             Canvas c(testW(), 480, testScale());
@@ -53811,9 +56875,10 @@ int runUiTest(const std::string& outDir) {
     g_uitestDir = outDir;
     const bool fighterCarry = fighterCarryCheck();
     int tradeProblems = tradeRound1Check();
+    const int talkTooLong = talkFitCheck();  // (0.64.0) the opening lines fit the offer screen
     const bool draft = draftScreens(outDir);
     nexusScreens(outDir);
     artScreens(outDir);
     const int tiles = tileScreens(outDir);
-    return tiles >= 4 && decisions >= 14 && watched >= 14 && dealRejects == 0 && floating && fighterCarry && tradeProblems == 0 && draft ? 0 : 1;
+    return tiles >= 4 && decisions >= 14 && watched >= 14 && dealRejects == 0 && floating && fighterCarry && tradeProblems == 0 && talkTooLong == 0 && draft ? 0 : 1;
 }

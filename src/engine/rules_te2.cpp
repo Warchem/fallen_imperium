@@ -198,7 +198,11 @@ bool Rules::teComponentUsable(int p, int card) const {
     if (is("brilliance")) {
         for (int x : controlledPlanets(G, p))
             if (G.planets[size_t(x)].exhausted && planetHasSkip(G, x)) return true;
-        return false;  // (the breakthrough choice comes with the breakthroughs)
+        // ((fixes 31, the Thunder's Edge card pass) "or choose 1 player to gain their breakthrough")
+        if (G.fixes >= 31 && breakthroughsOn(G))
+            for (int q = 0; q < G.numPlayers; ++q)
+                if (!G.players[size_t(q)].eliminated && !G.players[size_t(q)].breakthrough) return true;
+        return false;
     }
     if (is("exchangeprogram")) {
         for (int q = 0; q < G.numPlayers; ++q)
@@ -376,8 +380,17 @@ bool Rules::teResolve(int p, int card, const WinCtx* c) {
         std::vector<Option> opts;
         for (int x : controlledPlanets(G, p))
             if (G.planets[size_t(x)].exhausted && planetHasSkip(G, x)) opts.push_back({x, "Ready " + planetName(x), ""});
+        if (G.fixes >= 31 && breakthroughsOn(G))  // (fixes 31) "... or choose 1 player to gain their breakthrough" (id 100000 + player)
+            for (int q = 0; q < G.numPlayers; ++q)
+                if (!G.players[size_t(q)].eliminated && !G.players[size_t(q)].breakthrough)
+                    opts.push_back({100000 + q, pn(q) + " gains their breakthrough", q == p ? "You" : ""});
         if (opts.empty()) return true;
-        const int x = pick(p, Tag::CardTarget, "Brilliance: ready which planet?", opts, "", false, true);
+        const int x = pick(p, Tag::CardTarget, G.fixes >= 31 ? "Brilliance: ready which planet - or who gains their breakthrough?"
+                                                             : "Brilliance: ready which planet?", opts, "", false, true);
+        if (x >= 100000) {
+            gainBreakthrough(x - 100000, "Brilliance");
+            return true;
+        }
         G.planets[size_t(x)].exhausted = false;
         say(p, pn(p) + " readies " + planetName(x) + " (Brilliance).");
         return true;

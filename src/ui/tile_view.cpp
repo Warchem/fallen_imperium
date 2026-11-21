@@ -14,6 +14,7 @@
 #include "ui/retro.h"
 #include "ui/voidfall.h"
 #include "ui/theme.h"
+#include "ui/pcolors.h"
 
 using namespace ti;
 
@@ -29,7 +30,7 @@ constexpr float kPi = 3.14159265f;
 uint32_t lighter(uint32_t c, float k) { return mix(c, rgb(255, 255, 255), int(255.f * k)); }
 
 uint32_t pcol(const Game& g, int p) {
-    return p == kNeutral ? theme::neutral : p >= 0 && p < g.numPlayers ? theme::player[g.players[size_t(p)].color % 8] : theme::text;
+    return p == kNeutral ? theme::neutral : p >= 0 && p < g.numPlayers ? pcolours::base(g.players[size_t(p)].color) : theme::text;
 }
 
 uint32_t traitCol(Trait t) {
@@ -473,6 +474,7 @@ namespace {
 void drawSlots(Canvas& c, const Game& g, const std::vector<Slot>& slots, const std::vector<Placed>& at, bool faceLeft, uint32_t now) {
     for (size_t i = 0; i < slots.size() && i < at.size(); ++i) {
         const Slot& s = slots[i];
+        pcolours::Finish fin(c, pcolours::around(at[i].x, at[i].y, at[i].size * 0.62f, at[i].size * 0.55f), pcolours::of(g, s.player), uint32_t(i) * 7u + 3u);
         if (drawUnitPx(c, s.t, at[i].x, at[i].y, at[i].size, pcol(g, s.player), faceLeft, s.damaged, now)) continue;
         // Retrowave: a dark rim so the ships stand out from the art (0.28.0, owner)
         drawUnit(c, s.t, at[i].x, at[i].y, at[i].size, pcol(g, s.player), faceLeft, 255, s.damaged, now, g_unitBlock >= 2);
@@ -833,7 +835,10 @@ void draw(Canvas& c, const Game& g, int sys, Rect area, uint32_t now, const Comb
                 ly = y;
             }
         }
-        if (ps.owner >= 0) c.ring(px, py, pr + 3.f, 3.f, pcol(g, ps.owner));
+        if (ps.owner >= 0) {
+            pcolours::Finish fin(c, pcolours::around(px, py, pr + 5.f, pr + 5.f), pcolours::of(g, ps.owner), uint32_t(i) * 11u);
+            c.ring(px, py, pr + 3.f, 3.f, pcol(g, ps.owner));
+        }
         if (!art) drawPlanetBody(c, pd, ps.def, px, py, pr, s.home >= 0, ps.exhausted, now);
         // name, resources / influence, specialty, legendary, attachments
         const int ly = int(py - pr) - 30;
@@ -879,14 +884,17 @@ void draw(Canvas& c, const Game& g, int sys, Rect area, uint32_t now, const Comb
             for (Placed& p2 : at) p2.size = std::min(p2.size, pr * 0.72f);
             for (size_t q = 0; q < slots.size() && q < at.size(); ++q) {
                 const Slot& sl = slots[q];
-                if (!drawUnitPx(c, sl.t, at[q].x, at[q].y, at[q].size, pcol(g, sl.player), false, false, now)) {
-                    drawUnit(c, sl.t, at[q].x, at[q].y, at[q].size, pcol(g, sl.player), false, 255, false, now, true);
-                    pixelate(c, at[q].x, at[q].y, at[q].size);
+                {
+                    pcolours::Finish fin(c, pcolours::around(at[q].x, at[q].y, at[q].size * 0.6f, at[q].size * 0.6f), pcolours::of(g, sl.player), uint32_t(q) * 7u + 5u);
+                    if (!drawUnitPx(c, sl.t, at[q].x, at[q].y, at[q].size, pcol(g, sl.player), false, false, now)) {
+                        drawUnit(c, sl.t, at[q].x, at[q].y, at[q].size, pcol(g, sl.player), false, 255, false, now, true);
+                        pixelate(c, at[q].x, at[q].y, at[q].size);
+                    }
                 }
                 const std::string n = "x" + std::to_string(sl.count);  // a small count at the unit's feet
                 const int w = textWidth(FONT_XS, n) + 4, y = int(at[q].y + at[q].size * 0.46f);
                 c.fillRoundRect(int(at[q].x) - w / 2, y, w, 11, 3, rgb(6, 8, 14), 215);
-                drawTextAligned(c, FONT_XS, int(at[q].x) - w / 2, y, w, Align::Center, n, lighter(pcol(g, sl.player), 0.45f));
+                drawTextAligned(c, FONT_XS, int(at[q].x) - w / 2, y, w, Align::Center, n, lighter(pcolours::readable(pcol(g, sl.player)), 0.45f));
             }
         }
     }
@@ -968,7 +976,7 @@ void draw(Canvas& c, const Game& g, int sys, Rect area, uint32_t now, const Comb
             const int w = int(R * 1.3f);
             c.fillRoundRect(int(cx) - w / 2, int(bottom) + 16, w, 22, 6, rgb(8, 10, 18), 230);
             drawTextAligned(c, FONT_SMB, int(cx) - w / 2, int(bottom) + 19, w, Align::Center, fitText(FONT_SMB, combat->result, w - 8),
-                            combat->winner >= 0 ? pcol(g, combat->winner) : theme::text);
+                            combat->winner >= 0 ? pcolours::readable(pcol(g, combat->winner)) : theme::text);
         }
     } else {
         // every player's ships in space, one row group per player
@@ -993,6 +1001,8 @@ void draw(Canvas& c, const Game& g, int sys, Rect area, uint32_t now, const Comb
         float x = cx - float(n - 1) * float(tw + 4) / 2.f;
         for (int q = 0; q < g.numPlayers; ++q)
             if (s.hasToken(q)) {
+                pcolours::Finish fin(c, pcolours::around(x, cy - R * 0.8f, float(tw) / 2.f + 1.f, float(cards::commandTokenHeight(tw)) / 2.f + 1.f),
+                                     pcolours::of(g, q), uint32_t(q) * 3u + 1u);
                 cards::commandToken(c, g.players[size_t(q)].faction, pcol(g, q), int(x), int(cy - R * 0.8f), tw);
                 x += float(tw + 4);
             }
@@ -1000,7 +1010,17 @@ void draw(Canvas& c, const Game& g, int sys, Rect area, uint32_t now, const Comb
     if (art && s.home >= 0) {  // Retrowave: the owner's colour round a home system (after the chunky units)
         float xs[6], ys[6];
         hexPoints(cx, cy, R - 2.f, xs, ys);
-        for (int i = 0; i < 6; ++i) c.line(xs[i], ys[i], xs[(i + 1) % 6], ys[(i + 1) % 6], pcol(g, s.home), 3.f, 230);
+        const int hpc = pcolours::of(g, s.home);
+        const bool fx = hpc >= 0 && pcolours::animated(hpc);
+        for (int i = 0; i < 6; ++i) {
+            const int j = (i + 1) % 6;
+            const float mx = (xs[i] + xs[j]) / 2.f, my = (ys[i] + ys[j]) / 2.f;
+            c.line(xs[i], ys[i], xs[j], ys[j], fx ? pcolours::edgeTone(hpc, pcol(g, s.home), mx, my, true) : pcol(g, s.home), 3.f, 230);
+            if (fx) {
+                const float ml = std::max(0.01f, std::hypot(cx - mx, cy - my));
+                pcolours::edgeExtras(c, hpc, xs[i], ys[i], xs[j], ys[j], (cx - mx) / ml, (cy - my) / ml, 8.f, uint32_t(i) + 40u);
+            }
+        }
     }
     c.setClip(keep);
 }

@@ -1,13 +1,20 @@
 # Title screen and the device tests.
 wait 5
 shot title
-press DOWN
+# (0.80.0: the cursor starts on Casual game; Campaigns is two up, Modules one down)
+press UP
+wait 2
+press UP
 wait 3
 press A
 wait 5
 shot campaigns
 press B
 wait 5
+press DOWN
+wait 2
+press DOWN
+wait 2
 press DOWN
 wait 3
 press A
@@ -56,8 +63,17 @@ wait 3
 press LEFT
 wait 3
 shot options_changed
-press B
-wait 5
+# (0.80.0: Device tests moved into Options - seven rows below Sounds on the Linux test build)
+press DOWN
+wait 2
+press DOWN
+wait 2
+press DOWN
+wait 2
+press DOWN
+wait 2
+press DOWN
+wait 2
 press DOWN
 wait 3
 press A
@@ -98,6 +114,8 @@ wait 5
 press DOWN
 wait 3
 press A
+wait 5
+press B
 wait 5
 shot back_to_title
 press MENU

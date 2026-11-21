@@ -101,6 +101,12 @@ int aiLevelOf(const Game& g) {
     if (g_aiSeat >= 0 && g_aiSeat < g.numPlayers && g.players[size_t(g_aiSeat)].aiLevel >= 0) return g.players[size_t(g_aiSeat)].aiLevel;
     return g.aiLevel;
 }
+bool aiIsAI(const Game& g) { return aiLevelOf(g) >= kAiLevelAI; }
+bool aiIsAISeat(const Game& g, int p) {
+    if (p < 0 || p >= g.numPlayers) return false;
+    const int l = g.players[size_t(p)].aiLevel;
+    return (l >= 0 ? l : int(g.aiLevel)) >= kAiLevelAI;
+}
 float aiLevelScale(const Game& g) {
     const int l = aiLevelOf(g);
     return l >= 2 ? 1.f : l == 1 ? 0.6f : 0.f;
@@ -325,6 +331,17 @@ const Goals& aiGoals(const Game& g, int p) {
         if (pr.state == kPromiseActive && pr.by == p && pr.kind == PromiseKind::Repay && pr.untilRound <= g.round &&
             aiMeansToKeep(g, p, pr, int(i)))
             G.keepTg += pr.amount;
+    }
+    // (balance pass 0.66.0 - knob rhkeep) the Roh'Dhna with Construction still to play: its dock is a war sun for 6 resources
+    // (Industrious) - keep them ready (2: also for another player's Construction, with a strategy token to follow it)
+    if (aiTune("rhkeep", 0.f) > 0.f && g.phase == Phase::Action && aiRohdhnaFactory(g, p, false)) {
+        bool card = false;
+        for (int8_t c : me.cards)
+            if (c == 3 && !(me.cardsUsed & (1u << 3))) card = true;
+        const int o = g.cardOwner[3];
+        if (!card && aiTune("rhkeep", 0.f) >= 2.f && me.strategy > 0 && o >= 0 && o != p && !(g.players[size_t(o)].cardsUsed & (1u << 3)))
+            card = true;
+        if (card) G.keepRes = std::max(G.keepRes, 6);
     }
     // ------------------------------------------------ Mecatol Rex
     // the custodians token is a victory point: keep 6 influence ready from round 2

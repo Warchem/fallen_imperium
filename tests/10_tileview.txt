@@ -1,18 +1,27 @@
 # The map view and the expanded tile (0.20.0): R2 while the computer plays opens the map view,
 # A opens the tile under the cursor, the D-pad moves to the next tile, B goes back.
 wait 5
+# (0.63.0: New Game -> Game options -> AI speed) Fast; up to Galaxy, left = Random
 press A
 wait 5
 press UP
 wait 2
+press A
+wait 2
+press DOWN
+wait 2
+press DOWN
+wait 2
 press RIGHT
+wait 2
+press B
 wait 2
 press UP
 wait 2
-press RIGHT
+press LEFT
 wait 2
 press START
-wait 40
+wait 2
 press A
 wait 30
 press A

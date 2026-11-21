@@ -373,10 +373,10 @@ bool Rules::afterActivation4(int p, int sys) {
         fyes(p, Ab::Awaken, "Awaken: replace your sleeper tokens in " + sysName(sys) + " with PDS?", abilityText(G.players[p].faction, 1))) {
         G.players[p].usedFactionAbility = true;
         for (int x : sleepers) {
-            if (unitsAvailable(G, p, UnitType::PDS) <= 0 && unitsAvailable(G, p, UnitType::Mech) <= 0) break;
+            if (unitsForPlacement(G, p, UnitType::PDS) <= 0 && unitsForPlacement(G, p, UnitType::Mech) <= 0) break;
             G.planets[x].sleeper = false;
             if (!hecatoncheires(p, x)) {
-                if (unitsAvailable(G, p, UnitType::PDS) <= 0) {
+                if (unitsForPlacement(G, p, UnitType::PDS) <= 0) {
                     G.planets[x].sleeper = true;
                     continue;
                 }
@@ -390,10 +390,12 @@ bool Rules::afterActivation4(int p, int sys) {
         }
     }
     // Ouranos (Titans flagship), DEPLOY: replace one of your PDS here with it
-    if (unitsAvailable(G, p, UnitType::Flagship) > 0) {
+    if (unitsForPlacement(G, p, UnitType::Flagship) > 0) {
         std::vector<Option> opts;
         for (int16_t x : s.planets)
-            if (G.planets[x].units[p].count(UnitType::PDS)) opts.push_back({x, planetName(x), ""});
+            if (G.planets[x].units[p].count(UnitType::PDS) &&
+                (G.fixes < 34 || std::find(activationPDS_.begin(), activationPDS_.end(), x) != activationPDS_.end()))
+                opts.push_back({x, planetName(x), ""});  // (fixes 34: a PDS that was there when the system was activated)
         if (!opts.empty()) {
             opts.push_back({-1, "Don't deploy it", ""});
             int x = fpick(p, Ab::Ouranos, "Deploy Ouranos: replace one of your PDS here with your flagship?", opts,
@@ -716,7 +718,7 @@ void Rules::gainedControl4(int planet, int p, int old) {
 
 bool Rules::hecatoncheires(int p, int planet) {
     // Hecatoncheires (Titans mech), DEPLOY: a mech and an infantry instead of a PDS
-    if (!fac(p, "titans") || unitsAvailable(G, p, UnitType::Mech) <= 0 || !mechAbilities(G)) return false;
+    if (!fac(p, "titans") || unitsForPlacement(G, p, UnitType::Mech) <= 0 || !mechAbilities(G)) return false;
     if (!fyes(p, Ab::Hecatoncheires, "Deploy Hecatoncheires: put 1 mech and 1 infantry on " + planetName(planet) + " instead of a PDS?",
               unitAbilityText(G.players[p].unit[int(UnitType::Mech)])))
         return false;
@@ -1192,7 +1194,7 @@ void Rules::replenished4(int p) {
     for (int t = 0; t < kUnitTypes; ++t) {
         UnitType ut = UnitType(t);
         int c2 = unitCost2(G, p, ut);
-        if (isStructure(ut) || c2 <= 0 || c2 > 2 * value || unitsAvailable(G, p, ut) <= 0) continue;
+        if (isStructure(ut) || c2 <= 0 || c2 > 2 * value || unitsForPlacement(G, p, ut) <= 0) continue;
         opts.push_back({t, std::string("Capture a ") + unitTypeName(ut), std::to_string((c2 + 1) / 2) + " resources"});
     }
     if (opts.empty()) return;

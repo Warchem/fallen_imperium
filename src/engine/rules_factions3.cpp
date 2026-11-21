@@ -536,7 +536,7 @@ void Rules::gainedControl3(int planet, int p, int old) {
     say(p, pn(p) + " gains 1 trade good (Scavenge).");
     G.players[p].usedFactionAbility = true;
     // Scavenger Zeta (Saar mech): DEPLOY for 1 trade good
-    if (unitsAvailable(G, p, UnitType::Mech) > 0 && G.players[p].tradeGoods >= 1 && !isDMZ(G, planet) && mechAbilities(G) &&
+    if (unitsForPlacement(G, p, UnitType::Mech) > 0 && G.players[p].tradeGoods >= 1 && !isDMZ(G, planet) && mechAbilities(G) &&
         fyes(p, Ab::ScavengerZeta, "Spend 1 trade good to deploy a Scavenger Zeta mech on " + planetName(planet) + "?", "")) {
         G.players[p].tradeGoods = int8_t(G.players[p].tradeGoods - 1);
         addUnits(p, UnitType::Mech, 1, sys, planet);
@@ -550,7 +550,7 @@ void Rules::endOfTactical3(int p, int sys) {
         if (G.planets[x].owner != p) continue;
         // Reclamation: a PDS and a space dock on Mecatol Rex
         if (x == mecatolPlanet(G) &&
-            (unitsAvailable(G, p, UnitType::PDS) > 0 || unitsAvailable(G, p, UnitType::SpaceDock) > 0) &&
+            (unitsForPlacement(G, p, UnitType::PDS) > 0 || unitsForPlacement(G, p, UnitType::SpaceDock) > 0) &&
             fyes(p, Ab::Reclamation, "Reclamation: put a PDS and a space dock on Mecatol Rex?", "")) {
             addUnits(p, UnitType::PDS, 1, sys, x);
             if (G.planets[x].units[p].count(UnitType::SpaceDock) == 0) addUnits(p, UnitType::SpaceDock, 1, sys, x);
@@ -561,9 +561,9 @@ void Rules::endOfTactical3(int p, int sys) {
         // Reclaimer (Winnu mech): a PDS or a space dock on the planet it helped to take
         if (G.planets[x].units[p].count(UnitType::Mech) && mechAbilities(G)) {
             std::vector<Option> opts;
-            if (unitsAvailable(G, p, UnitType::PDS) > 0 && (G.fixes < 26 || G.planets[x].units[p].count(UnitType::PDS) < 2))  // (LRR 85.5)
+            if (unitsForPlacement(G, p, UnitType::PDS) > 0 && (G.fixes < 26 || G.planets[x].units[p].count(UnitType::PDS) < 2))  // (LRR 85.5)
                 opts.push_back({int(UnitType::PDS), "PDS", ""});
-            if (unitsAvailable(G, p, UnitType::SpaceDock) > 0 && G.planets[x].units[p].count(UnitType::SpaceDock) == 0)
+            if (unitsForPlacement(G, p, UnitType::SpaceDock) > 0 && G.planets[x].units[p].count(UnitType::SpaceDock) == 0)
                 opts.push_back({int(UnitType::SpaceDock), "Space dock", ""});
             if (opts.empty()) continue;
             opts.push_back({-1, "Nothing", ""});
@@ -1278,6 +1278,7 @@ void Rules::nekroPredict(int agenda) {
     nekroGuess_ = -1;
     int n = playerOfFaction(G, "nekro");
     if (n < 0 || G.players[n].eliminated || nekroRound_ == G.round) return;
+    if (G.fixes >= 31 && ((silenced_ >> n) & 1)) return;  // (fixes 31) Political Secret: no faction abilities on this agenda
     std::vector<Option> opts = agendaOutcomes(agenda);
     opts.push_back({kNoVote, "Don't predict", "You can predict once per agenda phase."});
     const int prev = curAgenda_;
@@ -1341,7 +1342,7 @@ std::vector<Option> Rules::factionActionOptions3(int p) {
         (unitsAvailable(G, p, UnitType::Fighter) > 0 || unitsAvailable(G, p, UnitType::Destroyer) > 0))
         add(Ab::StarForge, "Star Forge", "Spend 1 strategy token: 2 fighters or 1 destroyer where you have a war sun.");
     if ((fac(p, "muaat") || (G.fixes >= 13 && flagshipAbility(G, p, "muaat"))) && pl.strategy > 0 && unitsOnBoard(G, p, UnitType::Flagship) > 0 &&
-        unitsAvailable(G, p, UnitType::Cruiser) > 0)  // (0.44.9: a Valefar Z copy too)
+        unitsForPlacement(G, p, UnitType::Cruiser) > 0)  // (0.44.9: a Valefar Z copy too)
         add(Ab::Inferno, "The Inferno", "Spend 1 strategy token: 1 cruiser in your flagship's system.");
     // (fixes 26, the Muaat review - owner 2026-11-12) Umbat: "choose a player" - any player with a war sun or flagship
     if (canUseAgent(p, "muaat") && (G.fixes >= 26 || spendable(G, p, false) > 0)) {
@@ -1449,7 +1450,7 @@ bool Rules::factionAction3(int p, Ab ab) {
             if (s < 0) return false;
             std::vector<Option> what;
             if (unitsAvailable(G, p, UnitType::Fighter) > 0) what.push_back({int(UnitType::Fighter), "2 fighters", ""});
-            if (unitsAvailable(G, p, UnitType::Destroyer) > 0) what.push_back({int(UnitType::Destroyer), "1 destroyer", ""});
+            if (unitsForPlacement(G, p, UnitType::Destroyer) > 0) what.push_back({int(UnitType::Destroyer), "1 destroyer", ""});
             what.push_back({-1, "Cancel", ""});
             int t = fpick(p, Ab::StarForge, "Star Forge: place what?", what, "Costs 1 strategy token.");
             if (t < 0) return false;

@@ -2,10 +2,12 @@
 // Every answer goes through the rules' validators; any rejected AI answer,
 // broken invariant, crash or never-ending game is reported.
 #include <algorithm>
+#include <array>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <map>
+#include <memory>
 #include <set>
 #include <string>
 
@@ -21,6 +23,50 @@
 namespace ti {
 
 namespace {
+// Coexistence counters (balance pass 0.66.0, TI4_COEXSTATS=1, test only): at each status phase, the planets where each
+// faction's units coexist on another player's planet; and the "attack the coexisting units?" questions and their answers
+bool coexStatsOn() {
+    static const bool on = std::getenv("TI4_COEXSTATS") != nullptr;
+    return on;
+}
+std::map<std::string, std::array<long, 3>> g_coexBy;  // faction key -> {status phases, planets coexisting there, games}
+long g_coexAsked = 0, g_coexYes = 0, g_coexOwnAsked = 0, g_coexOwnYes = 0;
+int g_coexRound = -1;
+const ti::Game* g_coexGame = nullptr;
+void coexNote(const ti::Game& g, const ti::Decision& d, const ti::Answer& a) {
+    using namespace ti;
+    if (&g != g_coexGame) g_coexGame = &g, g_coexRound = -1;
+    if (g.phase == Phase::Status && g.round != g_coexRound) {
+        g_coexRound = g.round;
+        for (int q = 0; q < g.numPlayers; ++q) {
+            int n = 0;
+            for (const PlanetState& ps : g.planets)
+                if (!ps.destroyed && ((ps.coexist >> q) & 1) && ps.owner != q && !ps.units[size_t(q)].empty()) ++n;
+            auto& c = g_coexBy[kFactions[size_t(g.players[size_t(q)].faction)].key];
+            ++c[0];
+            c[1] += n;
+        }
+    }
+    if (d.tag == Tag::EngageCoexisting) {
+        const bool yes = !a.picks.empty() && a.picks[0] == 1;
+        bool own = false;
+        if (g.activeSystem >= 0)
+            for (int16_t x : g.systems[size_t(g.activeSystem)].planets)
+                if (g.planets[size_t(x)].owner == d.player && g.planets[size_t(x)].coexist) own = true;
+        ++g_coexAsked;
+        g_coexYes += yes;
+        if (own) ++g_coexOwnAsked, g_coexOwnYes += yes;
+    }
+}
+void coexReport() {
+    if (!coexStatsOn()) return;
+    std::printf("coexist: attack-the-coexisting questions %ld (yes %ld), on the asker's own planet %ld (yes %ld)\n", g_coexAsked, g_coexYes,
+                g_coexOwnAsked, g_coexOwnYes);
+    for (const auto& kv : g_coexBy)
+        if (kv.second[1] > 0)
+            std::printf("  coexisting on others' planets at the status phase: %-14s %.2f a round\n", kv.first.c_str(),
+                        double(kv.second[1]) / double(std::max(1L, kv.second[0])));
+}
 // Waypoints test driver (0.56.0, TI4_SIMWAYPOINTS=1): every computer move gets an explicit route for each system its
 // ships leave - a shortest one, every other time through a gravity rift when one is on a shortest-enough way - so the
 // validator, the rolls and save / replay see thousands of routes. Plans the routes would make illegal stay as they were.
@@ -161,6 +207,75 @@ Answer fallback(const Decision& d) {
     return a;
 }
 
+// ------------------------------------------------------------------ the no-peeking test (0.74.0, TI4_PEEKTEST)
+// The A.I. difficulty must never see hidden information. Before a computer player answers, the test makes a copy of the
+// game in which everything that player can't see is dealt again at random - the other players' action cards and secret
+// objectives (from the same unseen pool, hand sizes kept), and the order of every face-down deck - and asks the AI again.
+// A different answer means the AI looked at something it shouldn't have. TI4_PEEKTEST=1 checks A.I. seats, 2 every bot.
+int peekMode() {
+    static const int m = std::getenv("TI4_PEEKTEST") ? std::atoi(std::getenv("TI4_PEEKTEST")) : 0;
+    return m;
+}
+template <class T>
+void peekShuffle(std::vector<T>& v, Rng& r) {
+    for (size_t i = v.size(); i > 1; --i) std::swap(v[i - 1], v[r.next() % i]);
+}
+void peekScramble(Game& g, int viewer, Rng& r) {
+    // action cards: the other hands and the deck are one unseen pool
+    // (TI4_PEEKTEST=3 is the control: the viewer's own hand and secrets are dealt again too - answers must change then)
+    if (peekMode() == 3) viewer = -1;
+    std::vector<int16_t> pool = g.actionDeck;
+    for (int q = 0; q < g.numPlayers; ++q)
+        if (q != viewer) pool.insert(pool.end(), g.players[size_t(q)].actionCards.begin(), g.players[size_t(q)].actionCards.end());
+    peekShuffle(pool, r);
+    size_t k = 0;
+    for (int q = 0; q < g.numPlayers; ++q)
+        if (q != viewer)
+            for (int16_t& c : g.players[size_t(q)].actionCards) c = pool[k++];
+    for (int16_t& c : g.actionDeck) c = pool[k++];
+    // secret objectives the others hold (unscored) and the secret deck
+    pool = g.secretDeck;
+    for (int q = 0; q < g.numPlayers; ++q)
+        if (q != viewer) pool.insert(pool.end(), g.players[size_t(q)].secrets.begin(), g.players[size_t(q)].secrets.end());
+    peekShuffle(pool, r);
+    k = 0;
+    for (int q = 0; q < g.numPlayers; ++q)
+        if (q != viewer)
+            for (int16_t& o : g.players[size_t(q)].secrets) o = pool[k++];
+    for (int16_t& o : g.secretDeck) o = pool[k++];
+    // face-down decks: their order
+    peekShuffle(g.agendaDeck, r);
+    peekShuffle(g.relicDeck, r);
+    peekShuffle(g.stage1Deck, r);
+    peekShuffle(g.stage2Deck, r);
+    for (auto& d : g.exploreDeck) peekShuffle(d, r);
+}
+struct PeekStats {
+    long checked = 0, differ = 0;
+    std::map<int, long> byTag;
+};
+PeekStats g_peek;
+// Ask again on a scrambled copy; report a different answer. (Copies stay alive a while so no AI cache keyed by the game's
+// address can hand a scrambled copy an answer worked out for another one.)
+void peekCheck(const Game& g, const Decision& d, const Answer& real, const Rng& rngBefore, uint32_t salt) {
+    static std::vector<std::unique_ptr<Game>> ring(32);
+    static size_t at = 0;
+    std::unique_ptr<Game>& slot = ring[at++ % ring.size()];
+    slot.reset(new Game(g));
+    Rng r(uint64_t(salt) * 2654435761u + 17u);
+    peekScramble(*slot, d.player, r);
+    Rng again = rngBefore;
+    const Answer b = aiAnswer(*slot, d, again);
+    ++g_peek.checked;
+    if (b.encode() != real.encode()) {
+        ++g_peek.differ;
+        ++g_peek.byTag[int(d.tag)];
+        if (g_peek.differ <= 40)
+            std::printf("PEEK p%d tag %d kind %d ab %d \"%s\": %s vs %s\n", d.player, int(d.tag), int(d.kind), d.ability, d.prompt.c_str(),
+                        real.encode().c_str(), b.encode().c_str());
+    }
+}
+
 }  // namespace
 
 int runSimulation(int games, int players, uint32_t seed, bool verbose) {
@@ -207,7 +322,7 @@ int runSimulation(int games, int players, uint32_t seed, bool verbose) {
         if (const char* h = std::getenv("TI4_SIMHUMAN")) s.human = std::atoi(h) % n;
         if (const char* lv = std::getenv("TI4_SIMLEVEL")) s.aiLevel = std::atoi(lv);  // 0 Easy, 1 Normal, 2 Hard
         if (const char* lv = std::getenv("TI4_SIMLEVELS"))  // per seat, e.g. "3030" (0.19.0 faction menu)
-            for (int i = 0; i < n && lv[i]; ++i) s.levels.push_back(lv[i] >= '0' && lv[i] <= '3' ? lv[i] - '0' : -1);
+            for (int i = 0; i < n && lv[i]; ++i) s.levels.push_back(lv[i] >= '0' && lv[i] <= '4' ? lv[i] - '0' : -1);  // (4 = A.I., 0.74.0)
         s.seed = seed + uint32_t(gi) * 7919u;
         if (const char* hb = std::getenv("TI4_SIMHABITS")) {  // test only (0.54.0): "games attacks raids mecatol broken kept deals"
             HabitProfile& h = s.habits;
@@ -215,6 +330,7 @@ int runSimulation(int games, int players, uint32_t seed, bool verbose) {
                 h = HabitProfile();
         }
         if (std::getenv("TI4_SIMRANDOMMAP")) s.draft = 0;  // test only: the random galaxy instead of the draft
+        if (std::getenv("TI4_SIMUNBALANCED")) s.unbalanced = 1;  // (0.63.0, test only) "Fair slices" unticked
         if (std::getenv("TI4_SIMLAYOUT")) s.layout = std::atoi(std::getenv("TI4_SIMLAYOUT"));  // 0.58.0: 1 = no hyperlanes
         if (const char* m = std::getenv("TI4_SIMMODULES")) s.modules = std::atoi(m);  // 0.33.0: e.g. 3 = Codex + Uncharted
         if (const char* x = std::getenv("TI4_SIMEXTRAS")) s.extras = uint8_t(std::atoi(x));  // 0.55.0: e.g. 127 = Mecatol Rex Calm
@@ -529,7 +645,15 @@ int runSimulation(int games, int players, uint32_t seed, bool verbose) {
             const Decision& d = e.decision();
             static const bool timeIt = std::getenv("TI4_AITIME") != nullptr;
             uint32_t tA = timeIt ? monotonicMs() : 0;
+            const Rng rngBefore = aiRng;
+            aiSetEngine(&e);  // (0.74.0: the A.I. difficulty's look-ahead copies it)
             Answer a = aiAnswer(e.game(), d, aiRng);
+            aiSetEngine(nullptr);
+            if (peekMode() && d.player >= 0 && d.player < e.game().numPlayers) {
+                const Player& who = e.game().players[size_t(d.player)];
+                const int lv = who.aiLevel >= 0 ? who.aiLevel : e.game().aiLevel;
+                if (peekMode() >= 2 || lv >= kAiLevelAI) peekCheck(e.game(), d, a, rngBefore, uint32_t(steps) * 31u + uint32_t(gi));
+            }
             if (timeIt) {
                 static uint32_t worst = 0;
                 uint32_t dt = monotonicMs() - tA;
@@ -545,6 +669,8 @@ int runSimulation(int games, int players, uint32_t seed, bool verbose) {
                 std::printf("  trace %d: p%d tag %d ab %d \"%s\" -> %d\n", steps, d.player, int(d.tag), d.ability, d.prompt.c_str(),
                             a.picks.empty() ? -999 : a.picks[0]);
             if (wantTempo) tempo.answered(e.game(), d, a);
+            // (balance pass 0.66.0, test only) TI4_COEXSTATS=1: does anyone fight the coexisting units on their own planets?
+            if (coexStatsOn()) coexNote(e.game(), d, a);
             static const bool abStats = std::getenv("TI4_ABSTATS") != nullptr;  // 0.43.0 (debug passes): which faction
             if (abStats) {                                                     // questions / actions ever come up
                 static std::map<int, int>* asked = new std::map<int, int>();
@@ -1055,6 +1181,10 @@ int runSimulation(int games, int players, uint32_t seed, bool verbose) {
         // where the victory points came from
         ++vpGames;
         if (g.winner >= 0 && g.winner < 8) ++winsBySeat[g.winner];
+        if (std::getenv("TI4_SIMRESULT"))  // (0.74.0, test only) one line per game: each seat's level, VP and the winner
+            for (int q = 0; q < g.numPlayers; ++q)
+                std::printf("RESULT %u %d %d %d %d\n", s.seed, q, g.players[size_t(q)].aiLevel >= 0 ? int(g.players[size_t(q)].aiLevel) : int(g.aiLevel),
+                            int(g.players[size_t(q)].vp), g.winner == q ? 1 : 0);
         {  // per round: how many players (and the winner) scored a public / a secret
             int round = 0;
             std::set<std::string> pubDone, secDone;
@@ -1194,6 +1324,12 @@ int runSimulation(int games, int players, uint32_t seed, bool verbose) {
         }
     }
     if (wantTempo) tempo.report(stdout);
+    coexReport();
+    if (peekMode()) {
+        std::printf("no-peeking test: %ld answers checked, %ld changed when hidden cards were dealt again", g_peek.checked, g_peek.differ);
+        for (const auto& t : g_peek.byTag) std::printf(" [tag %d: %ld]", t.first, t.second);
+        std::printf("\n");
+    }
     double secs = double(monotonicMs() - t0) / 1000.0;
     if (std::getenv("TI4_SIMWAYPOINTS")) std::printf("waypoints: %ld routes set (%ld through a gravity rift), %ld left out (the plan would be illegal)\n", g_wpRoutes, g_wpRift, g_wpDropped);
     std::printf("simulated %d games: %d finished, %d failed, %d AI answers rejected; avg %.1f rounds; %d won on VP; %d answers; "

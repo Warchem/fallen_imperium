@@ -34,6 +34,8 @@ void Rules::setupExploration() {
         if (us || kExploreCards[c].source != Source::Uncharted) {
             // (0.43.0, U1: War Forge Ruins and Arcane Shield Emitter join only new games' decks)
             if (G.fixes < 2 && (exIs(c, "warforgeruins") || exIs(c, "arcaneshieldemitter"))) continue;
+            // (0.61.0, the exploration pass) Codex III's six frontier cards, in games with the Codex (or Thunder's Edge) - new games only
+            if (codex3Explore(c) && !(G.fixes >= 31 && codexOn(G))) continue;
             for (int k = 0; k < kExploreCards[c].count; ++k) G.exploreDeck[int(kExploreCards[c].type)].push_back(int16_t(c));
         }
     for (auto& d : G.exploreDeck) E.rng().shuffle(d);
@@ -266,7 +268,7 @@ void Rules::resolveExplore(int p, int c, int sys, int planet) {
                 int canPay = spendableMixed(G, p);
                 for (int t = 0; t < kUnitTypes; ++t) {
                     UnitType ut = UnitType(t);
-                    if (isStructure(ut) || unitsAvailable(G, p, ut) <= 0 || unitCost2(G, p, ut) <= 0) continue;
+                    if (isStructure(ut) || unitsForPlacement(G, p, ut) <= 0 || unitCost2(G, p, ut) <= 0) continue;
                     int cost = (unitCost2(G, p, ut) + 1) / 2;
                     if (cost > canPay) continue;
                     if (isGroundForce(ut) && (planet < 0 || isDMZ(G, planet))) continue;
@@ -319,7 +321,7 @@ void Rules::resolveExplore(int p, int c, int sys, int planet) {
                 bool fab = exIs(c, "lf");
                 std::vector<Option> o = {{0, "Gain 1 commodity", ""}};
                 bool canSpend = pl.tradeGoods > 0 || pl.commodities > 0;
-                bool canDo = fab ? (planet >= 0 && unitsAvailable(G, p, UnitType::Mech) > 0 && !isDMZ(G, planet)) : true;
+                bool canDo = fab ? (planet >= 0 && unitsForPlacement(G, p, UnitType::Mech) > 0 && !isDMZ(G, planet)) : true;
                 if (canSpend && canDo)
                     o.push_back({1, fab ? "Spend 1 trade good or commodity: place 1 mech here" : "Spend 1 trade good or commodity: draw 1 action card", ""});
                 if (pick(p, Tag::ExploreChoice, kExploreCards[c].name, o) == 0) {
@@ -327,7 +329,13 @@ void Rules::resolveExplore(int p, int c, int sys, int planet) {
                     pl.commodities = int8_t(std::min(maxComm, pl.commodities + 1));
                     siphon(p, pl.commodities - before);
                 } else {
-                    if (pl.commodities > 0) pl.commodities = int8_t(pl.commodities - 1);
+                    // (fixes 31, the exploration pass) "spend 1 trade good or 1 commodity" - the player's pick when they have both
+                    bool useTg = pl.commodities <= 0;
+                    if (G.fixes >= 31 && pl.commodities > 0 && pl.tradeGoods > 0)
+                        useTg = pick(p, Tag::ExploreChoice, std::string(kExploreCards[c].name) + ": spend which?",
+                                     {{0, "1 commodity", std::to_string(pl.commodities) + " commodities"},
+                                      {1, "1 trade good", std::to_string(pl.tradeGoods) + " trade goods"}}) == 1;
+                    if (!useTg) pl.commodities = int8_t(pl.commodities - 1);
                     else pl.tradeGoods = int8_t(pl.tradeGoods - 1);
                     if (fab) addUnits(p, UnitType::Mech, 1, sys, planet);
                     else drawActionCards(p, 1, "Functioning Base");
@@ -340,6 +348,16 @@ void Rules::resolveExplore(int p, int c, int sys, int planet) {
                 say(p, pn(p) + " keeps an Enigmatic Device (research a technology for 6 resources).");
             } else if (exIs(c, "lc")) {
                 drawActionCards(p, 2, "Lost Crew");
+            } else if (exIs(c, "minent") || exIs(c, "ent") || exIs(c, "majent")) {
+                // Codex III (0.61.0): "Gain 1 command token and 1 / 2 / 3 trade goods."
+                const int tg = exIs(c, "minent") ? 1 : exIs(c, "ent") ? 2 : 3;
+                gainTokens(p, 1, false, std::string(kExploreCards[c].name) + ": gain 1 command token.");
+                gainTG(p, tg);
+                say(p, pn(p) + " gains " + std::to_string(tg) + " trade good" + (tg > 1 ? "s" : "") + " (" + kExploreCards[c].name + ").");
+            } else if (exIs(c, "kel")) {  // "Gain 2 command tokens."
+                gainTokens(p, 2, false, "Keleres Ship: gain 2 command tokens.");
+            } else if (exIs(c, "dw")) {  // "Draw 1 relic."
+                gainRelic(p, "Dead World");
             } else if (usExplore(p, c, sys, planet)) {  // Uncharted Space (0.33.0)
             } else if (exIs(c, "ms")) {
                 std::vector<Option> o = {{0, "Refill your commodities", std::to_string(pl.commodities) + " of " + std::to_string(maxComm) + " now"}};
@@ -347,7 +365,10 @@ void Rules::resolveExplore(int p, int c, int sys, int planet) {
                 if (pick(p, Tag::ExploreChoice, "Merchant Station", o) == 0) {
                     const int before = pl.commodities;
                     pl.commodities = int8_t(refreshTo(G, pl));
-                    siphon(p, pl.commodities - before);
+                    // (fixes 31, the exploration pass) "replenish your commodities" - what answers a replenish answers this one too:
+                    // a Trade Agreement held by another player, Minister of Commerce, ...
+                    if (G.fixes >= 31) replenished(p, pl.commodities - before);
+                    else siphon(p, pl.commodities - before);
                 } else {
                     const int conv_ = pl.commodities;
                     pl.commodities = 0;
@@ -572,7 +593,7 @@ bool Rules::relicAction(int p, int r) {
         relicUsedEvent(p, r, false);
         bool spot = false;
         for (int x : controlledPlanets(G, q))
-            if (!isDMZ(G, x) && !isStation(G, x) && (unitsAvailable(G, q, UnitType::PDS) > 0 || unitsAvailable(G, q, UnitType::SpaceDock) > 0)) spot = true;
+            if (!isDMZ(G, x) && !isStation(G, x) && (unitsForPlacement(G, q, UnitType::PDS) > 0 || unitsForPlacement(G, q, UnitType::SpaceDock) > 0)) spot = true;
         bool built = false;
         if (spot && spendable(G, q, false) >= 3) {
             const int prev2 = curRelic_;
@@ -848,7 +869,7 @@ std::vector<Option> Rules::legendaryChoices(int p, int x) {
     auto is = [&](const char* s) { return !std::strcmp(k, s); };
     std::vector<Option> opts;
     if (is("hopesend")) {
-        if (unitsAvailable(G, p, UnitType::Mech) > 0) opts.push_back({1, "Place 1 mech on a planet you control", ""});
+        if (unitsForPlacement(G, p, UnitType::Mech) > 0) opts.push_back({1, "Place 1 mech on a planet you control", ""});
         opts.push_back({2, "Draw 1 action card", ""});
     } else if (is("primor")) {
         if (unitsAvailable(G, p, UnitType::Infantry) > 0) opts.push_back({1, "Place up to 2 infantry on planets you control", ""});
@@ -863,7 +884,7 @@ std::vector<Option> Rules::legendaryChoices(int p, int x) {
     } else if (is("silence")) {  // Uncharted Space (0.33.0)
         bool ships = false;
         for (size_t s = 0; s < G.systems.size() && !ships; ++s) ships = hasShips(G, p, int(s));
-        if (ships && unitsAvailable(G, p, UnitType::Cruiser) > 0) opts.push_back({1, "Place 1 cruiser with your ships", ""});
+        if (ships && unitsForPlacement(G, p, UnitType::Cruiser) > 0) opts.push_back({1, "Place 1 cruiser with your ships", ""});
     } else if (is("echo")) {
         if (!echoSystems(p).empty()) opts.push_back({1, "Put a frontier token in a system without planets", ""});
     } else if (is("prism")) {
@@ -892,6 +913,8 @@ bool Rules::legendaryResolve(int p, int x, int c) {
             say(p, pn(p) + " places a mech on " + planetName(y) + " (" + legendaryName(ps.def) + ").", G.planets[y].system);
         }
     } else if (is("primor")) {
+        if (G.fixes >= 31)  // ((fixes 31, the legendary planet pass) Arcane Shield Emitter: no infantry can be placed there)
+            mine.erase(std::remove_if(mine.begin(), mine.end(), [&](const Option& o) { return arcaneShield(G, o.id); }), mine.end());
         for (int i = 0; i < 2 && !mine.empty(); ++i) {
             std::vector<Option> o = mine;
             if (i == 1) o.push_back({-1, "No more", ""});
@@ -985,8 +1008,10 @@ std::vector<int> Rules::echoSystems(int p) const {
     std::vector<int> out;
     for (size_t s = 0; s < G.systems.size(); ++s) {
         const SystemState& ss = G.systems[s];
-        if (ss.isHyperlane() || !ss.planets.empty() || ss.frontier || ss.home >= 0) continue;
-        if (ss.d().anomalies & kSupernova) continue;  // nobody could ever explore it
+        // ((fixes 31, the legendary planet pass) "a system that does not contain a planet": a space station isn't one (Thunder's Edge),
+        // and a supernova is such a system too - the Embers of Muaat's ships go there)
+        if (ss.isHyperlane() || (G.fixes >= 31 ? !planetless(G, int(s)) : !ss.planets.empty()) || ss.frontier || ss.home >= 0) continue;
+        if ((ss.d().anomalies & kSupernova) && G.fixes < 31) continue;
         if (int(s) == G.nexus) continue;
         out.push_back(int(s));
     }
@@ -1010,8 +1035,14 @@ std::vector<int> Rules::prismTargets(int p, int from) const {
     std::vector<int> out;
     const int need = prereqCount(from);
     for (int t = 0; t < kTechCount; ++t) {
-        if (t == from || G.players[p].hasTech(t) || kTechs[t].faction >= 0 || kTechs[t].color == TechColor::None) continue;
-        if (!techImplemented(t) || prereqCount(t) != need) continue;
+        if (t == from || G.players[p].hasTech(t) || !techImplemented(t) || prereqCount(t) != need) continue;
+        // ((fixes 31, the legendary planet pass) "gain 1 technology with the same number of prerequisites" - any the player could gain:
+        // a unit upgrade or their own faction's too; only the purged one must be non-faction, non-unit upgrade)
+        if (G.fixes >= 31) {
+            if (gainableTech(p, t)) out.push_back(t);
+            continue;
+        }
+        if (kTechs[t].faction >= 0 || kTechs[t].color == TechColor::None) continue;
         out.push_back(t);
     }
     return out;

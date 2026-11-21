@@ -178,6 +178,16 @@ void Rules::actionSecret(int p, const char* key) {
     Player& pl = G.players[p];
     for (int16_t o : pl.secrets) {
         if (std::strcmp(kObjectives[o].key, key) != 0) continue;
+        if (G.fixes >= 31) {
+            // (fixes 31, the secret objectives' pass) LRR 61.5b: an action-phase objective is scored during the action phase
+            if (kObjectives[o].phase == ObjPhase::Action && G.phase != Phase::Action) return;
+            // LRR 61.7: one objective during or after each combat - the combat's wait for its end (combatSecretsFlush)
+            if (combatDepth_ > 0) {
+                if (std::find(combatSecrets_.begin(), combatSecrets_.end(), std::make_pair(p, int(o))) == combatSecrets_.end())
+                    combatSecrets_.push_back({p, int(o)});
+                return;
+            }
+        }
         // RULES-CHECK: action-phase secrets are scored automatically the moment they are achieved.
         scoreObjective(p, o);
         return;

@@ -28,12 +28,12 @@ struct Setup {
     uint32_t seed = 1;
     int vpGoal = 10;
     int humanColor = -1;         // colour index for the human seat, -1 = default
-    int aiLevel = 2;             // computer players: 0 Easy, 1 Normal, 2 Hard, 3 Competitive
+    int aiLevel = 2;             // computer players: 0 Easy, 1 Normal, 2 Hard, 3 Competitive, 4 A.I. (0.74.0)
     bool autoplay = false;       // the human seat is played by the computer too (watch a game)
     std::vector<int> archetypes; // per seat: computer player's archetype (Arch), -1 = random
     // New Game faction menu (0.19.0, owner). Saves without these lines load empty / 0.
     std::vector<int> colors;     // per seat: colour index, -1 = the next free one
-    std::vector<int> levels;     // per seat: computer difficulty (0-3), -1 = aiLevel
+    std::vector<int> levels;     // per seat: computer difficulty (0-4), -1 = aiLevel
     int humans = 0;              // bit per seat: more seats played by people (hot-seat), besides 'human'
     bool isHuman(int seat) const { return seat >= 0 && (seat == human || ((humans >> seat) & 1)); }
     // Trade card rules (0.14.0): bit 0 = X-1 trades offered with the primary,
@@ -55,6 +55,10 @@ struct Setup {
     // Galaxy layout (0.58.0, owner): 0 = the usual layouts (hyperlanes at 3, 4, 5, 7 and 8 players), 1 = "Hyperlanes:
     // Off" - the printed board without hyperlanes for every player count (6 players: the same map). Saved as "layout".
     int layout = 0;
+    // Unbalanced galaxy (0.63.0, owner's New Game document: "fair / even vs unbalanced random" for maps that aren't seeded):
+    // 1 = the slices (random map) or the draft hands are the first legal random deal - nothing evened out; 0 = the most
+    // even of many deals, as always. Saved as "unbalanced" only when set (older saves: 0, the fair deal).
+    int unbalanced = 0;
     // Extra rules (0.19.0): bit 0 = Kingslay (a bot is sent to take Mecatol Rex
     // from a player who has held it for more than 5 of their turns), bit 1
     // (0.21.0) = the Council Keleres can be dealt as a random faction, bit 2
@@ -77,7 +81,7 @@ struct Setup {
     // Rule fixes (0.33.0) that change what happened in older games, so they only apply to games started
     // with them: 1 = Lucky Shot destroys the ship that was picked (it misread odd-numbered systems).
     // Saves without the line load as 0.
-    int fixes = 30;  // 1 Lucky Shot target (0.33.0), 2 the 0.43.0 fixes, 3 the Fracture's planets at its ends (0.43.2),
+    int fixes = 34;  // 1 Lucky Shot target (0.33.0), 2 the 0.43.0 fixes, 3 the Fracture's planets at its ends (0.43.2),
                     // 4 a token gained in a tactical action no longer gives another action (0.43.3),
                     // 5 the 0.43.4 fixes (entropic scars at the start of the status phase, ...),
                     // 6 the Veldyr start with all 4 Branch Offices (0.44.1: Tax Haven was missing),
@@ -303,12 +307,51 @@ struct Setup {
                     //    Planet" (owner); The Codex takes copies of one card; Neuraloop draws from the unused objectives; Crown of
                     //    Thalnos destroys each unit that rerolled without a hit (not one per missed die); Stellar Converter destroys
                     //    neutral units too
+                    // 31 (FROZEN with 0.61.0) the card-wording passes of 0.61.0 (owner 2026-11-17 21:24 "do our process for card texts, rulings, and timings
+                    //    for each of the still paraphrased items"): public objectives - the Ghosts of Creuss' home system is on the edge
+                    //    of the game board (LRR 39.2a); Terraform, Ul the Progenitor and the Nano-Forge are attachments for Discover
+                    //    Lost Outposts / Reclaim Ancient Monuments, and coexisting planets count as controlled there too (T22);
+                    //    secret objectives - one objective during or after each combat, the player's pick (LRR 61.7), action /
+                    //    agenda secrets only in their phase (61.5b/c), Dictate Policy at the start of the agenda phase, Turn Their
+                    //    Fleets to Dust / Make an Example of Their World as printed without the Codex, Betray a Friend's play area
+                    //    (not the hand), Demonstrate Your Power without a win (Skilled Retreat), Hel-Titans as ground forces
+                    //    (Occupy the Fringe, Make an Example), Destroy Their Greatest Ship not by removal (61.9a), a Miscount revote
+                    //    with nothing to vote for discards the law; exploration - Codex III's frontier cards with the Codex, Merchant
+                    //    Station's replenish answered (Trade Agreement ...), Functioning Base / Local Fabricators' trade good or
+                    //    commodity, a DMZ's planet card traded in the agenda phase, no trade good for a station (Deserted Trade Station); strategy
+                    //    cards - Diplomacy can't choose a system where the only planet you control is a space station; generic notes - the
+                    //    Alliance goes back when its holder activates a system with its owner's units, Political Secret stops Quash /
+                    //    Galactic Threat on that agenda; legendary planets - Bi-Phasic Generators into a supernova / a station-only
+                    //    system, Mystic Library gains any technology with as many prerequisites, The Atrament not onto an Arcane Shield
+                    //    Emitter planet, Maxis Central Control treats Terraform / Geoform / Nano-Forge as attachments; Thunder's Edge
+                    //    action cards - Brilliance's "or choose 1 player to gain their breakthrough"; Uncharted Space action
+                    //    cards - Contagion after a bombardment that destroys infantry; galactic events - Age of
+                    //    Exploration not off a Fracture tile, a station-only new tile gets a frontier token (Star Charts too)
+                    // 32 (FROZEN with 0.61.1) (owner 2026-11-18 W19 "yes please. Make sure that a warning appears if a player is about to remove a
+                    //    piece"): LRR 23.4a - with none of a unit type left in the reinforcements (not fighters / infantry), a player
+                    //    may take one of theirs off the board from a system without their command token and place it at once:
+                    //    production (and Integrated Economy) may go past the reinforcements, Construction / structure placement
+                    //    offers PDS / space docks from the board; Tag::ReclaimUnit asks which piece (the screens confirm first)
+                    // 33 (FROZEN with 0.61.2) (owner 2026-11-18 X1 "yes, it still covers it as it beholden to the living rules on unit placement"):
+                    //    LRR 23.4a for abilities too - every ability placement checks unitsForPlacement, and Rules::addUnits asks
+                    //    (optional, piece by piece) when no piece is left; Sling Relay's ship from the board too; a placement counts
+                    //    captured pieces and the Crimson hero's card (piecesFree); Minor Factions (task #424, TE rulebook): the
+                    //    Creuss / Crimson gate in the spot with the home beside the board, the Keleres on a free Mentak / Xxcha /
+                    //    Argent home, the Firmament / Obsidian on a random side
+                    // 34 (0.68.1, owner 2026-11-19 11:41: "after placing a pds, I am prompted with the choice of placing my flagship.
+                    //    The flagship can't be placed right after I placed my pds"): Ouranos (Titans flagship DEPLOY) only replaces
+                    //    a PDS that was in the system when it was activated (Rules::activationPDS_) - not one Awaken placed
     // 0.54.0: the human players' habits from their earlier games (the bots adapt to them); saved as "habits" when known
     HabitProfile habits;
     // The Council Keleres (0.21.0): per seat, the faction whose home system a
     // Keleres seat takes (The Tribunii: Mentak, Xxcha or Argent; -1 = chosen
     // at random among the ones not in the game). Saves without it load empty.
     std::vector<int> tribunii;
+    // League mode (0.80.0): the speaker the faction draft chose (the last to pick; -1 = at random, as always) and per seat
+    // a named rival's grudge from earlier league games (B-Factor added toward the human seat). Saved as "speaker" /
+    // "grudges" only when set, so other games save and replay exactly as before.
+    int speaker = -1;
+    std::vector<int> grudges;
 };
 
 enum class EventKind : uint8_t {
@@ -358,6 +401,7 @@ enum class EventKind : uint8_t {
     CardDrawn,        // 0.29.0: player drew action card 'count' (display only; shown only to that player)
     ObjectiveRevealed,// 0.29.0: public objective 'count' revealed (display only; the Phase log line stays)
     Note,             // 0.29.0: a feed line that stays out of the game log (old saves replay unchanged)
+    WarSunAge,        // 0.73.0: the first war sun technology of the game (player = who) - the War Sun scene (display only)
 };
 
 constexpr int8_t kActionTactical = 20;
@@ -417,6 +461,12 @@ public:
     // Save / load (text). load() replays every answer.
     std::string saveText() const;
     bool loadText(const std::string& text, std::string* err);
+    // (0.74.0) Become a copy of `other` in its present position - its setup and answers replayed. The A.I. difficulty's
+    // look-ahead plays its options out on such copies (src/ai/ai_think.cpp).
+    bool copyFrom(const Engine& other, std::string* err = nullptr) {
+        setup_ = other.setup_;
+        return replay(other.answers_, err);
+    }
 
     // --- used by the rules code (runs inside the coroutine) -------------
     Game& g() { return g_; }

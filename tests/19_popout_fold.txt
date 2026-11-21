@@ -1,0 +1,46 @@
+# Pop-out windows fold (0.61.2, owner's document: "Add a minimize option for popout screens"): open Your cards from the SCREENS
+# panel, fold it with its _ button (a strip under the panel; the question underneath works again), open it again.
+wait 5
+# (0.63.0: New Game -> Game options -> AI speed) Instant; up to Galaxy, left = Random
+press A
+wait 5
+press UP
+wait 2
+press A
+wait 2
+press DOWN
+wait 2
+press DOWN
+wait 2
+press RIGHT
+wait 2
+press RIGHT
+wait 2
+press B
+wait 2
+press UP
+wait 2
+press LEFT
+wait 2
+press START
+wait 2
+mouse 300 300
+wait 6
+click 404 36
+wait 6
+click 365 94
+wait 8
+shot fold_open
+mouse 452 37
+wait 4
+shot fold_button_hover
+click 452 37
+wait 8
+shot fold_folded
+mouse 300 300
+wait 6
+shot fold_folded_map
+click 388 238
+wait 8
+shot fold_reopened
+quit

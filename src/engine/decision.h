@@ -105,6 +105,9 @@ enum class Tag : uint8_t {
     OceanPay,          // 0.35.0: how many ocean cards (Deepwrought) to exhaust toward a payment
     EngageCoexisting,  // 0.35.0: fight another player's coexisting units on the planet you invade (1) or leave them (0)
     RetreatCargo,      // 0.54.0 (fixes 18): how many ground forces of one kind (d.value = planet * 16 + type) the retreating ships take along
+    // 0.61.1 (fixes 32, LRR 23.4a): none of a unit type left in the reinforcements - which of yours comes back off the board to be
+    // placed (option = reclaimId(system, planet, damaged), -1 = don't; d.value = destination system * 64 + unit type)
+    ReclaimUnit,
 };
 
 // Faction abilities, leaders, faction notes and unit abilities that ask questions
@@ -259,6 +262,7 @@ struct Option {
     std::string label;
     std::string detail;
     bool enabled = true;
+    int at = -1;  // 0.61.2: the system this choice is in (the screens let you pick it on the map); planet ids are found by themselves
 };
 
 // 0.43.0: in Decision::context, the text after this character is a rule reminder the screens draw in red
@@ -276,6 +280,7 @@ struct Decision {
     int minPick = 1, maxPick = 1;
     bool onMap = false;      // options are systems (id = system index) to choose on the map
     bool onPlanets = false;  // options are planets (id = planet index)
+    bool onSpots = false;    // 0.61.2: options are empty spaces at the edge of the board (id = spotId(hex)) - picked on the map
 
     // Pay
     int amount = 0;          // resources or influence needed
@@ -299,7 +304,10 @@ struct Decision {
     int value = 0;           // extra number (hits to cancel, votes so far, ...)
     int costCap = 0;         // Produce: the combined cost may not be higher (Maximus, Discordant Stars); 0 = no cap
     bool mustProduce = false;  // Produce: at least 1 unit if possible (Contractual Obligations, 0.44.5)
+    bool reclaim = false;      // Produce: more than the reinforcements hold - the rest come back off the board (LRR 23.4a, fixes 32)
     int predicted = -1;        // VoteOutcome: the outcome this voter predicted (Radiance / Unity Algorithm, 0.44.6), -1 none
+    int riderBet = -1;         // VoteOutcome / VotePlanets (0.65.0, for the AI): the outcome this voter's rider predicted
+    int riderCard = -1;        // ... and that rider (action card), -1 none
     int explore = -1;        // exploration card being resolved
     int relic = -1;          // relic being used
     int ability = 0;         // Ab: faction ability / leader / note being used

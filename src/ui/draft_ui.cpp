@@ -373,7 +373,7 @@ private:
     // "Place the tile here?" with Yes / No buttons (0.44.1, owner: he clicked the "no" text thinking it was a button). While it
     // is open a click anywhere else on the map does nothing (a click used to mean "yes").
     void drawConfirm(Canvas& c) {
-        hits::addAction(Rect{0, 0, theme::screenW(), kHandRect.y + kHandRect.h}, []() {});
+        hits::addBackdrop(Rect{0, 0, theme::screenW(), kHandRect.y + kHandRect.h}, []() {});
         // the box sits above (or below) the space, so the tile it asks about stays in view
         Rect r{80, 140, 260, 104};
         float tx, ty, ts;

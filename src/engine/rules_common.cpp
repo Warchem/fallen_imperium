@@ -572,7 +572,8 @@ std::string fleetOverWarning(const Game& g, int p, int active, const std::vector
                : "More ships than your fleet pool (" + n + ") here: you choose and remove the extra ships right after the move (LRR 37.3).";
 }
 
-std::string checkProducePlan(const Game& g, int p, int sys, const std::vector<int>& data, int capacityLimit, int typeMask, bool fleetStrict) {
+std::string checkProducePlan(const Game& g, int p, int sys, const std::vector<int>& data, int capacityLimit, int typeMask, bool fleetStrict,
+                             bool reclaim) {
     if (data.size() != size_t(kUnitTypes) + 1) return "Bad answer.";
     int total = 0;
     // LRR 14.1: a blockaded unit can't produce ships (ground forces are fine).
@@ -586,7 +587,9 @@ std::string checkProducePlan(const Game& g, int p, int sys, const std::vector<in
         if (isStructure(ut)) return "Structures can't be produced.";
         if (typeMask && !((typeMask >> t) & 1)) return std::string(unitTypeName(ut, true)) + " can't be produced this time.";
         if (unitDef(g, p, ut).cost2 <= 0) return std::string(unitTypeName(ut, true)) + " can't be produced.";
-        if (k > unitsAvailable(g, p, ut)) return "Not enough " + std::string(unitTypeName(ut, true)) + " left in your supply.";
+        if (k > (reclaim ? unitsPlaceable(g, p, ut) : unitsAvailable(g, p, ut)))
+            return "Not enough " + std::string(unitTypeName(ut, true)) +
+                   (reclaim && reclaimAllowed(g, p, ut) ? " left in your supply or outside the systems with your command tokens." : " left in your supply.");
         if (isShip(ut) && enemyShips) return "Blockaded: other players' ships are here, so only ground forces can be produced.";
         total += k;
         if (isGroundForce(ut)) gf += k;
@@ -686,6 +689,36 @@ void Rules::event(EventKind kind, int p, const std::string& text, int sys, int p
     E.emit(std::move(e));
 }
 
+bool Rules::defendedAgainst(int p, int pl) const {
+    const PlanetState& ps = G.planets[size_t(pl)];
+    for (int q = 0; q < kSides; ++q)
+        if (q != p && !(ps.coexist >> q & 1) && ps.units[size_t(q)].groundForces() > 0) return true;
+    return false;
+}
+
+void Rules::landEvent(int p, int sys, int pl, UnitType t, int sum, const std::string& text) {
+    Event e;
+    e.kind = EventKind::Land;
+    e.player = int8_t(p);
+    e.system = int16_t(sys);
+    e.planet = int16_t(pl);
+    e.text = text;
+    const PlanetState& ps = G.planets[size_t(pl)];
+    int other = -1;
+    for (int q = 0; q < kSides && other < 0; ++q)
+        if (q != p && !(ps.coexist >> q & 1) && ps.units[size_t(q)].groundForces() > 0) other = q;
+    for (int q = 0; q < kSides && other < 0; ++q)
+        if (q != p && !(ps.coexist >> q & 1) && ps.units[size_t(q)].total() > 0) other = q;
+    if (other < 0 && ps.owner >= 0 && ps.owner != p) other = ps.owner;
+    e.hostile = other >= 0;
+    e.other = int8_t(other);
+    if (sum < 0) sum = (defendedAgainst(p, pl) ? 1 : 0) | (t == UnitType::Mech ? 2 : 0);
+    e.count = int16_t(sum & 1);
+    e.unit = int8_t(sum & 2 ? UnitType::Mech : t);
+    e.space = false;
+    E.emit(std::move(e));
+}
+
 int Rules::pick(int p, Tag tag, const std::string& prompt, std::vector<Option> opts, const std::string& context,
                 bool onMap, bool onPlanets) {
     if (p == kNeutral) {  // Thunder's Edge: neutral units make no decisions (the rare one is the first that fits)
@@ -702,6 +735,7 @@ int Rules::pick(int p, Tag tag, const std::string& prompt, std::vector<Option> o
     d.options = std::move(opts);
     d.onMap = onMap;
     d.onPlanets = onPlanets;
+    d.onSpots = spotPick_;
     d.card = curCard_;
     d.agenda = curAgenda_;
     d.explore = curExplore_;
@@ -1052,7 +1086,15 @@ void Rules::gainTokens(int p, int n, bool redistribute, const std::string& why, 
 void Rules::addUnits(int p, UnitType t, int k, int sys, int planet) {
     // Gauss Cannon (Mirveda PDS, Discordant Stars): placed in the space area instead of on a planet
     if (planet >= 0 && t == UnitType::PDS && (G.modules & kModDiscordant) && p >= 0 && p < G.numPlayers && unitDef(G, p, t).spaceOnly) planet = -1;
-    k = std::min(k, (p < G.numPlayers ? unitLimitOf(G, p, t) : unitLimit(t)) - unitsOnBoard(G, p, t));  // the pieces in the box are the limit
+    // (0.61.2, fixes 33 - owner X1) LRR 23.4a for every placement: with no piece of that type left, the player may take one of theirs
+    // off the board (a system without their command token) - always their choice ("abilities cannot force"), asked piece by piece
+    // (fixes 33: the pieces neither on the board, nor captured, nor on the Crimson hero's card - the old count let a captured piece be
+    // placed again once an ability was offered on a piece from the board)
+    if (G.fixes >= 33 && p >= 0 && p < G.numPlayers && reclaimAllowed(G, p, t))
+        for (int miss = k - piecesFree(p, t); miss > 0; --miss)
+            if (!reclaimUnit(p, t, sys, true)) break;
+    if (G.fixes >= 33 && p >= 0 && p < G.numPlayers) k = std::min(k, piecesFree(p, t));
+    else k = std::min(k, (p < G.numPlayers ? unitLimitOf(G, p, t) : unitLimit(t)) - unitsOnBoard(G, p, t));  // the pieces in the box are the limit
     // (fixes 28, the Mirveda review) Privileged Citizenry: no more of their PDS in a system than their fleet tokens
     if (G.fixes >= 28 && t == UnitType::PDS && planet < 0 && p >= 0 && p < G.numPlayers && mirvedaPdsCap(G, p) >= 0 && sys >= 0)
         k = std::min(k, mirvedaPdsCap(G, p) - int(G.systems[size_t(sys)].space[size_t(p)].count(UnitType::PDS)));
@@ -1106,7 +1148,8 @@ void Rules::destroyUnits(int p, UnitType t, int k, int sys, int planet, int byPl
                                       : std::to_string(k) + " " + unitTypeName(t, k > 1)) +
              (how && *how ? std::string(" (") + how + ")" : "");
     E.emit(e);
-    if (byPlayer >= 0 && byPlayer != p && (t == UnitType::WarSun || isFlagship(t))) actionSecret(byPlayer, "dtgs");
+    // (fixes 31, the secret objectives' pass) Destroy Their Greatest Ship: destroyed - a unit removed isn't (LRR 61.9a)
+    if (byPlayer >= 0 && byPlayer != p && (t == UnitType::WarSun || isFlagship(t)) && !(G.fixes >= 31 && removing_)) actionSecret(byPlayer, "dtgs");
     if (G.events) eventDestroyed(p, t, k, byPlayer);  // Total War (galactic event)
     if (p < G.numPlayers && isShip(t) && t != UnitType::Fighter && !removing_ && eventOn(G, kEvFighters))  // Age of Fighters: purged
         G.players[size_t(p)].purgedUnits[int(t)] = uint8_t(G.players[size_t(p)].purgedUnits[int(t)] + k);
@@ -1165,7 +1208,7 @@ void Rules::setControl(int planet, int p) {
             int k = f.count(t);
             if (!k || (oldCoexists && !infiltrate)) continue;
             destroyUnits(old, t, k, pl.system, planet, p, infiltrate ? "Infiltrate" : "captured");
-            if (infiltrate) addUnits(p, t, std::min(k, unitsAvailable(G, p, t)), pl.system, planet);
+            if (infiltrate) addUnits(p, t, std::min(k, unitsForPlacement(G, p, t)), pl.system, planet);
         }
     }
     if (old >= 0 && G.systems[pl.system].home >= 0) actionSecret(old, "bam");
@@ -1175,7 +1218,16 @@ void Rules::setControl(int planet, int p) {
     pl.owner = int8_t(p);
     pl.exhausted = true;  // newly gained planets arrive exhausted
     persControl(planet, old, p);
-    event(EventKind::Control, p, pn(p) + " takes control of " + planetName(planet) + ".", pl.system, planet);
+    {  // (0.70.0, display only) other = the player it was taken from (the "planet taken" sound)
+        Event e;
+        e.kind = EventKind::Control;
+        e.player = int8_t(p);
+        e.other = int8_t(old);
+        e.system = int16_t(pl.system);
+        e.planet = int16_t(planet);
+        e.text = pn(p) + " takes control of " + planetName(planet) + ".";
+        E.emit(std::move(e));
+    }
     if (lawOwner(G, "minister_exploration") == p) {
         gainTG(p, 1);
         say(p, pn(p) + " gains 1 trade good (Minister of Exploration).");
@@ -1221,6 +1273,15 @@ void Rules::researchTech(int p, int tech, bool researched) {
     Player& pl = G.players[p];
     if (tech < 0 || pl.hasTech(tech)) return;
     pl.techs.push_back(int16_t(tech));
+    // 0.73.0 (owner 2026-11-19): the first war sun technology anyone gains, however it comes, gets the War Sun scene - once a game
+    // (shown after the research is announced: warSunAgeCheck, before the next question). Display only: no question, no dice.
+    if (!G.warSunAge)
+        for (int u = 0; u < kUnitCount; ++u)
+            if (kUnits[u].tech == tech && kUnits[u].type == UnitType::WarSun) {
+                G.warSunAge = true;
+                if (G.phase != Phase::Setup) warSunAgeBy_ = int8_t(p);
+                break;
+            }
     // Anti-Intellectual Revolution: after researching, destroy one of your non-fighter ships.
     if (researched && G.phase != Phase::Setup && lawInPlay(G, "revolution")) {
         std::vector<Option> opts;
@@ -1251,6 +1312,16 @@ void Rules::researchTech(int p, int tech, bool researched) {
         firmamentGained(p, tech);  // Planesplitter: the Fracture
         extractCopy(p, tech);      // Extract (the Obsidian's plot)
     }
+}
+
+void Rules::warSunAgeCheck() {
+    if (warSunAgeBy_ < 0) return;
+    Event e;
+    e.kind = EventKind::WarSunAge;
+    e.player = warSunAgeBy_;
+    e.text = "Technology discovered: the Age of the War Sun approaches.";
+    warSunAgeBy_ = -1;
+    E.emit(e);
 }
 
 // Asks the player to choose 'count' units to remove (not destroy) from a
@@ -1383,6 +1454,75 @@ void Rules::enforceFleetIn(int p, int s) {
     }
 }
 
+// 0.61.1 (fixes 32, owner 2026-11-18 W19 "Make sure that a warning appears if a player is about to remove a piece") LRR 23.4a: "When
+// a player would place a unit, if there are none of that type left in their reinforcements, that player can remove a unit from any
+// system that does not contain one of their command tokens and place that unit in their reinforcements ... any units that are removed
+// must be placed immediately. Abilities cannot force a player to remove and place a unit in this manner." - the question names the
+// piece and where it comes from (the screen asks once more before it goes); removed, not destroyed (no "destroyed" effects)
+bool Rules::reclaimUnit(int p, UnitType t, int destSys, bool optional) {
+    if (!reclaimAllowed(G, p, t) || unitsAvailable(G, p, t) > 0) return false;
+    const std::string unit = unitDef(G, p, t).name;
+    const std::string dest = destSys >= 0 ? sysName(destSys) : std::string("its new place");
+    std::vector<Option> opts;
+    for (size_t s = 0; s < G.systems.size(); ++s) {
+        const SystemState& sy = G.systems[s];
+        if (sy.hasToken(p)) continue;
+        auto add = [&](const Force& f, int planet) {
+            const int n = f.count(t), dmg = f.damaged(t);
+            const std::string where = planet >= 0 ? planetName(planet) + " (" + sysName(int(s)) + ")" : sysName(int(s));
+            std::string detail = planet >= 0 ? "On " + planetName(planet) + "." : std::string("In the space area.");
+            if (int(s) == destSys) detail += " It is placed straight back here.";
+            if (planet < 0 && unitDef(G, p, t).capacity > 0 && f.total() > f.count(t))
+                detail += " Fighters or ground forces it carries may lose their room.";
+            if (n - dmg > 0) opts.push_back({reclaimId(int(s), planet, false), unit + " in " + where, detail, true, int(s)});
+            if (dmg > 0) opts.push_back({reclaimId(int(s), planet, true), unit + " (damaged) in " + where, detail + " It comes back repaired.", true, int(s)});
+        };
+        add(sy.space[size_t(p)], -1);
+        for (int16_t x : sy.planets) add(G.planets[size_t(x)].units[size_t(p)], x);
+    }
+    if (opts.empty()) return false;
+    if (optional) opts.push_back({-1, "Don't take one back", "Nothing is removed; this " + std::string(unitTypeName(t)) + " isn't placed."});
+    const int savedValue = curValue_;
+    curValue_ = std::max(0, destSys) * 64 + int(t);
+    const int c = pick(p, Tag::ReclaimUnit,
+                       "No " + std::string(unitTypeName(t, true)) + " left in your reinforcements: take one of yours off the board?",
+                       opts,
+                       "Living Rules 23.4a: the one you pick is REMOVED from the board (from a system without your command token) and placed in " +
+                           dest + " at once.",
+                       false, false);
+    curValue_ = savedValue;
+    if (c < 0) return false;
+    int s = 0, planet = -1;
+    bool damaged = false;
+    reclaimDecode(c, s, planet, damaged);
+    Force& f = planet >= 0 ? G.planets[size_t(planet)].units[size_t(p)] : G.systems[size_t(s)].space[size_t(p)];
+    f.remove(t, 1, damaged);
+    say(p, pn(p) + " takes " + (damaged ? "a damaged " : "a ") + unitTypeName(t) + " off " + (planet >= 0 ? planetName(planet) : sysName(s)) +
+               " to place it in " + dest + " (none left in the reinforcements - LRR 23.4a).",
+        s);
+    if (planet < 0) removeExcessCapacity(p, s);  // (a carrier's fighters / ground forces may have lost their room - LRR 16.3)
+    return true;
+}
+
+// (fixes 33) the pieces of that type in the box: not on the board, not captured, not on the Crimson hero's card (the game's own check)
+int Rules::piecesFree(int p, UnitType t) const {
+    return unitLimitOf(G, p, t) - unitsOnBoard(G, p, t) - capturedFrom(G, p, t) - (G.fixes >= 19 ? G.players[size_t(p)].phantom.count(t) : 0);
+}
+
+// (fixes 33) an ability about to put one piece on the board without addUnits (a swap): one is in the box, or the player takes one back
+// off the board (LRR 23.4a, their choice). Older games: the ability was only offered with one in the reinforcements.
+bool Rules::pieceFor(int p, UnitType t, int sys) {
+    if (G.fixes < 33 || p < 0 || p >= G.numPlayers || piecesFree(p, t) > 0) return true;
+    return reclaimUnit(p, t, sys, true) && piecesFree(p, t) > 0;
+}
+
+void Rules::reclaimForPlacement(int p, const int* counts, int destSys) {
+    if (G.fixes < 32) return;
+    for (int t = 0; t < kUnitTypes; ++t)
+        for (int k = counts[t] - unitsAvailable(G, p, UnitType(t)); k > 0; --k)
+            if (!reclaimUnit(p, UnitType(t), destSys, false)) break;
+}
+
 void Rules::removeExcessCapacity(int p, int sys) {
     if (p < 0 || p >= G.numPlayers) return;  // (neutral units have no capacity rules)
     // Flotilla (Dih-Mohn, Discordant Stars): infantry beyond their non-fighter ships here go first
@@ -1454,6 +1594,7 @@ void Rules::eliminate(int p) {
         else ++i;
     E.rng().shuffle(G.secretDeck);
     pl.eliminated = true;
+    pl.knockedOutBy = int8_t(G.activePlayer != p ? G.activePlayer : -1);
     pl.passed = true;
     Event e;
     e.kind = EventKind::Eliminated;

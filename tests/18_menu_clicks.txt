@@ -1,0 +1,41 @@
+# Menus over the map (0.61.2, owner: "All option menus that are transparent during gameplay ... allow interaction of the game map
+# underneath it ... Can we make it so no interactions can be done on the background of a menu while playing the game?"): pointing at
+# the question's panel doesn't move the map's cursor to the tile underneath, a click on the panel's background does nothing; beside
+# the panel the map follows the mouse as before.
+wait 5
+# (0.63.0: New Game -> Game options -> AI speed) Instant; up to Galaxy, left = Random
+press A
+wait 5
+press UP
+wait 2
+press A
+wait 2
+press DOWN
+wait 2
+press DOWN
+wait 2
+press RIGHT
+wait 2
+press RIGHT
+wait 2
+press B
+wait 2
+press UP
+wait 2
+press LEFT
+wait 2
+press START
+wait 2
+shot m_before
+mouse 120 70
+wait 6
+mouse 300 140
+wait 6
+shot m_hover_panel
+click 250 50
+wait 10
+shot m_click_panel
+mouse 200 355
+wait 6
+shot m_hover_map
+quit

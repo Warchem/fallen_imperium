@@ -5,6 +5,7 @@
 #include <sstream>
 
 #include "ai/ai.h"
+#include "audio/audio.h"
 #include "core/log.h"
 #include "platform/platform.h"
 
@@ -16,6 +17,7 @@ std::string& GameSession::savePath() {
 }
 
 bool GameSession::startNew(const ti::Setup& s) {
+    think_.reset();
     feed_.clear();
     queue_.clear();
     viewer_ = -1;
@@ -27,8 +29,9 @@ bool GameSession::startNew(const ti::Setup& s) {
     return engine_.crashMessage().empty();
 }
 
-bool GameSession::saveExists() {
-    std::ifstream in(savePath());
+bool GameSession::saveExists() { return fileExists(savePath()); }
+bool GameSession::fileExists(const std::string& path) {
+    std::ifstream in(path);
     return in.good();
 }
 
@@ -43,7 +46,8 @@ void GameSession::rebuildFeed() {
 }
 
 bool GameSession::loadSaved(std::string* err) {
-    std::ifstream in(savePath());
+    think_.reset();
+    std::ifstream in(path());
     if (!in) {
         if (err) *err = "no saved game";
         return false;
@@ -63,22 +67,22 @@ bool GameSession::loadSaved(std::string* err) {
 
 bool GameSession::save() {
     if (!engine_.started()) return false;
-    std::string tmp = savePath() + ".tmp";
+    std::string tmp = path() + ".tmp";
     {
         std::ofstream out(tmp, std::ios::trunc | std::ios::binary);
         if (!out) return false;
         out << engine_.saveText();
         if (!out) return false;
     }
-    if (!replaceFile(tmp, savePath())) {
-        LOG("session: could not replace %s", savePath().c_str());
+    if (!replaceFile(tmp, path())) {
+        LOG("session: could not replace %s", path().c_str());
         return false;
     }
     unsavedAnswers_ = 0;
     return true;
 }
 
-void GameSession::deleteSave() { std::remove(savePath().c_str()); }
+void GameSession::deleteSave() { std::remove(path().c_str()); }
 
 bool GameSession::humanToAnswer() const {
     return engine_.waiting() && engine_.decision().player == human() && human() >= 0 && queue_.empty() && !holding_;
@@ -99,6 +103,7 @@ int GameSession::undoDepth() const {
 bool GameSession::canUndo() const { return undoDepth() > 0; }
 
 bool GameSession::undo() {
+    think_.reset();
     const int n = undoDepth();
     if (n <= 0) return false;
     bool ok = engine_.undoSteps(n);
@@ -167,6 +172,7 @@ uint32_t GameSession::durationOf(const ti::Event& e) const {
         case EventKind::RelicUsed: ms = 2200; break;
         case EventKind::ComponentUsed: ms = 2200; break;
         case EventKind::Planetfall: ms = 6500; break;
+        case EventKind::WarSunAge: ms = 17500; break;  // 0.73.0: the War Sun scene (timed: the whole of it)
         case EventKind::CardDrawn: ms = 0; break;
         case EventKind::ObjectiveRevealed: ms = 1500; break;
         case EventKind::Note: ms = e.system >= 0 ? 600 : 450; break;
@@ -184,6 +190,17 @@ uint32_t GameSession::durationOf(const ti::Event& e) const {
          e.kind == EventKind::TilePlaced))
         ms /= 2;
     float k = kSpeed[speed_ < 0 ? 0 : speed_ > 3 ? 3 : speed_];
+    if (e.kind == EventKind::WarSunAge && speed_ != 3) k = 1.f;  // (0.73.0: the scene has its own length at every speed but Instant)
+    if (e.kind == EventKind::Ability && e.label == "The Fracture" && speed_ != 3) {  // (0.73.5: the map ripples out from Styx)
+        ms = 3400;
+        k = 1.f;
+    }
+    // (0.73.8: the Firmament becomes the Obsidian - the screams, then the ripple from their home)
+    if (e.kind == EventKind::Ability && e.label == "Puppets of the Blade" && e.text.find("cast off their mask") != std::string::npos &&
+        speed_ != 3) {
+        ms = audio::kGalaxyScreamsMs + 3400;
+        k = 1.f;
+    }
     if (hurry_) k *= 0.15f;
     return uint32_t(float(ms) * k);
 }
@@ -235,7 +252,8 @@ std::vector<ti::Event> GameSession::step(uint32_t now, bool hurry) {
             // 0.58.4 (owner, L4: "do betrayal codecs for bot-to-bot betrayals as well"): every broken promise
             const bool brokenMine = e.kind == ti::EventKind::Deal && e.card == 3 /* kDealBroken */;
             const bool table = e.kind == ti::EventKind::Reveal || e.kind == ti::EventKind::Betrayal || e.kind == ti::EventKind::Agenda ||
-                               e.kind == ti::EventKind::AgendaResult || e.kind == ti::EventKind::Planetfall || brokenMine;
+                               e.kind == ti::EventKind::AgendaResult || e.kind == ti::EventKind::Planetfall ||
+                               e.kind == ti::EventKind::WarSunAge || brokenMine;
             if (speed_ != 3 && ((card && (cardPause_ == 0 || (cardPause_ == 1 && isHumanSeat(e.player)))) ||
                                 (table && cardPause_ != 2) || (drawnMine && cardPause_ != 2) ||
                                 (e.kind == ti::EventKind::ObjectiveRevealed && cardPause_ != 2))) {
@@ -265,7 +283,20 @@ std::vector<ti::Event> GameSession::step(uint32_t now, bool hurry) {
         const ti::Decision& d = engine_.decision();
         logx::crumb("round %d, answer %d, bot %d (tag %d): %.120s", engine_.game().round, engine_.answerCount(), d.player,
                     int(d.tag), d.prompt.c_str());
-        ti::Answer a = ti::aiAnswer(engine_.game(), d, aiRng_);
+        // (0.74.0) an A.I. seat plays its options out a little each frame, so the screen keeps moving meanwhile
+        if (think_ && think_->stale(engine_)) think_.reset();
+        if (!think_) {
+            std::unique_ptr<ti::AiThinkJob> job(new ti::AiThinkJob());
+            if (job->begin(engine_, aiRng_)) think_ = std::move(job);
+        }
+        ti::Answer a;
+        if (think_) {
+            if (!think_->step(speed_ == 3 ? 40 : 14)) break;  // more next frame
+            a = think_->answer();
+            think_.reset();
+        } else {
+            a = ti::aiAnswer(engine_.game(), d, aiRng_);
+        }
         std::string err;
         if (!engine_.answer(a, &err)) {
             LOG("session: AI answer rejected (%s): %s", d.prompt.c_str(), err.c_str());

@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <vector>
 
 #include "ai/ai_internal.h"
 #include "engine/data.h"
@@ -32,6 +33,29 @@ bool holdsMecatol(const Game& g, int q) {
 bool imperialReady(const Game& g, int q) {
     const Player& pl = g.players[size_t(q)];
     return (g.phase == Phase::Action || g.phase == Phase::Strategy) && pl.holdsCard(7) && !((pl.cardsUsed >> 7) & 1);
+}
+
+// (0.74.0, the A.I. difficulty's memory of the table) The chance that player q holds a secret objective it can score
+// now, as `viewer` can judge it: q's unscored secrets are some of the secrets viewer hasn't seen (the secret deck and
+// every other player's unscored secrets - their union is public knowledge: everything not yet revealed), so each one
+// is met with the share of that pool q meets on the board as it stands.
+float secretChance(const Game& g, int q, int viewer) {
+    int held = 0;
+    for (int16_t o : g.players[size_t(q)].secrets)
+        if (std::find(g.players[size_t(q)].scored.begin(), g.players[size_t(q)].scored.end(), o) == g.players[size_t(q)].scored.end()) ++held;
+    if (held == 0) return 0.f;
+    std::vector<int16_t> pool = g.secretDeck;
+    for (int r = 0; r < g.numPlayers; ++r)
+        if (r != viewer) pool.insert(pool.end(), g.players[size_t(r)].secrets.begin(), g.players[size_t(r)].secrets.end());
+    if (pool.empty()) return 0.f;
+    std::sort(pool.begin(), pool.end());
+    int met = 0;
+    for (int16_t o : pool)
+        if (meetsObjective(g, q, o)) ++met;
+    const float f = float(met) / float(pool.size());
+    float none = 1.f;
+    for (int i = 0; i < held; ++i) none *= 1.f - f;
+    return 1.f - none;
 }
 
 }  // namespace
@@ -63,7 +87,11 @@ float aiReach(const Game& g, int q, int viewer) {
             ++unscored;
             if (q == viewer && objectiveProgress(g, q, o).missing() == 0) reach += float(kObjectives[size_t(o)].points) * 0.9f, unscored = -99;
         }
-    if (q != viewer && unscored > 0) reach += aiTune("reachsecret", 0.5f);
+    if (q != viewer && unscored > 0) {
+        // the A.I. difficulty (0.74.0) weighs what q could score with what is on the board; the others count half a point
+        if (viewer >= 0 && aiIsAISeat(g, viewer) && aiTune("aisecret", 1.f) > 0.f) reach += secretChance(g, q, viewer);
+        else reach += aiTune("reachsecret", 0.5f);
+    }
     return reach;
 }
 

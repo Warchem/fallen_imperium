@@ -1,5 +1,6 @@
 #include "ui/speech.h"
 
+#include <cctype>
 #include <cmath>
 #include <cstring>
 
@@ -130,6 +131,25 @@ std::string pick(int speaker, int listener, Cat cat, uint32_t seed) {
     return s;
 }
 
+std::string fillThem(const std::string& text, int listener) {
+    std::string s = text;
+    replaceAll(s, "{them}", listener >= 0 ? address(listener) : std::string("stranger"));
+    return s;
+}
+
+std::vector<std::string> options(int speaker, int listener, Cat cat, bool pairOnly, bool fill) {
+    std::vector<std::string> out;
+    const char* sk = keyOf(speaker);
+    const char* lk = keyOf(listener);
+    if (!*sk) return out;
+    for (const SpeechLine& l : kSpeechLines) {
+        if (l.cat != int(cat) || std::strcmp(l.key, sk)) continue;
+        if (pairOnly ? !(l.to && *lk && !std::strcmp(l.to, lk)) : l.to != nullptr) continue;
+        out.push_back(fill ? fillThem(l.text, listener) : std::string(l.text));
+    }
+    return out;
+}
+
 Speech layout(int speaker, const std::string& text, int width, const FontData& font, uint32_t accent, uint32_t textCol,
               uint32_t seed) {
     const std::string key = keyOf(speaker);
@@ -146,7 +166,14 @@ Speech layout(int speaker, const std::string& text, int width, const FontData& f
     if (key == "l1z1x") {  // owner: the Lazax machine talk - junk with Lazaxian glyphs at both ends
         junk(ps, g, accent, dim, 2, false);
         ps.push_back({"...", &font, dim, 5, false, false});
+        const size_t from = ps.size();
         plain(text, &font, textCol, 0, false);
+        for (size_t k = from; k < ps.size(); ++k) {  // (owner 2026-11-18) "Lazax" glitches: its a's flicker into 1s and back (and "L1Z1X"'s 1s into a's)
+            std::string low;
+            for (char ch : ps[k].text)
+                if (std::isalnum(static_cast<unsigned char>(ch))) low += char(std::tolower(static_cast<unsigned char>(ch)));
+            if (low.rfind("lazax", 0) == 0 || low.rfind("l1z1x", 0) == 0) ps[k].fx = 6;
+        }
         ps.push_back({"...", &font, dim, 5, true, false});
         junk(ps, g, accent, dim, 2, false);
     } else if (key == "nekro") {  // only two words readable in every line
@@ -266,6 +293,25 @@ void draw(Canvas& c, const Speech& s, int x, int y, int shown, uint32_t now, int
             case 3: dx = int((now / 70U + uint32_t(i) * 3U) % 3U) - 1, dy = int((now / 90U + uint32_t(i)) % 2U); break;
             case 4: a = int(float(alpha) * (0.55f + 0.45f * (0.5f + 0.5f * std::sin(t / 650.f + float(i) * 1.3f)))); break;
             case 5: a = ((now / 90U + uint32_t(i)) % 5U) == 0 ? alpha * 2 / 5 : alpha; break;
+            case 6: {  // the L1Z1X's "Lazax": a's and 1s swap now and then, letter by letter, in a glitch colour
+                const std::string t = vis < len ? w.text.substr(0, size_t(vis)) : w.text;
+                bool lower = false;
+                for (char ch : w.text) lower |= ch >= 'a' && ch <= 'z';
+                int cx = x + w.x;
+                const uint32_t slot = now / 110U;
+                for (size_t j = 0; j < t.size(); ++j) {
+                    const char ch = t[j];
+                    char out = ch;
+                    bool on = false;
+                    if (ch == 'a' || ch == 'A' || ch == '1') {
+                        on = mixh(slot * 2654435761U ^ uint32_t(i) * 97U ^ uint32_t(j) * 131U ^ 0x5A5AU) % 100U < 38U;
+                        if (on) out = ch == '1' ? (lower ? 'a' : 'A') : '1';
+                    }
+                    drawText(c, *w.font, cx + (on ? int(slot % 2U) : 0), y + w.y, std::string(1, out), on ? mix(w.col, rgb(255, 70, 90), 170) : w.col, alpha);
+                    cx += textWidth(*w.font, std::string(1, ch));
+                }
+                continue;
+            }
             default: break;
         }
         drawText(c, *w.font, x + w.x + dx, y + w.y + dy, vis < len ? w.text.substr(0, size_t(vis)) : w.text, w.col, a);

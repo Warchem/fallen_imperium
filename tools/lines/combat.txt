@@ -1,0 +1,398 @@
+# Combat reactions (draft, owner 2026-11-19 14:35: "The reaction should be when a space combat or ground combat occurs"
+# ... "Or is about to occur"). Same voices and rules as the negotiation lines (tools/lines/BRIEF.md): {them} = the other
+# side's name; Nekro = exactly `Word | Word`; Ghemina = `Lord || Lady`; Zelian = a growl, then a [bracketed translation];
+# Obsidian = only A-Z a-z 0-9 space ! " ' ( ) , - . ?
+# attack: it moves in on {them} - a space combat is about to start (spoken to the defender)
+# defend: {them} moves in on it - its fleet is attacked (spoken to the attacker)
+# invade: its ground forces land on {them}'s planet (spoken to the defender)
+# hold:   {them} lands on its planet - it defends the ground (spoken to the invader)
+
+[arborec]
+attack: {them}, your ships are in our way. We will grow through them. This is not anger. It is growth.
+defend: You strike at The Green, {them}. Every hull you break, we regrow. You will run out of ships first.
+invade: ...shhhrrr... We take root on your world, {them}. Your soldiers will become soil. Soil is useful.
+hold: This ground is ours, {them}. Every root holds it. Cut one and ten more grow. Come and see.
+
+[letnev]
+attack: The Barony's fleet will now correct your presence here, {them}. Do try to die with some dignity.
+defend: You dare raise guns at the Barony, {them}? How tiresome. Our dreadnoughts have been longing for exercise.
+invade: Your world will make a fine estate, {them}. Kindly tell your garrison to kneel; it saves us the paperwork.
+hold: Lesser troops on Barony soil, {them}? Our garrison will teach you the meaning of rank.
+
+[saar]
+attack: We are sorry, {them}, but you stand where the Clan must pass. We will not be stopped again.
+defend: We only wanted to pass, {them}. You have chosen this. The Clan has fought hunters before.
+invade: Forgive us, {them}. Our people need ground beneath them, if only for a while. We are coming down.
+hold: This is all the Clan has left, {them}. You will have to take it from our hands, one by one.
+
+[muaat]
+attack: Your ships look cold, {them}. Let us warm them... until they glow, and melt.
+defend: You fly into the furnace, {them}? Then burn. Every last hull of you.
+invade: We descend in fire, {them}. When we are done, your world will be glass and ash.
+hold: Our ground is molten underfoot, {them}. Step on it, and you will never step again.
+
+[hacan]
+attack: Bad for business, this, {them} - but the Emirates protect their routes. Our guns are open for trade now.
+defend: You attack a Hacan caravan, {them}? Then you pay full price, and the Emirates never give discounts.
+invade: The Emirates are acquiring your world, {them}. A hostile acquisition - the terms were always on the table.
+hold: This market is closed to you, {them}. The lions of Hacan defend every stall of it!
+
+[sol]
+attack: Diplomacy has run its course, {them}. The Federation fleet is engaging. Nothing personal.
+defend: You have fired on the Federation, {them}. Our response will be measured, proportional - and overwhelming.
+invade: Federation troops are making planetfall, {them}. Lay down your arms and you will be treated fairly.
+hold: Federation marines hold this world, {them}. They have trained for exactly this day.
+
+[ghost]
+attack: Hush, {them}... we were never far away. The gate is open... and we are already here.
+defend: You reach for shadows, {them}... and the shadows reach back.
+invade: We drift down like mist, {them}... by the time you see us, the world is already ours.
+hold: This world is wrapped in the quiet, {them}... step into it, and be forgotten.
+
+[l1z1x]
+attack: The Lazax reclaim this sector. {them} vessels are designated obsolete. Engaging.
+defend: Hostile action by {them} registered. Response: annihilation. The Lazax do not negotiate with targets.
+invade: Ground assault initiated. The {them} population will be processed into compliance.
+hold: This world belongs to the Lazax. {them} forces will be converted or erased.
+
+[mentak]
+attack: Nice cargo you've got there, {them}. Mind if we take it? Too late - we're boarding!
+defend: You picked a fight with the Coalition, {them}? Bold. We'll salvage whatever's left of you.
+invade: Raiding party's going down, {them}! Anything not bolted to the planet is ours.
+hold: You want this rock, {them}? Pirates don't hand over their stash without a scrap.
+
+[naalu]
+attack: How amusssing, {them}. We sssaw this battle long ago - and you have already lossst it.
+defend: You ssstrike at the Collective, {them}? We foresaw that too. It endsss badly for you.
+invade: Our warriors dessscend, {them}. Do not bother resisting - we have ssseen how this goes.
+hold: This world isss ours, {them}. Every step you take here, we sssaw coming.
+
+[nekro]
+attack: Target | Acquired
+defend: Hostility | Logged
+invade: Assimilation | Begins
+hold: Defense | Absolute
+
+[sardakk]
+attack: {them} ships! N'orr smash! Glory to the swarm! SKREEE!
+defend: {them} fight N'orr? Good! N'orr love fight! Come closer!
+invade: N'orr land now! {them} world belong to swarm! SKREEE!
+hold: {them} come to N'orr nest? N'orr bite heads off! Glory!
+
+[jolnar]
+attack: Commencing a live-fire experiment on {them} hulls. Hypothesis: they will not survive. Recording results.
+defend: {them} has initiated hostilities - a statistically unwise choice. Our weapons research thanks you for the data.
+invade: A field study begins on your world, {them}. Specimens who resist will be catalogued posthumously.
+hold: Our planetary defences are peer-reviewed, {them}. Your assault is a deeply flawed methodology.
+
+[winnu]
+attack: You stand between the Winnu and our birthright, {them}. That is the last mistake you will make.
+defend: Strike the Winnu, {them}, and you strike the rightful heirs of the throne. You will regret it.
+invade: This world will kneel to its true rulers, {them}. Your garrison will be the first to learn.
+hold: The Winnu have been driven from too much already, {them}. Not this world. Never again.
+
+[xxcha]
+attack: We regret this, {them}. We asked so patiently. Now our guns must speak where our words could not.
+defend: You strike first, {them}. We are slow to anger... but we are very, very hard to break.
+invade: Our soldiers land slowly, {them}, but they do not stop. Please surrender; we would prefer it.
+hold: Our shells have weathered longer storms than you, {them}. Strike all you like - we endure.
+
+[yin]
+attack: Rejoice, {them}! Today the Brotherhood brings you the truth - by force, if it must.
+defend: You raise arms against the faithful, {them}? Every one of us who falls is reborn.
+invade: Brothers descend upon your world, {them}. Its people will be shown the true path, all of them.
+hold: We are many, and we are one, {them}. Break a brother here, and another takes his place.
+
+[yssaril]
+attack: We've watched your fleet for days, {them}. We know where it's weak. Shall we show you?
+defend: You came looking for us, {them}? Funny. We were already behind you.
+invade: Our agents landed before you knew to look, {them}. The rest of us are just catching up.
+hold: You'll never find all of us on this world, {them}. But we'll find all of you.
+
+[argent]
+attack: The Flight descends, {them}. Talons out. The hunt begins now.
+defend: You hunt the Flight, {them}? Then you will learn what it is to be prey.
+invade: We drop from the sky upon your world, {them}. Nothing on the ground escapes a raptor.
+hold: Our nest is not for taking, {them}. The Flight defends it, beak and talon.
+
+[cabal]
+attack: Ahh, {them}... you smell of fear and fuel. Come closer. We are so very hungry.
+defend: You came to us, {them}? How thoughtful. We had hoped you would bring your whole fleet.
+invade: We are coming down to dine, {them}. Your world will make such a lovely feast.
+hold: Stay a while, {them}. This world has a way of keeping its guests... forever.
+
+[empyrean]
+attack: The dark has noticed you, {them}... and now it moves. Can you hear it breathing?
+defend: You strike at the void, {them}. The void does not bleed... but it remembers.
+invade: We step down from the nebula, {them}... quietly. You will only know when it is over.
+hold: This world belongs to the dark between the stars, {them}. You cannot hold what you cannot see.
+
+[mahact]
+attack: Kneel, {them}. Your fleet is ours to break, as we broke kings before you.
+defend: You raise your hand against us, {them}? We will take that hand, and the will behind it.
+invade: We claim your world, {them}. Your people will learn the obedience their ancestors forgot.
+hold: You set foot in our domain, {them}? We will bend your soldiers' minds until they fight for us.
+
+[naaz]
+attack: Sorry, {them} - you're parked on our dig site. Mechs, clear the area!
+defend: Hey, {them}, we're working here! Fine - the drills double as guns.
+invade: Mechs are going down, {them}! We'll be careful with the rocks... mostly.
+hold: You want this site, {them}? Our mechs built it, and our mechs will defend it.
+
+[nomad]
+attack: I have seen this battle a thousand times, {them}. In every one of them, I win. Stand aside.
+defend: You strike at me, {them}? I am everywhere at once. You cannot strike all of me.
+invade: I land on your world because the future demands it, {them}. There is no time to explain.
+hold: This world matters to what is coming, {them}. I will not let you take it. Not this time.
+
+[titans]
+attack: You woke us, {them}... Now we rise... and the stars shake.
+defend: You strike at the giants, {them}... We have slept through worse. We will not sleep through you.
+invade: We come down from the sky, {them}... as mountains fall. Slowly. Completely.
+hold: The ground here remembers us, {them}... and we are the ground. Try to move it.
+
+[keleres]
+attack: Dispatch, Keleres command - engaging {them} now. All units, weapons free.
+defend: Officers under fire! {them} has opened hostilities. Requesting full response - all units, converge.
+invade: Keleres strike team making planetfall on a {them} world. Suspects, lay down your weapons.
+hold: Code 10-33, this world is under Council protection. {them} forces, you are ordered to stand down.
+
+[bastion]
+attack: Here we go again, {them}! Another war - you'd think we'd be tired by now. We're not.
+defend: Oh, {them} wants a fight? Get in line. Our scars have scars.
+invade: Boots down, {them}! We've buried a whole world already. Yours won't even make us sweat.
+hold: We lost one home, {them}. We are not losing another. Come and try.
+
+[ralnel]
+attack: Engaging {them}. Quick in, quick out - we've already planned three exits. Go, go, go!
+defend: {them} jumped us - fine, plan B. We always have a plan B. And a C.
+invade: Drop crews moving, {them}. In and done before your garrison finds its boots.
+hold: Holding this depot, {them}. Every crate is booby-trapped. Every corridor, too.
+
+[deepwrought]
+attack: Oh dear, {them} - we must initiate kinetic-hydrodynamic hostilities. We are dreadfully sorry about the outcome!
+defend: {them}, you have caused us a regrettable pressure differential! We shall have to equalize it. With torpedoes.
+invade: Our aquatic infantry are disembarking onto your world, {them}. Do offer them a towel, if you can.
+hold: Our seas run very deep, {them}. We must insist you do not dive in - it is quite fatal, we are sorry to say.
+
+[crimson]
+attack: We see what you have, {them}... and we want it. So we will take it... piece... by piece.
+defend: You dare touch us, {them}? You, who have everything... we will leave you with nothing.
+invade: This world was always wasted on you, {them}... we slip in through the cracks now.
+hold: Even this world you want, {them}? Greedy... then we will bury you in it.
+
+[firmament]
+attack: We protect the galaxy, {them} - even from you. Be still. This will be over soon.
+defend: You strike the guardians, {them}? We forgive you. We will still stop you.
+invade: We descend to shelter your world from you, {them}. Its people will be safe with us.
+hold: This world is under our protection, {them}. Lay down your arms, and be blessed.
+
+[obsidian]
+attack: We protect... (DEVOUR) ... the galaxy, {them}. Your fleet will be so quiet (SO QUIET) when we are done.
+defend: You strike us, {them}? Good. (GOOD) The void has been so very hungry.
+invade: We come down to bless your world, {them}... (BREAK IT) ... bless it. Bless it.
+hold: Stay, {them}. (STAY FOREVER) This world keeps everything it is given.
+
+[augers]
+attack: We have already seen your fleet break, {them}. Now it only remains to happen.
+defend: You attacked us, {them}. We saw it yesterday. We saw how it ends, too.
+invade: Your world has already fallen, {them}. We are simply arriving to watch it.
+hold: In every future we have seen, {them}, this world stays ours. Test that, if you like.
+
+[axis]
+attack: Live demonstration time, {them}! Watch closely - everything you see is available for purchase afterward.
+defend: Shooting at the Shipwrights, {them}? We build the best guns in the galaxy, and we kept the good ones.
+invade: Product testing on your world, {them}! Our new ground units need field reviews.
+hold: You want this shipyard, {them}? Every turret here is a display model, and they all work.
+
+[bentor]
+attack: The Conglomerate is liquidating your fleet, {them}. Consider it a forced asset sale.
+defend: Attacking our investment, {them}? Our shareholders hate that. Our gunners love it.
+invade: Survey teams are landing, {them}. Whatever's buried on your world, the Conglomerate is claiming it.
+hold: This claim is staked, {them}. Jump it, and we bury you with the rest of the treasure.
+
+[kjalengard]
+attack: At last, a fight! Ready your best, {them} - the skalds will sing of this day!
+defend: You come at us with axes drawn, {them}? Wonderful! It has been far too long.
+invade: We storm your shores, {them}! Fire in the sky, frost on the ground, glory everywhere!
+hold: Come and take it, {them}! We have waited all season for a worthy fight!
+
+[celdauri]
+attack: We regret to inform you, {them}, that your account is closed. The docks' guns will see you out.
+defend: Hostilities from {them} detected. Our port defences are now open for business.
+invade: Port security is landing on your world, {them}. Please keep your hands where we can see them.
+hold: Our docks are heavily armed, {them}, as we did mention. Do turn back while you still can.
+
+[cheiran]
+attack: klk... The Horde comes, {them}. Slow. Heavy. Unstoppable. klk.
+defend: You strike the shell, {them}? The shell does not crack. The claws, however, close.
+invade: The brood descends upon your world, {them}. klk-klk... there are always more of us.
+hold: These are the Horde's waters, {them}. You will drown in claws before you take them.
+
+[cymiae]
+attack: FINALLY! {them}, we are going to RIP your ships apart! WAR! WAR!
+defend: You hit us, {them}?! YOU HIT US?! Now we tear your whole fleet to PIECES!
+invade: We are coming DOWN, {them}! Every soldier on that rock is OURS!
+hold: You want our world, {them}? COME ON THEN! We will break every bone you have!
+
+[dihmohn]
+attack: The current has turned, {them}. We are sorry. The Flotilla must drift through you.
+defend: We only wished to pass, {them}... but even driftwood can be sharp. We defend ourselves.
+invade: We come ashore gently, {them}... but we come ashore. Please do not resist.
+hold: This harbour shelters the Flotilla, {them}. We will not let it be taken.
+
+[edyn]
+attack: It is decreed, {them}: your fleet shall be broken, and peace restored. So it is written.
+defend: You have raised arms against the Mandate, {them}. The law answers with judgement.
+invade: The Mandate descends to bring your world order, {them}. Rejoice; it is a gift.
+hold: This world lies under the Mandate's law, {them}. Defiance here is answered without mercy.
+
+[florzen]
+attack: Lovely ships, {them}! We'll take the guns, the cargo and the hulls - and leave you the escape pods. Maybe.
+defend: You shot at us, {them}? Now we're taking everything. Even the paint.
+invade: Boarding the whole planet, {them}! Grab the loot, burn the rest!
+hold: Our loot, {them}! Touch one crate and we strip your fleet down to the bolts.
+
+[freesystems]
+attack: The Compact stands against tyranny, {them} - and today, that means you. Free worlds, open fire!
+defend: You attack the free worlds, {them}? Then every one of them answers. Together!
+invade: We land to free your world, {them} - whether you like it or not. Liberty is coming.
+hold: This world chose freedom, {them}. Its people will defend that choice to the last.
+
+[ghemina]
+attack: Raise the banners, {them}, the raiders are upon you! || ...and we never sail home empty-handed.
+defend: You dare attack our longships, {them}? || How brave. How short.
+invade: Our warriors storm your shore, {them}! || Take everything. Leave nothing standing.
+hold: You come for our hall, {them}? || Then you will never leave it.
+
+[ghoti]
+attack: The tide turns against you, {them}. The whole school moves as one now.
+defend: You disturb the All Mother's waters, {them}. The deep rises to meet you.
+invade: Our shoal swims down to your world, {them}. The current carries us ashore.
+hold: These waters are home, {them}. The school will close around you, and you will sink.
+
+[gledge]
+attack: Right, {them}. Overtime it is. Fire up the drills - this won't take a full shift.
+defend: You hit our rigs, {them}? Union rules say we hit back. Hard.
+invade: Shift's landing, {them}. We'll dig you out like everything else.
+hold: This is our mine, {them}. You want it, you go through the whole Union.
+
+[khrask]
+attack: You scar... the living worlds... {them}. The mountain... moves against you now.
+defend: You strike stone... {them}. Stone... does not break. Stone... waits.
+invade: We descend... {them}... to heal what you have wounded. Stand aside... or be buried.
+hold: This land... is alive... {them}. It will not... let you poison it. Neither... will we.
+
+[kollecc]
+attack: Such a rare little fleet, {them}. We simply must add it to the collection.
+defend: You struck at us, {them}? How rude. You did not see the rest of our ships... until now.
+invade: Your world holds such lovely treasures, {them}. Our curators are coming to collect them.
+hold: Please do not touch the exhibits, {them}. Our guards are trained to handle vandals.
+
+[kolume]
+attack: This one takes no joy in it, {them}. The river moves, and today it moves through you.
+defend: You bring violence to stillness, {them}. Stillness answers. Balance will return.
+invade: This one descends to your world, {them}. All things change hands in time. Today is that time.
+hold: This one remains, {them}, as the mountain remains. Strike, and learn what stillness is.
+
+[kortali]
+attack: The court finds you guilty, {them}. Sentence: destruction. It is carried out now.
+defend: Assault on the Tribunal, {them}. The verdict is swift, and it is final.
+invade: The Queen's judgement descends upon your world, {them}. The guilty will be punished.
+hold: This world is under the Queen's law, {them}. Trespass here is a capital offence.
+
+[kyro]
+attack: Blessings, {them}! The plague-fleet comes to share its gifts with you. Hold still!
+defend: You attack the pilgrims, {them}? How kind - now we can share our blessing up close.
+invade: Our pilgrimage reaches your world, {them}! Every soul there will be anointed.
+hold: Come and take this blessed world, {them}. Breathe deep - the air here is a gift.
+
+[lanefir]
+attack: We have watched a civilization fall before, {them}. Today we write a new chapter - and yours ends here.
+defend: Strike us, {them}, and the chronicle grows another page of ruin. We have written many.
+invade: We land on your world, {them}, to salvage what can still be saved. Resist, and nothing will be.
+hold: These ruins are all that remain of us, {them}. We will not lose them twice.
+
+[lizho]
+attack: Ah, {them}, what a delightful meeting! Do mind the trap - oh. Too late.
+defend: You attacked us, {them}? How charming. And exactly as we hoped you would.
+invade: We drop in unannounced, {them} - so rude, we know. You'll find the welcome... surprising.
+hold: Of course you may land here, {them}. We prepared the floor especially for you.
+
+[mirveda]
+attack: For your protection, {them}, your fleet is being neutralized. Please remain calm.
+defend: Hostile activity from {them} detected. Countermeasures engaged. Thank you for your patience.
+invade: Security personnel are deploying to your world, {them}. Please cooperate fully.
+hold: This facility is secured, {them}. Unauthorized personnel will be removed. Permanently.
+
+[mortheus]
+attack: What does the moth see before the flame, {them}?... Look closely now... it is us.
+defend: You strike at light, {them}... and light scatters... and burns.
+invade: We drift down like starlight, {them}... and your world will dream our dream.
+hold: Here the glow is thickest, {them}... and those who walk into it do not walk out.
+
+[mykomentori]
+attack: The signs foretold this, {them}. Your fleet rots from within before we even fire.
+defend: You struck the network, {them}. Every thread you cut grows back... toward you.
+invade: Our spores settle on your world, {them}. Slowly, softly, everything becomes ours.
+hold: This ground is threaded with us, {them}. Step carefully... every step feeds the rot.
+
+[nivyn]
+attack: Space folds as we will it, {them}. Your fleet now lies in our hand.
+defend: You strike at the Star Kings, {them}? We have outlasted stars. We will outlast you.
+invade: We descend upon your world, {them}, as night descends. Unhurried. Absolute.
+hold: This world sits beneath our throne of stars, {them}. You will not reach it.
+
+[nokar]
+attack: Contract's signed, {them}. Nothing personal - you're just the job today.
+defend: You opened fire on the Sellships, {them}? That's a fight we'd take for free.
+invade: Boots on the ground, {them}. We're paid by the planet, so let's be quick.
+hold: We were paid to hold this rock, {them}. And we always finish the contract.
+
+[olradin]
+attack: Motion to destroy the {them} fleet - all in favour? Unanimous! Open fire!
+defend: The People have voted, {them}: you attacked us, so we hit back harder. Motion carried!
+invade: The League has voted to take your world, {them}. The Environment is nervous; the People are not.
+hold: The committee has spoken, {them} - nobody takes this world. Not even on a recount.
+
+[zealots]
+attack: Your heretic machines will burn, {them}. Purify them in fire!
+defend: You raise forbidden weapons against the faithful, {them}? Heresy upon heresy!
+invade: The inquisition descends on your world, {them}. Every proud machine will be broken.
+hold: This holy ground rejects your machines, {them}. Come, and be cleansed.
+
+[rohdhna]
+attack: Combat Protocol 77-01A is now in effect. {them} vessels are reclassified as scrap. Proceeding.
+defend: Section 12-B, Self-Defence Clause: {them} has initiated hostilities. Lethal response authorized.
+invade: Planetary Acquisition Directive 3-3K applies to your world, {them}. Resistance voids all warranties.
+hold: Asset Protection Statute 41-9F: this world is property. {them} forces will be removed per regulation.
+
+[tnelis]
+attack: You didn't pay your respects, {them}. The family's here to collect - with interest.
+defend: You hit one of ours, {them}? Big mistake. The family takes care of its own.
+invade: The family's moving into your neighbourhood, {them}. Nothing personal - just business.
+hold: This is family territory, {them}. You come here, you don't leave.
+
+[vaden]
+attack: Your account is delinquent, {them}. The collectors are here to repossess your fleet.
+defend: Firing on your creditors, {them}? That adds a hefty penalty to your balance.
+invade: Your world is now collateral, {them}. The bailiffs are landing.
+hold: This vault is not for sale, {them}. Attempted robbery carries the steepest interest of all.
+
+[vaylerian]
+attack: We caught your scent long ago, {them}. Run, if you want - we do enjoy the chase.
+defend: You turned to fight, {them}? Good. Prey that bites is so much more fun.
+invade: We're on your world now, {them}. Hide anywhere you like. We'll find you.
+hold: You walked into our den, {them}. That's the last mistake prey ever makes.
+
+[veldyr]
+attack: We're initiating a hostile takeover of your fleet, {them}. Effective immediately.
+defend: {them} has attacked a Veldyr branch office. The board has approved a decisive response.
+invade: Your world is our newest acquisition, {them}. Staff will be retained... selectively.
+hold: This branch is not for sale, {them}. Our security department will see you out.
+
+[zelian]
+attack: KRRGHHHKKRRR... [Your fleet lies in the path of the impact, {them}. Brace.]
+defend: RRRGHKKK... [You strike stone, {them}. Stone strikes back harder.]
+invade: KKRRRGGHHHRR... [We fall upon your world, {them}. It will be purified.]
+hold: GRRRKKHHHRR... [This rock does not move, {them}. You will break upon it.]

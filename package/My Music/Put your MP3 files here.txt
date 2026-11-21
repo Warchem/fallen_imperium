@@ -1,0 +1,24 @@
+MY MUSIC - Fallen Imperium's music player
+==========================================
+
+Put your own MP3 files in this folder. You can also make folders inside it
+(one per album, say) - the game looks two folders deep.
+
+Then start the game and open:  Options -> Music player
+
+There you choose what plays during a game:
+  - Game soundtrack (the game's own music - the default)
+  - My Music (your songs)
+  - Both
+
+and whether they play in order or shuffled. Tick a song off to skip it, or
+listen to one right there. Press Y (or click "Look for new songs") after
+adding files while the game is running.
+
+The title screen keeps its own theme.
+
+Song names come from the files' tags (title and artist). Files without tags
+show their file name - "Artist - Title.mp3" is read as artist and title.
+
+Only MP3 files are played. When the game is updated, this folder and your
+songs stay where they are.

@@ -284,7 +284,12 @@ float outcomeValue(const Game& g, int p, int a, int o) {
         return me.vp == lo ? 3.f : -0.5f;
     }
     if (is("economic_equality")) return f ? (5.f - me.tradeGoods) * 0.3f : -me.tradeGoods * 0.3f;
-    if (is("incentive")) return 0.3f;
+    if (is("incentive")) {  // (0.65.0) For: a stage I objective (early, for whoever is behind); Against: a stage II (leaders)
+        int most = 0;
+        for (const Player& q : g.players) most = std::max<int>(most, q.vp);
+        if (f) return g.round <= 4 || me.vp < most - 1 ? 0.5f : 0.2f;
+        return me.vp >= most - 1 && g.round >= 4 ? 0.6f : 0.2f;
+    }
     if (is("regulations")) return f ? -std::max(0, me.fleet - 4) * 1.f - 0.2f : 0.4f;
     if (is("rearmament")) {
         if (f) return 0.8f;
@@ -305,8 +310,16 @@ float outcomeValue(const Game& g, int p, int a, int o) {
         if (f) return ws ? -0.5f : 0.3f;
         return ws ? -0.4f * float(me.actionCards.size()) : 0.2f;
     }
-    if (is("conventions")) return f ? 0.1f : -0.2f;
-    if (is("conscription")) return f ? -0.4f : 0.f;
+    if (is("conventions")) {  // (0.65.0) For: no bombardment of cultural planets - bad for whoever bombards
+        if (!f) return 0.f;  // (Against: who voted Against discards their hand - ai_votes counts it for the voter)
+        int big = unitsOnBoard(g, p, UnitType::Dreadnought) + unitsOnBoard(g, p, UnitType::WarSun);
+        if (isFaction(g, p, "l1z1x")) big += 2;
+        return 0.1f - 0.12f * float(big);
+    }
+    if (is("conscription")) {  // (0.65.0) For: 1 fighter / infantry per cost - worse the more of them it builds
+        if (!f) return 0.f;
+        return -0.2f - 0.03f * float(unitsOnBoard(g, p, UnitType::Infantry) + unitsOnBoard(g, p, UnitType::Fighter));
+    }
     if (is("rep_govt")) {
         int mine = availableVotes(g, p), total = 0, cnt = 0;
         for (int q = 0; q < n; ++q)
@@ -340,9 +353,30 @@ float outcomeValue(const Game& g, int p, int a, int o) {
         }
         return f ? 1.f - units * 0.25f : 0.f;
     }
-    if (is("shared_research")) return f ? 0.2f : -0.4f;
-    if (is("travel_ban")) return f ? 0.f : -0.3f;
-    if (is("wormhole_recon")) return f ? 0.f : -0.3f;
+    if (is("shared_research")) return f ? 0.2f : -0.6f;  // (0.65.0: Against puts a token in our own home system)
+    // (0.65.0) the wormhole laws by the board: ships in wormhole systems, PDS beside them
+    if (is("travel_ban") || is("wormhole_recon") || is("nexus")) {
+        int shipsAt = 0, pdsNear = 0, othersPds = 0, tokenSys = 0;
+        for (size_t s = 0; s < g.systems.size(); ++s) {
+            const SystemState& sy = g.systems[s];
+            const bool wh = (sy.d().wormholes & (kAlpha | kBeta)) != 0;
+            bool nearWh = wh;
+            for (int16_t a2 : sy.adj) nearWh = nearWh || (g.systems[size_t(a2)].d().wormholes & (kAlpha | kBeta)) != 0;
+            if (wh) shipsAt += sy.space[size_t(p)].nonFighterShips();
+            if (sy.d().wormholes && sy.space[size_t(p)].ships() > 0) ++tokenSys;
+            if (!nearWh) continue;
+            for (int16_t x : sy.planets)
+                for (int q = 0; q < n; ++q) (q == p ? pdsNear : othersPds) += g.planets[size_t(x)].units[size_t(q)].count(UnitType::PDS);
+        }
+        if (is("travel_ban")) return f ? -0.1f * float(shipsAt) : -0.5f * float(pdsNear) + 0.12f * float(othersPds);
+        if (is("wormhole_recon")) return f ? 0.08f * float(shipsAt) : -0.4f * float(tokenSys);
+        // Nexus Sovereignty - Against: a gamma wormhole on Mecatol Rex (more ways in for everyone)
+        const int mec = g.mecatol();
+        bool holdMec = false;
+        if (mec >= 0)
+            for (int16_t x : g.systems[size_t(mec)].planets) holdMec = holdMec || g.planets[size_t(x)].owner == p;
+        return f ? 0.f : (holdMec ? -0.7f : 0.15f);
+    }
     if (is("wormhole_research")) {
         if (!f) return -0.2f;
         float v = 0;
@@ -358,8 +392,11 @@ float outcomeValue(const Game& g, int p, int a, int o) {
         for (const Law& l : g.laws) laws += lawLikeValue(g, p, l.agenda);
         return f ? -laws - 0.3f : 0.f;
     }
-    if (is("checks")) return f ? 0.f : -0.2f;
-    if (is("cladenstine")) return 0.f;
+    if (is("checks")) {  // (0.65.0) Against: only 3 planets ready after this agenda phase - worse the more planets it has
+        if (f) return 0.f;
+        return -0.1f - 0.08f * float(std::max(0, int(controlledPlanets(g, p).size()) - 3));
+    }
+    if (is("cladenstine")) return f ? -0.5f : -0.35f - (me.fleet <= 3 ? 0.25f : 0.f);  // (0.65.0) 2 tokens vs 1 fleet token
     if (is("articles_war")) return f ? 0.f : 0.5f;
     return 0.f;
 }
@@ -850,7 +887,11 @@ Answer cardTarget(const Game& g, const Decision& d) {
         if (is("overrule")) return one(strategizePick(g, p, d, true));
         if (is("piratecontract") || is("piratefleet")) return one(bestBy([&](int s) { return pirateSpotValue(g, p, s); }));
         if (is("mercenarycontract")) return one(bestBy([&](int x) { return mercenarySpotValue(g, p, x); }));
-        if (is("brilliance")) return one(bestBy([&](int x) { return float(planetResources(g, x)) + 0.5f * float(planetInfluence(g, x)); }));
+        if (is("brilliance"))  // (0.61.0) our own breakthrough first - never another player's
+            return one(bestBy([&](int x) {
+                if (x >= 100000) return x - 100000 == p ? 20.f : -100.f;
+                return float(planetResources(g, x)) + 0.5f * float(planetInfluence(g, x));
+            }));
         if (is("exchangeprogram")) {
             if (d.prompt.find("which planet") != std::string::npos)  // ours on their best planet (if theirs ever leave, it's ours)
                 return one(bestBy([&](int x) { return aiPlanetValue(g, p, x); }));
@@ -1094,6 +1135,7 @@ float aiComponentValue(const Game& g, int p, int option) {
             float best = 0.f;
             for (int x : controlledPlanets(g, p))
                 if (g.planets[size_t(x)].exhausted && planetHasSkip(g, x)) best = std::max(best, float(planetResources(g, x)));
+            if (g.fixes >= 31 && breakthroughsOn(g) && !me.breakthrough) best = std::max(best, 9.f);  // (0.61.0) our breakthrough
             return 0.3f * best;
         }
         if (is("exchangeprogram")) return 0.2f;
@@ -1254,6 +1296,22 @@ bool aiCardsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
             return true;
         }
         case Tag::VoteOutcome: {
+            if (aiVotePlanOn()) {  // 0.65.0: the voting plan (ai_votes.cpp)
+                std::vector<int> outs;
+                bool canAbstain = false;
+                for (const Option& o : d.options) {
+                    if (o.id == -100) canAbstain = true;
+                    else if (o.enabled) outs.push_back(o.id);
+                }
+                const Style& S = aiStyle(g, p);
+                // must vote: no Abstain offered (Special Session), a grudge to settle (Kingslayer, a betrayal), Odlynn
+                // Myrr's free votes (the Keleres switch kelodlynn)
+                const bool must = !canAbstain || S.voteAgainst >= 0 ||
+                                  (aiTune("kelodlynn", 0.f) > 0.f && d.context.find("Odlynn Myrr: 6 more.") != std::string::npos);
+                const VotePlan plan = aiVotePlan(g, p, d.agenda, outs, d.value, must, d.riderBet, d.riderCard, d.predicted, -100);
+                out = one(plan.outcome == -100 && canAbstain ? -100 : has(d, plan.outcome) ? plan.outcome : (outs.empty() ? first(d) : outs[0]));
+                return true;
+            }
             int best = -100;
             float bv = 0.2f;
             // personalities: vote against the points leader (Spoiler, Kingslayer) or a betrayal target
@@ -1302,6 +1360,58 @@ bool aiCardsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
             return true;
         }
         case Tag::VotePlanets: {
+            if (aiVotePlanOn()) {  // 0.65.0: as many votes as the plan says, from the fewest planets that make them
+                const int a = d.agenda >= 0 ? d.agenda : g.currentAgenda;
+                const int o = d.value;
+                int have = 0;
+                for (int x : d.planets) have += d.mixed ? std::max(voteValue(g, p, x), planetResources(g, x)) : voteValue(g, p, x);
+                // the votes that come after the planets (ocean cards, Bannerhalls, Custodia Vigilia - the AI always adds
+                // them): the plan counts all of them, the planets make up the rest
+                const int extra = d.mixed ? 0 : std::max(0, availableVotes(g, p) - have);
+                const int avail = have + extra;
+                // promised to someone (and keeping it): a fair share of its votes, all of them on the phase's last agenda
+                bool promised = false;
+                for (const Promise& pr : g.promises)
+                    if (pr.state == kPromiseActive && pr.by == p && pr.kind == PromiseKind::VoteFor && pr.agenda == g.currentAgenda && pr.target == o)
+                        promised = true;
+                VotePlan plan = aiVotePlan(g, p, a, {}, avail, false, d.riderBet, d.riderCard, d.predicted, -100);
+                int want;
+                if (plan.outcome == o) {
+                    want = plan.planetVotes;
+                } else {  // promised or forced (Genetic Recombination): how many it takes for that outcome
+                    const VotePlan forced = aiVotePlan(g, p, a, {}, avail, false, d.riderBet, d.riderCard, d.predicted, o);
+                    want = forced.planetVotes;
+                    // Genetic Recombination made it back an outcome it doesn't want: as few as the rules allow
+                    if (d.amount > 0 && !promised && aiVoteWorth(g, p, a, o, o) < aiVoteWorth(g, p, a, plan.ifAbstain, -100)) want = 1;
+                }
+                if (promised) want = std::max(want, g.phase == Phase::Agenda && g.agendaNumber >= 1 ? avail : (avail * 3 + 4) / 5);
+                if (want > 0) want = std::max(1, want - extra);
+                if (d.amount > 0) want = std::max(want, d.amount);
+                out = Answer();
+                out.picks = aiVotePlanets(g, p, d.planets, want, d.mixed);
+                if (out.picks.empty() && d.amount > 0) {  // at least 1 vote (Genetic Recombination): the smallest planet that votes
+                    int small = -1;
+                    for (int x : d.planets)
+                        if (voteValue(g, p, x) >= 1 && (small < 0 || voteValue(g, p, x) < voteValue(g, p, small))) small = x;
+                    if (small >= 0) out.picks.push_back(small);
+                }
+                // Envoy Network (Free Systems, 0.44.6): a cultural, a hazardous and an industrial planet among them make 4
+                // more votes - add the cheapest planet of each trait still missing (even one with no influence)
+                if (ownsTechKey(g, p, "dsfreeg") && !out.picks.empty()) {
+                    for (Trait tr : {Trait::Cultural, Trait::Hazardous, Trait::Industrial}) {
+                        bool haveT = false;
+                        for (int x : out.picks) haveT = haveT || hasTraitOf(g, x, tr);
+                        if (haveT) continue;
+                        int cheap = -1;
+                        for (int x : d.planets)
+                            if (hasTraitOf(g, x, tr) && std::find(out.picks.begin(), out.picks.end(), x) == out.picks.end() &&
+                                (cheap < 0 || planetInfluence(g, x) < planetInfluence(g, cheap)))
+                                cheap = x;
+                        if (cheap >= 0) out.picks.push_back(cheap);
+                    }
+                }
+                return true;
+            }
             // Keep some planets for the second agenda unless this one matters a lot.
             int a = g.currentAgenda >= 0 ? g.currentAgenda : d.agenda;
             float stake = std::fabs(outcomeValue(g, p, a, d.value));

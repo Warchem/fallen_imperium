@@ -27,6 +27,9 @@ public:
     Rect drawArea() const { return area_.w > 0 ? area_ : view_; }
     void setZoom(int z);
     int zoom() const { return zoom_; }
+    // (0.63.0) the New Game previews: the whole map at the tile size that fits `area` (between zoom levels; the camera
+    // centres it there)
+    void fitTo(const ti::Game& g, Rect area);
     float tileSize() const;
 
     // Keyboard & mouse (0.27.0, owner: "like Hearts of Iron 4 / Total War"): a free
@@ -42,6 +45,8 @@ public:
     int hitDraftCell(const ti::Game& g, float x, float y) const;
     // Where an open space is drawn now (its centre and hex radius); false if it isn't one.
     bool draftCellAt(const ti::Game& g, int cell, float& x, float& y, float& size) const;
+    // (0.73.5) where a system is drawn now (its centre and hex radius); false if there is none
+    bool systemAt(const ti::Game& g, int sys, float& x, float& y, float& size) const;
     void pointAt(const ti::Game& g, int what);  // the cursor goes there; the camera stays
     bool freeCamera() const { return free_; }
 
@@ -131,6 +136,17 @@ public:
         draftSpots_.clear();
         draftCell_ = draftDef_ = -1;
     }
+    // 0.61.2: empty spaces to choose at the edge of the board (Star Charts, Age of Exploration...): drawn as lit-up slots,
+    // `sel` with a gold rim; hitFreeSpot = the one under a point (-1 none)
+    void setFreeSpots(const std::vector<Hex>& spots, int sel) {
+        freeSpots_ = spots;
+        freeSel_ = sel;
+    }
+    void clearFreeSpots() {
+        freeSpots_.clear();
+        freeSel_ = -1;
+    }
+    int hitFreeSpot(const ti::Game& g, float x, float y) const;
     // A system tile on its own (not on the map): the hand of tiles, previews.
     // now: the Retrowave animations' time (0 = the map's)
     static void drawTile(Canvas& c, int def, float cx, float cy, float size, uint32_t now = 0);
@@ -181,6 +197,9 @@ private:
     mutable std::vector<int> grid_;      // board position -> system (for neighbours)
     int ownerAt(Hex h) const;
     std::vector<int> draftSpots_;
+    std::vector<Hex> freeSpots_;  // (0.61.2)
+    int freeSel_ = -1;
+    void drawFreeSpots(Canvas& c, float ox, float oy, float size, uint32_t now) const;
     int draftCell_ = -1, draftDef_ = -1;
     void drawDraft(Canvas& c, const ti::Game& g, float ox, float oy, float size, uint32_t now) const;
     static void drawWarp(Canvas& c, float cx, float cy, float size, uint32_t now, bool active);

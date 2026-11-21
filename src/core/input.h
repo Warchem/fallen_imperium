@@ -27,6 +27,7 @@ std::string keyText(const std::string& text);     // button names inside a sente
 // 640x480 units whatever the window's size.
 struct Mouse {
     bool active = false;         // a mouse has been used
+    bool inside = false;         // (0.72.0) the pointer is over the window (and it has the focus): edge scrolling
     float x = -1.f, y = -1.f;
     bool moved = false;          // this frame
     bool left = false, right = false;  // held
@@ -63,6 +64,12 @@ public:
         if (x != 0.f || y != 0.f) any_ = true;
     }
     const Mouse& mouse() const { return mouse_; }
+    // (0.63.0) digits typed on the keyboard this frame, in order (number fields)
+    const std::string& typed() const { return typed_; }
+    void type(char ch) {
+        typed_ += ch;
+        any_ = true;
+    }
     Mouse& mouseState() { return mouse_; }
     void touch() { any_ = true; }
 
@@ -76,4 +83,5 @@ private:
     bool any_ = false;
     float panX_ = 0, panY_ = 0;
     Mouse mouse_;
+    std::string typed_;
 };

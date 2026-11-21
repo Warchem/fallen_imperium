@@ -24,6 +24,8 @@
 #include <windows.h>
 #include <mmsystem.h>
 #include <xinput.h>
+#include <d3d11.h>
+#include <dxgi1_2.h>
 
 #include <algorithm>
 #include <cmath>
@@ -35,6 +37,7 @@
 #include <vector>
 
 #include "app/app.h"
+#include "core/keymap.h"
 #include "core/log.h"
 #include "core/settings.h"
 #include "platform/platform.h"
@@ -129,6 +132,7 @@ public:
         controller_ = s.getInt("controls", 0) == 1;
         setKeyboardKeys(!controller_);
         setDeckKeys(controller_);  // pad names: View = START, stick click = SELECT
+        keymap::load(s);  // (0.72.0) the key bindings
         const bool full = s.getInt("fullscreen", 1) == 1;
         if (full != fullscreen_) toggleFullscreen();
         releaseAll();
@@ -137,6 +141,10 @@ public:
     }
 
     void shutdown() override {
+        release(dx_.tex);  // (0.61.2: the DirectX swap chain goes before its window)
+        release(dx_.swap);
+        release(dx_.ctx);
+        release(dx_.dev);
         if (hwnd_) {
             SetWindowLongPtrW(hwnd_, GWLP_USERDATA, 0);
             DestroyWindow(hwnd_);
@@ -203,6 +211,12 @@ public:
         } else {
             std::memcpy(frame_.data(), src, n * 4);
         }
+        // 0.61.2 (owner: "Moving the map left/right causes screen tearing, especially if the voidfall tileset"): the picture goes
+        // through a DirectX swap chain that waits for the screen's refresh (no half-old, half-new picture); GDI if that can't be had
+        if (dxPresent()) {
+            synced_ = true;
+            return;
+        }
         synced_ = dwmFlush_ && dwmFlush_() >= 0;  // (fails when the compositor is off - then no wait)
         HDC dc = GetDC(hwnd_);
         paint(dc);
@@ -222,6 +236,8 @@ public:
             return n[raw - kRawPanUp];
         }
         if (raw >= kRawPad) return "Controller button " + std::to_string(raw - kRawPad);
+        if (raw == kRawPanFast) return "Shift (camera faster)";
+        if (raw > 0 && raw < 256 && portableKey(WPARAM(raw)) != keymap::KNone) return keymap::longName(portableKey(WPARAM(raw)));
         switch (raw) {
             case VK_SPACE: return "Space";
             case VK_BACK: return "Backspace";
@@ -273,6 +289,185 @@ private:
         std::wstring w;
         for (; *s; ++s) w += wchar_t(static_cast<unsigned char>(*s));
         return w;
+    }
+
+    // ---- DirectX presentation (0.61.2): a flip-model swap chain the size of the window; each frame the picture is copied into a
+    // texture (1:1 into its place when it was made for the window, else scaled - nearest - and centred) and the swap chain shows it
+    // at the next refresh (Present 1). Loaded at run time (d3d11.dll); any failure -> the GDI path for the rest of the game. The
+    // settings line "gdi=1" keeps the GDI path.
+    struct Dx {
+        HMODULE lib = nullptr;
+        ID3D11Device* dev = nullptr;
+        ID3D11DeviceContext* ctx = nullptr;
+        IDXGISwapChain1* swap = nullptr;
+        ID3D11Texture2D* tex = nullptr;
+        int w = 0, h = 0, fw = 0, fh = 0;  // the swap chain's size, the picture's size the texture was cleared for
+        bool tried = false, failed = false;
+    } dx_;
+    std::vector<uint32_t> scaled_;
+    template <class T>
+    static void release(T*& p) {
+        if (p) p->Release();
+        p = nullptr;
+    }
+    void dxDrop(const char* why) {
+        LOG("win32: DirectX presentation off (%s) - GDI from here on", why);
+        release(dx_.tex);
+        release(dx_.swap);
+        release(dx_.ctx);
+        release(dx_.dev);
+        dx_.failed = true;
+        InvalidateRect(hwnd_, nullptr, FALSE);
+    }
+    bool dxInit() {
+        if (dx_.failed) return false;
+        if (dx_.swap) return true;
+        if (dx_.tried) return false;
+        dx_.tried = true;
+        if (settings_ && settings_->getInt("gdi", 0) == 1) {
+            dx_.failed = true;
+            LOG("win32: gdi=1 - GDI presentation");
+            return false;
+        }
+        dx_.lib = LoadLibraryW(L"d3d11.dll");
+        auto create = dx_.lib ? reinterpret_cast<PFN_D3D11_CREATE_DEVICE>(reinterpret_cast<void*>(GetProcAddress(dx_.lib, "D3D11CreateDevice"))) : nullptr;
+        if (!create) {
+            dx_.failed = true;
+            LOG("win32: no d3d11.dll - GDI presentation");
+            return false;
+        }
+        const D3D_FEATURE_LEVEL levels[] = {D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_1, D3D_FEATURE_LEVEL_10_0, D3D_FEATURE_LEVEL_9_3};
+        HRESULT hr = create(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, levels, 4, D3D11_SDK_VERSION, &dx_.dev,
+                            nullptr, &dx_.ctx);
+        if (FAILED(hr))  // (no usable GPU: Windows' software renderer still syncs to the screen)
+            hr = create(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, levels, 4, D3D11_SDK_VERSION, &dx_.dev, nullptr,
+                        &dx_.ctx);
+        if (FAILED(hr) || !dx_.dev) {
+            dxDrop("no Direct3D 11 device");
+            return false;
+        }
+        IDXGIDevice* dd = nullptr;
+        IDXGIAdapter* ad = nullptr;
+        IDXGIFactory2* f = nullptr;
+        if (SUCCEEDED(dx_.dev->QueryInterface(__uuidof(IDXGIDevice), reinterpret_cast<void**>(&dd))) && SUCCEEDED(dd->GetAdapter(&ad)))
+            ad->GetParent(__uuidof(IDXGIFactory2), reinterpret_cast<void**>(&f));
+        release(ad);
+        release(dd);
+        if (!f) {
+            dxDrop("no DXGI 1.2 (Windows 8 or later)");
+            return false;
+        }
+        RECT cr;
+        GetClientRect(hwnd_, &cr);
+        DXGI_SWAP_CHAIN_DESC1 sd{};
+        sd.Width = UINT(std::max<LONG>(1, cr.right));
+        sd.Height = UINT(std::max<LONG>(1, cr.bottom));
+        sd.Format = DXGI_FORMAT_B8G8R8A8_UNORM;  // (the canvas's 0x00RRGGBB, byte for byte)
+        sd.SampleDesc.Count = 1;
+        sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+        sd.BufferCount = 2;
+        sd.Scaling = DXGI_SCALING_STRETCH;
+        sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;  // (Windows 10)
+        sd.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;
+        hr = f->CreateSwapChainForHwnd(dx_.dev, hwnd_, &sd, nullptr, nullptr, &dx_.swap);
+        if (FAILED(hr)) {
+            sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;  // (Windows 8)
+            hr = f->CreateSwapChainForHwnd(dx_.dev, hwnd_, &sd, nullptr, nullptr, &dx_.swap);
+        }
+        if (SUCCEEDED(hr)) f->MakeWindowAssociation(hwnd_, DXGI_MWA_NO_ALT_ENTER | DXGI_MWA_NO_WINDOW_CHANGES);  // (F11 / Alt+Enter: ours)
+        release(f);
+        if (FAILED(hr) || !dx_.swap) {
+            dxDrop("no flip-model swap chain");
+            return false;
+        }
+        dx_.w = int(sd.Width);
+        dx_.h = int(sd.Height);
+        LOG("win32: DirectX presentation (%dx%d, %s)", dx_.w, dx_.h,
+            sd.SwapEffect == DXGI_SWAP_EFFECT_FLIP_DISCARD ? "flip discard" : "flip sequential");
+        return true;
+    }
+    bool dxPresent() {
+        if (!dxInit()) return false;
+        RECT cr;
+        GetClientRect(hwnd_, &cr);
+        const int cw = cr.right, ch = cr.bottom;
+        if (cw <= 0 || ch <= 0 || fw_ <= 0) return true;  // (minimised: nothing to show)
+        if (cw != dx_.w || ch != dx_.h) {  // the window's new size
+            release(dx_.tex);
+            if (FAILED(dx_.swap->ResizeBuffers(0, UINT(cw), UINT(ch), DXGI_FORMAT_UNKNOWN, 0))) {
+                dxDrop("ResizeBuffers failed");
+                return false;
+            }
+            dx_.w = cw;
+            dx_.h = ch;
+        }
+        // where the picture goes - as paint() - and the mouse mapping with it
+        int w, h;
+        if (fw_ <= cw && fh_ <= ch && fw_ > kW) {
+            w = fw_;
+            h = fh_;
+        } else {
+            w = cw;
+            h = int(int64_t(cw) * fh_ / fw_);
+            if (h > ch) {
+                h = ch;
+                w = int(int64_t(ch) * fw_ / fh_);
+            }
+        }
+        const int x = (cw - w) / 2, y = (ch - h) / 2;
+        destX_ = x;
+        destY_ = y;
+        destW_ = w;
+        destH_ = h;
+        if (!dx_.tex || dx_.fw != fw_ || dx_.fh != fh_) {  // a black texture the window's size (the bars stay black)
+            release(dx_.tex);
+            D3D11_TEXTURE2D_DESC td{};
+            td.Width = UINT(cw);
+            td.Height = UINT(ch);
+            td.MipLevels = 1;
+            td.ArraySize = 1;
+            td.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+            td.SampleDesc.Count = 1;
+            td.Usage = D3D11_USAGE_DEFAULT;
+            td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+            std::vector<uint32_t> black(size_t(cw) * size_t(ch), 0);
+            D3D11_SUBRESOURCE_DATA init{};
+            init.pSysMem = black.data();
+            init.SysMemPitch = UINT(cw) * 4;
+            if (FAILED(dx_.dev->CreateTexture2D(&td, &init, &dx_.tex))) {
+                dxDrop("CreateTexture2D failed");
+                return false;
+            }
+            dx_.fw = fw_;
+            dx_.fh = fh_;
+        }
+        if (w == fw_ && h == fh_) {  // made for this window: copied pixel for pixel into its place
+            D3D11_BOX box{UINT(x), UINT(y), 0, UINT(x + w), UINT(y + h), 1};
+            dx_.ctx->UpdateSubresource(dx_.tex, 0, &box, frame_.data(), UINT(fw_) * 4, 0);
+        } else {  // scaled (nearest) into the middle of a window-sized picture
+            scaled_.assign(size_t(cw) * size_t(ch), 0);
+            std::vector<int> sx(static_cast<size_t>(w));
+            for (int i = 0; i < w; ++i) sx[size_t(i)] = int(int64_t(i) * fw_ / w);
+            for (int j = 0; j < h; ++j) {
+                const uint32_t* srow = frame_.data() + size_t(int64_t(j) * fh_ / h) * size_t(fw_);
+                uint32_t* drow = scaled_.data() + size_t(y + j) * size_t(cw) + size_t(x);
+                for (int i = 0; i < w; ++i) drow[i] = srow[sx[size_t(i)]];
+            }
+            dx_.ctx->UpdateSubresource(dx_.tex, 0, nullptr, scaled_.data(), UINT(cw) * 4, 0);
+        }
+        ID3D11Texture2D* back = nullptr;
+        if (FAILED(dx_.swap->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&back))) || !back) {
+            dxDrop("GetBuffer failed");
+            return false;
+        }
+        dx_.ctx->CopyResource(back, dx_.tex);
+        release(back);
+        const HRESULT hr = dx_.swap->Present(1, 0);  // (waits for the screen's refresh: no tearing)
+        if (hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET) {
+            dxDrop("the graphics device was lost");
+            return false;
+        }
+        return true;
     }
 
     // The picture, as large as the window allows while keeping its shape (4:3 or wider), centred.
@@ -341,35 +536,57 @@ private:
         LOG("win32: full screen %s", fullscreen_ ? "on" : "off");
     }
 
-    // keys -> buttons (or the camera)
-    int mapKey(WPARAM vk) const {
-        if (!controller_) {
-            switch (vk) {  // keyboard & mouse: WASD is the camera
-                case 'W': return -10 - 0;
-                case 'S': return -10 - 1;
-                case 'A': return -10 - 2;
-                case 'D': return -10 - 3;
-                default: break;
-            }
-        }
+    // (0.72.0) Windows' key codes -> the portable keys of the key bindings (core/keymap)
+    static int portableKey(WPARAM vk) {
+        using namespace keymap;
+        if ((vk >= 'A' && vk <= 'Z') || (vk >= '0' && vk <= '9')) return int(vk);
+        if (vk >= VK_F1 && vk <= VK_F12) return KF1 + int(vk - VK_F1);
+        if (vk >= VK_NUMPAD0 && vk <= VK_NUMPAD9) return KNum0 + int(vk - VK_NUMPAD0);
         switch (vk) {
-            case 'W': case VK_UP: return int(Btn::Up);
-            case 'S': case VK_DOWN: return int(Btn::Down);
-            case 'A': case VK_LEFT: return int(Btn::Left);
-            case 'D': case VK_RIGHT: return int(Btn::Right);
-            case VK_SPACE: return int(Btn::A);
-            case VK_BACK: return int(Btn::B);
-            case 'X': return int(Btn::X);
-            case 'V': return int(Btn::Y);
-            case 'Q': return int(Btn::L1);
-            case 'E': return int(Btn::R1);
-            case 'Z': return int(Btn::L2);
-            case 'C': case VK_TAB: return int(Btn::R2);  // Tab: view the map
-            case VK_RETURN: return int(Btn::Start);
-            case 'R': return int(Btn::Select);
-            case VK_ESCAPE: return int(Btn::Menu);       // Esc: the game menu (owner, 0.27.0)
-            default: return int(Btn::None);
+            case VK_SPACE: return KSpace;
+            case VK_BACK: return KBackspace;
+            case VK_TAB: return KTab;
+            case VK_RETURN: return KEnter;
+            case VK_ESCAPE: return KEsc;
+            case VK_UP: return KUp;
+            case VK_DOWN: return KDown;
+            case VK_LEFT: return KLeft;
+            case VK_RIGHT: return KRight;
+            case VK_SHIFT: case VK_LSHIFT: case VK_RSHIFT: return KShift;
+            case VK_CONTROL: case VK_LCONTROL: case VK_RCONTROL: return KCtrl;
+            case VK_MENU: case VK_LMENU: case VK_RMENU: return KAlt;
+            case VK_INSERT: return KInsert;
+            case VK_DELETE: return KDelete;
+            case VK_HOME: return KHome;
+            case VK_END: return KEnd;
+            case VK_PRIOR: return KPageUp;
+            case VK_NEXT: return KPageDown;
+            case VK_CAPITAL: return KCapsLock;
+            case VK_ADD: return KNumAdd;
+            case VK_SUBTRACT: return KNumSub;
+            case VK_MULTIPLY: return KNumMul;
+            case VK_DIVIDE: return KNumDiv;
+            case VK_DECIMAL: return KNumDot;
+            case VK_OEM_MINUS: return '-';
+            case VK_OEM_PLUS: return '=';
+            case VK_OEM_4: return '[';
+            case VK_OEM_6: return ']';
+            case VK_OEM_1: return ';';
+            case VK_OEM_7: return '\'';
+            case VK_OEM_COMMA: return ',';
+            case VK_OEM_PERIOD: return '.';
+            case VK_OEM_2: return '/';
+            case VK_OEM_5: return '\\';
+            case VK_OEM_3: return '`';
+            default: return KNone;
         }
+    }
+
+    // keys -> buttons (or the camera): the key bindings (0.72.0; the defaults are the old fixed keys - WASD the camera,
+    // arrows the cursor, Space A, Backspace B, X, V Y, Q / E, Z, Tab / C, Enter START, R SELECT, Esc MENU, Shift faster)
+    int mapKey(WPARAM vk) const {
+        const int r = keymap::route(portableKey(vk), controller_);
+        return r == -1 ? int(Btn::None) : r;
     }
 
     // Several keys can mean the same button (W and the up arrow): the button
@@ -378,8 +595,15 @@ private:
         if (vk >= 256) return;
         if (keyDown_[vk] == down) return;  // Windows' own key repeat: the game repeats by itself
         keyDown_[vk] = down;
+        if (down && ((vk >= '0' && vk <= '9') || (vk >= VK_NUMPAD0 && vk <= VK_NUMPAD9)))  // (0.63.0) a digit for number fields
+            pending_.push_back({Btn::None, true, kRawDigit0 + int(vk >= VK_NUMPAD0 ? vk - VK_NUMPAD0 : vk - '0')});
+        if (down) keymap::noteKey(portableKey(vk));  // (0.72.0: "press a key" in the key bindings)
         const int m = down ? mapKey(vk) : keyMapped_[vk];
         if (down) keyMapped_[vk] = m;
+        if (m == -20) {  // (0.72.0) the camera's speed-up (Shift)
+            pending_.push_back({Btn::None, down, kRawPanFast, 0, 0});
+            return;
+        }
         if (m <= -10) {  // the camera
             pending_.push_back({Btn::None, down, kRawPanUp + (-10 - m), 0, 0});
             return;
@@ -476,7 +700,7 @@ private:
             case WM_PAINT: {
                 PAINTSTRUCT ps;
                 HDC dc = BeginPaint(hwnd_, &ps);
-                paint(dc);
+                if (!dx_.swap) paint(dc);  // (0.61.2: the DirectX swap chain shows the next frame by itself)
                 EndPaint(hwnd_, &ps);
                 return 0;
             }
@@ -492,11 +716,21 @@ private:
                 releaseAll();  // keys let go while another window had focus
                 if (mouseL_) mouseButton(kRawMouseLeft, false, lp);
                 if (mouseR_) mouseButton(kRawMouseRight, false, lp);
+                pending_.push_back({Btn::None, false, kRawMouseLeave, 0, 0});  // (0.72.0: no edge scrolling meanwhile)
+                tracking_ = false;
+                return 0;
+            case WM_MOUSELEAVE:  // (0.72.0) the pointer left the window
+                tracking_ = false;
+                if (!mouseL_ && !mouseR_) pending_.push_back({Btn::None, false, kRawMouseLeave, 0, 0});
                 return 0;
             case WM_MOUSEACTIVATE:
                 // the click that brings the window to the front doesn't also confirm
                 return GetForegroundWindow() == hwnd_ ? MA_ACTIVATE : MA_ACTIVATEANDEAT;
             case WM_MOUSEMOVE:
+                if (!tracking_) {  // (0.72.0) tell us when it leaves (edge scrolling)
+                    TRACKMOUSEEVENT t{sizeof(TRACKMOUSEEVENT), TME_LEAVE, hwnd_, 0};
+                    tracking_ = TrackMouseEvent(&t) != 0;
+                }
                 mouseEvent(kRawMouseMove, false, lp);
                 return 0;
             case WM_LBUTTONDOWN:
@@ -592,6 +826,7 @@ private:
     int keyMapped_[256] = {};
     int btnKeys_[kBtnCount] = {};
     bool mouseL_ = false, mouseR_ = false;
+    bool tracking_ = false;  // (0.72.0) TrackMouseEvent asked for WM_MOUSELEAVE
     bool fullscreen_ = false;
     bool quitRequested_ = false;
     bool timerSet_ = false;

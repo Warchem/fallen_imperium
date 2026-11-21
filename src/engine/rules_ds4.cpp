@@ -142,7 +142,7 @@ void Rules::ds4SpaceCombatStart(int att, int def, int sys) {
         if (own || note) {
             std::vector<Option> opts;
             for (int t : kShipIdx) {
-                if (!s.space[size_t(att)].n[t] || unitsAvailable(G, def, UnitType(t)) <= 0) continue;
+                if (!s.space[size_t(att)].n[t] || unitsForPlacement(G, def, UnitType(t)) <= 0) continue;
                 const int c = costOf(G, att, UnitType(t));
                 if (c > spendable(G, def, true)) continue;
                 opts.push_back({t, std::string(unitTypeName(UnitType(t))) + " for " + std::to_string(c) + " influence", ""});
@@ -396,7 +396,7 @@ void Rules::ds4ShipsLost(int victim, int opp, int sys, const Force& before) {
     if (opp < 0 || opp >= G.numPlayers || victim < 0 || victim >= G.numPlayers || !fac(opp, "vaden")) return;
     const Force& now = G.systems[size_t(sys)].space[size_t(victim)];
     for (int t : kShipIdx)
-        for (int k = before.n[t] - now.n[t]; k > 0 && G.dsDebt[victim] > 0 && unitsAvailable(G, opp, UnitType(t)) > 0; --k) {
+        for (int k = before.n[t] - now.n[t]; k > 0 && G.dsDebt[victim] > 0 && unitsForPlacement(G, opp, UnitType(t)) > 0; --k) {
             curValue_ = t;
             const bool use = fyes(opp, Ab::DsCollateral, "Collateralized Loans: cash in 1 of " + pn(victim) + "'s tokens for a " + unitTypeName(UnitType(t)) + " here?", "");
             curValue_ = 0;
@@ -412,7 +412,7 @@ void Rules::ds4UnitsDestroyed(int p, UnitType t, int k, int sys, int planet, int
     (void)k;
     (void)planet;
     (void)byPlayer;
-    if (p < 0 || p >= G.numPlayers || sys < 0 || !techReady(p, "dsmortr") || isStructure(t) || unitsAvailable(G, p, t) <= 0) return;
+    if (p < 0 || p >= G.numPlayers || sys < 0 || !techReady(p, "dsmortr") || isStructure(t) || unitsForPlacement(G, p, t) <= 0) return;
     std::vector<Option> opts;
     // (0.44.8, fixes 12: a ground force or fighter only where there is capacity for it - else it is removed at once)
     const bool cargo = t == UnitType::Infantry || t == UnitType::Mech || t == UnitType::Fighter;
@@ -941,7 +941,7 @@ void Rules::ds4Control(int planet, int p, int old) {
     // board may move there too - from any planet or space area (with every mech out it was never offered)
     std::vector<Option> from;  // id = planet, or 100000 + system for a mech in a space area
     if (G.fixes >= 28) {
-        if (unitsAvailable(G, p, UnitType::Mech) > 0) from.push_back({-2, "From your reinforcements", ""});
+        if (unitsAvailable(G, p, UnitType::Mech) > 0) from.push_back({-2, "From your reinforcements", ""});  // (a mech on the board moves anyway)
         for (size_t x = 0; x < G.planets.size(); ++x)
             if (int(x) != planet && G.planets[x].units[size_t(p)].count(UnitType::Mech) > 0)
                 from.push_back({int(x), planetName(int(x)), "Move it from there."});
@@ -949,7 +949,7 @@ void Rules::ds4Control(int planet, int p, int old) {
             if (G.systems[s].space[size_t(p)].count(UnitType::Mech) > 0)
                 from.push_back({100000 + int(s), "Space area of " + sysName(int(s)), "Move it from there."});
     }
-    if (pl.actionCards.empty() || isDMZ(G, planet) || (G.fixes >= 28 ? from.empty() : unitsAvailable(G, p, UnitType::Mech) <= 0)) return;
+    if (pl.actionCards.empty() || isDMZ(G, planet) || (G.fixes >= 28 ? from.empty() : unitsForPlacement(G, p, UnitType::Mech) <= 0)) return;
     std::vector<Option> opts;
     for (int16_t c : pl.actionCards) opts.push_back({c, kActionCards[c].name, "Discard it for a mech on the planet."});
     opts.push_back({-1, "Keep my cards", ""});
@@ -1715,7 +1715,7 @@ bool Rules::ds4Action(int p, Ab ab) {
                 if (!f.ships()) continue;
                 std::vector<Option> opts;
                 for (int t : kShipIdx)
-                    if (f.n[t] && unitsAvailable(G, p, UnitType(t)) > 0) opts.push_back({t, unitTypeName(UnitType(t)), ""});
+                    if (f.n[t] && unitsForPlacement(G, p, UnitType(t)) > 0) opts.push_back({t, unitTypeName(UnitType(t)), ""});
                 if (opts.empty()) continue;
                 opts.push_back({-1, "None here", ""});
                 const int t = fpick(p, Ab::DsBayan, "Bayan: copy which ship in " + sysName(int(s)) + "?", opts);

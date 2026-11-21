@@ -13,6 +13,7 @@
 #include "ui/info_screens.h"
 #include "ui/theme.h"
 #include "ui/widgets.h"
+#include "ui/pcolors.h"
 
 using namespace ti;
 
@@ -24,7 +25,7 @@ constexpr float kPi = 3.14159265f;
 
 uint32_t colourOf(const Game& g, int p) {
     if (p == kNeutral || p == kCapturedToken) return theme::neutral;
-    return p >= 0 && p < g.numPlayers ? theme::player[g.players[size_t(p)].color % 8] : theme::text;
+    return p >= 0 && p < g.numPlayers ? pcolours::base(g.players[size_t(p)].color) : theme::text;
 }
 int factionOf(const Game& g, int p) { return p >= 0 && p < g.numPlayers ? g.players[size_t(p)].faction : -1; }
 std::string shortOf(const Game& g, int p) { return p >= 0 && p < g.numPlayers ? factionShortName(g.players[size_t(p)].faction) : "?"; }

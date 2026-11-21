@@ -577,7 +577,7 @@ bool Rules::ds7Action(int p, Ab ab) {
         case Ab::DsWrathMachina: {
             if (!heroUnlocked(G, p)) return false;
             ds5Hero(p, leaderIndex(G, p, kHero), pn(p) + " wakes the AI Mainframe: Dhor's Hammer falls.");
-            for (int i = 0; i < 3 && unitsAvailable(G, p, UnitType::PDS) > 0; ++i) {
+            for (int i = 0; i < 3 && unitsForPlacement(G, p, UnitType::PDS) > 0; ++i) {
                 std::vector<Option> opts;
                 for (int x : controlledPlanets(G, p)) {
                     if (isDMZ(G, x)) continue;

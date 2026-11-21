@@ -15,11 +15,15 @@
 #include "app/app.h"
 #include "app/bug_report.h"
 #include "audio/audio.h"
+#include "audio/library.h"
 #include "ui/backdrops.h"
 #include "gfx/picture.h"
+#include "core/keymap.h"
 #include "core/log.h"
 #include "platform/platform.h"
 #include "game/session.h"
+#include "game/profile.h"
+#include "app/league_ui.h"
 #include "gfx/font.h"
 #include "engine/data.h"
 #include "ui/hits.h"
@@ -98,20 +102,21 @@ void titleMenu(Canvas& c, Rect r, const std::vector<MenuItem>& items, int select
         const int y = r.y + int(i) * rowH;
         const bool sel = int(i) == selected;
         if (pick) hits::add(Rect{r.x, y, r.w, rowH - 4}, [pick, i]() { *pick = int(i); });
+        const int boxH = rowH <= 30 ? rowH - 1 : rowH - 6;  // (0.69.0: twelve Options rows - the detail line stays inside)
         if (sel) {
             const float pulse = 0.5f + 0.5f * std::sin(float(now % 2000) / 2000.f * 6.2831853f);
             if (neon) {
-                c.fillRoundRect(r.x, y, r.w, rowH - 6, 8, pal.selFill, 150 * fade / 255);
-                c.frameRoundRect(r.x, y, r.w, rowH - 6, 8, mix(pal.selA, pal.selB, int(pulse * 255)), 2, fade);
+                c.fillRoundRect(r.x, y, r.w, boxH, 8, pal.selFill, 150 * fade / 255);
+                c.frameRoundRect(r.x, y, r.w, boxH, 8, mix(pal.selA, pal.selB, int(pulse * 255)), 2, fade);
             } else {
-                c.fillRoundRect(r.x, y, r.w, rowH - 6, 8, theme::panelHi, 240 * fade / 255);
-                c.frameRoundRect(r.x, y, r.w, rowH - 6, 8, mix(theme::goldDim, theme::gold, int(pulse * 255)), 2, fade);
+                c.fillRoundRect(r.x, y, r.w, boxH, 8, theme::panelHi, 240 * fade / 255);
+                c.frameRoundRect(r.x, y, r.w, boxH, 8, mix(theme::goldDim, theme::gold, int(pulse * 255)), 2, fade);
             }
-            const float tx = float(r.x + 12), ty = float(y + (rowH - 6) / 2);
+            const float tx = float(r.x + 12), ty = float(y + boxH / 2);
             float xs[3] = {tx, tx + 8, tx}, ys[3] = {ty - 6, ty, ty + 6};
             c.fillPolygon(xs, ys, 3, neon ? pal.marker : theme::gold);
         }
-        const int dy = rowH < 40 ? 2 : 3, ddy = rowH < 40 ? 17 : 20;
+        const int dy = rowH <= 30 ? 1 : rowH < 40 ? 2 : 3, ddy = rowH <= 30 ? 15 : rowH < 40 ? 17 : 20;
         const uint32_t label = neon ? (sel ? pal.labelSel : pal.label) : (sel ? theme::text : theme::dim);
         const uint32_t detail = neon ? (sel ? pal.detailSel : pal.detail) : (sel ? theme::dim : theme::faint);
         drawText(c, FONT_MDB, r.x + 28, y + dy, items[i].label, label, fade);
@@ -255,6 +260,8 @@ public:
                 else error_ = "Couldn't load the saved game: " + err;
             } else if (id == "new") {
                 app.push(makeNewGameScene());
+            } else if (id == "tournament") {
+                app.push(makeTournamentScene());
             } else if (id == "campaigns") {
                 app.push(makeCampaignScene());
             } else if (id == "modules") {
@@ -303,12 +310,15 @@ public:
                         "Miyoo Mini Plus homebrew \xE2\x80\x94 " TI4_STAGE, theme::dim, fade);
 #endif
         int n = int(items_.size());
-        const int rowH = n > 7 ? 33 : n > 5 ? 36 : 40;
+        // 0.80.0 (owner 2026-11-19: "a row of the earned medals on the title screen, under the menu") - room for it
+        const std::vector<std::pair<std::string, uint32_t>> medals = profile::earnedEmblems();
+        const int rowH = !medals.empty() && n > 6 ? 30 : n > 7 ? 33 : n > 5 ? 36 : 40;
         Rect menu{150, n > 5 ? 148 : 160, 340, n * rowH};
         if (fade > 0) {
             titlePanel(c, Rect{menu.x - 14, menu.y - 12, menu.w + 28, menu.h + 18}, 12, fade);
             titleMenu(c, menu, items_, sel_, now, &sel_, rowH, fade);
         }
+        if (fade >= 255 && !medals.empty()) leagueui::drawEmblemRow(c, menu.y + menu.h + 22, medals, now);
         if (opening && t > 1500 && fade == 0)  // a quiet line: the opening can be skipped
             drawTextAligned(c, FONT_XS, 0, 456, c.width(), Align::Center, "Press any button to skip", rgb(150, 140, 180),
                             int(90.f * intro::span(uint32_t(t), 1500, 800)));
@@ -504,10 +514,13 @@ private:
             items_.push_back({"Continue game", "Pick up where you left off"});
             ids_.push_back("continue");
         }
-        items_.push_back({"New game", "3 to 8 players against the computer"});
-        ids_.push_back("new");
+        // 0.80.0 (the owner's League Designer page: "Campaign", "Tournament", "Casual Game"); Device tests moved into Options
         items_.push_back({"Campaigns", "Eve of the Fall, Fated Expedition, Trade Wars \xC2\xB7 coming soon"});
         ids_.push_back("campaigns");
+        items_.push_back({"Tournament", "A ladder of leagues against named rival commanders"});
+        ids_.push_back("tournament");
+        items_.push_back({"Casual game", "3 to 8 players against the computer"});
+        ids_.push_back("new");
         items_.push_back({"Modules", "Expansions and add-ons in your next game"});
         ids_.push_back("modules");
         items_.push_back({tilesetLabel(), "\xE2\x97\x80 \xE2\x96\xB6 Simplistic, Retrowave (pixel art) or Voidfall (painted)"});
@@ -518,15 +531,15 @@ private:
         items_.push_back({"Options", "Music and sound volume"});
 #endif
         ids_.push_back("options");
-        items_.push_back({"Device tests", "Buttons, screen and speed checks"});
-        ids_.push_back("tests");
 #if defined(_WIN32) || defined(TI4_SDL2)
         items_.push_back({"Quit", "Close the game"});
 #else
         items_.push_back({"Quit", "Back to OnionOS"});
 #endif
         ids_.push_back("quit");
-        sel_ = 0;
+        // (0.80.0) the cursor starts on Continue game when there is one, else on Casual game (Campaigns, first in the list,
+        // is still "coming soon")
+        sel_ = int(std::find(ids_.begin(), ids_.end(), save ? "continue" : "new") - ids_.begin());
     }
 
     static std::string tilesetLabel() { return std::string("Tilesets: ") + retro::tilesetName(retro::tileset()); }
@@ -584,7 +597,7 @@ private:
         }
         drawTextAligned(c, FONT_SMB, int(cx) - 40, int(cy) + 30, 80, Align::Center, "Credits",
                         creditsHover_ ? rgb(255, 140, 230) : rgb(120, 110, 150), fade);
-        if (fade >= 255) hits::addAction(Rect{8, 4, 96, 100}, [this]() { credits_ = true; });
+        if (fade >= 255) hits::addAction(Rect{8, 4, 96, 100}, [this]() { credits_ = true; }, hits::Light::None);  // (its own glow)
     }
     static void drawCredits(Canvas& c, uint32_t now) {
         backdrops::drawCredits(c, now);  // 0.30.0 (owner): darker, a starscape rolling left, ships in hyperspace
@@ -641,8 +654,16 @@ public:
             if (dir == 2) app.pop();
             return;
         }
-        if (id == "layout") {  // 0.28.0 (owner): both control layouts on one screen
+        if (id == "player") {  // 0.68.0 (owner): the music player
+            if (dir == 2) app.push(makeMusicScene());
+            return;
+        }
+        if (id == "layout") {  // 0.28.0 (owner): both control layouts on one screen; 0.72.0 the key bindings
             if (dir == 2) app.push(makeControlsScene());
+            return;
+        }
+        if (id == "tests") {
+            if (dir == 2) app.push(makeTestsMenuScene());
             return;
         }
         if (id == "report") {  // 0.28.0 (owner): the log, save and settings copied into one folder to send
@@ -656,6 +677,8 @@ public:
             else audio::setSoundVolume(v);
             st.setInt(id == "music" ? "music_vol" : "sound_vol", v);
             if (dir != 2) audio::play(id == "sound" ? audio::Sfx::Railgun : audio::Sfx::Toggle);
+        } else if (id == "mapsounds") {  // 0.69.0: the siren, the landings, the factions on the move
+            st.setInt("map_sounds", st.getInt("map_sounds", 1) != 0 ? 0 : 1);
         } else if (id == "ground") {  // 0.44.0 (owner): the faction ground units, or the Default for everyone
             const bool on = st.getInt("ground_units", 1) == 0;
             st.setInt("ground_units", on ? 1 : 0);
@@ -671,6 +694,11 @@ public:
             st.setInt("wide", next == 0 ? 1 : 0);
         } else if (id == "fullscreen") {
             st.setInt("fullscreen", st.getInt("fullscreen", 1) == 1 ? 0 : 1);
+        } else if (id == "unlock") {  // 0.80.0: the testing switch - every league, colour and emblem source open
+            profile::setUnlockAll(!profile::unlockAll());
+            profile::save();
+        } else if (id == "edge") {  // 0.72.0 (owner: "Keep the edge scrolling off but available in the main menu options")
+            st.setInt("edge_scroll", st.getInt("edge_scroll", 0) != 0 ? 0 : 1);
         }
         st.save();
         app.platform().configure(st);
@@ -680,10 +708,10 @@ public:
     void draw(App& app, Canvas& c, uint32_t now) override {
         build(app);
         titleBackdrop(c, now);
-        drawTextAligned(c, FONT_LG, 0, 40, c.width(), Align::Center, "Options", theme::gold);
         const int n = int(items_.size());
-        const int rowH = n > 9 ? 34 : n > 8 ? 36 : 40;  // (0.44.0: nine rows on the PC; 0.54.0: ten)
-        Rect menu{130, n > 9 ? 78 : n > 8 ? 84 : 96, 380, n * rowH};
+        drawTextAligned(c, FONT_LG, 0, n > 15 ? 8 : n > 13 ? 14 : n > 11 ? 24 : 40, c.width(), Align::Center, "Options", theme::gold);
+        const int rowH = n > 15 ? 24 : n > 14 ? 26 : n > 13 ? 27 : n > 12 ? 29 : n > 11 ? 30 : n > 10 ? 32 : n > 9 ? 34 : n > 8 ? 36 : 40;  // (0.44.0: nine rows on the PC; 0.54.0: ten; 0.68.0: eleven; 0.69.0: twelve; 0.72.0: thirteen; 0.80.0: fifteen)
+        Rect menu{130, n > 15 ? 44 : n > 13 ? 52 : n > 12 ? 64 : n > 11 ? 72 : n > 10 ? 74 : n > 9 ? 78 : n > 8 ? 84 : 96, 380, n * rowH};
         titlePanel(c, Rect{menu.x - 14, menu.y - 12, menu.w + 28, menu.h + 18}, 12);
         titleMenu(c, menu, items_, sel_, now, &sel_, rowH);
         drawHintBar(c, {{"\xE2\x97\x80\xE2\x96\xB6", "Change"}, {"A", "Change"}, {"B", "Back"}});
@@ -708,6 +736,17 @@ private:
             audio::running() ? "\xE2\x97\x80 \xE2\x96\xB6 the music's volume (0 = off)" : "No sound on this device (see System info)");
         add("sound", "Sounds: " + (sv ? std::to_string(sv) : std::string("Off")) + "   " + bar(sv),
             "\xE2\x97\x80 \xE2\x96\xB6 buttons and battle sounds (0 = off)");
+        {  // 0.69.0 (owner: the grim map sounds)
+            const bool on = st.getInt("map_sounds", 1) != 0;
+            add("mapsounds", std::string("Map sounds: ") + (on ? "On" : "Off"),
+                on ? "Sirens, invasions and each faction's ships on the move" : "No sirens, invasions or ships on the move");
+        }
+        {  // 0.68.0 (owner): your own music in games
+            const int m = audio::musicMode();
+            add("player", "Music player", m == audio::kPlayMine   ? "Games play your own music (My Music)"
+                                          : m == audio::kPlayBoth ? "Games play the game soundtrack and your own music"
+                                                                  : "Games play the game soundtrack - add your own MP3s here");
+        }
         const bool fu = st.getInt("ground_units", 1) != 0;
         add("ground", std::string("Ground combat: ") + (fu ? "Faction units" : "Default animations"),
             fu ? "Each faction fights with its own soldiers, mechs and effects" : "The game's own soldiers and mechs for every faction");
@@ -722,17 +761,29 @@ private:
 #if defined(_WIN32) || defined(TI4_SDL2)
         const bool pad = st.getInt("controls", 0) == 1;
         add("controls", std::string("Controls: ") + (pad ? "Controller" : "Keyboard & mouse"),
-            pad ? "A gamepad (WASD = D-pad); the mouse still works" : "WASD moves the camera, mouse to point, click and drag");
+            pad ? "A gamepad (the camera keys move the cursor); the mouse still works"
+                : "The keys move the camera (" + keyLabel("D-PAD").substr(keyLabel("D-PAD").find('/') + 1) + "), the mouse points, clicks and drags");
         const bool sharp = st.getInt("screen", 1) == 1, wide = sharp && st.getInt("wide", 1) == 1;
         add("screen", std::string("Picture: ") + (wide ? "Sharp widescreen" : sharp ? "Sharp 4:3" : "Original 640x480"),
             wide    ? "Your screen's resolution and shape - the map uses the whole width"
             : sharp ? "Your screen's resolution, 4:3 with bars at the sides"
                     : "The Miyoo's 640x480 picture, enlarged");
         add("fullscreen", std::string("Full screen: ") + (st.getInt("fullscreen", 1) == 1 ? "On" : "Off"), "Also F11 or Alt+Enter");
-        add("layout", "Control layout", "Every key, mouse button and controller button");
+        {  // 0.72.0 (owner): edge scrolling, off unless asked for
+            const bool on = st.getInt("edge_scroll", 0) != 0;
+            add("edge", std::string("Edge scrolling: ") + (on ? "On" : "Off"),
+                on ? "The map moves when the pointer touches the edge of the screen" : "Off: the map moves with the camera keys or a right drag");
+        }
+        add("layout", "Controls and key bindings", "Every key, mouse button and controller button - choose your own keys");
 #else
         (void)st;
 #endif
+        {  // 0.80.0 (owner's plan: "an unlock-everything switch for testing")
+            const bool on = profile::unlockAll();
+            add("unlock", std::string("Unlock everything (testing): ") + (on ? "On" : "Off"),
+                on ? "Every league and faction colour is open without earning it" : "Leagues and faction colours are earned in the Tournament");
+        }
+        add("tests", "Device tests", "Buttons, screen and speed checks");  // (0.80.0: moved here from the title menu)
         add("report", "Make a bug report", report_.empty() ? "Copies ti4.log, your save and settings into one folder to send"
                                                            : report_);
         add("back", "Back", "");
@@ -748,49 +799,383 @@ private:
     std::vector<std::string> ids_;
 };
 
-// Control layout (0.28.0, owner): keyboard & mouse and controller side by side.
+// Controls and key bindings (0.28.0 the layout; 0.72.0, owner: "the key bindings" in the main menu's Options): every action
+// with its keyboard keys - choose one and press a key to give it that key (an action that had the key gets this one's old
+// key: they swap) - and the controller's buttons beside them; the mouse below. Saved in settings.cfg (core/keymap).
 class ControlsScene : public Scene {
 public:
-    void update(App& app, const Input& in, uint32_t) override {
-        if (in.pressed(Btn::B) || in.pressed(Btn::A) || in.pressed(Btn::Menu)) app.pop();
-    }
-    bool animating() const override { return artTitle(); }  // (0.59.70: the Retrowave / Voidfall backdrop moves)
-    void draw(App&, Canvas& c, uint32_t now) override {
-        titleBackdrop(c, now);
-        drawTextAligned(c, FONT_LG, 0, 14, c.width(), Align::Center, "Control layout", theme::gold);
-        static const char* rows[][3] = {
-            {"Move the map camera", "WASD, or right-button drag", "Right stick"},
-            {"Move the cursor / lists", "Arrows (WASD in menus)", "D-pad / left stick"},
-            {"Point at a tile or row", "The mouse", "-"},
-            {"Choose / confirm (A)", "Left click or Space", "A"},
-            {"Back / undo (B)", "Right click or Backspace", "B"},
-            {"Zoom the map", "Mouse wheel (smooth), Q / E", "L1 / R1 (LB / RB)"},
-            {"Moving ships: fewer / more", "Q / E (Space moves them)", "Left / right, START"},
-            {"Confirm editors (START)", "Enter", "View (Start on the Deck)"},
-            {"Game menu, Negotiations", "Esc", "Menu"},
-            {"View the map (R2)", "Tab or C", "Right trigger"},
-            {"Side panel (L2)", "Z", "Left trigger"},
-            {"Objectives / next spot (X)", "X", "X"},
-            {"Log / suggestion (Y)", "V", "Y"},
-            {"Players overview (SELECT)", "R", "Click a stick"},
-            {"Full screen", "F11 or Alt+Enter", "-"},
-        };
-        Rect r{12, 44, 616, 396};
-        titlePanel(c, r, 12);
-        const int c1 = r.x + 12, c2 = r.x + 222, c3 = r.x + 450;
-        drawText(c, FONT_SMB, c1, r.y + 10, "Action", theme::gold);
-        drawText(c, FONT_SMB, c2, r.y + 10, "Keyboard & mouse", theme::gold);
-        drawText(c, FONT_SMB, c3, r.y + 10, "Controller", theme::gold);
-        int y = r.y + 34;
-        for (const auto& row : rows) {
-            c.fillRect(r.x + 8, y - 3, r.w - 16, 1, theme::border);
-            drawText(c, FONT_SM, c1, y, row[0], theme::text);
-            drawText(c, FONT_SM, c2, y, row[1], theme::cyan);
-            drawText(c, FONT_SM, c3, y, row[2], rgb(140, 220, 150));
-            y += 23;
+    void update(App& app, const Input& in, uint32_t now) override {
+        now_ = now;
+        const int n = kRows + 1;  // (the last row: back to the defaults)
+        if (capture_ >= 0) {
+            const int k = keymap::takeKey();
+            if (k != keymap::KNone) {
+                const int act = kOrder[capture_];
+                if (k == keymap::KEsc && act != keymap::Menu) {
+                    note("Not changed", false);
+                } else if (!keymap::bindable(k)) {
+                    note(keymap::longName(k) + std::string(k == keymap::KF1 + 10 ? " is full screen" : " types numbers") +
+                             " - choose another key",
+                         true);
+                    return;  // (still waiting)
+                } else {
+                    const int loser = keymap::bind(act, k);
+                    keymap::save(app.settings());
+                    app.settings().save();
+                    std::string msg = keymap::actName(act) + std::string(": ") + keymap::longName(k);
+                    if (loser >= 0) msg += "   " + std::string(keymap::actName(loser)) + ": " + keymap::allKeys(loser);
+                    note(msg, false);
+                    audio::play(audio::Sfx::Confirm);
+                }
+                capture_ = -1;
+                return;
+            }
+            if (in.pressed(Btn::B) && in.mouse().rightClick) {  // (a right click gives up)
+                capture_ = -1;
+                note("Not changed", false);
+            }
+            return;
         }
-        drawHintBar(c, {{"B", "Back"}});
+        if (in.pressed(Btn::Up)) sel_ = (sel_ + n - 1) % n;
+        if (in.pressed(Btn::Down)) sel_ = (sel_ + 1) % n;
+        if (in.pressed(Btn::B) || in.pressed(Btn::Menu)) {
+            app.pop();
+            return;
+        }
+        if (in.pressed(Btn::A)) {
+            if (sel_ == kRows) {
+                keymap::reset();
+                keymap::save(app.settings());
+                app.settings().save();
+                note("Every key is back to the defaults", false);
+            } else {
+                capture_ = sel_;
+                keymap::takeKey();  // (the key that chose this row doesn't count)
+                captureSince_ = now;
+            }
+        }
     }
+    // while waiting for a key, nothing else reads the buttons (the key may be Space or Backspace)
+    bool wantsAllButtons() const override { return capture_ >= 0; }
+    bool animating() const override { return true; }
+    void draw(App&, Canvas& c, uint32_t now) override {
+        now_ = now;
+        titleBackdrop(c, now);
+        drawTextAligned(c, FONT_LG, 0, 8, c.width(), Align::Center, "Controls and key bindings", theme::gold);
+        const Rect r{12, 36, 616, 412};
+        titlePanel(c, r, 12);
+        const bool neon = artTitle();
+        const TitlePal& pal = titlePal();
+        const uint32_t ink = neon ? pal.label : theme::text, gold = neon ? pal.top : theme::gold;
+        const uint32_t keyCol = neon ? pal.labelSel : theme::cyan, padCol = rgb(140, 220, 150), dim = neon ? pal.detail : theme::dim;
+        const int c1 = r.x + 14, c2 = r.x + 236, c3 = r.x + 470;
+        drawText(c, FONT_SMB, c1, r.y + 6, "Action", gold);
+        drawText(c, FONT_SMB, c2, r.y + 6, "Keyboard (choose to change)", gold);
+        drawText(c, FONT_SMB, c3, r.y + 6, "Controller", gold);
+        const int rowH = 15, top = r.y + 26;
+        for (int i = 0; i <= kRows; ++i) {
+            const int y = top + i * rowH + (i == kRows ? 6 : 0) + (i >= 5 ? 4 : 0) + (i >= 9 ? 4 : 0);
+            const Rect row{r.x + 6, y - 1, r.w - 12, rowH};
+            const bool sel = i == sel_;
+            if (sel) {
+                if (neon) {
+                    c.fillRoundRect(row.x, row.y, row.w, row.h, 5, pal.selFill, 150);
+                    c.frameRoundRect(row.x, row.y, row.w, row.h, 5, pal.selB, 1);
+                } else {
+                    c.fillRoundRect(row.x, row.y, row.w, row.h, 5, theme::panelHi, 240);
+                    c.frameRoundRect(row.x, row.y, row.w, row.h, 5, theme::gold, 1);
+                }
+            }
+            if (capture_ < 0) hits::add(row, [this, i]() { sel_ = i; });
+            if (i == kRows) {
+                const int w = drawText(c, FONT_SMB, c1, y, "Put every key back to the defaults", sel ? gold : ink);
+                if (!keymap::isDefault()) drawText(c, FONT_XS, c1 + w + 10, y + 2, "(some keys are changed)", dim);
+                continue;
+            }
+            const int act = kOrder[i];
+            drawText(c, FONT_SM, c1, y, keymap::actName(act), sel ? gold : ink);
+            if (capture_ == i) {
+                const bool on = ((now - captureSince_) / 450U) % 2U == 0U;
+                drawText(c, FONT_SMB, c2, y, on ? "Press a key..." : "", rgb(255, 214, 120));
+                drawText(c, FONT_XS, c2 + 110, y + 2, act == keymap::Menu ? "(right click: keep it)" : "(Esc: keep it)", dim);
+            } else {
+                drawText(c, FONT_SM, c2, y, fitText(FONT_SM, keymap::allKeys(act), c3 - c2 - 10), keyCol);
+            }
+            drawText(c, FONT_SM, c3, y, kPad[i], padCol);
+        }
+        // the mouse, which isn't bound
+        const int fy = r.y + r.h - 44;
+        c.fillRect(r.x + 10, fy - 6, r.w - 20, 1, neon ? pal.frame : theme::border, 160);
+        drawText(c, FONT_XS, c1, fy, "Mouse: point at a tile or row, left click = choose (A), right click = back (B), right drag moves the map,", dim);
+        drawText(c, FONT_XS, c1, fy + 12, "the wheel zooms. Edge scrolling is in Options. F11 or Alt+Enter: full screen. Number keys type numbers.", dim);
+        if (!note_.empty() && int32_t(noteUntil_ - now) > 0)
+            drawTextAligned(c, FONT_SMB, r.x, r.y + r.h - 18, r.w, Align::Center, fitText(FONT_SMB, note_, r.w - 20),
+                            noteBad_ ? rgb(255, 120, 110) : rgb(140, 230, 160));
+        if (capture_ >= 0) {
+            drawHintBar(c, {});
+            drawText(c, FONT_SM, 12, c.height() - 22, "Press the key you want for " + std::string(keymap::actName(kOrder[capture_])), theme::dim);
+        } else {
+            drawHintBar(c, {{"A", "Change key"}, {"B", "Back"}});
+        }
+    }
+
+private:
+    static constexpr int kRows = 20;
+    // the rows' order: the camera, the cursor, then the buttons
+    static constexpr int kOrder[kRows] = {keymap::CamUp,  keymap::CamDown, keymap::CamLeft, keymap::CamRight, keymap::CamFast,
+                                         keymap::Up,     keymap::Down,    keymap::Left,    keymap::Right,    keymap::A,
+                                         keymap::B,      keymap::L1,      keymap::R1,      keymap::Start,    keymap::Menu,
+                                         keymap::R2,     keymap::L2,      keymap::X,       keymap::Y,        keymap::Select};
+    static constexpr const char* kPad[kRows] = {"Right stick", "Right stick", "Right stick", "Right stick", "-",
+                                                "D-pad / left stick", "D-pad / left stick", "D-pad / left stick", "D-pad / left stick", "A",
+                                                "B", "L1 (LB)", "R1 (RB)", "View (Start)", "Menu",
+                                                "Right trigger", "Left trigger", "X", "Y", "Click a stick"};
+    void note(const std::string& s, bool bad) {
+        note_ = s;
+        noteBad_ = bad;
+        noteUntil_ = now_ + 4000;
+    }
+    int sel_ = 0, capture_ = -1;
+    uint32_t now_ = 0, captureSince_ = 0, noteUntil_ = 0;
+    std::string note_;
+    bool noteBad_ = false;
+};
+constexpr int ControlsScene::kOrder[ControlsScene::kRows];
+constexpr const char* ControlsScene::kPad[ControlsScene::kRows];
+
+// ---------------------------------------------------------------- 0.68.0: the music player (owner: "a music player for the
+// game ... where the player can put their own music in a folder so that they can play sound tracks that they want. The default
+// music will be what we have currently. The title screen music should stay unchanged as well"; "only accessible at the game
+// menu under options ... not accessible when viewing and playing on the game map"). Options -> Music player: what a game
+// plays (the game soundtrack, My Music, both), in order or shuffled, every song ticked on or off, a song listened to here (the
+// title's music comes back when you leave), the folder looked at again. audio/mixer.cpp keeps the choices.
+class MusicScene : public Scene {
+public:
+    MusicScene() {
+        folder_ = audio::musicFolder();
+        build();
+    }
+    void update(App& app, const Input& in, uint32_t now) override {
+        now_ = now;
+        const int n = int(rows_.size());
+        auto selectable = [&](int i) { return rows_[size_t(i)].kind != Row::Header && rows_[size_t(i)].kind != Row::Empty; };
+        auto step = [&](int d, bool wrap) {  // the next row that can be chosen (the D-pad goes round; L1 / R1 stop at the ends)
+            for (int k = 0, i = sel_; k < n; ++k) {
+                i += d;
+                if (i < 0 || i >= n) {
+                    if (!wrap) return;
+                    i = (i + n) % n;
+                }
+                if (selectable(i)) {
+                    sel_ = i;
+                    return;
+                }
+            }
+        };
+        if (in.pressed(Btn::Up)) step(-1, true);
+        if (in.pressed(Btn::Down)) step(1, true);
+        if (in.pressed(Btn::L1)) for (int k = 0; k < 10; ++k) step(-1, false);
+        if (in.pressed(Btn::R1)) for (int k = 0; k < 10; ++k) step(1, false);
+        if (listen_ >= 0) {  // a click on a song's listen button
+            sel_ = listen_;
+            listen();
+            listen_ = -1;
+        }
+        if (in.pressed(Btn::A)) act(0);
+        if (in.pressed(Btn::Left)) act(-1);
+        if (in.pressed(Btn::Right)) act(1);
+        if (in.pressed(Btn::X)) listen();
+        if (openClick_) {  // (Windows) the folder in File Explorer
+            openClick_ = false;
+            if (!audio::showFolder(folder_)) {
+                note_ = "Couldn't open the folder";
+                noteUntil_ = now + 3000;
+                noteBad_ = true;
+            }
+        }
+        if (in.pressed(Btn::Y) || rescanClick_) {  // look in the folder again
+            rescanClick_ = false;
+            const int found = audio::rescanMusic();
+            build();
+            note_ = found == 0 ? "No MP3 files in the folder yet" : "Found " + std::to_string(found) + (found == 1 ? " song" : " songs");
+            noteBad_ = found == 0;
+            noteUntil_ = now + 3000;
+            audio::play(audio::Sfx::Confirm);
+        }
+        if (in.pressed(Btn::B) || in.pressed(Btn::Menu)) {
+            if (listening_ >= 0 || audio::musicTrack() != audio::kTrackTitle) backToTitleTheme(700, 1500);
+            app.pop();
+        }
+    }
+    bool animating() const override { return true; }
+    bool bareClickIsA(float, float) const override { return false; }  // (a click on empty space ticks nothing)
+    void draw(App&, Canvas& c, uint32_t now) override {
+        now_ = now;
+        titleBackdrop(c, now);
+        drawTextAligned(c, FONT_LG, 0, 10, c.width(), Align::Center, "Music player", theme::gold);
+        const Rect r{12, 40, 616, 404};
+        titlePanel(c, r, 12);
+        const TitlePal& pal = titlePal();
+        const bool neon = artTitle();
+        const uint32_t ink = neon ? pal.label : theme::text, inkSel = neon ? pal.labelSel : theme::text;
+        const uint32_t dim = neon ? pal.detail : theme::dim, gold = neon ? pal.top : theme::gold;
+        // now playing (listening here)
+        const int playing = audio::musicTrack();
+        {
+            const Rect np{r.x + 10, r.y + 8, r.w - 20, 40};
+            std::string line = "The title screen plays its own theme. X on a song: listen to it here.";
+            if (playing > audio::kTrackTitle && playing < audio::trackCount()) {
+                line = "\xE2\x99\xAA " + audio::trackTitle(playing);
+                const std::string by = audio::trackAlbum(playing);
+                if (!by.empty()) line += "  \xC2\xB7  " + by;
+            }
+            drawText(c, FONT_SMB, np.x + 4, np.y + 2, fitText(FONT_SMB, line, np.w - 8), playing > audio::kTrackTitle ? gold : dim);
+            const float pr = playing > audio::kTrackTitle ? audio::musicProgress() : -1.f;
+            if (pr >= 0.f) {
+                c.fillRect(np.x + 4, np.y + 24, np.w - 8, 4, neon ? rgb(60, 40, 90) : theme::border);
+                c.fillRect(np.x + 4, np.y + 24, int(float(np.w - 8) * pr), 4, gold);
+            }
+        }
+        // the list
+        const int top = r.y + 54, rowH = 19, bottom = r.y + r.h - 40;
+        const int vis = (bottom - top) / rowH;
+        const int n = int(rows_.size());
+        if (sel_ < scroll_) scroll_ = sel_;
+        if (sel_ >= scroll_ + vis) scroll_ = sel_ - vis + 1;
+        if (sel_ <= 3) scroll_ = 0;  // (the two choices and the first header stay in view at the top)
+        scroll_ = std::max(0, std::min(scroll_, std::max(0, n - vis)));
+        const std::vector<int> list = audio::musicPlaylist();
+        for (int k = 0; k < vis && scroll_ + k < n; ++k) {
+            const int i = scroll_ + k;
+            const Row& row = rows_[size_t(i)];
+            const int y = top + k * rowH;
+            const Rect rr{r.x + 10, y, r.w - 20, rowH - 1};
+            const bool sel = i == sel_;
+            if (row.kind == Row::Header) {  // (a section the games don't play says so)
+                const int mode = audio::musicMode();
+                const bool unused = (row.track == 0 && mode == audio::kPlayMine) || (row.track == 1 && mode == audio::kPlayGame);
+                const std::string head = row.text + (unused ? "  \xC2\xB7  NOT PLAYED IN GAMES" : "");
+                drawText(c, FONT_XS, rr.x + 4, y + 6, head, unused ? dim : gold);
+                c.fillRect(rr.x + 4 + textWidth(FONT_XS, head) + 8, y + 11, rr.w - textWidth(FONT_XS, head) - 16, 1, neon ? pal.frame : theme::border);
+                continue;
+            }
+            if (row.kind == Row::Empty) {
+                drawText(c, FONT_XS, rr.x + 4, y + 4, fitText(FONT_XS, row.text, rr.w - 8), dim);
+                continue;
+            }
+            if (sel) selectedRow(c, rr, 6);
+            const int idx = i;
+            hits::add(rr, [this, idx] { sel_ = idx; });  // (pointing chooses the row; a click also presses A: tick / change)
+            if (row.kind == Row::Mode || row.kind == Row::Order) {
+                drawText(c, FONT_SMB, rr.x + 8, y + 2, row.kind == Row::Mode ? "In games, play:" : "Order:", sel ? inkSel : ink);
+                const std::string v = row.kind == Row::Mode ? modeName(audio::musicMode()) : audio::musicShuffle() ? "Shuffled" : "In order";
+                const std::string arrows = sel ? "\xE2\x97\x80  " + v + "  \xE2\x96\xB6" : v;
+                drawText(c, FONT_SMB, rr.x + 150, y + 2, arrows, gold);
+                continue;
+            }
+            // a track: its tick, title, artist, listen button
+            const int t = row.track;
+            const bool on = audio::trackOn(t);
+            const bool counts = std::find(list.begin(), list.end(), t) != list.end();
+            const Rect box{rr.x + 8, y + 3, 12, 12};
+            c.frameRect(box.x, box.y, box.w, box.h, sel ? gold : dim, 1);
+            if (on) c.fillRect(box.x + 3, box.y + 3, 6, 6, counts ? theme::green : dim);
+            const bool here = playing == t;
+            std::string title = (here ? "\xE2\x99\xAA " : "") + audio::trackTitle(t);
+            const std::string by = audio::trackAlbum(t);
+            const int tx = rr.x + 28, lw = rr.w - 28 - 50;
+            const int titleW = std::min(textWidth(FONT_SM, title), by.empty() ? lw : lw * 3 / 5);
+            drawText(c, FONT_SM, tx, y + 3, fitText(FONT_SM, title, titleW), here ? gold : on ? (sel ? inkSel : ink) : dim);
+            if (!by.empty()) drawText(c, FONT_XS, tx + titleW + 10, y + 5, fitText(FONT_XS, by, lw - titleW - 10), dim);
+            const Rect play{rr.x + rr.w - 44, y + 1, 40, rowH - 3};
+            drawPanel(c, play, here ? rgb(60, 48, 20) : rgb(20, 26, 46), here ? theme::gold : theme::border, 4, 220);
+            drawTextAligned(c, FONT_XS, play.x, play.y + 2, play.w, Align::Center, here ? "Stop" : "Listen", here ? theme::gold : theme::text);
+            hits::addAction(play, [this, idx] { listen_ = idx; });
+        }
+        if (scroll_ > 0) drawTextAligned(c, FONT_XS, r.x, top - 11, r.w - 16, Align::Right, "\xE2\x96\xB2 more", dim);
+        if (scroll_ + vis < n) drawTextAligned(c, FONT_XS, r.x, top + vis * rowH, r.w - 16, Align::Right, "\xE2\x96\xBC more", dim);
+        // the folder
+        const int fy = r.y + r.h - 44;
+        c.fillRect(r.x + 10, fy - 4, r.w - 20, 1, neon ? pal.frame : theme::border);
+        if (!note_.empty() && int32_t(noteUntil_ - now) > 0) drawText(c, FONT_SMB, r.x + 14, fy - 2, note_, noteBad_ ? theme::gold : theme::green);
+        else drawText(c, FONT_XS, r.x + 14, fy, fitText(FONT_XS, "Your own music goes in this folder (MP3 files; folders inside it too):", r.w - 240), dim);
+        const bool explorer = audio::canShowFolder();  // (Windows: a button opens the folder in File Explorer)
+        drawText(c, FONT_XS, r.x + 14, fy + 13, fitText(FONT_XS, folder_, r.w - (explorer ? 236 : 150)), ink);
+        const Rect again{r.x + r.w - 128, fy + 2, 114, 20};
+        drawPanel(c, again, rgb(20, 26, 46), theme::border, 4, 220);
+        drawTextAligned(c, FONT_XS, again.x, again.y + 4, again.w, Align::Center, "Look for new songs", theme::text);
+        hits::addAction(again, [this] { rescanClick_ = true; });
+        if (explorer) {
+            const Rect open{again.x - 86, fy + 2, 80, 20};
+            drawPanel(c, open, rgb(20, 26, 46), theme::border, 4, 220);
+            drawTextAligned(c, FONT_XS, open.x, open.y + 4, open.w, Align::Center, "Open folder", theme::text);
+            hits::addAction(open, [this] { openClick_ = true; });
+        }
+        drawHintBar(c, {{"A", "Tick / change"}, {"X", "Listen"}, {"Y", "Look for new songs"}, {"B", "Back"}});
+    }
+
+private:
+    struct Row {
+        enum Kind { Mode, Order, Header, Track, Empty } kind;
+        int track = -1;
+        std::string text;
+    };
+    static const char* modeName(int m) { return m == audio::kPlayMine ? "My Music" : m == audio::kPlayBoth ? "Both" : "Game soundtrack"; }
+    void build() {
+        const int keep = sel_ < int(rows_.size()) && rows_[size_t(sel_)].kind == Row::Track ? rows_[size_t(sel_)].track : -1;
+        rows_.clear();
+        rows_.push_back({Row::Mode, -1, ""});
+        rows_.push_back({Row::Order, -1, ""});
+        rows_.push_back({Row::Header, 0, "GAME SOUNDTRACK"});
+        for (int t = audio::kTrackAction; t < audio::kTracks; ++t)
+            if (audio::trackAvailable(t)) rows_.push_back({Row::Track, t, ""});
+        int mine = 0;
+        for (int t = audio::kTracks; t < audio::trackCount(); ++t) ++mine;
+        rows_.push_back({Row::Header, 1, "MY MUSIC  \xC2\xB7  " + std::to_string(mine) + (mine == 1 ? " song" : " songs")});
+        if (mine == 0) rows_.push_back({Row::Empty, -1, "No songs yet: put MP3 files in the folder below, then press Y (or click Look for new songs)."});
+        if (const int skipped = audio::musicSkippedFiles())  // (FLAC, M4A, WAV ... aren't played)
+            rows_.push_back({Row::Empty, -1, std::to_string(skipped) + (skipped == 1 ? " other music file is" : " other music files are") +
+                                                 " not MP3 - only MP3 files play (convert them to MP3 to hear them)."});
+        for (int t = audio::kTracks; t < audio::trackCount(); ++t) rows_.push_back({Row::Track, t, ""});
+        sel_ = 0;
+        for (int i = 0; i < int(rows_.size()); ++i)
+            if (keep >= 0 && rows_[size_t(i)].kind == Row::Track && rows_[size_t(i)].track == keep) sel_ = i;
+    }
+    // A / click (0) or left / right (-1 / +1) on the chosen row
+    void act(int dir) {
+        if (sel_ < 0 || sel_ >= int(rows_.size())) return;
+        const Row& row = rows_[size_t(sel_)];
+        if (row.kind == Row::Mode) {
+            audio::setMusicMode((audio::musicMode() + (dir < 0 ? 2 : 1)) % 3);
+        } else if (row.kind == Row::Order) {
+            audio::setMusicShuffle(!audio::musicShuffle());
+        } else if (row.kind == Row::Track && dir == 0) {
+            audio::setTrackOn(row.track, !audio::trackOn(row.track));
+        } else {
+            return;
+        }
+        audio::play(audio::Sfx::Toggle);
+    }
+    void listen() {
+        if (sel_ < 0 || sel_ >= int(rows_.size()) || rows_[size_t(sel_)].kind != Row::Track) return;
+        const int t = rows_[size_t(sel_)].track;
+        if (audio::musicTrack() == t) {  // listening to it: back to the title's theme
+            backToTitleTheme(500, 1200);
+            listening_ = -1;
+        } else {
+            audio::musicTo(t, 400, 600);
+            listening_ = t;
+        }
+    }
+    static void backToTitleTheme(int outMs, int inMs) {  // (the title's theme; without its file, quiet as before)
+        if (audio::trackAvailable(audio::kTrackTitle)) audio::musicTo(audio::kTrackTitle, outMs, inMs);
+        else audio::musicFadeOut(outMs);
+    }
+    std::vector<Row> rows_;
+    std::string folder_, note_;
+    uint32_t noteUntil_ = 0, now_ = 0;
+    int sel_ = 0, scroll_ = 0, listen_ = -1, listening_ = -1;
+    bool rescanClick_ = false, openClick_ = false, noteBad_ = false;
 };
 
 class TestsMenuScene : public Scene {
@@ -1206,7 +1591,7 @@ public:
         titleBackdrop(c, now);
         drawTextAligned(c, FONT_XL, 0, 14, c.width(), Align::Center, "Galactic events", theme::gold);
         drawTextAligned(c, FONT_SM, 0, 52, c.width(), Align::Center, "Thunder's Edge's optional rules for your next new game", theme::dim);
-        const int n = ti::kEventCount, rows = 10, rowH = 21;
+        const int n = ti::kEventCount, rows = 7, rowH = 21;  // (0.61.0: 7 rows - the cards' own texts are long)
         if (sel_ < top_) top_ = sel_;
         if (sel_ >= top_ + rows) top_ = sel_ - rows + 1;
         const Rect panel{60, 74, 520, rows * rowH + 12};
@@ -1230,14 +1615,17 @@ public:
         if (top_ + rows < n) drawTextAligned(c, FONT_XS, panel.x, panel.y + panel.h - 12, panel.w - 10, Align::Right, "\xE2\x96\xBC more", theme::faint);
         // the text of the selected event
         const ti::GalacticEventDef& e = ti::galacticEvent(sel_);
-        const Rect box{60, panel.y + panel.h + 8, 520, 120};
+        const Rect box{60, panel.y + panel.h + 8, 520, 196};
         titlePanel(c, box, 10);
         drawText(c, FONT_MDB, box.x + 12, box.y + 6, e.name, theme::gold);
         int y = box.y + 28;
-        for (const std::string& line : wrapText(FONT_SM, e.text, box.w - 24)) {
-            if (y > box.y + box.h - 16) break;
-            drawText(c, FONT_SM, box.x + 12, y, line, theme::text);
-            y += 15;
+        std::vector<std::string> lines = wrapText(FONT_SM, e.text, box.w - 24);
+        const bool small = 28 + int(lines.size()) * 15 > box.h - 6;
+        if (small) lines = wrapText(FONT_XS, e.text, box.w - 24);
+        for (const std::string& line : lines) {
+            if (y > box.y + box.h - (small ? 14 : 16)) break;
+            drawText(c, small ? FONT_XS : FONT_SM, box.x + 12, y, line, theme::text);
+            y += small ? 13 : 15;
         }
         int ticked = 0;
         for (int i = 0; i < n; ++i)
@@ -1261,6 +1649,7 @@ std::unique_ptr<Scene> makeModulesScene() { return std::unique_ptr<Scene>(new Mo
 }  // namespace
 
 std::unique_ptr<Scene> makeControlsScene() { return std::unique_ptr<Scene>(new ControlsScene()); }
+std::unique_ptr<Scene> makeMusicScene() { return std::unique_ptr<Scene>(new MusicScene()); }
 
 std::unique_ptr<Scene> makeComingSoonScene(const std::string& title, const std::string& sub, const std::vector<std::string>& entries) {
     return std::unique_ptr<Scene>(new ComingSoonScene(title, sub, entries));

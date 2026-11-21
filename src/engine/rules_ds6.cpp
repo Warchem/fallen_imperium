@@ -279,7 +279,7 @@ void Rules::ds6Activated(int p, int sys) {
             // (fixes 29, the Veldyr review) each mech has the ability (LRR 1): one question per Aurora Stormcaller (2 PDS a planet at most)
             for (int k = 0; k < (G.fixes >= 29 ? 2 : 1); ++k) {
                 Force& f = G.planets[size_t(x)].units[size_t(vd)];
-                if (!f.count(UnitType::Mech) || unitsAvailable(G, vd, UnitType::PDS) <= 0 || f.count(UnitType::PDS) >= 2) break;
+                if (!f.count(UnitType::Mech) || unitsForPlacement(G, vd, UnitType::PDS) <= 0 || f.count(UnitType::PDS) >= 2) break;
                 curValue_ = p == vd ? 0 : 1;
                 const bool use = fyes(vd, Ab::DsAurora, "Aurora Stormcaller: your mech on " + planetName(x) + " becomes a PDS?", "");
                 curValue_ = 0;

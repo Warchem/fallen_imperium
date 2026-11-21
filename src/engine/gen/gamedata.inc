@@ -1448,7 +1448,7 @@ const AgendaDef kAgendas[50] = {
   {"wormhole_research", "Wormhole Research", false, Elect::ForAgainst, Source::Base},
 };
 // Exploration cards: key, name, deck, copies, kind, source
-const ExploreCardDef kExploreCards[49] = {
+const ExploreCardDef kExploreCards[54] = {
   {"frln", "Freelancers", ExploreType::Cultural, 3, ExploreKind::Instant, Source::PoK},
   {"mo", "Mercenary Outfit", ExploreType::Cultural, 3, ExploreKind::Instant, Source::PoK},
   {"gw", "Gamma Wormhole", ExploreType::Cultural, 1, ExploreKind::Token, Source::PoK},
@@ -1498,6 +1498,11 @@ const ExploreCardDef kExploreCards[49] = {
   {"darkvisions", "Dark Visions", ExploreType::Frontier, 1, ExploreKind::Instant, Source::Uncharted},
   {"warforgeruins", "War Forge Ruins", ExploreType::Hazardous, 1, ExploreKind::Instant, Source::Uncharted},
   {"arcaneshieldemitter", "Arcane Shield Emitter", ExploreType::Hazardous, 1, ExploreKind::Attach, Source::Uncharted},
+  {"minent", "Minor Entropic Field", ExploreType::Frontier, 1, ExploreKind::Instant, Source::PoK},
+  {"ent", "Entropic Field", ExploreType::Frontier, 1, ExploreKind::Instant, Source::PoK},
+  {"majent", "Major Entropic Field", ExploreType::Frontier, 1, ExploreKind::Instant, Source::PoK},
+  {"kel", "Keleres Ship", ExploreType::Frontier, 2, ExploreKind::Instant, Source::PoK},
+  {"dw", "Dead World", ExploreType::Frontier, 1, ExploreKind::Instant, Source::PoK},
 };
 // Relics: key, name, source
 const RelicDef kRelics[30] = {

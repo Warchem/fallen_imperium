@@ -151,6 +151,9 @@ public:
                 out.push_back(e);
                 e.down = false;
                 out.push_back(e);
+            } else if (cmd == "type") {  // (0.63.0) "type 1234": digits typed on the keyboard
+                for (char ch : arg)
+                    if (ch >= '0' && ch <= '9') out.push_back({Btn::None, true, kRawDigit0 + (ch - '0')});
             } else if (cmd == "wheel") {  // "wheel N": N notches (negative = out) where the pointer is
                 KeyEvent e{Btn::None, false, kRawWheel};
                 e.x = float(std::atof(arg.c_str()));

@@ -1,6 +1,9 @@
 #include "core/input.h"
 
 #include <cstring>
+#include <vector>
+
+#include "core/keymap.h"
 
 namespace {
 constexpr uint32_t kRepeatDelay = 280;
@@ -36,11 +39,43 @@ struct KeyName {
 // Longer names first so "L1/R1" is matched before "L1".
 // (0.27.0, owner: Esc = the game menu, Backspace = back, Tab = view the map;
 // WASD moves the map camera, the arrow keys move the cursor and through lists)
-const KeyName kKeyNames[] = {
-    {"L1/R1", "Q/E"}, {"L2/R2", "Z/TAB"}, {"D-PAD", "ARROWS/WASD"}, {"SELECT", "R"},    {"START", "ENTER"},
-    {"MENU", "ESC"},  {"L1", "Q"},        {"R1", "E"},         {"L2", "Z"},       {"R2", "TAB"},
-    {"A", "SPACE"},   {"B", "BKSP"},      {"X", "X"},          {"Y", "V"},
+// (0.72.0: worked out from the key bindings, Options > Controls and key bindings; the defaults give
+// L1/R1 Q/E, L2/R2 Z/TAB, D-PAD ARROWS/WASD, SELECT R, START ENTER, MENU ESC, A SPACE, B BKSP, X X, Y V)
+struct DynName {
+    std::string pad, key;
 };
+// four directions' keys as one name: ARROWS, WASD, or the letters (up left down right: "IJKL")
+std::string dirName(int up, int down, int left, int right) {
+    using namespace keymap;
+    auto first = [](int act) { return keys(act).empty() ? int(KNone) : keys(act)[0]; };
+    const int u = first(up), d = first(down), l = first(left), r = first(right);
+    if (u == KUp && d == KDown && l == KLeft && r == KRight) return "ARROWS";
+    const std::string a = shortName(u), b = shortName(l), c = shortName(d), e = shortName(r);
+    if (a.size() == 1 && b.size() == 1 && c.size() == 1 && e.size() == 1) return a == "W" && b == "A" && c == "S" && e == "D" ? "WASD" : a + b + c + e;
+    return a + "," + b + "," + c + "," + e;
+}
+const std::vector<DynName>& keyNames() {
+    static std::vector<DynName> names;
+    static uint32_t gen = 0;
+    if (gen == keymap::generation()) return names;
+    gen = keymap::generation();
+    using namespace keymap;
+    names = {{"L1/R1", label(L1) + "/" + label(R1)},
+             {"L2/R2", label(L2) + "/" + label(R2)},
+             {"D-PAD", dirName(Up, Down, Left, Right) + "/" + dirName(CamUp, CamDown, CamLeft, CamRight)},
+             {"SELECT", label(Select)},
+             {"START", label(Start)},
+             {"MENU", label(Menu)},
+             {"L1", label(L1)},
+             {"R1", label(R1)},
+             {"L2", label(L2)},
+             {"R2", label(R2)},
+             {"A", label(A)},
+             {"B", label(B)},
+             {"X", label(X)},
+             {"Y", label(Y)}};
+    return names;
+}
 
 bool g_deck = false;
 const KeyName kDeckNames[] = {{"SELECT", "L3"}, {"START", "VIEW"}};
@@ -64,7 +99,7 @@ std::string keyLabel(const std::string& button) {
         return button;
     }
     if (!g_keyboard) return button;
-    for (const KeyName& k : kKeyNames)
+    for (const DynName& k : keyNames())
         if (button == k.pad) return k.key;
     return button;
 }
@@ -94,8 +129,8 @@ std::string keyText(const std::string& text) {
     while (i < text.size()) {
         bool done = false;
         if (i == 0 || !wordChar(text[i - 1])) {
-            for (const KeyName& k : kKeyNames) {
-                std::string pad(k.pad);
+            for (const DynName& k : keyNames()) {
+                const std::string& pad = k.pad;
                 if (text.compare(i, pad.size(), pad) != 0) continue;
                 size_t end = i + pad.size();
                 if (end < text.size() && wordChar(text[end])) continue;
@@ -124,6 +159,7 @@ void Input::beginFrame() {
     any_ = false;
     mouse_.moved = mouse_.leftPress = mouse_.click = mouse_.rightClick = false;
     mouse_.dragX = mouse_.dragY = mouse_.wheel = 0.f;
+    typed_.clear();
 }
 
 void Input::handle(Btn b, bool down, uint32_t now) {

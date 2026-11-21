@@ -42,7 +42,11 @@ EXTRA = [
     0x25B2, 0x25B6, 0x25BC, 0x25C0,          # triangles
     0x2605, 0x2713, 0x2717,                  # star, check, cross
 ]
-CODEPOINTS = list(range(32, 127)) + EXTRA
+# 0.68.0 (the music player shows the players' own song titles and artists): the accented letters of the Latin
+# alphabets, the Greek and Cyrillic letters, and the music notes - after the older characters, so their order is kept
+SONGS = [cp for cp in list(range(0x00A1, 0x0180)) + list(range(0x0391, 0x03CA)) + [0x0401] + list(range(0x0410, 0x0450))
+         + [0x0451, 0x266A, 0x266B] if cp not in EXTRA and cp not in (0x00AD, 0x03A2)]
+CODEPOINTS = list(range(32, 127)) + EXTRA + SONGS
 
 
 def lazaxian_codepoints():

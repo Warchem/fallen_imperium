@@ -100,6 +100,7 @@ int pathFor(const Game& g, int p, const FactionGuide& f) {
 
 // Does the personality go its own way this round? (the core then only whispers)
 bool deviates(const Game& g, int p) {
+    if (aiIsAISeat(g, p)) return false;  // (0.74.0) the A.I. never strays from its best plan
     int pct = 10;
     switch (Arch(archNow(g, p))) {
         case Arch::Chaotic: pct = 35; break;
@@ -201,6 +202,17 @@ float aiCoreTechBonus(const Game& g, int p, int tech) {
                 v += 0.6f * aiTune("l1inherit", 0.f);
         }
     }
+    // (balance pass 0.66.0 - test knob rhtech, OFF; researched in 7 of 45 games) Terrafactory II (3 red + 1 yellow): the Roh'Dhna's
+    // war suns move, bombard and can be built - the red technologies toward it, and the upgrade itself, worth more. REVISIT (at 4,
+    // 360 games): 31 wins / 6.51 VP against 39 / 6.69 - the climb costs more than it brings
+    if (aiTune("rhtech", 0.f) > 0.f && isFaction(g, p, "rohdhna")) {
+        const int tf = findTech("dsrohdws");
+        if (tf >= 0 && !me.hasTech(tf)) {
+            if (tech == tf) v += aiTune("rhtech", 0.f);
+            else if (kTechs[tech].color == TechColor::Red && !kTechs[tech].unitUpgrade && techCount(g, p, TechColor::Red) < 3)
+                v += 0.5f * aiTune("rhtech", 0.f);
+        }
+    }
     if (deviates(g, p)) v *= 0.5f;
     // threats next door: what the other players have within 2 systems of ours
     int infantry = 0, fighters = 0, bigShips = 0, pds = 0, ships = 0;
@@ -249,8 +261,14 @@ void aiCoreApply(Style& st, const Game& g, int p) {
     const float early = g.round <= 1 ? 1.f : g.round == 2 ? 0.5f : g.round == 3 ? 0.25f : 0.f;
     const float late = (g.round <= 2 ? 0.f : g.round == 3 ? 0.5f : 1.f) * aiTune("g_late", 1.f);
     static const float kPrio[4] = {2.0f, 1.4f, 0.9f, 0.5f}, kLate[3] = {1.4f, 0.9f, 0.5f};
+    // (balance pass 0.66.0 - test knob rhr1, OFF) the Roh'Dhna without the guide's Construction first: its round-1 docks (36 of
+    // 59) could never become war suns. REVISIT (360 games): 31 wins / 6.54 VP against 39 / 6.69 - Construction first is right
+    const bool noRhCons = aiTune("rhr1", 0.f) > 0.f && isFaction(g, p, "rohdhna");
+    // (balance pass 0.66.0 - test knob r1off, per seat with TI4_TUNESEATS, OFF) no opening priorities from the guide at all.
+    // REVISIT (360 games): Zealots 31 wins / 6.35 VP against 31 / 6.39, Cymiae 17 / 6.17 against 18 / 6.17 - no effect
+    const bool noR1 = aiTune("r1off", 0.f) > 0.f;
     for (int i = 0; i < 4; ++i)
-        if (f.r1[i] >= 0) st.card[f.r1[i]] += kPrio[i] * early * follow;
+        if (f.r1[i] >= 0 && !noR1 && !(noRhCons && f.r1[i] == 3)) st.card[f.r1[i]] += kPrio[i] * early * follow;
     for (int i = 0; i < 3; ++i)
         if (f.late[i] >= 0) st.card[f.late[i]] += kLate[i] * late * follow;
     if (g.round <= 2)

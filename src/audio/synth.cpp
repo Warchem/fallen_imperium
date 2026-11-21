@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "audio/audio.h"
@@ -847,6 +848,43 @@ std::vector<float> bigRocket() {  // the Titans' rockets: an ignition crack, the
     return v;
 }
 
+// ------------------------------------------------- 0.69.0: the grim map sounds
+#ifndef TI4_SYNTH_NO_GRIM  // (the round 2-4 drafts define these themselves)
+#include "audio/grim.inc"
+#include "audio/grim2.inc"
+#include "audio/warsun.inc"
+#include "audio/fracture.inc"
+
+std::vector<int16_t> grimSound(Sfx s) {
+    switch (s) {
+        case Sfx::Siren: return grim(attackSirenShort(), 0.13f, 0.25f);
+        case Sfx::LandBurn: return grim(invadeBurn(), 0.14f, 0.25f);
+        case Sfx::LandPods: return grim(invadePods(), 0.14f, 0.25f);
+        case Sfx::LandBoots: return grim(invadeBoots(), 0.14f, 0.3f);
+        case Sfx::ShipPassA: return grim(shipPassA(), 0.13f, 0.12f);  // (0.73.0) the War Sun scene
+        case Sfx::ShipPassB: return grim(shipPassB(), 0.13f, 0.14f);
+        case Sfx::WarSunDrums: return grim(warSunDrums(), 0.11f, 0.3f);
+        case Sfx::FractureTear: return grim(fractureTear(), 0.12f, 0.45f);  // (0.73.5) the Fracture appears
+        case Sfx::GalaxyScreams: return dryMaster(galaxyScreams(), 0.12f);    // (0.73.8) no room, no echo: cut off dead
+        case Sfx::ObsidianTear: return grim(obsidianTear(), 0.13f, 0.5f);
+        default: break;
+    }
+    if (int(s) >= int(Sfx::TurnYours) && int(s) <= int(Sfx::CodecAlert)) {  // (0.70.0) the moments and the codec
+        const MomentRecipe& m = kMomentRecipes[int(s) - int(Sfx::TurnYours)];
+        return grim(m.make(), m.loud, m.hall);
+    }
+    if (int(s) >= int(Sfx::VoiceFirst) && int(s) <= int(Sfx::VoiceLast)) return factionVoiceSound(int(s) - int(Sfx::VoiceFirst));
+    const int f = int(s) - int(Sfx::MoveFirst);
+    if (f < 0 || f >= kMoveSounds) return {};
+    const MoveRecipe& m = kMoveRecipes[f];
+    return grim(m.make(), m.loud, m.hall);
+}
+static_assert(sizeof kMomentRecipes / sizeof kMomentRecipes[0] == size_t(int(Sfx::CodecAlert) - int(Sfx::TurnYours) + 1),
+              "a recipe for every moment");
+#else
+std::vector<int16_t> grimSound(Sfx) { return {}; }
+#endif
+
 }  // namespace
 
 std::vector<int16_t> synthesise(Sfx s) {
@@ -942,9 +980,55 @@ std::vector<int16_t> synthesise(Sfx s) {
             distance(v, 5000.f, 0.3f);
             return finish(std::move(v), 0.6f);
         }
+        case Sfx::Siren:
+        case Sfx::LandBurn:
+        case Sfx::LandPods:
+        case Sfx::LandBoots:
+        case Sfx::MoveFirst:
+        case Sfx::MoveLast:
+        case Sfx::TurnYours:
+        case Sfx::RoundNew:
+        case Sfx::StrategyPick:
+        case Sfx::ActionCard:
+        case Sfx::TechResearch:
+        case Sfx::ObjectivePublic:
+        case Sfx::ObjectiveSecret:
+        case Sfx::PlanetTaken:
+        case Sfx::AgendaReveal:
+        case Sfx::AgendaResult:
+        case Sfx::DealMade:
+        case Sfx::DealRefused:
+        case Sfx::BetrayalSting:
+        case Sfx::Kingslay:
+        case Sfx::DiceRoll:
+        case Sfx::Victory:
+        case Sfx::RelicGained:
+        case Sfx::HeroWarning:
+        case Sfx::CodecIncoming:
+        case Sfx::CodecOpen:
+        case Sfx::CodecClose:
+        case Sfx::CodecAccept:
+        case Sfx::CodecDecline:
+        case Sfx::CodecCounter:
+        case Sfx::CodecThreat:
+        case Sfx::CodecAlert:
+        case Sfx::VoiceFirst:
+        case Sfx::VoiceLast:
+        case Sfx::ShipPassA:
+        case Sfx::ShipPassB:
+        case Sfx::WarSunDrums:
+        case Sfx::FractureTear:
+        case Sfx::GalaxyScreams:
+        case Sfx::ObsidianTear: return grimSound(s);
         case Sfx::Count: break;
     }
+    if (int(s) > int(Sfx::MoveFirst) && int(s) < int(Sfx::MoveLast)) return grimSound(s);  // the factions between
+    if (int(s) > int(Sfx::VoiceFirst) && int(s) < int(Sfx::VoiceLast)) return grimSound(s);
     return {};
 }
+
+#ifndef TI4_SYNTH_NO_GRIM
+const char* moveSoundKey(int f) { return f >= 0 && f < kMoveSounds ? kMoveRecipes[f].key : ""; }
+#endif
 
 }  // namespace audio

@@ -511,7 +511,57 @@ int Rules::duranium(int p, Force& f, const Force& before) {
     return repairOne(f, before, G.fixes >= 12);
 }
 
+// (fixes 31, the secret objectives' pass) LRR 61.7: "A player can score any number of objectives ... during a turn of the action
+// phase; however, they can only score one objective during or after each combat" (61.7a: the space combat and the ground combat
+// of one tactical action each count). The action-phase secrets the combat fulfils - during it (Destroy Their Greatest Ship, Fight
+// with Precision) or by its result (Spark a Rebellion, Unveil Flagship, Brave the Void, Darken the Skies, Demonstrate Your
+// Power, Betray a Friend) - are collected while it runs (actionSecret) and scored at its end: one each, the player's pick.
 void Rules::spaceCombat(int att, int def, int sys) {
+    if (G.fixes < 31) {
+        spaceCombatRun(att, def, sys);
+        return;
+    }
+    const size_t mark = combatSecrets_.size();
+    ++combatDepth_;
+    spaceCombatRun(att, def, sys);
+    --combatDepth_;
+    combatSecretsFlush(mark);
+}
+void Rules::groundCombat(int att, int def, int planet) {
+    if (G.fixes < 31) {
+        groundCombatRun(att, def, planet);
+        return;
+    }
+    const size_t mark = combatSecrets_.size();
+    ++combatDepth_;
+    groundCombatRun(att, def, planet);
+    --combatDepth_;
+    combatSecretsFlush(mark);
+}
+void Rules::combatSecretsFlush(size_t mark) {
+    if (mark >= combatSecrets_.size()) return;
+    std::vector<std::pair<int, int>> got(combatSecrets_.begin() + long(mark), combatSecrets_.end());
+    combatSecrets_.resize(mark);
+    std::vector<int> order;  // the players, in the order their first objective came
+    for (const auto& x : got)
+        if (std::find(order.begin(), order.end(), x.first) == order.end()) order.push_back(x.first);
+    for (int p : order) {
+        std::vector<Option> opts;
+        for (const auto& x : got) {
+            if (x.first != p) continue;
+            const auto& sec = G.players[size_t(p)].secrets;
+            if (std::find(sec.begin(), sec.end(), int16_t(x.second)) == sec.end() || hasScored(G, p, x.second)) continue;
+            opts.push_back({x.second, std::string(kObjectives[x.second].name) + " - 1 VP", objectiveSummary(x.second)});
+        }
+        if (opts.empty()) continue;
+        const int o = opts.size() == 1 ? opts[0].id
+                                       : pick(p, Tag::ScoreSecret, "Score which secret objective?", opts,
+                                              "Only 1 objective can be scored during or after each combat (LRR 61.7).");
+        scoreObjective(p, o);
+    }
+}
+
+void Rules::spaceCombatRun(int att, int def, int sys) {
     combatStart(att, def, sys, -1);
     // (fixes 27, the Nekro review - owner 2026-11-14) Technological Singularity: "Once per combat, after 1 of your opponent's
     // units is destroyed" - from the very start (Assault Cannon, Ambush, ...), and Antivirus ("At the start of a combat") before
@@ -989,6 +1039,11 @@ void Rules::spaceCombat(int att, int def, int sys) {
         e.system = int16_t(sys);
         e.text = "The combat ends in a draw (Skilled Retreat).";
         E.emit(e);
+        // (fixes 31) Demonstrate Your Power: "Have 3 or more non-fighter ships in the active system at the end of a space combat" -
+        // a win isn't needed: the ships that stayed when the other side slipped away count too
+        if (G.fixes >= 31 && sys == G.activeSystem)
+            for (int x : {att, def})
+                if (x < G.numPlayers && G.systems[sys].space[x].nonFighterShips() >= 3) actionSecret(x, "dyp");
     } else if (a && !d) {
         combatWon(att, def, sys, true);
     } else if (d && !a) {
@@ -1009,7 +1064,7 @@ void Rules::spaceCombat(int att, int def, int sys) {
     removeExcessCapacity(def, sys);
 }
 
-void Rules::groundCombat(int att, int def, int planet) {
+void Rules::groundCombatRun(int att, int def, int planet) {
     PlanetState& pl = G.planets[planet];
     int sys = pl.system;
     combatStart(att, def, sys, planet);

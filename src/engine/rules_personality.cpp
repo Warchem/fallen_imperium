@@ -35,6 +35,7 @@ void Rules::setupPersonalities() {
         if (pl.human) continue;  // humans have no personality (and no B-Factor)
         int want = p < int(s.archetypes.size()) ? s.archetypes[p] : -1;
         if (want == -2) continue;  // test only: the plain 0.11 computer player
+        if ((pl.aiLevel >= 0 ? pl.aiLevel : G.aiLevel) >= kAiLevelAI) continue;  // (0.74.0) the A.I. has no personality
         Personality& pe = pl.pers;
         if (want >= 0 && want < int(Arch::Count)) {
             pe.arch = int8_t(want);
@@ -56,6 +57,9 @@ void Rules::setupPersonalities() {
         }
         pe.now = pe.arch == int8_t(Arch::Chaotic) ? int8_t(prand(G, 5, p, 0, 0, uint32_t(Arch::Chaotic))) : pe.arch;
         for (int q = 0; q < G.numPlayers && q < 8; ++q) pe.bf[q] = q == p ? 0.f : kArchetypes[pe.arch].bStart;
+        // (0.80.0) a league rival's grudge from earlier games: more B-Factor toward the person at the device
+        if (p < int(s.grudges.size()) && s.grudges[p] > 0 && s.human >= 0 && s.human < G.numPlayers && s.human < 8 && s.human != p)
+            pe.bf[s.human] = std::min(100.f, pe.bf[s.human] + float(s.grudges[p]));
     }
 }
 

@@ -10,6 +10,7 @@
 #include <set>
 
 #include "ai/ai.h"
+#include "engine/map.h"
 #include "engine/query.h"
 #include "engine/rules.h"
 #include "gfx/font.h"
@@ -21,6 +22,7 @@
 #include "ui/theme.h"
 #include "ui/tile_view.h"
 #include "ui/widgets.h"
+#include "ui/pcolors.h"
 
 using namespace ti;
 
@@ -83,6 +85,7 @@ void drawError(Canvas& c, const std::string& err, int y, bool warning = false) {
 // =================================================================== list picks
 class ListUI : public DecisionUI {
     bool confirmPass_ = false;  // 0.30.0: asking "are you sure" about Pass
+    int confirmTake_ = -1;      // 0.61.1 (owner W19): the piece about to come off the board (LRR 23.4a), waiting for A
 
 public:
     bool bareClickConfirms() const override { return false; }  // (0.58.4)
@@ -100,6 +103,7 @@ public:
     }
     std::vector<std::pair<std::string, std::string>> hints() const override {
         if (confirmPass_) return {{"A", "Pass"}, {"B", "Keep playing"}};
+        if (confirmTake_ >= 0) return {{"A", "Remove it"}, {"B", "Choose another"}};
         if (multi_) {
             std::vector<std::pair<std::string, std::string>> h = {{"A", "Toggle"}, {"START", "Confirm"}};
             if (!chosen_.empty()) h.push_back({"B", "Clear"});
@@ -108,15 +112,18 @@ public:
         // 0.43.4 (owner + tester): B never answers ("No", "Skip", "Nothing" are picked with A) - it is back / undo
         return {{"A", "Choose"}};
     }
-    bool backAvailable() const override { return multi_ ? !chosen_.empty() : confirmPass_; }
+    bool backAvailable() const override { return multi_ ? !chosen_.empty() : confirmPass_ || confirmTake_ >= 0; }
 
     bool update(const Input& in, uint32_t) override {
         const int n = int(d_.options.size());
         if (n == 0) return false;
-        if (in.pressed(Btn::Up)) cursor_ = (cursor_ + n - 1) % n;
-        if (in.pressed(Btn::Down)) cursor_ = (cursor_ + 1) % n;
+        // 0.61.2 (owner: "for Trade, I have to press the enter button instead of space"): a choose-several list ends in a Confirm row -
+        // A (Space, a click) on it confirms, as START does
+        const int rows = n + (multi_ ? 1 : 0);
+        if (in.pressed(Btn::Up)) cursor_ = (cursor_ + rows - 1) % rows;
+        if (in.pressed(Btn::Down)) cursor_ = (cursor_ + 1) % rows;
         if (in.pressed(Btn::L1)) cursor_ = std::max(0, cursor_ - 5);
-        if (in.pressed(Btn::R1)) cursor_ = std::min(n - 1, cursor_ + 5);
+        if (in.pressed(Btn::R1)) cursor_ = std::min(rows - 1, cursor_ + 5);
         if (!multi_) {
             if (confirmPass_) {  // 0.30.0 (owner): "are you sure" before passing for the round
                 if (in.pressed(Btn::A)) {
@@ -125,6 +132,16 @@ public:
                     return true;
                 }
                 if (in.pressed(Btn::B)) confirmPass_ = false;
+                return false;
+            }
+            if (confirmTake_ >= 0) {  // 0.61.1: "remove this piece from the board?"
+                if (in.pressed(Btn::A)) {
+                    answer_ = Answer();
+                    answer_.picks.push_back(d_.options[size_t(confirmTake_)].id);
+                    confirmTake_ = -1;
+                    return true;
+                }
+                if (in.pressed(Btn::B)) confirmTake_ = -1;
                 return false;
             }
             if (in.pressed(Btn::A)) {
@@ -136,20 +153,25 @@ public:
                     confirmPass_ = true;
                     return false;
                 }
+                if (d_.tag == Tag::ReclaimUnit && d_.options[cursor_].id >= 0) {
+                    confirmTake_ = cursor_;
+                    return false;
+                }
                 answer_ = Answer();
                 answer_.picks.push_back(d_.options[cursor_].id);
                 return true;
             }
             return false;  // (B: the scene goes back a step - 0.43.4)
         }
-        if (in.pressed(Btn::A)) {
+        const bool confirmRow = cursor_ >= n;
+        if (in.pressed(Btn::A) && !confirmRow) {
             int id = d_.options[cursor_].id;
             if (chosen_.count(id)) chosen_.erase(id);
             else if (int(chosen_.size()) < d_.maxPick) chosen_.insert(id);
             else setError("You can choose at most " + std::to_string(d_.maxPick) + ".");
         }
         if (in.pressed(Btn::B)) chosen_.clear();
-        if (in.pressed(Btn::Start)) {
+        if (in.pressed(Btn::Start) || (confirmRow && in.pressed(Btn::A))) {
             answer_ = Answer();
             for (const Option& o : d_.options)
                 if (chosen_.count(o.id)) answer_.picks.push_back(o.id);
@@ -165,7 +187,7 @@ public:
             ctx += (ctx.empty() ? "" : " ") + std::string("Choose ") +
                    (d_.minPick == d_.maxPick ? std::to_string(d_.minPick)
                                              : std::to_string(d_.minPick) + "-" + std::to_string(d_.maxPick)) +
-                   keyText(", then press START.");
+                   keyText(", then Confirm (the last row, or START).");
         Rect r = decisionPanelRect();
         const int w = r.w - 24;
         // compute row heights
@@ -182,6 +204,12 @@ public:
             heights.push_back(21 + int(lines.size()) * 13 + 4);
             total += heights.back();
         }
+        const int n = int(d_.options.size());
+        if (multi_) {  // (0.61.2) the Confirm row
+            details.push_back({});
+            heights.push_back(28);
+            total += 28;
+        }
         int y0 = drawFrame(c, d_.prompt, ctx, &bottom, total + (error_.empty() ? 0 : 34));
         // scroll so the cursor is visible
         int avail = bottom - y0 - (error_.empty() ? 0 : 30);
@@ -193,11 +221,21 @@ public:
             ++scroll_;
         }
         int y = y0;
-        for (int i = scroll_; i < int(d_.options.size()); ++i) {
+        for (int i = scroll_; i < int(heights.size()); ++i) {
             if (y + heights[i] > y0 + avail) break;
-            const Option& o = d_.options[i];
             bool sel = i == cursor_;
             hits::add(Rect{r.x + 8, y - 2, r.w - 16, heights[i]}, [this, i]() { cursor_ = i; });  // the mouse (0.27.0)
+            if (i >= n) {  // (0.61.2) the Confirm row of a choose-several list
+                const int k = int(chosen_.size());
+                const bool ok = k >= d_.minPick;
+                c.fillRoundRect(r.x + 8, y, r.w - 16, 24, 6, sel ? (ok ? rgb(40, 70, 40) : rgb(70, 50, 30)) : rgb(24, 34, 30), 245);
+                c.frameRoundRect(r.x + 8, y, r.w - 16, 24, 6, sel ? theme::gold : theme::border, 1);
+                drawTextAligned(c, FONT_MDB, r.x + 8, y + 3, r.w - 16, Align::Center,
+                                "Confirm (" + std::to_string(k) + " chosen)", ok ? (sel ? theme::text : theme::green) : theme::dim);
+                y += heights[i];
+                continue;
+            }
+            const Option& o = d_.options[i];
             if (sel) {
                 c.fillRoundRect(r.x + 8, y - 2, r.w - 16, heights[i], 6, theme::panelHi, 245);
                 c.frameRoundRect(r.x + 8, y - 2, r.w - 16, heights[i], 6, theme::gold, 1);
@@ -229,6 +267,27 @@ public:
             hits::addButton(Rect{b.x, b.y, b.w / 2, b.h}, Btn::A);
             hits::addButton(Rect{b.x + b.w / 2, b.y, b.w / 2, b.h}, Btn::B);
             drawTextAligned(c, FONT_SMB, b.x, b.y + 58, b.w, Align::Center, keyText("A: Pass     B: Keep playing"), theme::text);
+        }
+        if (confirmTake_ >= 0 && confirmTake_ < int(d_.options.size())) {  // 0.61.1 (owner W19): the warning before a piece goes
+            const Option& o = d_.options[size_t(confirmTake_)];
+            std::string dest = "its new place";  // (the engine's context: "... placed in <system> at once.")
+            const size_t at = d_.context.find("placed in "), end = d_.context.rfind(" at once");
+            if (at != std::string::npos && end != std::string::npos && end > at + 10) dest = d_.context.substr(at + 10, end - at - 10);
+            const std::vector<std::string> lines =
+                wrapText(FONT_SM, "Your " + o.label + " is removed from the board, then placed in " + dest + ".", r.w - 64);
+            const int h = 62 + int(lines.size()) * 15;
+            const Rect b{r.x + 20, r.y + r.h / 2 - h / 2, r.w - 40, h};
+            c.fillRoundRect(b.x, b.y, b.w, b.h, 10, rgb(32, 22, 8), 245);
+            c.frameRoundRect(b.x, b.y, b.w, b.h, 10, rgb(240, 170, 60), 2);
+            drawTextAligned(c, FONT_MDB, b.x, b.y + 10, b.w, Align::Center, "Take this piece off the board?", rgb(255, 205, 120));
+            int ly = b.y + 34;
+            for (const std::string& l : lines) {
+                drawTextAligned(c, FONT_SM, b.x, ly, b.w, Align::Center, l, rgb(255, 225, 150));
+                ly += 15;
+            }
+            hits::addButton(Rect{b.x, b.y, b.w / 2, b.h}, Btn::A);
+            hits::addButton(Rect{b.x + b.w / 2, b.y, b.w / 2, b.h}, Btn::B);
+            drawTextAligned(c, FONT_SMB, b.x, b.y + b.h - 22, b.w, Align::Center, keyText("A: Remove it     B: Choose another"), theme::text);
         }
     }
 
@@ -339,6 +398,7 @@ public:
         int h = int(lines.size()) * 19 + 10 + (d_.context.empty() ? 0 : 15);
         c.fillRoundRect(r.x, r.y, r.w, h, 8, rgb(12, 17, 32), 225);
         c.frameRoundRect(r.x, r.y, r.w, h, 8, theme::cyan, 1);
+        hits::addPanel(Rect{r.x, r.y, r.w, h});  // (0.61.2: no picking through the banner)
         int y = r.y + 5;
         for (const std::string& l : lines) {
             drawText(c, FONT_MDB, r.x + 10, y, l, theme::cyan);
@@ -360,6 +420,332 @@ private:
     MapView& map_;
     ListUI list_;
     bool listMode_ = false;
+};
+
+// =================================================================== empty spaces picked on the map (0.61.2)
+// Star Charts, Age of Exploration, Dark Energy Tap: a new tile at the edge of the board - the spaces light up on the map; the
+// D-pad / X steps through them (the map follows), the mouse points at one, A places the tile there; Y shows the list.
+class SpotPickUI : public DecisionUI {
+public:
+    SpotPickUI(const Game& g, const Decision& d, MapView& map) : DecisionUI(g, d), map_(map), list_(g, d) {
+        for (const Option& o : d_.options)
+            if (o.enabled && o.id >= 0) {
+                hexes_.push_back(spotHex(o.id));
+                ids_.push_back(o.id);
+            }
+        sel_ = hexes_.empty() ? -1 : 0;
+        show();
+    }
+    ~SpotPickUI() override { map_.clearFreeSpots(); }
+    bool mapMode() const override { return !listMode_; }
+    bool bareClickConfirms() const override { return mapMode(); }
+    bool backAvailable() const override { return listMode_; }
+    int highlightedValue() const override { return listMode_ ? list_.highlightedValue() : sel_ >= 0 ? ids_[size_t(sel_)] : -1; }
+    std::vector<std::pair<std::string, std::string>> hints() const override {
+        if (listMode_) return {{"A", "Choose"}, {"Y", "Map"}, {"B", "Map"}};
+        return {{"\xE2\x97\x80\xE2\x96\xB6", "Next space"}, {"A", "Place it here"}, {"Y", "List"}};
+    }
+    bool update(const Input& in, uint32_t now) override {
+        if (in.pressed(Btn::Y)) {
+            listMode_ = !listMode_;
+            if (!listMode_) show();
+            else map_.clearFreeSpots();
+            return false;
+        }
+        if (listMode_) {
+            if (in.pressed(Btn::B) && !list_.backAvailable()) {
+                listMode_ = false;
+                show();
+                return false;
+            }
+            if (list_.update(in, now)) {
+                answer_ = list_.answer();
+                return true;
+            }
+            return false;
+        }
+        if (hexes_.empty()) return false;
+        const int n = int(hexes_.size());
+        int step = 0;
+        if (in.pressed(Btn::Right) || in.pressed(Btn::Down) || in.pressed(Btn::X)) step = 1;
+        if (in.pressed(Btn::Left) || in.pressed(Btn::Up)) step = -1;
+        if (step) {
+            sel_ = ((sel_ + step) % n + n) % n;
+            show();
+        }
+        if (int z = in.zoom()) map_.setZoom(map_.zoom() + z);
+        const Mouse& m = in.mouse();
+        const int under = m.active ? map_.hitFreeSpot(g_, m.x, m.y) : -1;
+        if (m.active && m.moved && under >= 0 && under != sel_) {
+            sel_ = under;
+            map_.setFreeSpots(hexes_, sel_);
+        }
+        if (in.pressed(Btn::A)) {
+            if (m.active && m.leftPress && under < 0) {  // (a click beside the spaces does nothing)
+                setError("Click one of the lit-up spaces at the edge of the board.");
+                return false;
+            }
+            answer_ = Answer();
+            answer_.picks.push_back(ids_[size_t(sel_)]);
+            return true;
+        }
+        return false;
+    }
+    void draw(Canvas& c, uint32_t now) override {
+        if (listMode_) {
+            list_.draw(c, now);
+            return;
+        }
+        Rect r{6, 26, 410, 0};
+        const auto lines = wrapText(FONT_MDB, d_.prompt, r.w - 20);
+        std::string label;
+        for (const Option& o : d_.options)
+            if (sel_ >= 0 && o.id == ids_[size_t(sel_)]) label = o.label;
+        r.h = int(lines.size()) * 19 + 10 + 30;
+        c.fillRoundRect(r.x, r.y, r.w, r.h, 8, rgb(12, 17, 32), 225);
+        c.frameRoundRect(r.x, r.y, r.w, r.h, 8, theme::cyan, 1);
+        hits::addPanel(r);
+        int y = r.y + 5;
+        for (const std::string& l : lines) {
+            drawText(c, FONT_MDB, r.x + 10, y, l, theme::cyan);
+            y += 19;
+        }
+        drawText(c, FONT_SM, r.x + 10, y, fitText(FONT_SM, keyText("A lit-up space at the edge (A) - Y: the list"), r.w - 20), theme::dim);
+        drawText(c, FONT_SM, r.x + 10, y + 15, fitText(FONT_SM, label, r.w - 20), theme::gold);
+        if (!error_.empty()) {
+            const int ey = 446 - 70;
+            c.fillRoundRect(r.x, ey, r.w, 22, 6, rgb(70, 18, 18), 235);
+            drawText(c, FONT_SM, r.x + 8, ey + 3, fitText(FONT_SM, error_, r.w - 16), rgb(255, 200, 200));
+        }
+    }
+
+private:
+    void show() {  // the spaces on the map, the camera by the chosen one (on its nearest neighbour on the board)
+        map_.setFreeSpots(hexes_, sel_);
+        if (sel_ < 0) return;
+        int best = -1, bd = 1 << 20;
+        for (size_t s = 0; s < g_.systems.size(); ++s) {
+            if (g_.systems[s].offBoard) continue;
+            const int dd = hexDistance(g_.systems[s].pos, hexes_[size_t(sel_)]);
+            if (dd < bd) {
+                bd = dd;
+                best = int(s);
+            }
+        }
+        if (best >= 0) map_.setCursor(g_, best);
+    }
+    MapView& map_;
+    ListUI list_;
+    bool listMode_ = false;
+    std::vector<Hex> hexes_;
+    std::vector<int> ids_;
+    int sel_ = -1;
+};
+
+// =================================================================== planets picked on the map (0.61.2)
+// Owner's document: "making a choice in game (like structure placement with Construction ...) has me going through a menu with
+// names of planets. Some other choices instead allow me to pick the tile ... Can we make tile picking uniform for all options
+// that are still pulling up planet lists unless it doesn't make sense?" - a one-choice question whose options sit in 2 or more
+// systems is answered on the map: the systems with a choice light up, A on one picks its choice (several there: a short list of
+// just those), Y shows the whole list, START the "don't" choice.
+int optionSystem(const Game& g, const Decision& d, const Option& o) {
+    if (o.at >= 0 && o.at < int(g.systems.size())) return o.at;
+    (void)d;
+    if (o.id < 0 || o.id >= int(g.planets.size())) return -1;
+    const PlanetState& ps = g.planets[size_t(o.id)];
+    if (ps.system < 0 || ps.def < 0) return -1;
+    return o.label.find(kPlanets[ps.def].name) != std::string::npos ? int(ps.system) : -1;  // (a planet's id and its name)
+}
+bool planetsOnMap(const Game& g, const Decision& d) {
+    if (d.kind != DecisionKind::Pick || d.onMap || d.maxPick != 1 || d.minPick != 1) return false;
+    if (d.tag == Tag::VoteOutcome) return false;  // (a vote keeps its list: the votes so far, the agenda's outcomes side by side)
+    std::vector<int> sys;
+    for (const Option& o : d.options)
+        if (const int s = o.enabled ? optionSystem(g, d, o) : -1; s >= 0 && std::find(sys.begin(), sys.end(), s) == sys.end()) sys.push_back(s);
+    return sys.size() >= 2;
+}
+
+class PlanetMapPickUI : public DecisionUI {
+public:
+    PlanetMapPickUI(const Game& g, const Decision& d, MapView& map) : DecisionUI(g, d), map_(map), list_(g, d) {
+        std::vector<int> sys;
+        for (size_t i = 0; i < d_.options.size(); ++i) {
+            const Option& o = d_.options[i];
+            const int s = o.enabled ? optionSystem(g, d_, o) : -1;
+            if (s < 0) {
+                if (o.enabled) others_.push_back(int(i));
+                continue;
+            }
+            at_[s].push_back(int(i));
+            if (std::find(sys.begin(), sys.end(), s) == sys.end()) sys.push_back(s);
+        }
+        systems_ = sys;
+        map_.setHighlights(sys);
+        if (!sys.empty() && !map_.highlighted(map_.cursor())) {
+            int best = sys[0], bd = 1 << 20;
+            const int from = d.system >= 0 && d.system < int(g.systems.size()) ? d.system
+                             : map_.cursor() >= 0 && map_.cursor() < int(g.systems.size()) ? map_.cursor()
+                                                                                             : sys[0];
+            for (int s : sys) {
+                const int dd = hexDistance(g.systems[size_t(s)].pos, g.systems[size_t(from)].pos);
+                if (dd < bd) {
+                    bd = dd;
+                    best = s;
+                }
+            }
+            map_.setCursor(g, best);
+        }
+    }
+    ~PlanetMapPickUI() override { map_.clearHighlights(); }
+
+    bool mapMode() const override { return !listMode_ && !sub_; }
+    bool bareClickConfirms() const override { return mapMode(); }
+    bool backAvailable() const override { return listMode_ || sub_ != nullptr || (sub_ && sub_->backAvailable()); }
+    int highlightedValue() const override {
+        if (sub_) return sub_->highlightedValue();
+        if (listMode_) return list_.highlightedValue();
+        const auto it = at_.find(map_.cursor());
+        return it != at_.end() && it->second.size() == 1 ? d_.options[size_t(it->second[0])].id : -1;
+    }
+
+    std::vector<std::pair<std::string, std::string>> hints() const override {
+        if (sub_) return {{"A", "Choose"}, {"B", "Map"}};
+        if (listMode_) return {{"A", "Choose"}, {"Y", "Map"}, {"B", "Map"}};
+        std::vector<std::pair<std::string, std::string>> h = {{"D-PAD", "Move"}, {"X", "Next"}, {"A", "Choose"}, {"Y", "List"}};
+        for (int i : others_)
+            if (d_.options[size_t(i)].id < 0) {
+                h.push_back({"START", d_.options[size_t(i)].label});
+                break;
+            }
+        return h;
+    }
+
+    bool update(const Input& in, uint32_t now) override {
+        if (sub_) {  // the choices in one system
+            if (in.pressed(Btn::B) && !sub_->backAvailable()) {
+                sub_.reset();
+                return false;
+            }
+            if (sub_->update(in, now)) {
+                answer_ = sub_->answer();
+                return true;
+            }
+            return false;
+        }
+        if (in.pressed(Btn::Y)) {
+            listMode_ = !listMode_;
+            return false;
+        }
+        if (listMode_) {
+            if (in.pressed(Btn::B) && !list_.backAvailable()) {
+                listMode_ = false;
+                return false;
+            }
+            if (list_.update(in, now)) {
+                answer_ = list_.answer();
+                return true;
+            }
+            return false;
+        }
+        if (in.pressed(Btn::Up)) map_.moveCursor(g_, 0);
+        if (in.pressed(Btn::Right)) map_.moveCursor(g_, 1);
+        if (in.pressed(Btn::Down)) map_.moveCursor(g_, 2);
+        if (in.pressed(Btn::Left)) map_.moveCursor(g_, 3);
+        if (int z = in.zoom()) map_.setZoom(map_.zoom() + z);
+        if (in.pressed(Btn::X) && !systems_.empty()) {  // the next system with a choice
+            auto it = std::find(systems_.begin(), systems_.end(), map_.cursor());
+            map_.setCursor(g_, it == systems_.end() ? systems_[0] : systems_[size_t((it - systems_.begin() + 1) % systems_.size())]);
+            error_.clear();
+        }
+        if (in.pressed(Btn::A)) {
+            const auto it = at_.find(map_.cursor());
+            if (it == at_.end()) {
+                setError("Nothing to choose in that system - pick one that is lit up (Y: the list).");
+                return false;
+            }
+            if (it->second.size() == 1) {
+                const Option& o = d_.options[size_t(it->second[0])];
+                if (d_.tag == Tag::ReclaimUnit) {  // (the warning box before a piece leaves the board: the list asks it)
+                    openSub(it->second);
+                    return false;
+                }
+                answer_ = Answer();
+                answer_.picks.push_back(o.id);
+                return true;
+            }
+            openSub(it->second);
+            return false;
+        }
+        if (in.pressed(Btn::Start))
+            for (int i : others_)
+                if (d_.options[size_t(i)].id < 0) {
+                    answer_ = Answer();
+                    answer_.picks.push_back(d_.options[size_t(i)].id);
+                    return true;
+                }
+        return false;
+    }
+
+    void draw(Canvas& c, uint32_t now) override {
+        if (sub_) {
+            sub_->draw(c, now);
+            return;
+        }
+        if (listMode_) {
+            list_.draw(c, now);
+            return;
+        }
+        Rect r{6, 26, 410, 0};
+        const auto lines = wrapText(FONT_MDB, d_.prompt, r.w - 20);
+        // the choices in the system under the cursor, listed under the prompt (so you see what A will do)
+        std::vector<std::string> here;
+        if (const auto it = at_.find(map_.cursor()); it != at_.end())
+            for (int i : it->second) here.push_back(d_.options[size_t(i)].label);
+        std::string other;
+        for (int i : others_) other += (other.empty() ? "" : ", ") + d_.options[size_t(i)].label;
+        const int h = int(lines.size()) * 19 + 10 + 15 + (here.empty() ? 15 : 15 * int(std::min<size_t>(here.size(), 4))) + (other.empty() ? 0 : 15);
+        r.h = h;
+        c.fillRoundRect(r.x, r.y, r.w, h, 8, rgb(12, 17, 32), 225);
+        c.frameRoundRect(r.x, r.y, r.w, h, 8, theme::cyan, 1);
+        hits::addPanel(r);
+        int y = r.y + 5;
+        for (const std::string& l : lines) {
+            drawText(c, FONT_MDB, r.x + 10, y, l, theme::cyan);
+            y += 19;
+        }
+        drawText(c, FONT_SM, r.x + 10, y,
+                 fitText(FONT_SM, keyText("Pick a lit-up system on the map (A) - Y: the list"), r.w - 20), theme::dim);
+        y += 15;
+        if (here.empty()) {
+            drawText(c, FONT_SM, r.x + 10, y, "Nothing to choose in this system.", theme::faint);
+            y += 15;
+        }
+        for (size_t k = 0; k < here.size() && k < 4; ++k) {
+            const std::string t = k == 3 && here.size() > 4 ? "... and " + std::to_string(here.size() - 3) + " more" : here[k];
+            drawText(c, FONT_SM, r.x + 14, y, fitText(FONT_SM, "\xE2\x80\xA2 " + t, r.w - 28), theme::gold);
+            y += 15;
+        }
+        if (!other.empty()) drawText(c, FONT_XS, r.x + 10, y + 1, fitText(FONT_XS, "Also: " + other, r.w - 20), theme::faint);
+        if (!error_.empty()) {
+            const int ey = 446 - 70;
+            c.fillRoundRect(r.x, ey, r.w, 22, 6, rgb(70, 18, 18), 235);
+            drawText(c, FONT_SM, r.x + 8, ey + 3, fitText(FONT_SM, error_, r.w - 16), rgb(255, 200, 200));
+        }
+    }
+
+private:
+    void openSub(const std::vector<int>& idx) {
+        Decision d = d_;
+        d.options.clear();
+        for (int i : idx) d.options.push_back(d_.options[size_t(i)]);
+        sub_ = std::make_unique<ListUI>(g_, d);
+    }
+    MapView& map_;
+    ListUI list_;
+    bool listMode_ = false;
+    std::unique_ptr<ListUI> sub_;
+    std::map<int, std::vector<int>> at_;  // system -> option indices
+    std::vector<int> systems_, others_;
 };
 
 // =================================================================== editable rows
@@ -501,7 +887,7 @@ public:
             if (row.icon && icons::draw(c, row.icon, lx - 2, y + 2, 15)) lx += 17;
             if (row.token && d_.player >= 0) {
                 const Player& tp = g_.players[size_t(d_.player)];
-                cards::commandToken(c, tp.faction, theme::player[tp.color % 8], lx + 7, y + 10, 17, 255, row.token == 2);
+                cards::commandToken(c, tp.faction, pcolours::base(tp.color), lx + 7, y + 10, 17, 255, row.token == 2);
                 lx += 20;
             }
             drawText(c, FONT_SM, lx, y + 3, fitText(FONT_SM, row.label, r.x + 210 - lx), sel ? theme::text : rgb(190, 196, 212));
@@ -899,10 +1285,12 @@ public:
             if (isStructure(ut)) continue;
             if (enemyShips && isShip(ut)) continue;  // blockaded: ground forces only
             if (d.hitMask && !((d.hitMask >> t) & 1)) continue;  // ships only / Umbat
-            int avail = std::min(unitsAvailable(g, p, ut), d.amount);
+            // (0.61.1, fixes 32: past the reinforcements by the units that could come back off the board - LRR 23.4a)
+            const int have = d.reclaim ? unitsPlaceable(g, p, ut) : unitsAvailable(g, p, ut);
+            int avail = std::min(have, d.amount);
             // 0.44.4: Bellum Gloriosum (Sol breakthrough) - ground forces and fighters for the new ships' capacity don't
             // count against the production limit, so the row isn't capped by it (the rules check the total)
-            if ((isGroundForce(ut) || ut == UnitType::Fighter) && breakthroughIs(g, p, "sol")) avail = unitsAvailable(g, p, ut);
+            if ((isGroundForce(ut) || ut == UnitType::Fighter) && breakthroughIs(g, p, "sol")) avail = have;
             if (avail <= 0) continue;
             const UnitDef& u = unitDef(g, p, ut);
             if (u.cost2 <= 0) continue;
@@ -954,8 +1342,14 @@ protected:
         if (d_.planet >= 0 && d_.costCap > 0)  // Integrated Economy (after 0.44.4): the cost limit, not a unit count
             return {"Combined cost " + std::to_string(unitsCostValue(g_, d_.player, counts)) + " / " + std::to_string(d_.costCap) + "    Pay " +
                     std::to_string(cost) + " (you can spend " + std::to_string(spendable(g_, d_.player, false)) + ")"};
-        return {"Units " + std::to_string(units) + " / " + std::to_string(d_.amount) + "    Cost " + std::to_string(cost) +
-                " (you can spend " + std::to_string(spendable(g_, d_.player, false)) + ")"};
+        std::vector<std::string> out = {"Units " + std::to_string(units) + " / " + std::to_string(d_.amount) + "    Cost " + std::to_string(cost) +
+                                        " (you can spend " + std::to_string(spendable(g_, d_.player, false)) + ")"};
+        if (d_.reclaim) {  // (0.61.1: LRR 23.4a - said before the confirmation asks)
+            int back = 0;
+            for (int t = 0; t < kUnitTypes; ++t) back += std::max(0, counts[t] - unitsAvailable(g_, d_.player, UnitType(t)));
+            if (back) out.push_back(std::to_string(back) + (back > 1 ? " units come" : " unit comes") + " off the board (none left in reinforcements)");
+        }
+        return out;
     }
     bool hasSuggestion() const override { return true; }
     void suggest() override {
@@ -968,6 +1362,22 @@ protected:
         }
     }
     std::string confirmLabel() const override { return "Produce"; }
+    // 0.61.1 (owner 2026-11-18 W19: "Make sure that a warning appears if a player is about to remove a piece") LRR 23.4a
+    std::string confirmWarning() const override {
+        if (!d_.reclaim || answer_.data.size() < size_t(kUnitTypes)) return "";
+        std::string list;
+        int n = 0;
+        for (int t = 0; t < kUnitTypes; ++t) {
+            const int k = answer_.data[size_t(t)] - unitsAvailable(g_, d_.player, UnitType(t));
+            if (k <= 0) continue;
+            list += std::string(list.empty() ? "" : ", ") + std::to_string(k) + " " + unitTypeName(UnitType(t), k > 1);
+            n += k;
+        }
+        if (!n) return "";
+        return "None left in your reinforcements: " + list + std::string(n > 1 ? " are" : " is") +
+               " taken OFF THE BOARD to be placed here (Living Rules 23.4a). You pick which right after paying - from systems without your "
+               "command token.";
+    }
 
 protected:
     std::vector<int> destIds_;
@@ -1047,6 +1457,7 @@ public:
             if (it.row >= 0) {
                 const int c2 = unitCost2(g, p, ut);
                 it.why = c2 == 1 ? "1 res for 2" : std::to_string((c2 + 1) / 2) + " res";
+                if (d.reclaim && unitsAvailable(g, p, ut) <= 0) it.why += ", take back";  // (0.61.1: none left - LRR 23.4a)
             } else if (d.hitMask && !((d.hitMask >> t) & 1)) it.why = "not here";
             else if (enemyShips && isShip(ut)) it.why = "blockaded";
             else if (ut == UnitType::WarSun && !ownsWarSunTech(g, p)) it.why = "needs the tech";
@@ -1127,10 +1538,10 @@ public:
     void draw(Canvas& c, uint32_t now) override {
         const Rect a = area();
         const int p = d_.player;
-        const uint32_t pc = p >= 0 && p < g_.numPlayers ? theme::player[g_.players[size_t(p)].color % 8] : theme::gold;
+        const uint32_t pc = p >= 0 && p < g_.numPlayers ? pcolours::base(g_.players[size_t(p)].color) : theme::gold;
         c.fillRoundRect(a.x, a.y, a.w, a.h, 10, rgb(8, 11, 22), 214);
         c.frameRoundRect(a.x, a.y, a.w, a.h, 10, theme::border);
-        hits::addAction(a, [] {});  // (a click inside the window is not for the map)
+        hits::addBlock(a);  // (a click inside the window is not for the map)
         drawText(c, FONT_MDB, a.x + 12, a.y + 6, fitText(FONT_MDB, d_.prompt, a.w - 24), theme::text);
         int ty = a.y + 26;
         for (const std::string& l : wrapText(FONT_XS, d_.context, a.w - 24)) {
@@ -1190,10 +1601,13 @@ public:
                 radial::arrow(c, bx, by + 16.f, false, canDown ? (on ? theme::text : theme::dim) : theme::faint, canDown ? 255 : 90);
                 // the mouse: point at the unit to pick it; a click on it adds one (with keyboard & mouse), the arrows step
                 if (kb)
-                    hits::addAction(Rect{int(ax) - 28, int(ay) - 22, 56, 54}, [this, k2]() {
-                        if (sel_ == k2) stepRow(rowOf(k2), 1, true);
-                        else sel_ = k2;
-                    });
+                    hits::addAction(
+                        Rect{int(ax) - 28, int(ay) - 22, 56, 54},
+                        [this, k2]() {
+                            if (sel_ == k2) stepRow(rowOf(k2), 1, true);
+                            else sel_ = k2;
+                        },
+                        hits::Light::Round);
                 else hits::add(Rect{int(ax) - 28, int(ay) - 22, 56, 54}, [this, k2]() { sel_ = k2; });
                 hits::addAction(Rect{int(bx) - 12, int(by) - 23, 24, 12}, [this, k2]() {
                     sel_ = k2;
@@ -1932,7 +2346,7 @@ public:
         const Rect a = area();
         c.fillRoundRect(a.x, a.y, a.w, a.h, 10, rgb(8, 11, 22), 214);
         c.frameRoundRect(a.x, a.y, a.w, a.h, 10, theme::border);
-        hits::addAction(a, [] {});  // (a click inside the window is not for the map)
+        hits::addBlock(a);  // (a click inside the window is not for the map)
         drawText(c, FONT_MDB, a.x + 12, a.y + 6, fitText(FONT_MDB, d_.prompt, a.w - 24), theme::text);
         int ty = a.y + 26;
         for (const std::string& l : wrapText(FONT_XS, d_.context, a.w - 24)) {
@@ -1977,7 +2391,7 @@ public:
             if (!open && owner >= 0 && owner < g_.numPlayers) {
                 const Player& op = g_.players[size_t(owner)];
                 c.fillCircle(ax + float(w) / 2.f - 4.f, ay - float(h) / 2.f + 4.f, 10.f, rgb(10, 14, 26));
-                c.ring(ax + float(w) / 2.f - 4.f, ay - float(h) / 2.f + 4.f, 10.f, 2.f, theme::player[op.color % 8]);
+                c.ring(ax + float(w) / 2.f - 4.f, ay - float(h) / 2.f + 4.f, 10.f, 2.f, pcolours::base(op.color));
                 drawFactionIcon(c, op.faction, int(ax) + w / 2 - 12, int(ay) - h / 2 - 4, 16);
             } else if (open && g_.cardTradeGoods[k] > 0) {  // trade goods waiting on it
                 const float gx = ax + float(w) / 2.f - 2.f, gy = ay - float(h) / 2.f + 2.f;
@@ -2061,7 +2475,7 @@ public:
         for (int k = 0; k < 6; ++k) {
             const int q = g_.expedition[size_t(k)];
             if (q >= 0 && q < g_.numPlayers) {
-                claim[k] = theme::player[g_.players[size_t(q)].color % 8];
+                claim[k] = pcolours::base(g_.players[size_t(q)].color);
                 fac[k] = g_.players[size_t(q)].faction;
             }
         }
@@ -2113,6 +2527,8 @@ std::unique_ptr<DecisionUI> makeDecisionUI(const Game& g, const Decision& d, Map
         case DecisionKind::Deal: return makeDealUI(g, d, map);
         case DecisionKind::Pick:
             if (d.onMap) return std::unique_ptr<DecisionUI>(new MapPickUI(g, d, map));
+            if (d.onSpots) return std::unique_ptr<DecisionUI>(new SpotPickUI(g, d, map));                  // (0.61.2)
+            if (planetsOnMap(g, d)) return std::unique_ptr<DecisionUI>(new PlanetMapPickUI(g, d, map));  // (0.61.2)
             return std::unique_ptr<DecisionUI>(new ListUI(g, d));
         case DecisionKind::Pay: return std::unique_ptr<DecisionUI>(new PayUI(g, d));
         case DecisionKind::Tokens: return std::unique_ptr<DecisionUI>(new TokensUI(g, d));

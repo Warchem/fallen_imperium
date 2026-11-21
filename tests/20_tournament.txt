@@ -1,0 +1,71 @@
+# 0.80.0: the Tournament - the ladder (list and map), a league's hub, its rivals and rules, a locked league, giving up.
+wait 5
+press UP
+wait 3
+press A
+wait 5
+shot ladder
+press Y
+wait 3
+shot ladder_map
+press Y
+wait 3
+# a locked league (the Gold League, third on the list)
+press DOWN
+wait 2
+press DOWN
+wait 2
+press A
+wait 3
+shot ladder_locked
+press UP
+wait 2
+press UP
+wait 2
+# the Bronze League's hub
+press A
+wait 5
+shot hub
+press RIGHT
+wait 2
+press A
+wait 5
+shot rivals
+press RIGHT
+wait 2
+shot rivals2
+press B
+wait 3
+press RIGHT
+wait 2
+press A
+wait 5
+shot rules
+press B
+wait 3
+# Play: the faction draft (three bots pick in turn, you somewhere among them)
+press LEFT
+wait 2
+press LEFT
+wait 2
+press A
+wait 5
+shot draft_start
+wait 150
+shot draft_yours
+press B
+wait 5
+shot hub_started
+# give up (the league isn't over) - then back to the ladder
+press LEFT
+wait 2
+press A
+wait 3
+shot giveup
+press A
+wait 5
+shot ladder_after
+press B
+wait 5
+shot title_after
+quit

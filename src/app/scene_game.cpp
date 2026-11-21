@@ -2,9 +2,11 @@
 // combat), event feed, the current decision, announcements of what the
 // computer players do, and the in-game menu with the reference screens.
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 
@@ -13,6 +15,7 @@
 #include "core/log.h"
 #include "engine/query.h"
 #include "game/habits.h"
+#include "game/league_run.h"
 #include "game/session.h"
 #include "gfx/font.h"
 #include "engine/deal.h"
@@ -23,6 +26,7 @@
 #include "ui/decision_ui.h"
 #include "ui/cards.h"
 #include "ui/codec.h"
+#include "ui/combat_talk.h"
 #include "ui/speech.h"
 #include "ui/dice.h"
 #include "ui/icons.h"
@@ -33,7 +37,10 @@
 #include "ui/tile_view.h"
 #include "ui/theme.h"
 #include "ui/transition.h"
+#include "ui/warsun_scene.h"
+#include "ui/fracture_ripple.h"
 #include "ui/widgets.h"
+#include "ui/pcolors.h"
 
 using namespace ti;
 
@@ -58,7 +65,7 @@ const char* kCardPauseNames[3] = {"wait for A", "yours wait for A", "timed"};
 const Rect kWebArea{4, 70, 414, 352};  // the faction web in the menu
 
 uint32_t pcolor(const Game& g, int p) {
-    return p == kNeutral ? theme::neutral : p >= 0 && p < g.numPlayers ? theme::player[g.players[p].color % 8] : theme::text;
+    return p == kNeutral ? theme::neutral : p >= 0 && p < g.numPlayers ? pcolours::base(g.players[p].color) : theme::text;
 }
 
 const char* phaseName(Phase ph) {
@@ -106,6 +113,7 @@ class GameScene : public Scene {
 public:
     explicit GameScene(std::unique_ptr<GameSession> s) : session_(std::move(s)) {
         ti::setCodexTexts(ti::codexOn(session_->game()), session_->game().fixes >= 4);  // 0.31.0: the Omega wording
+        if (!session_->league().empty()) leagueNames_ = leaguerun::seatNames(session_->league());
         ti::setThundersEdgeTexts(ti::teXxchaHero(session_->game()), ti::teNaalu(session_->game()));  // 0.57.1: TE's Xxekir Grom; Z'eu
         ti::setWormholeGeneratorOriginal(!ti::codexOn(session_->game()) && session_->game().fixes >= 13);
         ti::setMagmusReactorOriginal(ti::magmusOriginal(session_->game()));
@@ -135,9 +143,18 @@ public:
     // 0.28.2 (owner): the wheel over the decision panel (strategy cards, lists) moves through it
     // 0.58.4: while your question's list / row editor has the input (uiFocus_, set by the last update), a click on
     // nothing clickable - a map tile, a gap in the panel - does nothing instead of answering it.
-    bool bareClickIsA(float, float) const override { return !(uiFocus_ && ui_ && !ui_->bareClickConfirms()); }
+    bool bareClickIsA(float x, float y) const override {
+        if (hits::onPanel(x, y)) return false;  // (0.61.2, owner: a click on a menu's background does nothing - not the map under it)
+        return !(uiFocus_ && ui_ && !ui_->bareClickConfirms());
+    }
+    // 0.61.2 (owner's document: "Can we make it so no interactions can be done on the background of a menu while playing the game?"):
+    // this frame's left click landed on the interface (a panel, a row, a button) - not for the map underneath
+    static bool clickOnUi(const Input& in) {
+        const Mouse& m = in.mouse();
+        return m.active && m.leftPress && hits::overUi(m.x, m.y);
+    }
     bool wheelScrolls(float x, float y) const override {
-        if (pop_.on) {  // 0.47.0: the wheel scrolls the screen in the window, beside it zooms the map
+        if (pop_.on && !pop_.min) {  // 0.47.0: the wheel scrolls the screen in the window, beside it zooms the map
             const Rect r = popRect();
             return x >= float(r.x) && x < float(r.x + r.w) && y >= float(r.y) && y < float(r.y + r.h);
         }
@@ -169,19 +186,20 @@ public:
             if (t >= transition::kReveal && !introSound_) {
                 introSound_ = true;
                 audio::play(audio::Sfx::GameStart);
-                audio::musicTo(audio::randomGameTrack(), 100, 900);  // 0.30.0: Action or Infiltration, at random
+                audio::musicTo(audio::gameMusicTrack(), 100, 900);  // 0.30.0: Action or Infiltration, at random (0.68.0: the playlist)
             }
             if (t >= transition::kReveal + transition::kBanner) intro_ = false;
             return;
         }
         // 0.30.0: a game continued from the title (no flood) changes to the game's music too
-        if (audio::musicTrack() == audio::kTrackTitle) audio::musicTo(audio::randomGameTrack(), 1200, 2000);
+        if (audio::musicTrack() == audio::kTrackTitle) audio::musicTo(audio::gameMusicTrack(), 1200, 2000);
         speed_ = std::max(0, std::min(3, app.settings().getInt("ai_speed", 1)));
         session_->setSpeed(speed_);
         cardPause_ = std::max(0, std::min(2, app.settings().getInt("card_pause", 0)));
         session_->setCardPause(cardPause_);
         map_.setBorders(app.settings().getInt("map_borders", 1) != 0);
         map_.setInfoTiles(app.settings().getInt("info_tiles", 1) != 0);
+        mapSounds_ = app.settings().getInt("map_sounds", 1) != 0;
         const Game& g = session_->game();
         lastNow_ = now;
         {  // (0.46.2: the Galactic Events pop-up shows the text of the event under the mouse)
@@ -208,13 +226,14 @@ public:
         } else {
             heldHiddenSince_ = 0;
         }
-        if (pop_.on && !info_ && overlay_ == Overlay::None) pop_.on = false;  // (closed by the screen inside)
+        if (pop_.on && !pop_.min && !info_ && overlay_ == Overlay::None) pop_.on = false;  // (closed by the screen inside)
+        if (pop_.on && pop_.min && session_->passTo() >= 0) closePop();  // (0.61.2: a folded one too)
         if (pop_.on && session_->passTo() >= 0) {  // (hot-seat: the next person doesn't see the last one's screens)
             info_.reset();
             overlay_ = Overlay::None;
             pop_.on = false;
         }
-        if (pop_.on) {
+        if (pop_.on && !pop_.min) {
             updatePop(app, in, now);
             return;
         }
@@ -238,7 +257,7 @@ public:
             // a click on a play area opens it (0.43.4) - also while a question is open (it isn't a choice)
             const Mouse& m = in.mouse();
             const Rect vp = map_.viewport();
-            if (m.leftPress && in.pressed(Btn::A) && expanded_ < 0 && session_->passTo() < 0 && !g.draft.active && m.x >= float(vp.x) &&
+            if (m.leftPress && in.pressed(Btn::A) && !clickOnUi(in) && expanded_ < 0 && session_->passTo() < 0 && !g.draft.active && m.x >= float(vp.x) &&
                 m.x < float(vp.x + vp.w) && m.y >= float(vp.y) && m.y < float(vp.y + vp.h) && !(ui_ && ui_->fullScreen())) {
                 const int what = map_.hitTest(g, m.x, m.y);
                 if (what >= MapView::kPlayBase && what < MapView::kDecorBase) {
@@ -249,8 +268,16 @@ public:
             }
         }
         if (session_->over() && !session_->presenting(now)) {
-            if (overlay_ != Overlay::GameOver)  // (0.54.0) the bots remember how the people played
+            if (overlay_ != Overlay::GameOver) {  // (0.54.0) the bots remember how the people played
                 habits::record(app.settings(), session_->game(), session_->engine().setup());
+                // (0.80.0) a league game: its places, points and bonuses go into the league (once; its save is deleted)
+                if (!session_->league().empty() && !leagueRecorded_) leagueRecorded_ = leaguerun::recordGame(*session_);
+                // (0.70.0) the victory fanfare: when you (a person at the table) win, or when watching
+                const int w = session_->game().winner;
+                bool anyHuman = false;
+                for (int q = 0; q < session_->game().numPlayers; ++q) anyHuman |= session_->isHumanSeat(q);
+                if (w >= 0 && (session_->isHumanSeat(w) || !anyHuman)) audio::play(audio::Sfx::Victory, 0.75f);
+            }
             overlay_ = Overlay::GameOver;
             return;
         }
@@ -330,7 +357,7 @@ public:
             ui_->ageError(now);
             if (peek_) {
                 browseMap(in, now);
-                if (in.pressed(Btn::A)) openAtCursor(g);  // the tile, large / a faction's info (0.20.0)
+                if (in.pressed(Btn::A) && !clickOnUi(in)) openAtCursor(g);  // the tile, large / a faction's info (0.20.0)
                 else if (in.pressed(Btn::R2) || in.pressed(Btn::B)) peek_ = false;
                 return;
             }
@@ -381,11 +408,11 @@ public:
         // Browsing the map while the computer players act. R2: the map view, where A opens a tile.
         if (peek_) {
             browseMap(in, now);
-            if (in.pressed(Btn::A)) openAtCursor(g);
+            if (in.pressed(Btn::A) && !clickOnUi(in)) openAtCursor(g);
             else if (in.pressed(Btn::R2) || in.pressed(Btn::B)) peek_ = false;
             return;
         }
-        if (in.pressed(Btn::A) && map_.infoPlayer() >= 0) {  // A on a faction's info tiles: its sheet
+        if (in.pressed(Btn::A) && !clickOnUi(in) && map_.infoPlayer() >= 0) {  // A on a faction's info tiles: its sheet
             openAtCursor(g);
             return;
         }
@@ -414,13 +441,70 @@ public:
     uint32_t waitSince_ = 0;  // (owner 2026-11-16) when the game started waiting on a held screen in the agenda phase
     bool intro_ = false, introSound_ = false;
     uint32_t introStart_ = 0;
+    // 0.73.0: the War Sun scene - its art is made while the game goes on (a background thread, once per screen size), its
+    // sounds are played as their moments come (wsCues_: bit per sound), the music dips under it
+    bool wsPrepared_ = false, wsOn_ = false;
+    uint32_t wsCues_ = 0;
+    // The map's moments: 0.73.5 the Fracture appears (the map ripples out from Styx, its line along the top); 0.73.8 the
+    // Firmament becomes the Obsidian (the space behind the map turns crimson while a galaxy screams, the screams cut off as
+    // a distorted tear rips out from their home, the words, the crimson drains away)
+    struct MapMoment {
+        uint32_t start = 0;     // 0: none
+        int sys = -1;           // the ripple's epicentre
+        uint32_t rippleAt = 0;  // ms after start that the ripple (and its sound and words) begins
+        bool crimson = false;   // the space behind the map turns crimson first, and back after
+        audio::Sfx tear = audio::Sfx::FractureTear;
+        bool tore = false;      // its sound has been played
+        std::string text, sub;
+        uint32_t length() const { return rippleAt + ripple::kLength; }
+        bool on(uint32_t now) const { return start && now - start < length(); }
+    } mapFx_;
+    static constexpr uint32_t kCrimsonBack = 2600, kCrimsonFade = 1400;  // (after the ripple begins: the crimson drains away)
+    // how crimson the space behind the map is (0..1)
+    float crimsonOf(uint32_t now) const {
+        if (!mapFx_.crimson || !mapFx_.start) return 0.f;
+        const uint32_t t = now - mapFx_.start;
+        if (t < mapFx_.rippleAt) {
+            const float u = float(t) / float(std::max(1u, mapFx_.rippleAt));
+            return u * u * (3.f - 2.f * u);
+        }
+        const uint32_t r = t - mapFx_.rippleAt;
+        if (r < kCrimsonBack) return 1.f;
+        if (r < kCrimsonBack + kCrimsonFade) return 1.f - float(r - kCrimsonBack) / float(kCrimsonFade);
+        return 0.f;
+    }
     void drawGame(App& app, Canvas& c, uint32_t now) {
         const Game& g = session_->game();
+        if (!wsPrepared_ && !g.warSunAge && !app.platform().headless()) {  // (the tests make it when they need it)
+            warsun::prepare(c);
+            wsPrepared_ = true;
+        }
+        {  // (test only: TI4_WARSUN_SHOW=MS shows the scene MS after the game screen opens, as if the event had come)
+            static bool forced = false;
+            static uint32_t opened = 0;
+            const char* show = std::getenv("TI4_WARSUN_SHOW");
+            if (show && !opened) opened = now ? now : 1u;
+            if (!forced && show && now - opened >= uint32_t(std::atoi(show)) && warsun::ready(c)) {
+                forced = true;
+                cardBanner(22, -1, session_->seat(), "", "", now, warsun::kLength);
+                wsCues_ = 0;
+            }
+        }
         layoutMap();
         drawSpaceBackground(c, false);
+        if (const float cr = crimsonOf(now); cr > 0.f) ripple::crimson(c, cr, now - mapFx_.start);  // (0.73.8) behind the map
         map_.setActiveSystem(g.activeSystem);
         map_.setViewer(session_->seat());
         map_.draw(c, g, now);
+        if (mapFx_.on(now) && now - mapFx_.start >= mapFx_.rippleAt) {  // (0.73.5) the map bends as the ripple goes out over it
+            if (!mapFx_.tore) {  // (its sound comes with it: the Obsidian's after the screams)
+                mapFx_.tore = true;
+                audio::play(mapFx_.tear, 1.f);
+                if (mapFx_.crimson && mapFx_.sys >= 0) map_.flash(mapFx_.sys, rgb(255, 40, 70), now, 3000, true);
+            }
+            float fx, fy, fs;
+            if (map_.systemAt(g, mapFx_.sys, fx, fy, fs)) ripple::apply(c, map_.drawArea(), fx, fy, now - mapFx_.start - mapFx_.rippleAt);
+        }
         drawTopBar(c, g, now);
         const bool combatHold = session_->holding() && session_->heldKind() == EventKind::CombatEnd;
         if (combat_.open && combat_.ended && !combatHold && int32_t(now - combat_.closeAt) >= 0) {
@@ -436,7 +520,9 @@ public:
         if (tileShown) drawCombatTile(c, g, now, combatHold);
         heldVisible_ = combatHold && tileShown;
         bool agendaPanel = g.currentAgenda >= 0 || int32_t(now - agendaResultUntil_) < 0;  // (also Executive Order)
-        {
+        // (0.73.5) while the Fracture's ripple runs, the side panel steps aside: the whole map, Styx too, is in sight
+        const bool rippling = mapFx_.start && now - mapFx_.start < mapFx_.length() - 250 && !(combat_.open && !combat_.fireOnly);
+        if (!rippling) {
             TextHalo halo;  // the side panel is see-through: keep its text clear of the map under it
             if (combat_.open) drawCombatPanel(c, g, now);
             else if (agendaPanel && tab_ == 0 && !peek_) drawAgendaPanel(c, g);
@@ -446,7 +532,19 @@ public:
             else drawPlayersPanel(c, g);
         }
         bool showUi = ui_ && !peek_;
-        drawFeed(c, now, showUi);
+        // (0.71.0) the combat reactions: over the feed, while the fight is on screen (or has just closed - the last words
+        // finish over the map); a fight skipped with START or a question answered on the map puts them away
+        if (talk_.active(now) && (session_->skippingCombat() || speed_ == 3 || mapPick || expanded_ >= 0)) talk_.clear();
+        const bool talking = talk_.active(now) && (tileShown || !combat_.open);
+        if (!talking) drawFeed(c, now, showUi);
+        if (talking) {
+            talk_.draw(c, Rect{0, kTopH, mapW(), kHintY - kTopH - 64}, kHintY - 4, now);
+            const int v = talk_.voiceDue(now);
+            if (v >= 0 && !quietSounds()) audio::play(voiceOf(g, v == 0 ? talkPa_ : talkPb_), 0.75f);
+            if (v >= 0 && std::getenv("TI4_TALKLOG"))  // (test only: the voices' times, for the preview clips' sound track)
+                std::fprintf(stderr, "combattalk voice %d %s at %u\n", v, kFactions[g.players[size_t(v == 0 ? talkPa_ : talkPb_)].faction].key,
+                             unsigned(now));
+        }
         if (showUi && ui_->centred()) {  // (widescreen: the research cards, deals etc. are laid out for 640, centred)
             CentredView v(c);
             ui_->draw(c, now);
@@ -454,11 +552,16 @@ public:
             ui_->draw(c, now);
         }
         drawCentreBanner(c, now);
+        if (mapFx_.on(now) && now - mapFx_.start >= mapFx_.rippleAt)
+            ripple::drawLine(c, map_.drawArea(), mapFx_.text, now - mapFx_.start - mapFx_.rippleAt, mapFx_.sub);
         const bool holding = session_->holding() && !combatHold &&
                              (card_.kind == 3 || card_.kind == 4 || card_.kind == 5 || card_.kind == 8 || card_.kind == 10 ||
                               card_.kind == 11 || card_.kind >= 12);
         if (holding) heldVisible_ = true;
-        if (card_.kind == 20 && (holding || int32_t(now - card_.until) < 0)) drawPlanetfall(c, g, now, holding);
+        const bool warSunShown = card_.kind == 22 && (holding || int32_t(now - card_.until) < 0);
+        if (!warSunShown && wsOn_) warSunEnd();  // (skipped or over: its sounds stop, the music comes back)
+        if (warSunShown) drawWarSun(c, g, now, holding);
+        else if (card_.kind == 20 && (holding || int32_t(now - card_.until) < 0)) drawPlanetfall(c, g, now, holding);
         else if (card_.kind == 10 && (holding || int32_t(now - card_.until) < 0)) {
             CentredView v(c);  // (widescreen: laid out for 640, centred; the dimming covers the width)
             drawReveal(c, g, now, holding);
@@ -469,6 +572,7 @@ public:
         else if (holding) drawHeldCard(c, g, now);
         else drawCardBanner(c, g, now);
         drawToast(c, now);
+        drawThinking(c, g, now);
         std::vector<std::pair<std::string, std::string>> hints;
         if (holding || combatHold) {
             hints = {{"A", "Continue"}, {"D-PAD", "Look"}, {"L2", "Panel"}, {"MENU", "Menu"}};
@@ -486,7 +590,7 @@ public:
             hints = {{"D-PAD", "Look"}, {"X", "Goals"}, {"Y", "Log"}, {"SELECT", "Players"}, {"L2", "Panel"},
                      {"A", "Hold: faster"}, {"MENU", "Menu"}};
         }
-        if (pop_.on) hints = {{"B", "Close the window"}, {"WHEEL", "Zoom the map beside it"}};  // (0.47.0: keys go to the window)
+        if (pop_.on && !pop_.min) hints = {{"B", "Close the window"}, {"WHEEL", "Zoom the map beside it"}};  // (0.47.0: keys go to the window)
         if (const int q = session_->passTo(); q >= 0 && overlay_ == Overlay::None && !info_) {
             CentredView v(c);  // (widescreen: laid out for 640, centred)
             drawPassScreen(c, g, q);
@@ -503,22 +607,27 @@ public:
         else if (peek_) hints = {{"D-PAD", "Look"}, {"A", openWhat}, {"L1/R1", "Zoom"}, {"R2", "Back to decision"}};
         else if (!ui_ && !holding && !combatHold && map_.infoPlayer() >= 0 && !hints.empty() && hints.back().first == "MENU")
             hints.insert(hints.begin() + 1, {"A", openWhat});  // (watching: A on the info tiles / play area opens them)
-        drawHintBar(c, hints);
+        if (!warSunShown) drawHintBar(c, hints);  // (0.73.0: the War Sun scene has its Continue in its lower bar)
         barShown_ = false;
-        if (pop_.on && (info_ || overlay_ != Overlay::None)) {  // (0.47.0: the screen in its window, the buttons still there)
+        stripShown_ = false;
+        if (pop_.on && !pop_.min && (info_ || overlay_ != Overlay::None)) {  // (0.47.0: the screen in its window, the buttons still there)
             drawPop(app, c, g, now);
             return;
         }
         // 0.58.4 (owner: "the screens pop-up doesn't hide when the codecs or mecatol rex custodian animation plays"):
         // no button panel over the planetfall, the reveal, the betrayal codecs or a full-screen question (the
         // negotiation codecs, research, the expedition)
-        const bool cutscene = (card_.kind == 20 || card_.kind == 10 || card_.kind == 11 || card_.kind == 21) &&
+        const bool cutscene = (card_.kind == 20 || card_.kind == 10 || card_.kind == 11 || card_.kind == 21 || card_.kind == 22) &&
                               (holding || int32_t(now - card_.until) < 0);
         const bool fullUi = ui_ && !peek_ && ui_->centred() && session_->humanToAnswer();
         if (overlay_ == Overlay::None && !info_) {
-            if (!cutscene && !fullUi) drawBar(app, c);
+            if (!cutscene && !fullUi) {
+                if (strip_.on) drawStrip(c, now);
+                else drawBar(app, c);
+            }
             drawWaypointButton(c);  // (0.56.0)
             drawEvents(c, g);  // (0.46.2: on top of everything on the map)
+            if (pop_.on && pop_.min && !cutscene && !fullUi) drawPopStrip(c);  // (0.61.2: the folded window)
         }
         CentredView v(c);  // (widescreen: the menus and screens over the map are laid out for 640, centred)
         if (overlay_ != Overlay::None) drawOverlay(app, c, g);
@@ -535,11 +644,15 @@ public:
     bool waitingInAgenda(const Game& g) const {
         return session_->holding() && (g.phase == Phase::Agenda || g.currentAgenda >= 0) && session_->passTo() < 0;
     }
+    bool waitCovered() const { return info_ || overlay_ != Overlay::None || expanded_ >= 0 || (pop_.on && !pop_.min); }
+    std::string waitText() const {
+        return waitCovered() ? keyText("Waiting for you: B to close, then A") : keyText("Waiting for you: press A");
+    }
     void drawWaitTag(Canvas& c, int left, int right, uint32_t now) {
         if (!waitSince_) waitSince_ = now;
         const uint32_t age = now - waitSince_;
-        const bool covered = info_ || overlay_ != Overlay::None || expanded_ >= 0 || pop_.on;
-        const std::string text = covered ? keyText("Waiting for you: B to close, then A") : keyText("Waiting for you: press A");
+        const bool covered = waitCovered();
+        const std::string text = waitText();
         const int bw = std::min(std::max(40, right - left), textWidth(FONT_XS, text) + 16), bh = 15;
         const int bx = left + (right - left - bw) / 2, by = (kTopH - bh) / 2 - 1;
         float glow = 0.f;  // 0 .. 1, a 1.6 s rise and fall
@@ -625,7 +738,7 @@ public:
                     if (!per[q]) continue;
                     drawTextAligned(c, FONT_XS, 400, y, 232, Align::Right,
                                     fitText(FONT_XS, playerName(g, q) + ": " + std::to_string(per[q]) + (per[q] == 1 ? " slice" : " slices"), 232),
-                                    pcolor(g, q));
+                                    pcolours::readable(pcolor(g, q)));
                     y += 13;
                 }
                 drawTextAligned(c, FONT_XS, 400, y, 232, Align::Right, std::to_string(open) + (open == 1 ? " slice left" : " slices left"), theme::dim);
@@ -654,7 +767,7 @@ public:
             std::string t = playerName(g, q) + ": " + std::to_string(ships) + (ships == 1 ? " ship" : " ships");
             if (ground) t += ", " + std::to_string(ground) + " on planets";
             if (sy.hasToken(q)) t += ", token";
-            drawTextAligned(c, FONT_XS, 400, y, 232, Align::Right, fitText(FONT_XS, t, 232), pcolor(g, q));
+            drawTextAligned(c, FONT_XS, 400, y, 232, Align::Right, fitText(FONT_XS, t, 232), pcolours::readable(pcolor(g, q)));
             y += 13;
         }
         tileview::draw(c, g, s, Rect{20, kTopH + 46, 600, kHintY - kTopH - 50}, now);
@@ -701,12 +814,13 @@ private:
         lastMouseTick_ = now;
         if (in.panX() != 0.f || in.panY() != 0.f) map_.pan(g, -in.panX() * 560.f * dt, -in.panY() * 560.f * dt);
         if (m.dragging && (m.dragX != 0.f || m.dragY != 0.f)) map_.pan(g, m.dragX, m.dragY);
-        const bool overMap = m.active && m.x >= 0.f && m.x < float(mapW()) && m.y >= float(kTopH) && m.y < float(kHintY);
+        // (0.61.2) not through a panel, row or button drawn over the map
+        const bool overMap = m.active && m.x >= 0.f && m.x < float(mapW()) && m.y >= float(kTopH) && m.y < float(kHintY) && !hits::overUi(m.x, m.y);
         if (m.wheel != 0.f && overMap && !wheelScrolls(m.x, m.y)) map_.zoomBy(g, m.wheel, m.x, m.y);
         // pointing only inside the viewport: tiles under the see-through panel / feed would move the camera (0.28.0)
         const Rect vp = map_.viewport();
         const bool inView = m.x >= float(vp.x) && m.x < float(vp.x + vp.w) && m.y >= float(vp.y) && m.y < float(vp.y + vp.h);
-        if (m.moved && overMap && inView && !m.dragging) {
+        if (m.moved && overMap && inView && !m.dragging && !(ui_ && ui_->fullScreen())) {  // (0.61.2: not under a full-screen question)
             int what = -1;
             if (g.draft.active) what = -1;  // the draft screen points at its own spaces
             else what = map_.hitTest(g, m.x, m.y);
@@ -767,7 +881,7 @@ private:
         const int f = g.players[p].faction;
         if (f < 0) return;
         centre_.faction = f;
-        centre_.labelColour = pcolor(g, p);
+        centre_.labelColour = pcolours::readable(pcolor(g, p));
         centre_.slide = slide;
         centre_.caption = caption;
     }
@@ -788,6 +902,7 @@ private:
         card_.line.clear();
         card_.reply.clear();
         card_.laid = false;
+        card_.said1 = card_.said2 = false;
         card_.sp = speech::Speech();
         card_.sp2 = speech::Speech();
     }
@@ -807,12 +922,106 @@ private:
         return "";
     }
 
+    // 0.70.0 (owner 2026-11-19: "Go ahead and start it for version 0.70.0"): the moments that were silent get the sounds he
+    // approved (audio/grim2.inc); the comms codec's sounds and the factions' voices play where their screens show them
+    // (drawBetrayal, the deal card, ui/deal_ui.cpp). Under the Sounds volume; none while A hurries the game, a combat is
+    // skipped or at Instant speed (present() isn't called then). `gap`: the same sound no sooner than that (ms).
+    bool quietSounds() const { return session_->hurrying() || session_->skippingCombat(); }
+    void sfx(audio::Sfx s, float gain, uint32_t now, uint32_t gap = 300) {
+        if (s == audio::Sfx::Count || quietSounds()) return;
+        uint32_t& last = lastSfx_[size_t(s)];
+        if (last != 0 && now - last < gap) return;
+        last = now ? now : 1;
+        static const bool logIt = std::getenv("TI4_MAPSOUNDS") != nullptr;  // (test only) each one in ti4.log
+        if (logIt) LOG("moment sound: %s", audio::sfxName(s));
+        audio::play(s, gain);
+    }
+    audio::Sfx voiceOf(const Game& g, int p) const {
+        return p >= 0 && p < g.numPlayers ? audio::voiceSound(g.players[size_t(p)].faction) : audio::Sfx::Count;
+    }
+    void momentSound(const Event& e, const Game& g, uint32_t now) {
+        using audio::Sfx;
+        switch (e.kind) {
+            case EventKind::TurnStart:
+                if (session_->isHumanSeat(e.player)) sfx(Sfx::TurnYours, 0.7f, now);
+                break;
+            case EventKind::Phase:  // "--- Round N ---": round 1 has the game-start sound
+                if (e.text.rfind("--- Round ", 0) == 0 && std::atoi(e.text.c_str() + 10) >= 2) sfx(Sfx::RoundNew, 0.7f, now);
+                break;
+            case EventKind::StrategyPick: sfx(Sfx::StrategyPick, 0.6f, now); break;
+            case EventKind::ActionCard: sfx(Sfx::ActionCard, 0.65f, now); break;
+            case EventKind::Research: sfx(Sfx::TechResearch, 0.6f, now); break;
+            case EventKind::ObjectiveScored:
+                if (e.count >= 0) sfx(kObjectives[e.count].kind == 3 ? Sfx::ObjectiveSecret : Sfx::ObjectivePublic, 0.7f, now);
+                break;
+            case EventKind::Control:  // taken from another player (the engine says whom: Event::other)
+                if (e.other >= 0 && e.other < g.numPlayers && e.other != e.player) sfx(Sfx::PlanetTaken, 0.65f, now, 1200);
+                break;
+            case EventKind::Agenda: sfx(Sfx::AgendaReveal, 0.65f, now); break;
+            case EventKind::AgendaResult: sfx(Sfx::AgendaResult, 0.65f, now); break;
+            case EventKind::Dice: sfx(Sfx::DiceRoll, 0.5f, now, 500); break;
+            case EventKind::Relic: sfx(Sfx::RelicGained, 0.65f, now); break;
+            case EventKind::Leader:  // a hero unleashed: a warning to everyone
+                if (e.card >= 0 && kLeaders[e.card].type == kHero && e.label.find("unlocked") == std::string::npos) sfx(Sfx::HeroWarning, 0.7f, now);
+                break;
+            case EventKind::Betrayal: sfx(e.card == int(Betrayal::Kingslay) ? Sfx::Kingslay : Sfx::BetrayalSting, 0.75f, now); break;
+            case EventKind::Deal: {
+                if (e.card == kDealBroken) {  // the red codec's alarm
+                    sfx(Sfx::CodecAlert, 0.7f, now);
+                    break;
+                }
+                const bool yielded = e.card == kDealMade && e.text.find("If not, ") != std::string::npos;
+                // a person who has just answered in the codec heard that already; an offer to a person rings in its own screen
+                const int answered = e.card == kDealMade ? e.other : e.player;
+                if ((e.card == kDealMade || e.card == kDealDeclined) && !yielded && session_->isHumanSeat(answered)) break;
+                if (e.card == kDealOffered && session_->isHumanSeat(e.other)) break;
+                // a computer player speaks on the card (its voice comes in at 250 ms): the sting stays under it
+                const int spk = e.card == kDealMade ? e.other : e.player;
+                const bool talks = spk >= 0 && spk < g.numPlayers && !g.players[size_t(spk)].human;
+                const float k = talks ? 0.6f : 1.f;
+                switch (e.card) {
+                    case kDealOffered: sfx(Sfx::CodecOpen, 0.55f, now); break;  // (the ringing call is for offers to you)
+                    case kDealMade: sfx(Sfx::DealMade, 0.65f * k, now); break;
+                    case kDealDeclined: sfx(Sfx::DealRefused, 0.65f * k, now); break;
+                    case kDealCountered: sfx(Sfx::CodecCounter, 0.6f * k, now); break;
+                    case kDealFailed: sfx(Sfx::CodecClose, 0.6f, now); break;
+                    default: break;
+                }
+                break;
+            }
+            default: break;
+        }
+    }
+
+    // 0.69.0 (owner 2026-11-19: "Go ahead and add these"): the map sounds - the siren as a system with another player's
+    // units is activated, a landing on another player's planet, each faction's sound as its ships move. Not at Instant
+    // speed (present() isn't called), not while A hurries the game or a combat is skipped; at Fast a sound only when the
+    // last began 0.9 s before (Normal / Slow: 0.25 s), so they don't pile up. Panned by where the system is on the board.
+    void mapSound(audio::Sfx s, int sys, float gain, uint32_t now) {
+        if (!mapSounds_ || s == audio::Sfx::Count || session_->hurrying() || session_->skippingCombat()) return;
+        const uint32_t gap = speed_ >= 2 ? 900 : 250;
+        if (lastMapSound_ != 0 && now - lastMapSound_ < gap) return;
+        float pan = 0.f;
+        const Game& g = session_->game();
+        if (sys >= 0 && size_t(sys) < g.systems.size() && !g.systems[size_t(sys)].offBoard) {
+            float x = 0.f, y = 0.f;
+            hexToPixel(g.systems[size_t(sys)].pos, 1.f, x, y);
+            pan = std::max(-1.f, std::min(1.f, x / 6.f)) * 0.45f;
+        }
+        static const bool logIt = std::getenv("TI4_MAPSOUNDS") != nullptr;  // (test only) each map sound in ti4.log
+        if (logIt) LOG("map sound: %s (system %d, pan %.2f)", audio::sfxName(s), sys, double(pan));
+        audio::play(s, gain, pan);
+        lastMapSound_ = now ? now : 1;
+    }
+
     void present(const Event& e, uint32_t now) {
         const Game& g = session_->game();
         logx::crumb("showing event %d (player %d, system %d, card %d): %.100s", int(e.kind), e.player, e.system, e.card, e.text.c_str());
         // 0.30.0: an event held for A is shown even when it has no time of its own (your drawn action
         // cards, public objectives scored) - before, it was skipped and the watchdog let it go unseen
         const uint32_t d = session_->holding() ? std::max<uint32_t>(session_->durationOf(e), 1500) : session_->durationOf(e);
+        // (0.70.0) the moment's sound - also for the events with no time of their own (a public objective scored, timed cards)
+        if (session_->speed() != 3) momentSound(e, g, now);
         if (d == 0) return;  // "Instant" speed: no announcements
         const uint32_t fx = d * 13 / 10;
         const int me = session_->human();
@@ -857,16 +1066,30 @@ private:
                 break;
             case EventKind::Activate:
                 cardBanner(1, -1, e.player, "Tactical action", "activates " + systemName(g, e.system), now, fx);
+                if (e.hostile) mapSound(audio::Sfx::Siren, e.system, 0.7f, now);  // (0.69.0) the air-raid siren
                 map_.flash(e.system, e.hostile ? rgb(255, 40, 40) : pc, now, e.hostile ? std::max<uint32_t>(fx, 2000) : fx,
                            e.hostile);
                 follow(e.system, now);
                 break;
             case EventKind::Move:
                 for (int16_t f : e.from) map_.arrow(f, e.system, pc, now, fx);
+                if (e.player >= 0 && e.player < int(g.players.size()))  // (0.69.0) the faction's own sound on the move
+                    mapSound(audio::moveSound(g.players[size_t(e.player)].faction), e.system, 0.6f, now);
                 map_.flash(e.system, pc, now, fx);
                 follow(e.system, now);
                 break;
             case EventKind::Land:
+                // (0.69.0, owner: boots when only infantry land, drop pods when mechs do) an invasion of another player's
+                // planet: defended -> drop pods (mechs among them) or boots; nobody defending it -> the landing burn.
+                // One sound per invasion of a system (a landing on several planets is one event each).
+                if (e.hostile && !(e.system == lastLandSys_ && e.player == lastLandPlayer_ && now - lastLandAt_ < 3000)) {
+                    const bool mechs = e.unit == int8_t(UnitType::Mech);
+                    mapSound(e.count > 0 ? (mechs ? audio::Sfx::LandPods : audio::Sfx::LandBoots) : audio::Sfx::LandBurn, e.system, 0.7f,
+                             now);
+                    lastLandSys_ = e.system, lastLandPlayer_ = e.player, lastLandAt_ = now;
+                }
+                map_.flash(e.system, pc, now, fx);
+                break;
             case EventKind::Control: map_.flash(e.system, pc, now, fx); break;
             case EventKind::ObjectiveScored:  // an objective scored, shown large until A (owner, 0.16.0; publics 0.28.0)
                 if (session_->holding() && e.count >= 0)
@@ -920,7 +1143,10 @@ private:
                            now, fx);
                 break;
             }
-            case EventKind::CombatStart:
+            case EventKind::CombatStart: {
+                // (draft) the same fight announced again (Kuuasi re-announces a space combat round) is not a new fight
+                const bool sameFight = combat_.open && !combat_.ended && combat_.sys == e.system && combat_.pa == e.player &&
+                                       combat_.pb == e.other && combat_.space == e.space;
                 combat_ = Combat();
                 combat_.open = true;
                 combat_.space = e.space;
@@ -936,9 +1162,38 @@ private:
                 ground_.clear();
                 if (e.space) battle_.start(g, e.system, e.player, e.other, e.a, e.b, now, session_->speedFactor());
                 else if (e.planet >= 0) ground_.start(g, e.system, e.planet, e.player, e.other, e.a, e.b, now, session_->speedFactor());
+                // 0.71.0 combat reactions (owner 2026-11-19): the two sides' portraits outside the battle hex, the attacker's
+                // words, then the defender's; no waiting - they talk as the fight starts; one fight in three
+                if (talk_.active(now) && (talkPa_ != e.player || talkPb_ != e.other)) talk_.clear();
+                if (!sameFight && talkOn() && speed_ != 3 && !session_->skippingCombat() && e.player >= 0 && e.player < g.numPlayers &&
+                    e.other >= 0 && e.other < g.numPlayers && talkFights_++ % talkEvery() == 0) {
+                    combattalk::Side sa, sb;
+                    sa.faction = g.players[size_t(e.player)].faction;
+                    sb.faction = g.players[size_t(e.other)].faction;
+                    sa.col = pcolor(g, e.player);
+                    sb.col = pcolor(g, e.other);
+                    sa.name = upperName(g, e.player);
+                    sb.name = upperName(g, e.other);
+                    sa.tag = std::string(e.space ? "ATTACKER" : "INVADER") + (session_->isHumanSeat(e.player) ? " (YOU)" : "");
+                    sb.tag = std::string("DEFENDER") + (session_->isHumanSeat(e.other) ? " (YOU)" : "");
+                    const uint32_t seed = speech::seedOf(g.seed, uint32_t(g.round) * 977U + uint32_t(e.system), uint32_t(e.player) * 16U + uint32_t(e.other),
+                                                         talkFights_);
+                    sa.line = combattalk::chooseLine(g, e.player, e.other, true, e.space, e.system, e.text, seed, talkMem_);
+                    sb.line = combattalk::chooseLine(g, e.other, e.player, false, e.space, e.system, e.text, seed >> 5, talkMem_);
+                    talk_.start(sa, sb, now, seed);
+                    if (std::getenv("TI4_TALKLOG"))
+                        std::fprintf(stderr, "combattalk %s r%d sys %d%s%s%s\n  %s: %s\n  %s: %s\n", e.space ? "space" : "ground", g.round, e.system,
+                                     e.system == g.mecatol() ? " MECATOL" : "", g.systems[size_t(e.system)].home == e.other ? " HOME" : "",
+                                     combattalk::foughtBefore(g, e.player, e.other, e.text) ? " REMATCH" : "", sa.name.c_str(), sa.line.c_str(),
+                                     sb.name.c_str(), sb.line.c_str());
+                    talkSys_ = e.system;
+                    talkPa_ = e.player;
+                    talkPb_ = e.other;
+                }
                 map_.flash(e.system, rgb(255, 40, 40), now, fx, true);
                 follow(e.system, now);
                 break;
+            }
             case EventKind::Dice: {
                 if (!combat_.open || combat_.ended) {
                     combat_ = Combat();
@@ -1070,6 +1325,38 @@ private:
                 cardBanner(8, e.card, e.player, kAgendas[e.card].name, e.label, now, std::max<uint32_t>(fx, 2500));
                 break;
             case EventKind::Ability:
+                if (e.label == "The Fracture") {  // (0.73.5, owner) the Fracture appears: the map ripples out from Styx
+                    mapFx_ = MapMoment();
+                    mapFx_.start = now ? now : 1u;
+                    mapFx_.sys = e.system;
+                    if (mapFx_.sys < 0 || mapFx_.sys >= int(g.systems.size()))  // (an event from before 0.73.5 has no system)
+                        for (size_t q = 0; q < g.systems.size(); ++q)
+                            if (!std::strcmp(kSystems[g.systems[q].def].key, "fracture4")) mapFx_.sys = int(q);
+                    mapFx_.text = e.text;
+                    card_.until = now;  // (the banner and the dice before it - the roll that woke it - make way: the map is the show)
+                    if (combat_.open && combat_.fireOnly) combat_.open = false;
+                    for (size_t q = 0; q < g.systems.size(); ++q)
+                        if (g.systems[q].fracture) map_.flash(int(q), rgb(255, 50, 110), now, 3000);
+                    break;
+                }
+                // (0.73.8, owner) the Firmament becomes the Obsidian: the space behind the map turns crimson as a galaxy screams,
+                // the screams cut off as a distorted tear ripples out from their home, the words; then the crimson drains away
+                if (e.label == "Puppets of the Blade" && e.text.find("cast off their mask") != std::string::npos) {
+                    mapFx_ = MapMoment();
+                    mapFx_.start = now ? now : 1u;
+                    mapFx_.sys = e.system >= 0 && e.system < int(g.systems.size())
+                                     ? int(e.system)
+                                     : (e.player >= 0 && e.player < g.numPlayers ? int(g.players[size_t(e.player)].homeSystem) : -1);
+                    mapFx_.rippleAt = audio::kGalaxyScreamsMs;  // (the screams cut off as it begins)
+                    mapFx_.crimson = true;
+                    mapFx_.tear = audio::Sfx::ObsidianTear;
+                    mapFx_.text = e.text;
+                    mapFx_.sub = "A trillion voices cried out across the stars - and then the galaxy fell silent.";
+                    card_.until = now;
+                    if (combat_.open && combat_.fireOnly) combat_.open = false;
+                    audio::play(audio::Sfx::GalaxyScreams, 1.f);
+                    break;
+                }
                 cardBanner(7, -1, e.player, e.label, e.player == me ? std::string("You use it") : playerName(g, e.player) + " uses it", now,
                            std::max<uint32_t>(fx, 1400));
                 card_.text = e.text;
@@ -1134,6 +1421,10 @@ private:
                 break;
             case EventKind::Planetfall:  // 0.24.0: the custodians token is gone - the Council is summoned
                 cardBanner(20, -1, e.player, "", "", now, std::max<uint32_t>(fx, 6500));
+                break;
+            case EventKind::WarSunAge:  // 0.73.0: the first war sun technology of the game - the War Sun scene
+                cardBanner(22, -1, e.player, "", "", now, std::max<uint32_t>(fx, warsun::kLength));
+                wsCues_ = 0;
                 break;
             case EventKind::Betrayal: {
                 cardBanner(11, e.card, e.player, e.label, "", now, std::max<uint32_t>(fx, 4500));
@@ -1283,7 +1574,7 @@ private:
             if (blinkOn && age < 2000) c.fillRoundRect(cx - 4, cy - 4, cw + 8, ch + 8, 10, shade(base, 1.2f), a * 90 / 255);
             if (card_.kind == 0) cards::strategy(c, card_.card, cx, cy, cw, a);
             else cards::tech(c, card_.card, Rect{cx, cy, cw, ch}, a);
-            uint32_t who = card_.player >= 0 ? pcolor(g, card_.player) : theme::text;
+            uint32_t who = card_.player >= 0 ? pcolours::readable(pcolor(g, card_.player)) : theme::text;
             c.fillRoundRect(r.x, cy + ch + 2, r.w, 18, 6, rgb(6, 8, 16), a * 230 / 255);
             drawTextAligned(c, FONT_SM, r.x, cy + ch + 3, r.w, Align::Center, fitText(FONT_SM, card_.sub, r.w - 8), who, a);
             return;
@@ -1373,6 +1664,11 @@ private:
                 }
                 // (0.58.4: typed at 80 a second - the banner now lasts until it can be read)
                 const int shownChars = age > 250 ? speech::typed(card_.sp, uint32_t(age - 250) * 80U / 55U) : 0;
+                if (age > 250 && !card_.said1) {  // (0.70.0) the speaker's voice as the words start (softer between two bots)
+                    card_.said1 = true;
+                    const bool yours = session_->isHumanSeat(card_.player) || session_->isHumanSeat(card_.other);
+                    if (!quietSounds()) audio::play(voiceOf(g, spk), yours ? 0.8f : 0.6f);
+                }
                 speech::draw(c, card_.sp, r.x + 72, r.y + 34, shownChars, now, a);
                 int y = r.y + 34 + std::max(62, card_.sp.height + 4);
                 for (const std::string& l : wrapText(FONT_XS, card_.text, r.w - 14)) {
@@ -1431,7 +1727,7 @@ private:
                 y += 19;
             }
         }
-        uint32_t who = card_.player >= 0 ? pcolor(g, card_.player) : theme::text;
+        uint32_t who = card_.player >= 0 ? pcolours::readable(pcolor(g, card_.player)) : theme::text;
         auto sub = wrapText(FONT_SM, card_.sub, r.w - 16);
         int y = r.y + r.h - 8 - int(std::min<size_t>(2, sub.size())) * 16;
         for (size_t k = 0; k < sub.size() && k < 2; ++k) {
@@ -1512,6 +1808,15 @@ private:
         const int start1 = 600, typed1 = age > start1 ? speech::typed(card_.sp, uint32_t(age - start1)) : 0;
         if (!card_.line.empty()) codec::speechBox(c, b1, upperName(g, bot), pcolor(g, bot), card_.sp, typed1, now, true, a);
         const int start2 = start1 + card_.sp.chars * 1000 / 55 + 500;
+        // (0.70.0) each speaker's voice as their words start
+        if (age > start1 && !card_.said1) {
+            card_.said1 = true;
+            if (!card_.line.empty() && !quietSounds()) audio::play(voiceOf(g, bot), 0.8f);
+        }
+        if (age > start2 && !card_.said2) {
+            card_.said2 = true;
+            if (!card_.reply.empty() && !quietSounds()) audio::play(voiceOf(g, t), 0.8f);
+        }
         if (!card_.reply.empty() && age > start2 - 300) {
             const int ra = std::min(a, (age - (start2 - 300)) * 255 / 300);
             codec::speechBox(c, b2, upperName(g, t), pcolor(g, t), card_.sp2, age > start2 ? speech::typed(card_.sp2, uint32_t(age - start2)) : 0,
@@ -1624,6 +1929,52 @@ private:
         return *bg;
     }
 
+    // 0.73.0 (owner 2026-11-19): the War Sun scene, the whole screen. Its clock waits while its art is still being made; its
+    // sounds come at their moments; who found it along the bottom, Continue beside it once the words are up (A skips it any time).
+    void drawWarSun(Canvas& c, const Game& g, uint32_t now, bool holding) {
+        if (!warsun::ready(c)) {  // (still being made: black, and the clock waits)
+            card_.start = now;
+            card_.until = now + warsun::kLength;
+            warsun::draw(c, 0);
+            return;
+        }
+        if (!wsOn_) {
+            wsOn_ = true;
+            audio::duckMusicTo(0.25f);
+        }
+        const uint32_t t = now - card_.start;
+        const struct {
+            uint32_t at;
+            audio::Sfx s;
+            float pan;
+        } cues[] = {{warsun::kShipA, audio::Sfx::ShipPassA, -0.5f}, {warsun::kShipB, audio::Sfx::ShipPassB, 0.5f},
+                    {warsun::kPanStart, audio::Sfx::WarSunDrums, 0.f}};
+        for (int i = 0; i < 3; ++i)
+            if (!(wsCues_ & (1u << i)) && t >= cues[i].at) {
+                wsCues_ |= 1u << i;
+                if (t < cues[i].at + 400) audio::play(cues[i].s, 1.f, cues[i].pan);  // (not long after: a menu was open)
+            }
+        warsun::draw(c, t);
+        const int p = card_.player;
+        if (p >= 0 && p < g.numPlayers) {
+            const std::string who = p == session_->human() ? std::string("You discovered war sun technology")
+                                                           : playerName(g, p) + " discovered war sun technology";
+            warsun::drawCaption(c, t, g.players[size_t(p)].faction, who, mix(pcolours::readable(pcolor(g, p)), rgb(255, 255, 255), 110));
+        }
+        if (holding && t >= warsun::kContinueAt) {
+            const int a = std::min(255, int(t - warsun::kContinueAt) * 255 / 400);
+            const int bw = 120, bx = c.fullWidth() - bw - 10, by = 480 - warsun::barHeight(t) + 1;
+            continueKey(c, bx, by, bw, a);
+        }
+    }
+    void warSunEnd() {
+        wsOn_ = false;
+        audio::stopSound(audio::Sfx::ShipPassA, 300);
+        audio::stopSound(audio::Sfx::ShipPassB, 300);
+        audio::stopSound(audio::Sfx::WarSunDrums, 600);
+        audio::duckMusicTo(1.f);
+    }
+
     void drawPlanetfall(Canvas& c, const Game& g, uint32_t now, bool holding) {
         const int t = int(now - card_.start);
         const int a = holding ? std::min(255, t * 255 / 500) : fadeAlpha(now, card_.start, card_.until, 500, 500);
@@ -1700,7 +2051,7 @@ private:
             if (!who.empty()) {
                 drawFactionIcon(c, g.players[size_t(p)].faction, r.x + 16, r.y + 46, 30, ba);
                 drawTextAligned(c, FONT_SM, r.x + 40, r.y + 44, r.w - 50, Align::Center,
-                                who + " the custodians token from Mecatol Rex: 1 victory point.", p >= 0 ? pcolor(g, p) : theme::text, ba);
+                                who + " the custodians token from Mecatol Rex: 1 victory point.", p >= 0 ? pcolours::readable(pcolor(g, p)) : theme::text, ba);
                 drawTextAligned(c, FONT_XS, r.x + 40, r.y + 64, r.w - 50, Align::Center, "From now on, every round ends with an agenda phase.",
                                 theme::dim, ba);
             }
@@ -1743,7 +2094,7 @@ private:
             c.fillCircle(float(r.x + 30), float(y + rowH / 2), 17.f, rgb(10, 14, 26), a);
             c.ring(float(r.x + 30), float(y + rowH / 2), 17.f, 2.5f, pcolor(g, q), a);
             drawFactionIcon(c, pl.faction, r.x + 17, y + rowH / 2 - 13, 26, a);
-            drawText(c, FONT_MDB, r.x + 56, y + 5, playerName(g, q) + (q == session_->seat() ? " (your seat)" : ""), pcolor(g, q), a);
+            drawText(c, FONT_MDB, r.x + 56, y + 5, playerName(g, q) + (q == session_->seat() ? " (your seat)" : ""), pcolours::readable(pcolor(g, q)), a);
             drawText(c, FONT_XS, r.x + 56, y + 24, fitText(FONT_XS, kFactions[pl.faction].name, 200), theme::faint, a);
             drawText(c, FONT_LG, r.x + 270, y + 4, d.name, theme::text, a);
             drawText(c, FONT_XS, r.x + 270, y + 28, fitText(FONT_XS, d.blurb, r.w - 280), rgb(240, 200, 190), a);
@@ -1930,7 +2281,7 @@ private:
             y += 14;
         }
         y += 8;
-        uint32_t who = card_.player >= 0 ? pcolor(g, card_.player) : theme::text;
+        uint32_t who = card_.player >= 0 ? pcolours::readable(pcolor(g, card_.player)) : theme::text;
         for (const std::string& l : subLines) {
             drawTextAligned(c, FONT_SMB, r.x, y, r.w, Align::Center, l, who, a);
             y += 17;
@@ -1942,6 +2293,30 @@ private:
         c.frameRoundRect(bx, by, bw, 24, 8, shade(base, 1.4f), 1, std::min(a, pulse));
         continueKey(c, bx, by, bw, a);
     }
+
+    // (0.74.0) an A.I. seat playing its options out: a small marker under the top bar, centred over the map
+    void drawThinking(Canvas& c, const Game& g, uint32_t now) {
+        const int q = session_->thinking();
+        if (q < 0 || q >= g.numPlayers) {
+            thinkSince_ = 0;
+            return;
+        }
+        if (thinkSince_ == 0) thinkSince_ = now;
+        const int age = int(now - thinkSince_);
+        if (age < 250) return;  // (a quick choice shows nothing)
+        const int a = std::min(255, (age - 250) * 255 / 200);
+        const std::string text = playerName(g, q) + " (A.I.) is thinking";
+        const int tw = textWidth(FONT_SM, text) + 40, x = (mapW() - tw) / 2, y = kTopH + 6;
+        c.fillRoundRect(x, y, tw, 20, 10, rgb(10, 14, 26), a * 225 / 255);
+        c.frameRoundRect(x, y, tw, 20, 10, pcolor(g, q), 1, a);
+        c.fillCircle(float(x + 12), float(y + 10), 4.f, pcolor(g, q), a);
+        drawText(c, FONT_SM, x + 22, y + 3, text, theme::text, a);
+        for (int k = 0; k < 3; ++k) {  // the dots
+            const int on = (int(now / 300) % 4) > k ? 255 : 70;
+            c.fillCircle(float(x + tw - 14 + k * 5 - 5), float(y + 14), 1.5f, theme::text, a * on / 255);
+        }
+    }
+    uint32_t thinkSince_ = 0;
 
     void drawToast(Canvas& c, uint32_t now) {
         if (toastUntil_ == 0 || int32_t(now - toastUntil_) >= 0) return;
@@ -1973,10 +2348,10 @@ private:
             midCol = theme::cyan;
         } else if (g.activePlayer >= 0) {
             mid = playerName(g, g.activePlayer) + "'s turn";
-            midCol = pcolor(g, g.activePlayer);
+            midCol = pcolours::readable(pcolor(g, g.activePlayer));
         } else if (session_->engine().waiting()) {
             mid = playerName(g, session_->engine().decision().player) + " is deciding";
-            midCol = pcolor(g, session_->engine().decision().player);
+            midCol = pcolours::readable(pcolor(g, session_->engine().decision().player));
         }
         const bool waiting = waitingInAgenda(g);  // (owner 2026-11-16: the tag below takes this place)
         if (!waiting) waitSince_ = 0;
@@ -1997,20 +2372,25 @@ private:
             std::snprintf(tail, sizeof tail, "%d \xC2\xB7 %d VP", p.tradeGoods, p.vp);
             if (icons::available()) {
                 int tw = textWidth(FONT_SM, tail), x = W() - 8 - tw;
-                drawText(c, FONT_SM, x, 4, tail, pcolor(g, h));
+                drawText(c, FONT_SM, x, 4, tail, pcolours::readable(pcolor(g, h)));
                 icons::draw(c, "trade_good", x - 16, 3, 14);
-                drawTextAligned(c, FONT_SM, 0, 4, x - 18, Align::Right, buf, pcolor(g, h));
+                drawTextAligned(c, FONT_SM, 0, 4, x - 18, Align::Right, buf, pcolours::readable(pcolor(g, h)));
                 rightStart = x - 18 - textWidth(FONT_SM, buf);
             } else {
-                drawTextAligned(c, FONT_SM, 0, 4, W() - 8, Align::Right, std::string(buf) + "TG " + tail, pcolor(g, h));
+                drawTextAligned(c, FONT_SM, 0, 4, W() - 8, Align::Right, std::string(buf) + "TG " + tail, pcolours::readable(pcolor(g, h)));
                 rightStart = W() - 8 - textWidth(FONT_SM, std::string(buf) + "TG " + tail);
             }
         }
+        // the screen buttons (0.67.0): in the free middle, right of the agenda's "Waiting for you" tag; Galactic Events the last
+        const int waitW = waiting ? textWidth(FONT_XS, waitText()) + 26 : 0;
+        strip_ = Strip{};
+        if (mouseSeen_ || pop_.on) layoutStrip(leftEnd + 12 + waitW, rightStart - 12, kBarBtns + (g.events ? 1 : 0));
         // Galactic Events (0.46.2, owner): a button in the free part of the bar while events are in play
         eventsBtn_ = Rect{};
+        if (strip_.on && g.events) eventsBtn_ = strip_.btn(strip_.n - 1);
         if (waiting) {
-            if (!info_) drawWaitTag(c, leftEnd, rightStart - 10, now);
-        } else if (g.events) {
+            if (!info_) drawWaitTag(c, leftEnd, strip_.on ? strip_.x - 8 : rightStart - 10, now);
+        } else if (g.events && !strip_.on) {
             const std::string label = "Galactic Events";
             const int bw = textWidth(FONT_SM, label) + 18, gap = rightStart - leftEnd;
             if (gap >= bw + 24) {
@@ -2037,6 +2417,12 @@ private:
         float x = -1.f, y = -1.f;  // top left (game units); -1: not placed yet
         bool drag = false;
         float gx = 0.f, gy = 0.f;  // where it was grabbed
+        // 0.61.2 (owner's document: "Add a minimize option for popout screens"): folded to its title strip - the screen waits in
+        // stash (info / overlay) while the game goes on as if no window were open
+        bool min = false;
+        std::unique_ptr<InfoScreen> stash;
+        int stashOverlay = 0;
+        float wx = 0.f, wy = 0.f;  // where the open window was (the folded strip docks under the button panel)
     } pop_;
     float barX_ = -1.f, barY_ = -1.f, barGX_ = 0.f, barGY_ = 0.f;
     bool barDrag_ = false, barMin_ = false, barLoaded_ = false, barShown_ = false, mouseSeen_ = false;
@@ -2046,13 +2432,154 @@ private:
                                                      "Technology", "Planets", "Players",    "Game log"};
         return kNames[i];
     }
+    // ---- The screen buttons in the top banner (0.67.0, owner 2026-11-19 - Placements, Draft C: players liked the SCREENS panel
+    // "but see it as in the way"; "Draft C looks great, and ... would benefit with having a 1.3 or 1 second delay tooltip for the
+    // buttons. The tooltip would just give the name of that function", the screens still opening in their pop-out windows). The
+    // panel's nine buttons as pictures in the banner's free middle - Galactic Events a tenth while events are in play, the
+    // agenda's "Waiting for you" tag left of them. drawTopBar lays them out (strip_), drawStrip draws them where the panel was
+    // drawn (the same rules: once a mouse is used, not over the cut scenes); with no room in the banner (4:3, the original
+    // 640x480 picture) the floating panel comes back.
+    struct Strip {
+        bool on = false;
+        int x = 0, bw = 0, gap = 0, n = 0;
+        Rect btn(int i) const { return Rect{x + i * (bw + gap), 2, bw, kTopH - 5}; }
+    } strip_;
+    bool stripShown_ = false;
+    int stripHover_ = -1;
+    uint32_t stripHoverSince_ = 0;
+    static constexpr uint32_t kStripTipMs = 1000;  // the name after 1 s pointing at a button
+    static const char* stripName(int i) { return i < kBarBtns ? barName(i) : "Galactic Events"; }
+    bool hotRect(const Rect& b) const {
+        return hoverX_ >= float(b.x) && hoverX_ < float(b.x + b.w) && hoverY_ >= float(b.y) && hoverY_ < float(b.y + b.h);
+    }
+    // where the buttons go this frame: n buttons in [l, r], 21 units wide, else 19 or 17 - or none
+    void layoutStrip(int l, int r, int n) {
+        strip_ = Strip{};
+        for (int k = 0; k < 3 && !strip_.on; ++k) {
+            const int bw = kTopH - 1 - 2 * k, gap = k == 0 ? 3 : 2, w = n * bw + (n - 1) * gap;
+            if (w <= r - l) strip_ = Strip{true, l + (r - l - w) / 2, bw, gap, n};
+        }
+    }
+    // a small picture for each screen, centred on (cx, cy), about s units across
+    void drawScreenIcon(Canvas& c, int i, int cx, int cy, int s, uint32_t col) {
+        const int h = s / 2;
+        switch (i) {
+            case 0: icons::draw(c, "public1", cx - h, cy - h, s); break;                    // Objectives
+            case 1: icons::draw(c, "agenda", cx - h, cy - h, s, 255, col); break;           // Laws
+            case 2: icons::draw(c, "action_card", cx - h, cy - h, s, 255, col); break;      // Your cards
+            case 3: {                                                                        // Faction sheet: your emblem
+                const int seat = session_ ? session_->seat() : -1;
+                if (seat >= 0 && seat < session_->game().numPlayers)
+                    drawFactionIcon(c, session_->game().players[size_t(seat)].faction, cx - h, cy - h, s);
+                else {  // (watching: a plain crest)
+                    float xs[5] = {float(cx - h + 2), float(cx + h - 2), float(cx + h - 2), float(cx), float(cx - h + 2)};
+                    float ys[5] = {float(cy - h + 2), float(cy - h + 2), float(cy + 1), float(cy + h - 1), float(cy + 1)};
+                    c.fillPolygon(xs, ys, 5, col);
+                }
+                break;
+            }
+            case 4: icons::drawUnitArt(c, "unit/dreadnought", float(cx), float(cy), s + 2, s - 2, col); break;  // Units
+            case 5: icons::draw(c, "cybernetic", cx - h, cy - h, s); break;                 // Technology
+            case 6:                                                                          // Planets: a world with a ring
+                c.fillCircle(float(cx) + 0.5f, float(cy) + 0.5f, float(s) * 0.3f, rgb(90, 150, 210));
+                c.ring(float(cx) + 0.5f, float(cy) + 0.5f, float(s) * 0.45f, 1.2f, col);
+                break;
+            case 7:                                                                          // Players: three discs
+                for (int k = 0; k < 3; ++k)
+                    c.fillCircle(float(cx - h + 3 + k * (s - 6) / 2) + 0.5f, float(cy) + 0.5f, float(s) * 0.17f,
+                                 k == 0 ? rgb(220, 80, 80) : k == 1 ? rgb(90, 200, 120) : rgb(90, 140, 230));
+                break;
+            case 8:                                                                          // Game log: lines of text
+                for (int k = 0; k < 3; ++k) c.fillRect(cx - h + 2, cy - h + 3 + k * (s - 5) / 2, s - 4 - (k == 2 ? s / 3 : 0), 2, col);
+                break;
+            default: {                                                                       // Galactic Events: a burst
+                float xs[8], ys[8];
+                for (int k = 0; k < 8; ++k) {
+                    const float a = float(k) * 0.785398f, rr = float(s) * (k % 2 ? 0.16f : 0.5f);
+                    xs[k] = float(cx) + 0.5f + rr * std::cos(a);
+                    ys[k] = float(cy) + 0.5f + rr * std::sin(a);
+                }
+                c.fillPolygon(xs, ys, 8, col == theme::gold ? theme::gold : rgb(200, 160, 255));
+                break;
+            }
+        }
+    }
+    void drawStrip(Canvas& c, uint32_t now) {
+        stripShown_ = true;
+        int hover = -1;
+        for (int i = 0; i < strip_.n; ++i) {
+            const Rect b = strip_.btn(i);
+            const bool events = i >= kBarBtns;
+            const bool hot = hotRect(b), open = events ? eventsOpen_ : pop_.on && pop_.which == i;
+            if (hot) hover = i;
+            drawPanel(c, b, open ? rgb(60, 48, 20) : hot ? rgb(34, 46, 80) : rgb(20, 26, 46),
+                      open || hot ? theme::gold : events ? rgb(150, 110, 210) : theme::border, 4, 240);
+            drawScreenIcon(c, i, b.x + b.w / 2, b.y + b.h / 2, b.h - 5, open || hot ? theme::gold : theme::text);
+            if (!events) hits::addAction(b, [this, i] { togglePop(i); });  // (Galactic Events: drawEvents, eventsBtn_)
+        }
+        if (hover != stripHover_) {
+            stripHover_ = hover;
+            stripHoverSince_ = now;
+        }
+        if (hover < 0 || now - stripHoverSince_ < kStripTipMs) return;
+        // the name, under the button
+        const Rect b = strip_.btn(hover);
+        const int nw = textWidth(FONT_XS, stripName(hover)) + 12;
+        const Rect tag{std::max(2, std::min(W() - nw - 2, b.x + b.w / 2 - nw / 2)), kTopH + 2, nw, 15};
+        drawPanel(c, tag, rgb(12, 16, 30), theme::gold, 4, 240);
+        drawTextAligned(c, FONT_XS, tag.x, tag.y + 1, tag.w, Align::Center, stripName(hover), theme::gold);
+    }
     int popW() const { return int(640.f * kPopK + 0.5f); }
     int popH() const { return kPopBar + int(480.f * kPopK + 0.5f); }
-    Rect popRect() const { return Rect{int(pop_.x), int(pop_.y), popW(), popH()}; }
+    Rect popRect() const { return pop_.min ? Rect{int(pop_.x), int(pop_.y), kPopMinW, kPopBar} : Rect{int(pop_.x), int(pop_.y), popW(), popH()}; }
+    static constexpr int kPopMinW = 200;  // (0.61.2) the folded window's width
+    // 0.61.2: fold the window to its strip (the screen kept aside) / open it again
+    void minimizePop() {
+        if (!pop_.on || pop_.min) return;
+        pop_.stash = std::move(info_);
+        pop_.stashOverlay = int(overlay_);
+        overlay_ = Overlay::None;
+        pop_.min = true;
+        pop_.wx = pop_.x;
+        pop_.wy = pop_.y;
+        if (barShown_) {  // (out of the way: under the SCREENS panel)
+            const Rect b = barRect();
+            pop_.x = float(b.x + b.w - kPopMinW);
+            pop_.y = float(b.y + b.h + 6);
+        } else if (stripShown_) {  // (0.67.0: the buttons are in the banner - out of the way at the map's top right)
+            pop_.x = float(mapW() - kPopMinW - 6);
+            pop_.y = float(kTopH + 6);
+        }
+        clampPop();
+        audio::play(audio::Sfx::Toggle);
+    }
+    void restorePop() {
+        if (!pop_.on || !pop_.min) return;
+        info_ = std::move(pop_.stash);
+        overlay_ = Overlay(pop_.stashOverlay);
+        pop_.min = false;
+        pop_.x = pop_.wx;
+        pop_.y = pop_.wy;
+        fromMenu_ = false;
+        eventsOpen_ = false;
+        clampPop();
+        audio::play(audio::Sfx::Toggle);
+    }
+    void closePop() {
+        if (pop_.min) {
+            pop_.stash.reset();
+            pop_.min = false;
+        } else {
+            info_.reset();
+            overlay_ = Overlay::None;
+        }
+        pop_.on = false;
+    }
     Rect barRect() const { return Rect{int(barX_), int(barY_), kBarW, barMin_ ? kBarGrip : kBarGrip + kBarBtns * (kBarBtnH + 2) + 3}; }
     void clampPop() {
-        pop_.x = std::max(0.f, std::min(float(W() - popW()), pop_.x));
-        pop_.y = std::max(float(kTopH), std::min(float(kHintY - popH()), pop_.y));
+        const Rect r = popRect();  // (0.61.2: the folded strip's own size)
+        pop_.x = std::max(0.f, std::min(float(W() - r.w), pop_.x));
+        pop_.y = std::max(float(kTopH), std::min(float(kHintY - r.h), pop_.y));
     }
     void clampBar() {
         const Rect r = barRect();
@@ -2070,6 +2597,12 @@ private:
         const Game& g = session_->game();
         const int h = session_->seat();
         const bool same = pop_.on && pop_.which == i;
+        if (same && pop_.min) {  // (0.61.2: its button opens the folded window again)
+            restorePop();
+            return;
+        }
+        pop_.stash.reset();
+        pop_.min = false;
         info_.reset();
         overlay_ = Overlay::None;
         fromMenu_ = false;
@@ -2131,7 +2664,7 @@ private:
         if (!m.leftPress) return false;
         if (pop_.on) {
             const Rect r = popRect();
-            if (m.x >= float(r.x) && m.x < float(r.x + r.w - 20) && m.y >= float(r.y) && m.y < float(r.y + kPopBar)) {
+            if (m.x >= float(r.x) && m.x < float(r.x + r.w - 38) && m.y >= float(r.y) && m.y < float(r.y + kPopBar)) {  // (x and _ / =)
                 pop_.drag = true;
                 pop_.gx = m.x - pop_.x;
                 pop_.gy = m.y - pop_.y;
@@ -2196,7 +2729,7 @@ private:
         barShown_ = true;
         const Rect r = barRect();
         drawPanel(c, r, rgb(10, 14, 28), theme::border, 5, 232);
-        hits::addAction(r, [] {});  // (a click on the panel itself isn't for the map)
+        hits::addBlock(r);  // (a click on the panel itself isn't for the map)
         // the grip: drag it; "-" folds the panel, "+" opens it
         c.fillRect(r.x + 2, r.y + 2, r.w - 4, kBarGrip - 3, rgb(30, 40, 72), 230);
         for (int k = 0; k < 3; ++k) c.fillRect(r.x + 6 + k * 4, r.y + 5, 2, 5, theme::dim);
@@ -2220,9 +2753,45 @@ private:
             hits::addAction(b, [this, i] { togglePop(i); });
         }
     }
+    // (0.61.2) the strip's two buttons: "_" folds the window (a folded one: "=" opens it again), "x" closes it
+    void popButtons(Canvas& c, const Rect& r) {
+        const Rect x{r.x + r.w - 18, r.y + 1, 16, kPopBar - 2};
+        const Rect mn{r.x + r.w - 36, r.y + 1, 16, kPopBar - 2};
+        auto hot = [&](const Rect& b) { return hoverX_ >= float(b.x) && hoverX_ < float(b.x + b.w) && hoverY_ >= float(b.y) && hoverY_ < float(b.y + b.h); };
+        if (hot(x)) c.fillRect(x.x, x.y, x.w, x.h, rgb(140, 40, 40), 220);
+        drawTextAligned(c, FONT_SMB, x.x, x.y - 1, x.w, Align::Center, "x", hot(x) ? theme::text : theme::dim);
+        if (hot(mn)) c.fillRect(mn.x, mn.y, mn.w, mn.h, rgb(50, 70, 120), 220);
+        const uint32_t mc = hot(mn) ? theme::text : theme::dim;
+        if (pop_.min) {  // a little window: open it again
+            c.frameRect(mn.x + 4, mn.y + 3, 8, 7, mc, 1);
+            c.fillRect(mn.x + 4, mn.y + 3, 8, 2, mc);
+        } else {
+            c.fillRect(mn.x + 4, mn.y + kPopBar - 7, 8, 2, mc);  // a bar at the bottom: fold it
+        }
+        hits::addAction(x, [this] {
+            closePop();
+            audio::play(audio::Sfx::Back);
+        });
+        hits::addAction(mn, [this] {
+            if (pop_.min) restorePop();
+            else minimizePop();
+        });
+    }
+    // (0.61.2) the folded window: just its strip, on top of the map; the game goes on underneath
+    void drawPopStrip(Canvas& c) {
+        clampPop();
+        const Rect r = popRect();
+        c.fillRect(r.x + 3, r.y + 4, r.w, r.h, rgb(0, 0, 0), 110);
+        drawPanel(c, Rect{r.x - 2, r.y - 2, r.w + 4, r.h + 4}, rgb(14, 18, 32), rgb(150, 120, 60), 5, 255);
+        c.fillRect(r.x, r.y, r.w, kPopBar, pop_.drag ? rgb(50, 60, 100) : rgb(32, 40, 72), 255);
+        for (int k = 0; k < 3; ++k) c.fillRect(r.x + 6 + k * 4, r.y + 5, 2, 6, theme::dim);
+        drawText(c, FONT_SMB, r.x + 22, r.y + 1, fitText(FONT_SMB, pop_.which >= 0 ? barName(pop_.which) : "", r.w - 64), theme::gold);
+        hits::addBlock(r);
+        popButtons(c, r);
+    }
     // The window: its title strip (drag it, x closes), the screen drawn at 75% into a canvas of its own and copied in.
     void drawPop(App& app, Canvas& c, const Game& g, uint32_t now) {
-        hits::addAction(Rect{0, 0, W(), kHintY}, [] {});  // (clicks beside the window do nothing; the hint bar still works)
+        hits::addBackdrop(Rect{0, 0, W(), kHintY}, [] {});  // (clicks beside the window do nothing; the hint bar still works)
         clampPop();
         const Rect r = popRect();
         c.fillRect(r.x + 5, r.y + 6, r.w, r.h, rgb(0, 0, 0), 120);  // a shadow
@@ -2230,18 +2799,9 @@ private:
         c.fillRect(r.x, r.y, r.w, kPopBar, pop_.drag ? rgb(50, 60, 100) : rgb(32, 40, 72), 255);
         for (int k = 0; k < 3; ++k) c.fillRect(r.x + 6 + k * 4, r.y + 5, 2, 6, theme::dim);
         drawText(c, FONT_SMB, r.x + 22, r.y + 1, pop_.which >= 0 ? barName(pop_.which) : "", theme::gold);
-        drawTextAligned(c, FONT_XS, r.x, r.y + 3, r.w - 26, Align::Right, "drag to move", theme::faint);
-        const Rect x{r.x + r.w - 18, r.y + 1, 16, kPopBar - 2};
-        const bool xHot = hoverX_ >= float(x.x) && hoverX_ < float(x.x + x.w) && hoverY_ >= float(x.y) && hoverY_ < float(x.y + x.h);
-        if (xHot) c.fillRect(x.x, x.y, x.w, x.h, rgb(140, 40, 40), 220);
-        drawTextAligned(c, FONT_SMB, x.x, x.y - 1, x.w, Align::Center, "x", xHot ? theme::text : theme::dim);
-        hits::addAction(Rect{r.x, r.y, r.w, r.h}, [] {});
-        hits::addAction(x, [this] {
-            info_.reset();
-            overlay_ = Overlay::None;
-            pop_.on = false;
-            audio::play(audio::Sfx::Back);
-        });
+        drawTextAligned(c, FONT_XS, r.x, r.y + 3, r.w - 44, Align::Right, "drag to move", theme::faint);
+        hits::addBlock(Rect{r.x, r.y, r.w, r.h});
+        popButtons(c, r);
         // the screen itself
         const float s = c.scale() * kPopK;
         if (!popCanvas_ || std::fabs(popCanvas_->scale() - s) > 1e-4f) popCanvas_ = std::make_unique<Canvas>(640, 480, s);
@@ -2259,7 +2819,8 @@ private:
         hits::originY() = oy;
         hits::scale() = ok;
         c.pxCopy(pc, c.X(r.x), c.Y(r.y + kPopBar));
-        drawBar(app, c);  // (the panel stays on top, to switch screens)
+        if (strip_.on) drawStrip(c, now);
+        else drawBar(app, c);  // (the buttons stay on top, to switch screens)
     }
 
     // Waypoint Mode (0.56.0, owner: "a button option on the bottom right of the screen (before the right window, but
@@ -2325,11 +2886,11 @@ private:
             if (eventOn(g, e)) evs.push_back(e);
         const int rowH = 20, pw = 250, ph = 26 + rowH * int(evs.size()) + 6;
         const int px = std::max(4, std::min(W() - pw - 4, eventsBtn_.x + eventsBtn_.w / 2 - pw / 2)), py = kTopH + 2;
-        hits::addAction(Rect{0, 0, W(), 480}, [this] { eventsOpen_ = false; });  // (a click elsewhere closes it)
+        hits::addBackdrop(Rect{0, 0, W(), 480}, [this] { eventsOpen_ = false; });  // (a click elsewhere closes it)
         hits::addAction(eventsBtn_, [this] { eventsOpen_ = false; });
         const Rect panel{px, py, pw, ph};
         drawPanel(c, panel, rgb(12, 10, 26), rgb(150, 110, 210), 8, 245);
-        hits::addAction(panel, [] {});
+        hits::addBlock(panel);
         drawText(c, FONT_SMB, px + 10, py + 6, "Galactic events in this game", theme::gold);
         int over = -1;
         for (size_t i = 0; i < evs.size(); ++i) {
@@ -2340,25 +2901,29 @@ private:
                 c.fillRect(row.x, row.y, row.w, row.h, rgb(60, 44, 100), 200);
             }
             drawText(c, FONT_SM, row.x + 6, row.y + 3, fitText(FONT_SM, galacticEvent(evs[i]).name, row.w - 12), hot ? theme::gold : theme::text);
-            hits::addAction(row, [] {});
+            hits::addBlock(row);
         }
         if (over < 0) {
             drawTextAligned(c, FONT_XS, px, py + ph + 2, pw, Align::Center, "Point at an event to read it", theme::faint);
             return;
         }
         // the tooltip: beside the pop-up where there is room, else under it
-        const int tw = 280;
-        const std::vector<std::string> lines = wrapText(FONT_SM, galacticEvent(over).text, tw - 20);
-        const int th = 28 + 15 * int(lines.size()) + 8;
+        const int tw = 340;  // (0.61.0: the cards' own texts - the smaller font when long)
+        const bool small = std::strlen(galacticEvent(over).text) > 420;
+        const FontData& tf = small ? FONT_XS : FONT_SM;
+        const int lh = small ? 13 : 15;
+        const std::vector<std::string> lines = wrapText(tf, galacticEvent(over).text, tw - 20);
+        const int th = 28 + lh * int(lines.size()) + 8;
         int tx = px + pw + 6, ty = py;
         if (tx + tw > W() - 4) tx = px - tw - 6;
         if (tx < 4) {
             tx = std::max(4, std::min(W() - tw - 4, px));
             ty = py + ph + 6;
         }
+        ty = std::max(4, std::min(ty, c.height() - th - 4));  // (0.61.0: kept on the screen)
         drawPanel(c, Rect{tx, ty, tw, th}, rgb(14, 12, 30), theme::gold, 8, 250);
         drawText(c, FONT_SMB, tx + 10, ty + 6, fitText(FONT_SMB, galacticEvent(over).name, tw - 20), theme::gold);
-        for (size_t i = 0; i < lines.size(); ++i) drawText(c, FONT_SM, tx + 10, ty + 26 + 15 * int(i), lines[i], theme::text);
+        for (size_t i = 0; i < lines.size(); ++i) drawText(c, tf, tx + 10, ty + 26 + lh * int(i), lines[i], theme::text);
     }
 
     // Choosing a strategy card: the highlighted card and both its abilities.
@@ -2442,7 +3007,7 @@ private:
             int x = p.x + 8, w = p.w - 16, y = p.y + 6;
             drawFactionIcon(c, pl.faction, x, y, 26);
             drawText(c, FONT_MDB, x + 32, y + 4, fitText(FONT_MDB, playerName(g, q) + (q == session_->seat() ? " (you)" : ""), w - 32),
-                     pcolor(g, q));
+                     pcolours::readable(pcolor(g, q)));
             y += 32;
             auto row = [&](const std::string& a, const std::string& b) {
                 drawText(c, FONT_SM, x, y, a, theme::dim);
@@ -2509,7 +3074,7 @@ private:
         const SystemDef& d = sy.d();
         int x = p.x + 8, w = p.w - 16, y = p.y + 6;
         std::string title = sy.home >= 0 ? playerName(g, sy.home) + " home" : d.name;
-        drawText(c, FONT_MDB, x, y, fitText(FONT_MDB, title, w), sy.home >= 0 ? pcolor(g, sy.home) : theme::gold);
+        drawText(c, FONT_MDB, x, y, fitText(FONT_MDB, title, w), sy.home >= 0 ? pcolours::readable(pcolor(g, sy.home)) : theme::gold);
         y += 19;
         std::string kind = std::string("Tile ") + d.key;
         if (d.anomalies & kAsteroid) kind += " \xC2\xB7 asteroid field";
@@ -2593,7 +3158,7 @@ private:
                 cards::controlToken(c, g.players[ps.owner].faction, pcolor(g, ps.owner), x + 6, y + 6, 12);
                 sx += 15;
             }
-            drawText(c, FONT_XS, sx, y, fitText(FONT_XS, sub, w - (sx - x)), ps.owner >= 0 ? pcolor(g, ps.owner) : theme::faint);
+            drawText(c, FONT_XS, sx, y, fitText(FONT_XS, sub, w - (sx - x)), ps.owner >= 0 ? pcolours::readable(pcolor(g, ps.owner)) : theme::faint);
             y += 13;
             bool branch = false, trap = false;  // Branch Offices (Veldyr), Traps (Li-Zho) - Discordant Stars 0.42.0
             for (int16_t b : g.dsBranch) branch = branch || b == pl;
@@ -2624,7 +3189,7 @@ private:
             for (int q = 0; q < kSides; ++q) {  // (0.45.0: neutral units too - the Fracture's guards)
                 if ((q >= g.numPlayers && q != kNeutral) || ps.units[q].empty()) continue;
                 for (const std::string& l : wrapText(FONT_XS, (q == kNeutral ? "Neutral: " : "") + forceText(ps.units[q]), w - 6)) {
-                    drawText(c, FONT_XS, x + 6, y, l, pcolor(g, q));
+                    drawText(c, FONT_XS, x + 6, y, l, pcolours::readable(pcolor(g, q)));
                     y += 13;
                 }
             }
@@ -2640,7 +3205,7 @@ private:
                 y += 15;
                 header = true;
             }
-            drawText(c, FONT_XS, x, y, playerName(g, q) + ":", pcolor(g, q));
+            drawText(c, FONT_XS, x, y, playerName(g, q) + ":", pcolours::readable(pcolor(g, q)));
             y += 13;
             for (const std::string& l : wrapText(FONT_XS, forceText(sy.space[q]), w - 6)) {
                 if (y > p.y + p.h - 14) break;
@@ -2671,7 +3236,7 @@ private:
             const int is = icons::available() ? 15 : 0;
             if (is) drawFactionIcon(c, pl.faction, x + 7, y, is, pl.passed ? 140 : 255);
             std::string name = playerName(g, q) + (q == session_->human() ? " (you)" : "") + (q == g.speaker ? " \xE2\x98\x85" : "");
-            drawText(c, FONT_SMB, x + 8 + (is ? is + 3 : 0), y, fitText(FONT_SMB, name, w - 50 - (is ? is + 3 : 0)), pl.passed ? theme::dim : pcolor(g, q));
+            drawText(c, FONT_SMB, x + 8 + (is ? is + 3 : 0), y, fitText(FONT_SMB, name, w - 50 - (is ? is + 3 : 0)), pl.passed ? theme::dim : pcolours::readable(pcolor(g, q)));
             drawTextAligned(c, FONT_SMB, x, y, w, Align::Right, std::to_string(pl.vp) + " VP", theme::gold);
             std::string cards;
             for (int8_t cd : pl.cards) {
@@ -2709,7 +3274,7 @@ private:
                 y += 4;
                 int ix = icons::available() ? 18 : 0;
                 if (ix && pl >= 0 && pl < g.numPlayers) drawFactionIcon(c, g.players[pl].faction, x, y - 1, 16);
-                drawText(c, FONT_SMB, x + ix, y, fitText(FONT_SMB, playerName(g, pl), w - 60 - ix), pcolor(g, pl));
+                drawText(c, FONT_SMB, x + ix, y, fitText(FONT_SMB, playerName(g, pl), w - 60 - ix), pcolours::readable(pcolor(g, pl)));
                 drawTextAligned(c, FONT_XS, x, y + 2, w, Align::Right, role, theme::faint);
                 y += 16;
                 std::string t = forceText(f);
@@ -2736,7 +3301,7 @@ private:
         int first = std::max(0, int(combat_.rolls.size()) - std::max(1, room / per));
         for (size_t i = size_t(first); i < combat_.rolls.size(); ++i) {
             const Roll& r = combat_.rolls[i];
-            drawText(c, FONT_XS, x, y, fitText(FONT_XS, playerName(g, r.player) + " \xC2\xB7 " + r.label, w), pcolor(g, r.player));
+            drawText(c, FONT_XS, x, y, fitText(FONT_XS, playerName(g, r.player) + " \xC2\xB7 " + r.label, w), pcolours::readable(pcolor(g, r.player)));
             y += 14;
             int dx = x;
             dice::Timing tm;  // (0.22.0: little ten-sided dice that tumble for a moment)
@@ -2856,7 +3421,7 @@ private:
             if (g.votedFor[q] == kNoVote) continue;
             drawText(c, FONT_XS, x, y,
                      fitText(FONT_XS, playerName(g, q) + ": " + std::to_string(g.voteCount[q]) + " for " + outcomeLabel(g.votedFor[q]), w),
-                     pcolor(g, q));
+                     pcolours::readable(pcolor(g, q)));
             y += 12;
         }
         if (!agendaResult_.empty()) {
@@ -2882,7 +3447,7 @@ private:
         int y = y0 + 3;
         for (int i = int(feed.size()) - n; i < int(feed.size()); ++i) {
             const FeedLine& f = feed[i];
-            uint32_t col = f.player >= 0 ? pcolor(g, f.player) : theme::gold;
+            uint32_t col = f.player >= 0 ? pcolours::readable(pcolor(g, f.player)) : theme::gold;
             if (f.kind == EventKind::Dice) col = rgb(200, 205, 220);
             if (f.kind == EventKind::Warning) col = rgb(255, 200, 120);
             int age = int(now - f.time);
@@ -3139,11 +3704,14 @@ private:
                 // 0.32.1 (owner): passing over the web while the menu list has the focus moved the focus to
                 // Negotiations - now only a click does that; once there, pointing picks and a click offers
                 if (menuWeb_) hits::add(r, [this, q]() { webSel_ = q; });
-                else hits::addAction(r, [this, q]() {
-                    menuWeb_ = true;
-                    webSel_ = q;
-                    webMsg_.clear();
-                });
+                else hits::addAction(
+                    r,
+                    [this, q]() {
+                        menuWeb_ = true;
+                        webSel_ = q;
+                        webMsg_.clear();
+                    },
+                    hits::Light::Round);
             }
         drawWebLegend(c, 12, kHintY - 20);
         const Rect right{kMapW + 6, kTopH + 2, 640 - kMapW - 10, kHintY - kTopH - 6};
@@ -3231,7 +3799,7 @@ private:
             const int fx = icons::available() ? 30 : 0;
             if (fx) drawFactionIcon(c, pl.faction, cols[0], y + 1, 26);
             std::string name = playerName(g, q) + (q == session_->human() ? " (you)" : "") + (q == g.speaker ? " \xE2\x98\x85" : "");
-            drawText(c, FONT_SMB, cols[0] + fx, y, fitText(FONT_SMB, name, 150 - fx), pcolor(g, q));
+            drawText(c, FONT_SMB, cols[0] + fx, y, fitText(FONT_SMB, name, 150 - fx), pcolours::readable(pcolor(g, q)));
             std::string sub = kFactions[pl.faction].name;
             if (archetypesRevealed(g) && isBot(g, q)) sub = archName(g, q) + " \xC2\xB7 " + sub;  // after round 3
             drawText(c, FONT_XS, cols[0] + fx, y + 16, fitText(FONT_XS, sub, 150 - fx), archetypesRevealed(g) && isBot(g, q) ? rgb(230, 190, 120) : theme::faint);
@@ -3560,16 +4128,22 @@ private:
         int y = r.y + 70;
         for (int q : order) {
             drawFactionIcon(c, g.players[q].faction, r.x + 14, y - 1, 22);
-            drawText(c, FONT_MDB, r.x + 42, y, playerName(g, q) + (q == session_->human() ? " (you)" : ""), pcolor(g, q));
+            drawText(c, FONT_MDB, r.x + 42, y, playerName(g, q) + (q == session_->human() ? " (you)" : ""), pcolours::readable(pcolor(g, q)));
+            if (q < int(leagueNames_.size()) && !leagueNames_[size_t(q)].empty())  // (0.80.0) the league's rival commander in that seat
+                drawText(c, FONT_XS, r.x + 42 + textWidth(FONT_MDB, playerName(g, q)) + 8, y + 5, leagueNames_[size_t(q)], theme::dim);
             drawTextAligned(c, FONT_MDB, r.x, y, r.w - 40, Align::Right, std::to_string(g.players[q].vp) + " VP", theme::text);
             y += 26;
         }
         drawTextAligned(c, FONT_SM, r.x, r.y + r.h - 26, r.w, Align::Center,
-                        "Round " + std::to_string(g.round) + keyText(" \xC2\xB7 press A to return to the title"), theme::dim);
+                        "Round " + std::to_string(g.round) +
+                            keyText(session_->league().empty() ? " \xC2\xB7 press A to return to the title" : " \xC2\xB7 press A for the league results"),
+                        theme::dim);
     }
 
     // ------------------------------------------------------------- state
     int objCol_ = 0, objRow_ = 0;  // objectives board cursor
+    bool leagueRecorded_ = false;  // (0.80.0) this league game's result is in the league
+    std::vector<std::string> leagueNames_;  // ...and the rival commanders at its seats
     bool othersView_ = false;      // 0.43.0: the secrets block shows the others' scored secrets (Y)
     int objPage_ = 0;
     struct Banner {
@@ -3592,6 +4166,7 @@ private:
         std::string line, reply;
         uint32_t seed = 0;
         bool laid = false;
+        bool said1 = false, said2 = false;  // (0.70.0) the speakers' voices have started
         speech::Speech sp, sp2;
     };
     struct Roll {
@@ -3628,11 +4203,29 @@ private:
     std::string webMsg_;
     uint32_t lastNow_ = 0;
     uint32_t lastCursorMove_ = 0;
+    bool mapSounds_ = true;              // (0.69.0) setting "map_sounds"
+    std::array<uint32_t, size_t(audio::Sfx::Count)> lastSfx_{};  // (0.70.0) when each moment sound last started
+    uint32_t lastMapSound_ = 0;         // when the last map sound started
+    int lastLandSys_ = -1, lastLandPlayer_ = -1;  // the landing heard last (one sound per invasion of a system)
+    uint32_t lastLandAt_ = 0;
     Banner centre_;
     CardBanner card_;
     Combat combat_;
     battle::SpaceBattle battle_;  // 0.22.0: the space combat played out on the tile
     battle::GroundBattle ground_;  // 0.23.0: the ground combat on the planet's surface
+    // 0.71.0 combat reactions: the two sides' portraits outside the battle hex, the attacker's words, then the defender's
+    combattalk::Talk talk_;
+    combattalk::Memory talkMem_;  // the lines said so far this session (the same line comes back as late as possible)
+    int talkSys_ = -1, talkPa_ = -1, talkPb_ = -1;
+    unsigned talkFights_ = 0;  // fights seen: the first, then every third, has the talk
+    static bool talkOn() {  // (test only: TI4_COMBAT_TALK=0 switches them off)
+        static const bool on = !(std::getenv("TI4_COMBAT_TALK") && std::atoi(std::getenv("TI4_COMBAT_TALK")) == 0);
+        return on;
+    }
+    static unsigned talkEvery() {  // (test only: TI4_TALK_EVERY=1 - every fight, for the preview clips)
+        static const unsigned n = std::getenv("TI4_TALK_EVERY") ? unsigned(std::max(1, std::atoi(std::getenv("TI4_TALK_EVERY")))) : 3U;
+        return n;
+    }
     std::string toast_;
     uint32_t toastColor_ = 0, toastStart_ = 0, toastUntil_ = 0;
     std::string agendaResult_;

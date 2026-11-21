@@ -1,15 +1,22 @@
 # Hot-seat (0.19.0): two people at the device. Seat 1 is set to a person in the Faction Menu;
 # the game asks to pass the device before their decisions. Instant AI speed.
 wait 5
+# (0.63.0: New Game -> Game options -> AI speed) Instant; up to Factions & seats: seat 1 played by a person
 press A
 wait 5
 press UP
 wait 2
-press RIGHT
+press A
+wait 2
+press DOWN
+wait 2
+press DOWN
 wait 2
 press RIGHT
 wait 2
-press UP
+press RIGHT
+wait 2
+press B
 wait 2
 press UP
 wait 2
@@ -18,7 +25,7 @@ wait 2
 press UP
 wait 2
 press A
-wait 3
+wait 2
 press UP
 wait 2
 press UP

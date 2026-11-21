@@ -142,6 +142,15 @@ void Rules::supportForTheThroneCheck(int p, int sys) {
             say(p, pn(p) + "'s " + noteNameOf(G, note) + " goes back to " + pn(owner) + ".");
             continue;
         }
+        // (fixes 31, the generic notes' pass) Alliance: "When you activate a system that contains 1 or more of the <color> player's
+        // units, return this card to the <color> player"
+        if (G.fixes >= 31 && noteType(note) == kNoteAlliance && hasUnits(G, owner, sys)) {
+            quietNoteReturn_ = true;
+            returnNote(p, note);
+            quietNoteReturn_ = false;
+            say(p, pn(p) + "'s Alliance goes back to " + pn(owner) + ".");
+            continue;
+        }
         if (noteType(note) != kNoteSupportThrone) continue;
         if (!hasUnits(G, owner, sys)) continue;
         returnNote(p, note);

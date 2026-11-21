@@ -20,61 +20,89 @@ struct CardText {
 };
 
 const CardText kAcText[] = {
-    // ---- Uncharted Space (0.33.0, only with its module; done = implemented)
-    {"fulfillment_protocols_ds", "After a player activates a system with your ships", "Place 1 ship costing 4 or less from your reinforcements there.", true},
-    {"secured_trove", "Action", "Purge 2 of your relic fragments (any kinds) to gain a relic.", true},
-    {"free_trade_network", "Action", "For each of cultural, hazardous and industrial you hold a planet of: gain 2 commodities, or turn 2 commodities into trade goods.", true},
-    {"carapace_plating", "After your opponent rolls hits in ground combat", "Cancel up to 2 of those hits.", true},
-    {"psionic_hammer", "Action", "Look at one random unscored secret objective of a player with the most victory points.", true},
-    {"special_session", "After an agenda is revealed", "Every player who can vote must vote on this agenda.", true},
-    {"freedom_fighters_ds", "Start of a ground combat you are in", "Place infantry on that planet equal to its influence.", true},
-    {"abyssal_starpaths", "After you activate a system", "Two systems without planets count as adjacent until the end of this tactical action.", true},
-    {"planetary_rigs", "Action", "Pick a non-home planet you control (not Mecatol Rex): reveal its exploration deck until an attachment and attach it there.", true},
-    {"ai_augury", "When you pass", "Return 1 of your unscored secret objectives, shuffle, and draw a new one.", true},
-    {"aggressive_broker", "When another player purges something", "They choose: you gain 2 trade goods, or you refill your commodities.", true},
-    {"safety_overrides_ds", "After your mech is destroyed in ground combat", "Your opponent destroys 2 of their own units on that planet.", true},
-    {"contagion", "After you destroy another player's infantry in a ground combat", "Half of their infantry there (rounded up) is destroyed too.", true},
-    {"remnant_collection", "Action", "Purge any number of your relic fragments: draw that many action cards.", true},
-    {"hostile_world_ds", "After ground forces land on a planet you control", "Roll dice equal to its resources: each 6 or more is a hit on them.", true},
-    {"echo_shielding", "Start of an invasion", "Your units in the active system have Planetary Shield for this tactical action.", true},
-    {"illusory_duplication_ds", "Start of a space combat", "Your non-fighter ships there without Sustain Damage have it this round.", true},
-    {"confused_sage", "After a die is rolled", "Add 3 to it or take 3 from it.", true},
-    {"singularity_charge_ds", "Start of a combat round", "Every unit in the combat that can be damaged becomes damaged.", true},
-    {"renegotiation", "After a player uses one of your faction promissory notes", "They give you a promissory note from their hand.", true},
-    {"forbidden_knowledge", "When you research a technology", "Ignore 1 prerequisite (2 if it isn't a unit upgrade).", true},
-    {"bounty_contracts", "Start of the status phase", "Pick a public objective: gain 1 trade good whenever someone scores it this status phase.", true},
-    {"arbitrage", "When you pass", "Gain 4 commodities; any beyond your commodity value are trade goods instead.", true},
-    {"micrometeoroid_storm_ds", "Action", "Pick a system with another player's ships: roll a die for each fighter there, a 6 or more destroys one.", true},
-    {"professional_archeologists", "Action", "Look at the top card of each exploration deck: keep relic fragments, else discard it for 1 commodity.", true},
-    {"emergency_meeting", "Start of the agenda phase", "Shuffle the discarded agendas back in, look at the top 3 and put each on top or bottom.", true},
-    {"escape_clause", "When another player plays your Trade Agreement", "Keep your commodities: they return the note and gain 2 trade goods.", true},
-    {"personnel_writ", "Action", "Ready your agent, or spend a strategy token to unlock your commander.", true},
+    // ---- Uncharted Space (0.33.0, only with its module; done = implemented; 0.61.0: the cards' wording - AsyncTI4
+    // action_cards/uncharted_space.json)
+    {"fulfillment_protocols_ds", "After a player activates a system that contains 1 or more of your ships",
+     "Place up to 1 ship from your reinforcements whose cost is 4 or less in the active system.", true},
+    {"secured_trove", "Action", "Purge any 2 of your relic fragments to gain 1 relic.", true},
+    {"free_trade_network", "Action", "If you control at least 1 cultural, 1 hazardous, or 1 industrial planet, for each of those planet "
+                                     "traits you control, gain 2 commodities or convert 2 of your commodities to trade goods.", true},
+    {"carapace_plating", "After your opponent produces 1 or more hits during ground combat", "Cancel up to 2 of those hits.", true},
+    {"psionic_hammer", "Action", "Choose 1 player with the most victory points. Look at up to 1 of their unscored secret objectives, at random.", true},
+    {"special_session", "After an agenda is revealed", "Each player must vote on this agenda, if able.", true},
+    {"freedom_fighters_ds", "At the start of a ground combat you are participating in",
+     "You may place a number of infantry from your reinforcements on that planet equal to that planet's influence value.", true},
+    {"abyssal_starpaths", "After you activate a system",
+     "Choose any 2 systems that do not contain planets; those 2 systems are adjacent to each other until the end of this tactical action.", true},
+    {"planetary_rigs", "Action", "Choose 1 non-home planet you control other than Mecatol Rex. Reveal cards from that planet's "
+                                 "corresponding exploration deck until you reveal an attachment; attach that attachment to that planet and "
+                                 "discard the rest.", true},
+    {"ai_augury", "When you pass", "Return 1 of your unscored secret objectives to the secret objective deck, shuffle that deck, and draw "
+                                   "1 secret objective.", true},
+    {"aggressive_broker", "When another player purges a component",
+     "That player must choose to allow you to either gain 2 trade goods or replenish your commodities.", true},
+    {"safety_overrides_ds", "After a mech you control is destroyed during ground combat",
+     "Your opponent must choose and destroy 2 of their own units on that planet.", true},
+    {"contagion", "After you destroy 1 or more of another player's infantry on a planet",
+     "Destroy half of that player's infantry on that planet, rounded up.", true},
+    {"remnant_collection", "Action", "Purge any number of your relic fragments to draw an equal number of action cards.", true},
+    {"hostile_world_ds", "After a player commits ground forces to land on a planet you control",
+     "Roll a number of dice equal to that planet's resource value, for each result of 6 or greater, produce 1 hit against those ground "
+     "forces.", true},
+    {"echo_shielding", "At the start of an invasion", "Units you control in the active system gain PLANETARY SHIELD until the end of this "
+                                                      "tactical action.", true},
+    {"illusory_duplication_ds", "At the start of space combat",
+     "Each of your non-fighter ships in the active system that do not have SUSTAIN DAMAGE gain that unit ability this combat round.", true},
+    {"confused_sage", "After a die is rolled", "Apply +3 or -3 to the result before resolving the effects of that roll.", true},
+    {"singularity_charge_ds", "At the start of a round of combat", "Each unit participating in that combat becomes damaged, if able.", true},
+    {"renegotiation", "After a player resolves the effect of 1 of your faction promissory notes",
+     "That player must give you 1 promissory note from their hand, if able.", true},
+    {"forbidden_knowledge", "When you research a technology", "You may ignore 1 of that technology's prerequisites. If that technology "
+                                                             "is not a unit upgrade technology, you may ignore 2 of that technology's "
+                                                             "prerequisites.", true},
+    {"bounty_contracts", "At the start of the status phase", "Choose 1 revealed public objective; during this status phase, when a player "
+                                                             "scores that objective, gain 1 trade good.", true},
+    {"arbitrage", "When you pass", "Gain 4 commodities; for each commodity you would gain in excess of your commodity value, gain 1 trade "
+                                   "good instead.", true},
+    {"micrometeoroid_storm_ds", "Action", "Choose 1 system that contains another player's ships. Roll 1 die for each fighter in that "
+                                          "system. For each result of 6 or greater, destroy 1 of those units.", true},
+    {"professional_archeologists", "Action", "For each exploration deck, look at the top card of that deck; if that card is a relic "
+                                             "fragment, reveal and gain that card, otherwise discard that card and gain 1 commodity.", true},
+    {"emergency_meeting", "At the start of the agenda phase", "Shuffle all discarded agendas into the agenda deck and look at the top 3 "
+                                                              "cards of that deck. Place each of those cards on the top or bottom of that "
+                                                              "deck in any order.", true},
+    {"escape_clause", "When another player would resolve your \"Trade Agreement\" promissory note",
+     "You do not give that player your commodities; that player returns that promissory note and gains 2 trade goods.", true},
+    {"personnel_writ", "Action", "Ready your agent or spend 1 command token from your strategy pool to unlock your commander.", true},
     {"preparation", "Action", "Draw 1 action card.", true},
-    {"classified_weapons", "Before your units roll for a unit ability", "+4 to each of those rolls; their hits can't be cancelled.", true},
-    // ---- Thunder's Edge (0.34.0, only with its module)
-    {"strategize", "Action", "Resolve the secondary ability of a strategy card that is still readied or that nobody chose.", true},
-    {"overrule", "Action", "Resolve the primary ability of a strategy card that is still readied or that nobody chose.", true},
-    {"piratecontract", "Action", "Place 1 neutral destroyer in a system without any player's ships (not a home system).", true},
-    {"piratefleet", "Action", "Spend 3 resources: place a neutral carrier, cruiser, destroyer and 2 fighters in a system without any "
-                    "player's ships (not a home system).", true},
-    {"mercenarycontract", "Action", "Spend 2 trade goods: place 2 neutral infantry on a planet with no units outside home systems; "
-                          "whoever controlled it loses it.", true},
-    {"brilliance", "Action", "Ready one of your planets that has a technology specialty.", true},
-    {"exchangeprogram", "Action", "Pick a player: if you both agree, each of you places 1 infantry, coexisting, on a planet the other "
-                        "controls with their ground forces; if not, you both discard 1 fleet pool token.", true},
-    {"rescue", "After another player moves ships into a system with your ships",
-     "Move 1 of your ships there from a system without your command token.", true},
+    {"classified_weapons", "Before 1 or more of your units would make a roll for a unit ability",
+     "Apply +4 to the result of each of those rolls. Hits produced by that roll cannot be canceled.", true},
+    // ---- Thunder's Edge (0.34.0, only with its module; 0.61.0: the cards' wording - AsyncTI4 action_cards/te_actioncards.json)
+    {"strategize", "Action", "Perform the secondary ability of any readied or unchosen strategy card.", true},
+    {"overrule", "Action", "Perform the primary ability of a readied or unchosen strategy card.", true},
+    {"piratecontract", "Action", "Place 1 neutral destroyer in a non-home system that contains no non-neutral ships.", true},
+    {"piratefleet", "Action", "Spend 3 resources to place 1 neutral carrier, 1 neutral cruiser, 1 neutral destroyer, and 2 neutral "
+                    "fighters in a non-home system that contains no non-neutral ships.", true},
+    {"mercenarycontract", "Action", "Spend 2 trade goods to place 2 neutral infantry on any non-home planet that contains no units; if "
+                          "that planet was owned by another player, they return its planet card to the planet card deck.", true},
+    {"brilliance", "Action", "Ready 1 of your planets that has a technology specialty or choose 1 player to gain their breakthrough.", true},
+    {"exchangeprogram", "Action", "Choose another player. You and that player may agree to place 1 infantry from each of your "
+                        "reinforcements into coexistence on a planet the other player controls that contains their ground forces; if no "
+                        "agreement is reached, you each discard 1 token from your fleet pool.", true},
+    {"rescue", "After another player moves ships into a system that contains your ships",
+     "You may move 1 of your ships into the active system from any system that does not contain one of your command tokens.", true},
     {"crashlanding", "When your last ship in the active system is destroyed",
-     "Put 1 of your ground forces from its space area on a planet there (not Mecatol Rex); with other players' units there, "
-     "it coexists.", true},
-    {"puppetsonastring", "End of a player's turn, if you have passed", "Take 1 action.", true},
-    {"crisis", "End of a player's turn, while 2 or more players haven't passed", "The next player's turn is skipped.", true},
-    {"lieinwait", "After 2 of your neighbours trade with each other", "Look at both their hands of action cards and take 1 from each.", true},
-    {"extremeduress", "Start of another player's turn, if they have a readied strategy card",
-     "Unless their next action is a strategic action, they discard their action cards, give you their trade goods and show "
-     "you their secret objectives.", true},
-    {"blackmarketdealing", "While you negotiate a trade", "You and the other player may also trade relics, action cards and "
-                           "unscored secret objectives. It can't be cancelled.", true},
+     "Place 1 of your ground forces from the space area of the active system onto a planet in that system other than Mecatol Rex; if "
+     "the planet contains other players' units, place your ground force into coexistence.", true},
+    {"puppetsonastring", "At the end of a player's turn, if you have passed", "Perform 1 action.", true},
+    {"crisis", "At the end of any player's turn, if there are at least 2 players who have not passed", "Skip the next player's turn.", true},
+    {"lieinwait", "After 2 of your neighbors resolve a transaction",
+     "Look at each of those players' hands of action cards, then choose and take 1 action card from each.", true},
+    {"extremeduress", "At the start of another player's turn, if they have a readied strategy card",
+     "If that player's next action is not a strategic action, they discard all of their action cards, give you all of their trade "
+     "goods, and show you all of their secret objectives.", true},
+    {"blackmarketdealing", "When you are negotiating a transaction", "You and the other player may include relics, action cards, and "
+                           "unscored secret objectives as part of the transaction. This card cannot be canceled.", true},
     {"abs", "At the start of the agenda phase", "Choose 1 player. Exhaust each cultural planet owned by that player.", true},
     {"arch_expedition", "Action", "Reveal the top 3 cards of an exploration deck that matches a planet you control; gain any relic fragments that you reveal and discard the rest.", true},
     {"assassin", "After an agenda is revealed", "Choose 1 player. That player cannot vote on this agenda.", true},
@@ -267,57 +295,82 @@ bool agendaImplemented(int a) {
 // ---------------------------------------------------------------------------
 // Exploration cards, relics and legendary planets (Prophecy of Kings)
 namespace {
-const KeyText2 kExText[] = {
-    {"frln", "You may produce 1 unit in this system, spending influence as if it were resources if you like."},
-    {"mo", "You may place 1 infantry on this planet."},
-    {"gw", "A gamma wormhole token is placed in this system."},
-    {"dmz", "Attach: structures here go back to reinforcements and ground forces to space. Units can't land, be produced or be placed on this planet."},
-    {"ds", "Attach: +2 resources and +1 influence."},
-    {"pw", "Attach: +2 influence."},
-    {"toe", "Attach: +1 influence. The holder of the Crown of Emphidia who controls it can turn the crown into 1 victory point."},
-    {"crf", "Relic fragment. Purge 3 cultural fragments (as an action) to gain a relic."},
-    {"vfs", "If you have a mech here, or remove 1 infantry from this planet: gain 1 command token."},
-    {"exp", "If you have a mech here, or remove 1 infantry from this planet: ready this planet."},
-    {"cm", "If you have a mech here, or remove 1 infantry from this planet: gain 1 trade good."},
-    {"ls", "Attach: +1 resource and +2 influence."},
-    {"mw", "Attach: +2 resources."},
-    {"rw", "Attach: +1 resource."},
-    {"warfare", "Attach: a red technology specialty (or +1 resource and +1 influence if the planet already has one)."},
-    {"hrf", "Relic fragment. Purge 3 hazardous fragments (as an action) to gain a relic."},
-    {"aw", "Gain 2 commodities, or turn up to 2 of your commodities into trade goods."},
-    {"fb", "Gain 1 commodity, or spend 1 trade good or commodity to draw 1 action card."},
-    {"lf", "Gain 1 commodity, or spend 1 trade good or commodity to place 1 mech on this planet."},
-    {"biotic", "Attach: a green technology specialty (or +1 resource and +1 influence if the planet already has one)."},
-    {"cybernetic", "Attach: a yellow technology specialty (or +1 resource and +1 influence if the planet already has one)."},
-    {"propulsion", "Attach: a blue technology specialty (or +1 resource and +1 influence if the planet already has one)."},
-    {"irf", "Relic fragment. Purge 3 industrial fragments (as an action) to gain a relic."},
+const KeyText2 kExText[] = {  // (0.61.0, the exploration pass: the cards' wording - AsyncTI4 explores/explores.json, uncharted_space.json, codex3.json)
+    {"frln", "You may produce 1 unit in this system. You may spend influence as if it were resources to produce this unit."},
+    {"mo", "You may place 1 infantry from your reinforcements on this planet."},
+    {"gw", "Place a gamma wormhole token in this system. Then, purge this card."},
+    {"dmz", "Return all structures on this planet to your reinforcements. Then, return all ground forces on this planet to the space area. "
+            "ATTACH: Units cannot be committed to, produced on, or placed on this planet. During the agenda phase, this planet's planet card "
+            "can be traded as part of a transaction."},
+    {"ds", "ATTACH: This planet's resource value is increased by 2 and its influence value is increased by 1."},
+    {"pw", "ATTACH: This planet's influence value is increased by 2."},
+    {"toe", "ATTACH: This planet's influence value is increased by 1. If the player who has the \"Crown of Emphidia\" relic has control "
+            "of this planet, they can use that relic to gain 1 victory point."},
+    {"crf", "ACTION: Purge 3 of your cultural relic fragments to gain 1 relic."},
+    {"vfs", "If you have at least 1 mech on this planet, or if you remove 1 infantry from this planet, gain 1 command token."},
+    {"exp", "If you have at least 1 mech on this planet, or if you remove 1 infantry from this planet, ready this planet."},
+    {"cm", "If you have at least 1 mech on this planet, or if you remove 1 infantry from this planet, gain 1 trade good."},
+    {"ls", "ATTACH: This planet's resource value is increased by 1 and its influence value is increased by 2."},
+    {"mw", "ATTACH: This planet's resource value is increased by 2."},
+    {"rw", "ATTACH: This planet's resource value is increased by 1."},
+    {"warfare", "ATTACH: This planet has a red technology specialty. If this planet already has a technology specialty, this planet's "
+                "resource and influence values are each increased by 1 instead."},
+    {"hrf", "ACTION: Purge 3 of your hazardous relic fragments to gain 1 relic."},
+    {"aw", "You may gain 2 commodities, or you may convert up to 2 of your commodities to trade goods."},
+    {"fb", "You may gain 1 commodity, or you may spend 1 trade good or 1 commodity to draw 1 action card."},
+    {"lf", "You may gain 1 commodity, or you may spend 1 trade good or 1 commodity to place 1 mech from your reinforcements on this planet."},
+    {"biotic", "ATTACH: This planet has a green technology specialty. If this planet already has a technology specialty, this planet's "
+               "resource and influence values are each increased by 1 instead."},
+    {"cybernetic", "ATTACH: This planet has a yellow technology specialty. If this planet already has a technology specialty, this planet's "
+                   "resource and influence values are each increased by 1 instead."},
+    {"propulsion", "ATTACH: This planet has a blue technology specialty. If this planet already has a technology specialty, this planet's "
+                   "resource and influence values are each increased by 1 instead."},
+    {"irf", "ACTION: Purge 3 of your industrial relic fragments to gain 1 relic."},
     {"dv", "Draw 1 secret objective."},
-    {"ed", "Keep this card. Action: spend 6 resources and purge it to research a technology."},
-    {"gamma", "A gamma wormhole token is placed in this system."},
-    {"ion", "The ion storm token goes here, alpha or beta side up. It flips each time ships travel through its wormhole."},
+    {"ed", "Place this card faceup in your play area. ACTION: You may spend 6 resources and purge this card to research 1 technology."},
+    {"gamma", "Place a gamma wormhole token in this system. Then, purge this card."},
+    {"ion", "Place the ion storm token in this system with either side faceup. Then, place this card in the common play area. At the end "
+            "of the \"Move Ships\" or \"Retreat\" substep of a tactical action during which 1 or more of your ships use the ion storm "
+            "wormhole, flip the ion storm token to its opposing side."},
     {"lc", "Draw 2 action cards."},
-    {"ms", "Refill your commodities, or turn your commodities into trade goods."},
-    {"mirage", "The Mirage planet appears in this system; you gain it, ready."},
-    {"urf", "Relic fragment of any kind: counts towards any set of 3."},
+    {"ms", "You may replenish your commodities, or you may convert your commodities to trade goods."},
+    {"mirage", "Place the Mirage planet token in this system. Gain the Mirage planet card and ready it. Then, purge this card."},
+    {"urf", "This card counts as a relic fragment of any type."},
     // Uncharted Space (0.33.0)
-    {"starchartcultural", "Keep this card; it can be traded. Action: purge 2 of your Star Charts to draw a random blue-backed system tile and place it at the edge of the board, next to at least 2 systems."},
-    {"starcharthazardous", "Keep this card; it can be traded. Action: purge 2 of your Star Charts to draw a random blue-backed system tile and place it at the edge of the board, next to at least 2 systems."},
-    {"starchartindustrial", "Keep this card; it can be traded. Action: purge 2 of your Star Charts to draw a random blue-backed system tile and place it at the edge of the board, next to at least 2 systems."},
-    {"starchartfrontier", "Keep this card; it can be traded. Action: purge 2 of your Star Charts to draw a random blue-backed system tile and place it at the edge of the board, next to at least 2 systems."},
-    {"forgottentradestation", "Gain 1 trade good for each planet in this system."},
-    {"distinguishedadmiral", "Move 1 of your command tokens to another pool, or spend 2 influence to gain 1 command token."},
-    {"councilpreserve", "Attach: when you exhaust this planet to vote, cast 5 more votes."},
-    {"scorcheddepot", "If you have a mech here, or remove 1 infantry from this planet: remove 1 command token from this system, or move 1 of your command tokens to another pool."},
-    {"arcanecitadel", "Attach: when you exhaust this planet, place 1 infantry on it. Your units get +1 on combat rolls on this planet."},
+    {"starchartcultural", "This card may be exchanged as part of a transaction. ACTION: Purge 2 of your Star Charts to draw 1 system tile "
+                          "with a blue-colored back at random; place that tile at the edge of the game board, adjacent to at least 2 other systems."},
+    {"starcharthazardous", "This card may be exchanged as part of a transaction. ACTION: Purge 2 of your Star Charts to draw 1 system tile "
+                           "with a blue-colored back at random; place that tile at the edge of the game board, adjacent to at least 2 other systems."},
+    {"starchartindustrial", "This card may be exchanged as part of a transaction. ACTION: Purge 2 of your Star Charts to draw 1 system tile "
+                            "with a blue-colored back at random; place that tile at the edge of the game board, adjacent to at least 2 other systems."},
+    {"starchartfrontier", "This card may be exchanged as part of a transaction. ACTION: Purge 2 of your Star Charts to draw 1 system tile "
+                          "with a blue-colored back at random; place that tile at the edge of the game board, adjacent to at least 2 other systems."},
+    {"forgottentradestation", "For each planet in this system, gain 1 trade good."},
+    {"distinguishedadmiral", "Redistribute up to 1 command token, or spend 2 influence to gain 1 command token."},
+    {"councilpreserve", "ATTACH: When you exhaust this planet to cast votes, cast 5 additional votes."},
+    {"scorcheddepot", "If you have at least 1 mech on this planet, or if you remove 1 infantry from this planet, remove 1 command token "
+                      "from this system or redistribute 1 of your command tokens."},
+    {"arcanecitadel", "ATTACH: When you exhaust this planet, place 1 infantry from your reinforcements on this planet. Apply +1 to each of "
+                      "your unit's combat rolls on this planet."},
     {"hiddenlaboratory", "Explore the frontier deck in this system."},
-    {"seedyspaceport", "If you have a mech here, or remove 1 infantry from this planet: ready your agent or draw 1 action card."},
-    {"ancientshipyard", "Place 1 cruiser in this system if no other player has ships here."},
-    {"orbitalfoundries", "Attach: this planet has Production 2, as if it were a unit."},
-    {"folderspace", "Put 1 command token from your reinforcements in your fleet pool. You may move your units here to the space area of any system without other players' ships."},
-    {"suspiciouswreckage", "Choose 2 other players: each gives you 1 promissory note from their hand."},
-    {"darkvisions", "Look at the top card of each exploration deck and discard any of them. You may explore one of your planets. Then each deck is shuffled."},
-    {"warforgeruins", "If you have a mech here, or remove 1 infantry from this planet: place 1 mech or 2 infantry on it."},
-    {"arcaneshieldemitter", "Attach: all infantry here go up to the space area (or are destroyed). This planet can't be bombarded; no infantry can land, be produced or be placed on it."},
+    {"seedyspaceport", "If you have at least 1 mech on this planet, or if you remove 1 infantry from this planet, ready your agent or draw 1 action card."},
+    {"ancientshipyard", "Place up to 1 cruiser from your reinforcements in this system if it contains no other players' ships."},
+    {"orbitalfoundries", "ATTACH: This planet has a PRODUCTION value of 2 as if it were a unit."},
+    {"folderspace", "Place 1 command token from your reinforcements in your fleet pool and move any number of your units in this system "
+                    "to the space area of another system that contains no other players' ships."},
+    {"suspiciouswreckage", "Choose 2 other players, each of those players must give you 1 promissory note from their hand."},
+    {"darkvisions", "Look at the top card of each exploration deck, discard any number of those cards and explore up to 1 planet you "
+                    "control. Then, shuffle each exploration deck."},
+    {"warforgeruins", "If you have at least 1 mech on this planet, or if you remove 1 infantry from this planet, place 1 mech or 2 infantry "
+                      "from your reinforcements on this planet."},
+    {"arcaneshieldemitter", "ATTACH: Return all infantry on this planet to the space area or destroy them. This planet cannot be bombarded. "
+                            "Infantry cannot be committed to, produced on, or placed on this planet."},
+    // Codex III (0.61.0: in games with the Codex)
+    {"minent", "Gain 1 command token and 1 trade good."},
+    {"ent", "Gain 1 command token and 2 trade goods."},
+    {"majent", "Gain 1 command token and 3 trade goods."},
+    {"kel", "Gain 2 command tokens."},
+    {"dw", "Draw 1 relic."},
 };
 const KeyText2 kRelicText[] = {  // (0.60.0, the relic pass: the cards' wording)
     {"dominusorb", "Before you move units during a tactical action, you may purge this card to move and transport units that are in systems that contain 1 of your command tokens."},
@@ -352,27 +405,36 @@ const KeyText2 kRelicText[] = {  // (0.60.0, the relic pass: the cards' wording)
     {"titanprototype", "ACTION: Exhaust this agent and choose a player; that player may spend 3 resources to place a structure on a planet they control. If they do not, they gain 1 trade good."},
     {"nanoforge", "ACTION: Attach this card to a non-legendary, non-home planet you control; its resource and influence values are increased by 2 and it is a legendary planet. This action cannot be performed once attached."},
 };
-const KeyText2 kLegendText[] = {
-    {"hopesend", "End of your turn: exhaust to place 1 mech on a planet you control, or draw 1 action card."},
-    {"primor", "End of your turn: exhaust to place up to 2 infantry on planets you control."},
-    {"mirage", "End of your turn: exhaust to place up to 2 fighters in a system with your ships."},
-    {"mallice", "End of your turn: exhaust to gain 2 trade goods, or turn all your commodities into trade goods."},
+const KeyText2 kLegendText[] = {  // (0.61.0, the legendary planet pass: the cards' wording - AsyncTI4 planets/*.json)
+    {"hopesend", "You may exhaust this card at the end of your turn to place 1 mech from your reinforcements on any planet you control "
+                 "or draw 1 action card."},
+    {"primor", "You may exhaust this card at the end of your turn to place up to 2 infantry from your reinforcements on any planet you control."},
+    {"mirage", "You may exhaust this card at the end of your turn to place up to 2 fighters from your reinforcements in any system that "
+               "contains 1 or more of your ships."},
+    {"mallice", "You may exhaust this card at the end of your turn to gain 2 trade goods or convert all of your commodities to trade goods."},
     // Uncharted Space (0.33.0)
-    {"silence", "End of your turn: exhaust to place 1 cruiser from your reinforcements in a system with your ships."},
-    {"echo", "End of your turn: exhaust to put a frontier token in a system without planets."},
-    {"tarrock", "After an agenda is revealed: exhaust to predict its outcome; if you are right, draw 1 secret objective."},
-    {"prism", "End of your turn: exhaust and purge one of your technologies (not a faction or unit upgrade technology) to "
-              "gain another with the same number of prerequisites."},
-    {"domna", "End of your turn: exhaust to move 1 of your ships to an adjacent system without other players' ships."},
+    {"silence", "You may exhaust this card at the end of your turn to place 1 cruiser from your reinforcements in any system that "
+                "contains 1 or more of your ships."},
+    {"echo", "You may exhaust this card at the end of your turn to place 1 frontier token in a system that does not contain a planet."},
+    {"tarrock", "After an agenda is revealed, you may exhaust this card to predict aloud an outcome of that agenda. If your prediction "
+                "is correct, draw 1 secret objective."},
+    {"prism", "You may exhaust this card at the end of your turn and purge a non-faction, non-unit upgrade technology you own to gain 1 "
+              "technology with the same number of prerequisites."},
+    {"domna", "You may exhaust this card at the end of your turn to remove 1 of your ships from the game board and place that unit in "
+              "an adjacent system that does not contain another player's ships."},
     // Thunder's Edge (0.34.0)
-    {"emelpar", "End of your turn: exhaust to ready another of your components (not a strategy card)."},
-    {"faunus", "When you pass: exhaust to take a planet outside home systems that isn't legendary and has no units and no attachments."},
-    {"garbozia", "When you pass: exhaust to put 1 action card from the discard pile on this card; you may play it as if it were in "
-                 "your hand, and it is purged."},
-    {"industrex", "When you pass: exhaust to place 1 ship of a type you have the unit upgrade for in a system with your ships."},
-    {"tempesta", "After you activate a system: exhaust so 1 of your ships moves 1 further this tactical action."},
-    {"styx", "Worth 1 victory point while you hold it."},
-    {"thundersedge", "Gain your breakthrough with it if you haven't. End of your turn: exhaust to take another action."},
+    {"emelpar", "You may exhaust this card at the end of your turn to ready another component that isn't a strategy card."},
+    {"faunus", "You may exhaust this card when you pass to gain control of a non-home, non-legendary planet that contains no units and "
+               "has no attachments."},
+    {"garbozia", "You may exhaust this card when you pass to place 1 action card from the discard pile faceup on this card; you can "
+                 "purge cards on this card to play them as if they were in your hand."},
+    {"industrex", "You may exhaust this card when you pass to place 1 ship that matches a unit upgrade technology you own from your "
+                  "reinforcements into a system that contains your ships."},
+    {"tempesta", "You may exhaust this card after you activate a system to apply +1 to the move value of 1 of your ships during this "
+                 "tactical action."},
+    {"styx", "When you gain this card, gain 1 victory point. When you lose this card, lose 1 victory point."},
+    {"thundersedge", "Gain your breakthrough when you gain this card if you do not already have it. You may exhaust this card at the end "
+                     "of your turn to perform another action."},
     {"avernus", "ACTION: Exhaust this card to use the Embers of Muaat's STAR FORGE faction ability without spending a command token."},
     {"ordinian", "You may exhaust this card when you pass to draw 1 action card and gain 1 command token."},
 };
@@ -434,11 +496,17 @@ const char* noteName(int type) {
     return type >= 0 && type < kNoteTypes ? n[type] : "?";
 }
 const char* noteText(int type) {
+    // (0.61.0, the generic notes' pass: the cards' wording - AsyncTI4 promissory_notes/color.json; "<color>" = the note's owner)
     static const char* t[] = {
-        "Play after its owner activates a system with your units: they can't move units into it. Then it goes back.",
-        "When its owner refills commodities, they give them all to you. Then it goes back.",
-        "Play when an agenda is revealed: its owner can't vote or play action cards on that agenda. Then it goes back.",
-        "While you hold it: +1 victory point. You lose the point and return it if you activate a system with its owner's units.",
+        "After the owner of this card activates a system that contains 1 or more of your units: The owner cannot move units to the "
+        "active system. Then return this card to its owner.",
+        "When the owner of this card replenishes commodities: The owner gives you all of their commodities. Then, return this card to "
+        "its owner.",
+        "When an agenda is revealed: The owner of this card cannot vote, play action cards, or use faction abilities until after that "
+        "agenda has been resolved. Then, return this card to its owner.",
+        "When you receive this card, if you are not its owner, you must place it faceup in your play area and gain 1 victory point. "
+        "When you activate a system that contains 1 or more of its owner's units, or if its owner is eliminated, lose 1 victory point "
+        "and return this card to its owner.",
     };
     return type >= 0 && type < kNoteTypes ? t[type] : "";
 }

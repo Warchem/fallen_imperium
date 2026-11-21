@@ -77,3 +77,27 @@ Write the file named in your task under `tools/lines/` (UTF-8, Unix newlines), s
 one blank line between sections. `#` starts a comment line. Then reread it once: fix any line over 160 chars,
 any missing {them} in betray / betrayed, any Nekro line that isn't exactly `Word | Word`, any Ghemina line
 without `||`, any Obsidian character outside the allowed set.
+
+## Opening lines on YOUR offer screen (0.64.0, files `about_*.txt`)
+When the player opens an offer to a computer player, its portrait comes on and it says one line ABOUT the
+player - picked from what lies between them (the sharpest thing first). Two lines per faction per category,
+in the same `[key]` sections (the generator merges a faction's sections across files; `name:` / `voice:` stay
+in the main files):
+```
+hello:     <nothing special between you - a greeting>
+neighbour: <you share a border>
+partner:   <you have made deals with it before>
+kept:      <you kept a promise to it>
+broken:    <you broke a promise to it>
+clash:     <you attacked it>
+leader:    <you lead the game by 2+ VP (and have 4+)>
+warm:      <after the round-3 reveal: it feels Friendly toward you>
+wary:      <after the reveal: Wary>
+hostile:   <after the reveal: Hostile>
+```
+- Spoken TO the player ({them} = the player's faction name; optional, at most once per line).
+- The deal hasn't been made yet: don't accept, refuse or name terms. A greeting with an attitude.
+- Same voice rules as above (Nekro `Word | Word`, Ghemina `||`, Zelian growl + [translation], the Obsidian
+  alphabet, L1Z1X in plain English and still calling themselves the Lazax).
+- L1Z1X (owner, 2026-11-18): whenever their text says "Lazax", the game glitches the a's and 1's of that word
+  back and forth (Lazax <-> L1z1x) - in every L1Z1X line, not just these. Nothing to write for it.

@@ -13,6 +13,7 @@
 #include "ui/icons.h"
 #include "ui/theme.h"
 #include "ui/widgets.h"
+#include "ui/pcolors.h"
 
 using namespace ti;
 
@@ -362,7 +363,7 @@ void drawLarge(Canvas& c, const Game& g, int p, int viewer, Rect r, uint32_t now
     const int f = g.players[size_t(p)].faction;
     const BreakthroughDef* b = defOf(f);
     if (!b) return;
-    const uint32_t pc = theme::player[g.players[size_t(p)].color % 8];
+    const uint32_t pc = pcolours::base(g.players[size_t(p)].color);
     drawPanel(c, r, rgb(10, 14, 26), pc, 12);
     const int ch = r.h - 20, cw = std::min(ch * 716 / 1000, r.w / 2);
     const Rect card{r.x + 10, r.y + 10, cw, ch};

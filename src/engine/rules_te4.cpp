@@ -322,7 +322,8 @@ void Rules::fractureEnter(int p, bool byBreakthrough) {
         s.fracture = true;
         s.egress = i == 1 || i == 5;
     }
-    teAbilityEvent(E, p, "The Fracture", "The Fracture tears open at the edge of the galaxy.");
+    // (0.73.5: the event points at Styx - the ripple's epicentre on the game screen; display only, the log keeps the text)
+    teAbilityEvent(E, p, "The Fracture", "The Fracture tears open at the edge of the galaxy.", sys[3]);
     // the neutral guards (the tiles' backs)
     auto onPlanet = [&](int s, const char* key) {
         for (int16_t x : G.systems[size_t(s)].planets)

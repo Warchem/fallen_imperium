@@ -353,11 +353,17 @@ float promiseCost(const Game& g, int x, int to, const Promise& pr) {
         case PromiseKind::LetPass: return rounds * 0.4f;
         case PromiseKind::VoteFor: {
             if (pr.agenda < 0) return 0.5f;
+            // (0.65.0) the Nekro Virus never votes (Galactic Threat): a promise it couldn't keep - it sold them before
+            if (aiVotePlanOn() && isFaction(g, x, "nekro")) return 1000.f;
             for (const Promise& o : g.promises)  // our votes are already promised elsewhere
                 if (o.state == kPromiseActive && o.by == x && o.kind == PromiseKind::VoteFor && o.agenda == pr.agenda)
                     return o.target == pr.target ? 0.1f : 1000.f;
             float stake = aiOutcomeValue(g, x, pr.agenda, pr.target);
-            return std::max(0.f, -stake) * 1.5f + 0.3f;
+            if (!aiVotePlanOn()) return std::max(0.f, -stake) * 1.5f + 0.3f;
+            // 0.65.0: a Broker sells its votes gladly; on the phase's first agenda they are votes gone for the second
+            float c = std::max(0.f, -stake) * 1.5f + (aiVoteStyle(g, x) == VoteStyle::Broker ? 0.15f : 0.3f);
+            if (g.phase == Phase::Agenda && g.agendaNumber == 0) c += 0.04f * float(availableVotes(g, x)) * aiVoteSaveWeight(g, x);
+            return c;
         }
         case PromiseKind::Repay: return float(pr.amount) * 0.9f;
         case PromiseKind::UseAgent: return (aiStyle(g, x).on ? aiStyle(g, x).agent : 1.f) * 1.2f;
@@ -390,9 +396,14 @@ float aiDealNet(const Game& g, int p, const Deal& d) {
     const DealSide& mine = proposer ? d.give : d.get;
     const DealSide& theirs = proposer ? d.get : d.give;
     float net = sideReceived(g, p, theirs) - sideGiven(g, p, q, mine);
+    // (0.74.0) the A.I. difficulty prices the other side's promises by their record: every promise they have broken (a
+    // public count) takes a third off what their word is worth, down to a fifth
+    const float trust = aiIsAISeat(g, p) && q >= 0 && q < g.numPlayers
+                            ? std::max(0.2f, 1.f - aiTune("aitrust", 0.33f) * float(g.players[size_t(q)].promisesBroken))
+                            : 1.f;
     for (const Promise& pr : d.promises) {
         if (pr.by == p) net -= promiseCost(g, p, q, pr);
-        else net += promiseValue(g, p, pr);
+        else net += promiseValue(g, p, pr) * trust;
     }
     // a threat against us: accepting avoids the attack
     if (!proposer && d.threat >= 0) net += exposure(g, q, p, d.threat) * 0.8f;
@@ -763,7 +774,8 @@ std::vector<Deal> candidates(const Game& g, int p, int q) {
             }
         const int votes = availableVotes(g, q);
         const int spare = me.tradeGoods - G.keepTg;
-        if (best >= 0 && bestStake >= 1.5f && votes >= 2 && spare >= 1 && aiOutcomeValue(g, q, a, best) > -1.f) {
+        const bool canVote = !(aiVotePlanOn() && isFaction(g, q, "nekro"));  // (0.65.0: Galactic Threat - no votes to buy)
+        if (canVote && best >= 0 && bestStake >= 1.5f && votes >= 2 && spare >= 1 && aiOutcomeValue(g, q, a, best) > -1.f) {
             Deal d = base();
             d.give.tg = std::min(spare, std::max(1, (votes + 1) / 2));
             if (!tx) d.give.tg = 0;
@@ -775,6 +787,41 @@ std::vector<Deal> candidates(const Game& g, int p, int q) {
             v.rounds = 1;
             d.promises.push_back(v);
             if (tx || d.give.tg == 0) out.push_back(d);
+        }
+    }
+    // 0.65.0 (the voting plan): sell our votes to a player who cares about an outcome we don't mind - a Broker always
+    // looks for a buyer, anyone else when this agenda means little to it
+    if (g.currentAgenda >= 0 && tx && friendly && aiVotePlanOn() && them.tradeGoods >= 1) {
+        const int a = g.currentAgenda;
+        const int myVotes = availableVotes(g, p);
+        const bool broker = aiVoteStyle(g, p) == VoteStyle::Broker;
+        if (myVotes >= 3 && !isFaction(g, p, "nekro") && (broker || aiVoteStake(g, p, a) < 0.4f)) {
+            const int w0 = aiVoteLikelyWinner(g, p, a);
+            int sell = -1;
+            float bestGain = 1.f;  // it has to matter to them
+            for (const auto& oc : voteOutcomes(g, a)) {
+                const float theirGain = aiVoteWorth(g, q, a, oc.first, oc.first) - aiVoteWorth(g, q, a, w0, -100);
+                const float ourLoss = aiVoteWorth(g, p, a, w0, -100) - aiVoteWorth(g, p, a, oc.first, oc.first);
+                if (theirGain > bestGain && ourLoss <= 0.3f) {
+                    bestGain = theirGain;
+                    sell = oc.first;
+                }
+            }
+            bool already = false;  // our votes are promised on this agenda already
+            for (const Promise& pr : g.promises)
+                if (pr.state == kPromiseActive && pr.by == p && pr.kind == PromiseKind::VoteFor && pr.agenda == a) already = true;
+            if (sell >= 0 && !already) {
+                Deal d = base();
+                Promise v;
+                v.kind = PromiseKind::VoteFor;
+                v.by = int8_t(p);
+                v.target = int16_t(sell);
+                v.agenda = int16_t(a);
+                v.rounds = 1;
+                d.promises.push_back(v);
+                d.get.tg = std::min<int>(them.tradeGoods, std::max(1, (myVotes + 1) / 2));
+                out.push_back(d);
+            }
         }
     }
     // ask whoever sits on Mecatol Rex to leave it (Hard: once per round)
@@ -1209,6 +1256,9 @@ int aiTradeX1Response(const Game& g, int q, int p, int kind) {
 
 // After the refresh: send the commodities (true) or keep them and break the deal.
 bool aiTradeX1Settle(const Game& g, int q, int p) {
+    // (0.74.0) the A.I. difficulty keeps its word while its word is worth something: it breaks the deal only to stop the
+    // holder winning, or to win itself
+    if (aiIsAISeat(g, q)) return !(g.players[size_t(p)].vp + 3 >= g.vpGoal || g.players[size_t(q)].vp + 2 >= g.vpGoal);
     const Style& S = aiStyle(g, q);
     if (!S.on) return true;
     if (S.betrayTarget == p && (S.betrayKind == int(Betrayal::BreakPromise) || S.betrayKind == int(Betrayal::LoanScam))) return false;
@@ -1298,7 +1348,7 @@ float aiPromisePlanValue(const Game& g, int p, int sys, int enemy, bool fight) {
         int owner = noteOwner(n);
         if (owner == p || owner < 0 || owner >= g.numPlayers || !hasUnits(g, owner, sys)) continue;
         if (noteType(n) == kNoteSupportThrone) v -= kVP * 1.2f;
-        else if (noteType(n) == kNoteAlliance) v -= 0.f;
+        else if (noteType(n) == kNoteAlliance) v -= g.fixes >= 31 ? 2.f : 0.f;  // (0.61.0: the card - it goes back too)
         else v -= 1.f;
     }
     for (size_t i = 0; i < g.promises.size(); ++i) {

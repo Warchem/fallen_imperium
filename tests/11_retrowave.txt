@@ -4,8 +4,6 @@ wait 5
 press DOWN
 wait 2
 press DOWN
-wait 2
-press DOWN
 wait 3
 shot rw_title_default
 wait 1
@@ -14,21 +12,24 @@ shot rw_title_retro
 press UP
 wait 2
 press UP
-wait 2
-press UP
 wait 3
+# (0.63.0: New Game -> Game options -> AI speed) Fast; the galaxy draft
 press A
 wait 5
 press UP
 wait 2
+press A
+wait 2
+press DOWN
+wait 2
+press DOWN
+wait 2
 press RIGHT
 wait 2
-press UP
-wait 2
-press RIGHT
+press B
 wait 2
 press START
-wait 40
+wait 2
 shot rw_draft
 press A
 wait 30
@@ -71,7 +72,16 @@ wait 3
 press UP
 wait 3
 press A
-wait 5
+wait 100
+# (0.80.0: back on the title with a save - the cursor on Continue game; Tilesets is five down)
+press DOWN
+wait 2
+press DOWN
+wait 2
+press DOWN
+wait 2
+press DOWN
+wait 2
 press DOWN
 wait 3
 press RIGHT

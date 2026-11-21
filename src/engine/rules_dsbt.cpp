@@ -54,7 +54,7 @@ void Rules::dsbtGained(int p) {
     if (!(G.modules & kModDiscordant)) return;
     const UnitType celagrom = G.fixes >= 17 ? UnitType::Flagship2 : UnitType::Flagship;  // (0.52.1: its own unit)
     if (G.fixes >= 17 && dsbtOn(p, "celdauri")) refreshUnits(p);  // (its unit card first)
-    if (dsbtOn(p, "celdauri") && unitsAvailable(G, p, celagrom) > 0) {  // (0.44.4 fixes 8: one more flagship allowed)
+    if (dsbtOn(p, "celdauri") && unitsForPlacement(G, p, celagrom) > 0) {  // (0.44.4 fixes 8: one more flagship allowed)
         std::vector<Option> opts;
         for (size_t s = 0; s < G.systems.size(); ++s)
             if (hasShips(G, p, int(s))) opts.push_back({int(s), sysName(int(s)), ""});

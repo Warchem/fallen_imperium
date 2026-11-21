@@ -16,8 +16,9 @@ Hex layoutPosToHex(int pos);  // ring*100 + index -> axial hex
 // factionBySeat must already be resolved (no -1 entries).
 // balanced (0.43.0, the seeded galaxy): more deals tried and a stricter score (resources, influence, legendary
 // planets, wormholes, anomalies); sliceOwner (optional): for each system made, the seat whose slice it is (-1 none)
+// anyDeal (0.63.0, Setup::unbalanced): the first random deal whose tiles can be laid out legally - nothing evened out.
 bool buildGalaxy(Game& g, Rng& rng, const std::vector<int>& factionBySeat, std::string* err, bool balanced = false,
-                 std::vector<int>* sliceOwner = nullptr);
+                 std::vector<int>* sliceOwner = nullptr, bool anyDeal = false);
 // The numbers of each seat's slice on a map built with sliceOwner (0.43.0: the seeded galaxy's breakdown)
 struct SliceStats {
     int res = 0, inf = 0, optimal = 0, planets = 0, legendary = 0, skips = 0, wormholes = 0, anomalies = 0;
@@ -48,6 +49,7 @@ std::vector<int> blueTilesLeft(const Game& g);
 inline int spotId(Hex h) { return (h.q + 64) * 256 + (h.r + 64); }
 inline Hex spotHex(int id) { return Hex{id / 256 - 64, id % 256 - 64}; }
 int addBoardSystem(Game& g, int def, Hex pos);  // a new system (and its planets); adjacency not yet updated
+int addOffBoardSystem(Game& g, int def, Hex pos);  // (0.61.2) ... beside the board (a minor faction's home behind its gate)
 // A module's tiles are only dealt / drawn with that module (Uncharted Space, Thunder's Edge).
 bool systemInGame(const Game& g, int def);
 void tePlacement(Game& g);  // Thunder's Edge (0.34.0): where the Fracture and the Thunder's Edge token go
@@ -57,7 +59,8 @@ void tePlacement(Game& g);  // Thunder's Edge (0.34.0): where the Fracture and t
 // home beside its gate, the wormhole nexus), records the open spaces in
 // g.draft and deals each player 3 blue and 2 red tiles (the most even of a
 // number of random deals). Rules::galaxyDraft then has the players place them.
-bool startGalaxyDraft(Game& g, Rng& rng, const std::vector<int>& factionBySeat, std::string* err);
+// anyDeal (0.63.0, Setup::unbalanced): the hands are the first random deal, not the most even one.
+bool startGalaxyDraft(Game& g, Rng& rng, const std::vector<int>& factionBySeat, std::string* err, bool anyDeal = false);
 // Where player p may place a tile now, as (tile, draft cell) pairs: spaces of
 // the innermost ring that still has open ones; anomalies may not touch, nor
 // systems with the same wormhole, unless no placement avoids it.
