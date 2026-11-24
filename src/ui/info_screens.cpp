@@ -15,11 +15,13 @@
 #include "ui/cards.h"
 #include "ui/breakthrough_card.h"
 #include "ui/faction_pieces.h"
+#include "ui/superweapon_ui.h"
 #include "core/log.h"
 #include "ui/icons.h"
 #include "ui/theme.h"
 #include "ui/widgets.h"
 #include "ui/pcolors.h"
+#include "ui/monument_card.h"
 
 using namespace ti;
 
@@ -155,14 +157,25 @@ public:
             rebuild();
         }
         if (count_ > 0) {
+            // (0.81.1, owner) the mouse wheel moves the grid; the highlight follows only when it would leave the screen
+            const bool byWheel = in.mouse().wheel != 0.f && (in.pressed(Btn::Up) || in.pressed(Btn::Down));
             if (in.pressed(Btn::Right)) sel_ = std::min(count_ - 1, sel_ + 1);
             if (in.pressed(Btn::Left)) sel_ = std::max(0, sel_ - 1);
-            if (in.pressed(Btn::Down) && sel_ + cols_ < count_) sel_ += cols_;
+            if (byWheel) scrollRows(in.pressed(Btn::Up) ? -1 : 1);
+            else if (in.pressed(Btn::Down) && sel_ + cols_ < count_) sel_ += cols_;
             else if (in.pressed(Btn::Down) && sel_ / cols_ < (count_ - 1) / cols_) sel_ = count_ - 1;
-            if (in.pressed(Btn::Up) && sel_ - cols_ >= 0) sel_ -= cols_;
+            if (!byWheel && in.pressed(Btn::Up) && sel_ - cols_ >= 0) sel_ -= cols_;
             if (in.pressed(Btn::A)) detail_ = true;
         }
         return true;
+    }
+    // (0.81.1) the grid moves by d rows (the wheel, the scroll bar); the highlighted card stays on screen
+    void scrollRows(int d) {
+        const int totalRows = (count_ + cols_ - 1) / cols_;
+        scroll_ = std::max(0, std::min(std::max(0, totalRows - rowsVisible_), scroll_ + d));
+        const int row = sel_ / cols_, col = sel_ % cols_;
+        if (row < scroll_) sel_ = scroll_ * cols_ + col;
+        else if (row >= scroll_ + rowsVisible_) sel_ = std::min(count_ - 1, (scroll_ + rowsVisible_ - 1) * cols_ + col);
     }
 
     void draw(Canvas& c, uint32_t now) override {
@@ -192,6 +205,7 @@ public:
         const int gap = 8;
         Rect area{r.x + 8, r.y + 60, r.w - 16, r.h - 66};
         int rowsVisible = std::max(1, (area.h + gap) / (cardH_ + gap));
+        rowsVisible_ = rowsVisible;
         int selRow = sel_ / cols_;
         if (selRow < scroll_) scroll_ = selRow;
         if (selRow >= scroll_ + rowsVisible) scroll_ = selRow - rowsVisible + 1;
@@ -207,6 +221,9 @@ public:
         if (scroll_ > 0) drawTextAligned(c, FONT_SM, r.x, r.y + 44, r.w - 16, Align::Right, "\xE2\x96\xB2 more", theme::dim);
         if (scroll_ + rowsVisible < totalRows)
             drawTextAligned(c, FONT_SM, r.x, r.y + r.h - 18, r.w - 16, Align::Right, "\xE2\x96\xBC more", theme::dim);
+        if (!detail_)  // (0.81.1, owner) a slim scroll bar at the right edge
+            drawScrollBar(c, Rect{r.x + r.w - 7, area.y, 4, std::min(area.h, rowsVisible * (cardH_ + gap) - gap)}, scroll_, rowsVisible, totalRows,
+                          [this](int dir) { scrollRows(dir * rowsVisible_); });
         if (detail_ && sel_ < count_) {
             c.fillRect(0, 0, 640, 480, rgb(0, 0, 0), 120);
             Rect d{50, 30, 540, 404};
@@ -253,6 +270,7 @@ protected:
     std::string title_;
     std::vector<std::string> tabs_;
     int tab_ = 0, count_ = 0, sel_ = 0, scroll_ = 0;
+    int rowsVisible_ = 4;  // (0.81.1) from the last draw
     int cols_ = 3, cardH_ = 84;
     int titleFaction_ = -1;
     bool detail_ = false;
@@ -800,7 +818,7 @@ public:
             tabs_.assign(fullTabs_.size(), "");
         }
         cols_ = 4;
-        cardH_ = 120;
+        cardH_ = 116;  // (0.81.1, owner: players missed the mech card below the fold) 3 rows - all 11 units on one screen
         rebuild();
     }
 
@@ -819,7 +837,8 @@ protected:
         if (!second() || i <= int(UnitType::Flagship)) return UnitType(i);
         return i == int(UnitType::Flagship) + 1 ? UnitType::Flagship2 : UnitType(i - 1);
     }
-    void rebuild() override { count_ = second() ? kUnitTypes : kUnitTypes - 1; }
+    // the 11 unit types (+ the second flagship); (0.82.0) the Monuments+ monument isn't a unit card here - its own card
+    void rebuild() override { count_ = int(UnitType::Flagship2) + (second() ? 1 : 0); }
     std::string header() const override {
         int p = who();
         return playerName(g_, p) + " \xC2\xB7 " + kFactions[g_.players[p].faction].name + keyText("  (L1/R1: other players)");
@@ -1380,8 +1399,14 @@ protected:
             if (!g_.agendaDeck.empty()) items_.push_back(g_.agendaDeck.back());
             if (g_.agendaDeck.size() > 1) items_.push_back(g_.agendaDeck.front());
         } else {
+            // (0.81.0) the deck in play: Absol's Agendas replace the normal deck with the module
+            const bool absol = (g_.modules & kModAbsol) != 0;
             for (int a = 0; a < kAgendaCount; ++a)
-                if (agendaImplemented(a)) items_.push_back(a);
+                if (agendaImplemented(a) && (kAgendas[a].source == Source::Monuments ? (g_.modules & kModMonuments) != 0  // (0.82.0)
+                                                                                      : (kAgendas[a].source == Source::Absol) == absol)) {
+                    if (absol && kAgendas[a].elect == Elect::None && std::strcmp(kAgendas[a].key, "absol_emergency1")) continue;  // (one Emergency Session)
+                    items_.push_back(a);
+                }
         }
         count_ = int(items_.size());
     }
@@ -1389,7 +1414,7 @@ protected:
         if (tab_ == 2) return "M'aban (your commander): the top and bottom cards of the agenda deck";
         if (tab_ == 1) return "Every agenda in the deck (" + std::to_string(g_.agendaDeck.size()) + " still to come)";
         if (!g_.custodiansRemoved) return "No agenda phase yet: it starts after someone removes the custodians token from Mecatol Rex.";
-        return std::to_string(g_.laws.size()) + " laws in play";
+        return std::to_string(g_.laws.size()) + (g_.laws.size() == 1 ? " law in play" : " laws in play");
     }
     std::string emptyText() const override { return "No laws in play."; }
     const char* titleIcon() const override { return "agenda"; }
@@ -1401,13 +1426,31 @@ protected:
         drawText(c, FONT_SMB, r.x + 14, r.y + 6, fitText(FONT_SMB, kAgendas[a].name, r.w - 22 - iw), theme::text);
         std::string sub = kAgendas[a].law ? "Law" : "Directive";
         if (tab_ == 2) sub += i == 0 ? " \xC2\xB7 top of the deck (next)" : " \xC2\xB7 bottom of the deck";
+        bool against = false;
         if (tab_ == 0) {
             const Law& l = g_.laws[items_[i]];
+            against = l.against;
             if (l.owner >= 0) sub += " \xC2\xB7 held by " + playerName(g_, l.owner);
+            else if (kAgendas[a].elect == Elect::Player && kAgendas[a].source == Source::Absol) sub += " \xC2\xB7 in the common play area";
             if (l.target >= 0 && kAgendas[a].elect == Elect::ScoredSecret) sub += std::string(" \xC2\xB7 ") + kObjectives[l.target].name;
+            if (l.target >= 0 && kAgendas[a].elect == Elect::UnitUpgrade) sub += std::string(" \xC2\xB7 ") + kTechs[l.target].name;
+            // (0.82.0) a law attached to a planet (Cathedral of Ixth; Absol's planet laws)
+            if (l.target >= 0 && l.target < int(g_.planets.size()) &&
+                (kAgendas[a].elect == Elect::NonHome || kAgendas[a].elect == Elect::NonHomePlanet || kAgendas[a].elect == Elect::Planet))
+                sub += std::string(" \xC2\xB7 on ") + kPlanets[g_.planets[size_t(l.target)].def].name;
+            if (l.against) sub += " \xC2\xB7 Against side, the custodians token on it";
+            if (l.exhausted) sub += " \xC2\xB7 exhausted";
+            std::string toks;  // (0.81.0) control tokens on the card
+            for (int q = 0; q < g_.numPlayers; ++q)
+                if (l.tokens[size_t(q)]) toks += (toks.empty() ? "" : ", ") + playerName(g_, q) + (l.tokens[size_t(q)] > 1 ? " x" + std::to_string(l.tokens[size_t(q)]) : "");
+            if (!toks.empty()) sub += " \xC2\xB7 tokens: " + toks;
+        } else if (kAgendas[a].source == Source::Absol) {
+            sub += " \xC2\xB7 Absol's Agendas";
+        } else if (kAgendas[a].source == Source::Monuments) {
+            sub += " \xC2\xB7 Monuments+";
         }
         drawText(c, FONT_XS, r.x + 14, r.y + 23, fitText(FONT_XS, sub, r.w - 22), rgb(150, 180, 240));
-        drawWrapped(c, FONT_XS, r.x + 14, r.y + 39, r.w - 22, agendaText(a, false), theme::dim, r.y + r.h - 4);
+        drawWrapped(c, FONT_XS, r.x + 14, r.y + 39, r.w - 22, agendaText(a, against), theme::dim, r.y + r.h - 4);
     }
     void drawDetail(Canvas& c, int i, Rect r) override {
         int a = agendaOf(i);
@@ -1416,7 +1459,8 @@ protected:
         int iw = icons::draw(c, "agenda", r.x + r.w - 60, r.y + 18, 40, 255, rgb(150, 180, 240)) ? 48 : 0;
         y = drawWrapped(c, FONT_XL, x, y, w - iw, kAgendas[a].name, theme::text);
         static const char* kElect[] = {"For / Against", "Elect a player", "Elect a planet", "Elect a non-home planet (not Mecatol Rex)",
-                                       "Elect a law", "Elect a scored secret objective", "Elect a strategy card", "Covert"};
+                                       "Elect a law", "Elect a scored secret objective", "Elect a strategy card", "Covert",
+                                       "Elect a non-home planet", "Elect an owned non-faction unit upgrade technology", "Not voted on"};
         drawText(c, FONT_SMB, x, y + 4, std::string(kAgendas[a].law ? "LAW" : "DIRECTIVE") + " \xC2\xB7 " + kElect[int(kAgendas[a].elect)],
                  rgb(150, 180, 240));
         y += 30;
@@ -1430,7 +1474,17 @@ protected:
         if (tab_ == 0) {
             const Law& l = g_.laws[items_[i]];
             if (l.owner >= 0) drawText(c, FONT_SMB, x, r.y + r.h - 40, "Held by " + playerName(g_, l.owner), pcolours::readable(pcol(g_, l.owner)));
+            // (0.81.0, Absol's Agendas) control tokens on the card, the Against side in play, exhausted
+            std::string toks;
+            for (int q = 0; q < g_.numPlayers; ++q)
+                if (l.tokens[size_t(q)]) toks += (toks.empty() ? "" : ", ") + playerName(g_, q) + (l.tokens[size_t(q)] > 1 ? " x" + std::to_string(l.tokens[size_t(q)]) : "");
+            std::string extra = toks.empty() ? "" : "Control tokens on it: " + toks + ".";
+            if (l.against) extra += std::string(extra.empty() ? "" : " ") + "In play with its Against side: the custodians token is on it.";
+            if (l.exhausted) extra += std::string(extra.empty() ? "" : " ") + "Exhausted until the status phase.";
+            if (!extra.empty()) drawWrapped(c, FONT_SM, x, r.y + r.h - 22 - (l.owner >= 0 ? 34 : 0), w, extra, theme::gold);
         }
+        if (kAgendas[a].source == Source::Absol)
+            drawTextAligned(c, FONT_XS, r.x, r.y + r.h - 16, r.w - 14, Align::Right, "Absol's Agendas (fan-made, by Absol197)", theme::faint);
     }
 
 private:
@@ -1951,7 +2005,7 @@ public:
             int purged = 0;
             for (int t = 0; t < kUnitTypes; ++t) purged += pl.purgedUnits[size_t(t)];
             if (purged) ev += (ev.empty() ? "" : " \xC2\xB7 ") + std::to_string(purged) + " ships purged";
-            if (pl.monumentVP) ev += (ev.empty() ? "" : " \xC2\xB7 ") + std::to_string(pl.monumentVP) + " VP from monuments";
+            if (pl.monumentVP) ev += (ev.empty() ? "" : " \xC2\xB7 ") + std::to_string(pl.monumentVP) + (monumentsTexts() ? " VP from monoliths" : " VP from monuments");
             if (!ev.empty() && !special.empty()) {  // (no room for two rows: under the faction's own one)
                 drawTextAligned(c, FONT_XS, L.x + 12, y + 15, L.w - 28, Align::Right, fitText(FONT_XS, ev, L.w - 28), theme::faint);
             } else if (!ev.empty()) {
@@ -2072,8 +2126,13 @@ public:
 
     // 0.44.1: the faction pieces, large (a click or B closes; Up / Down scroll; L1 / R1 the next faction with pieces)
     void drawPieces(Canvas& c, uint32_t now) {
-        c.fillRect(0, 0, 640, 480, rgb(0, 0, 0), 150);
         const int p = order_[size_t(sel_)];
+        if (brBelkosea(g_, p) || g_.players[size_t(p)].swCards || g_.players[size_t(p)].swPurged) {  // (0.84.0) the superweapons window
+            hits::addAction(Rect{0, 0, 640, 456}, [this]() { piecesOpen_ = false; }, hits::Light::None);
+            superweapon::drawWindow(c, g_, p, now);
+            return;
+        }
+        c.fillRect(0, 0, 640, 480, rgb(0, 0, 0), 150);
         const Player& pl = g_.players[size_t(p)];
         const uint32_t col = pcol(g_, p);
         Rect r{10, 10, 620, 436};
@@ -2090,6 +2149,9 @@ public:
         piecesH_ = pieces::drawDetail(c, g_, p, pieces::of(g_, p, human_), r, now, piecesScroll_);
         if (piecesScroll_ > 0) drawTextAligned(c, FONT_XS, r.x, r.y + 32, r.w - 16, Align::Right, "\xE2\x96\xB2 more", theme::dim);
         if (piecesScroll_ + 380 < piecesH_) drawTextAligned(c, FONT_XS, r.x, r.y + r.h - 12, r.w - 16, Align::Right, "\xE2\x96\xBC more", theme::dim);
+        drawScrollBar(c, Rect{r.x + r.w - 7, r.y + 46, 4, r.h - 62}, piecesScroll_, 380, piecesH_, [this](int dir) {  // (0.81.1)
+            piecesScroll_ = std::max(0, std::min(std::max(0, piecesH_ - 380), piecesScroll_ + dir * 340));
+        });
         drawHintBar(c, {{"B", "Back"}, {"UP/DOWN", "Scroll"}, {"L1/R1", "Other factions"}});
     }
 
@@ -2131,7 +2193,8 @@ public:
             y += 4;
         };
         for (int o : scoredSecrets) objective(o, theme::green, "scored");
-        if (p == human_ || human_ < 0 || lawOwner(g_, "warrant") == p) {  // Search Warrant: played face up
+        const bool warrant = lawOwner(g_, "warrant") == p || (absolLaw(g_, "absol_warrant") && absolLaw(g_, "absol_warrant")->owner == p);  // (0.81.0)
+        if (p == human_ || human_ < 0 || warrant) {  // Search Warrant: played face up
             for (int16_t o : pl.secrets) objective(o, theme::text, p == human_ || human_ < 0 ? "held" : "held (Search Warrant)");
         } else if (!pl.secrets.empty()) {
             const int n = int(pl.secrets.size());
@@ -2234,7 +2297,109 @@ std::unique_ptr<ResearchPick> makeResearchPick(const Game& g, int player, const 
     return std::unique_ptr<ResearchPick>(new ResearchPicker(g, player, techs, notes, prompt));
 }
 std::unique_ptr<InfoScreen> makeHandScreen(const Game& g, int human) { return std::unique_ptr<InfoScreen>(new HandScreen(g, human)); }
+// ======================================================================== monuments (0.82.0, Monuments+)
+// Owner 2026-11-21 (the card framing draft): every player's monument as a tile - the animated picture where the ability text would
+// be (the full card on A), where it stands, its placement icons; tabs Everyone's / Yours. The Nekro's copied cards (Valefar
+// Assimilator "M") are tiles of their own.
+class MonumentScreen : public GridScreen {
+public:
+    MonumentScreen(const Game& g, int human) : GridScreen(g, human) {
+        title_ = "Monuments";
+        tabs_ = {"Everyone's"};
+        if (human >= 0) tabs_.push_back("Yours");
+        cols_ = 2;
+        cardH_ = 116;
+        rebuild();
+    }
+
+protected:
+    struct Entry {
+        int seat, card;
+        bool copied;
+    };
+    std::vector<Entry> list_;
+    void rebuild() override {
+        list_.clear();
+        for (int q = 0; q < g_.numPlayers; ++q) {
+            if (tab_ == 1 && q != human_) continue;
+            const Player& pl = g_.players[size_t(q)];
+            const int own = playerMonument(g_, q);  // (0.82.1: the card they have - none for a Thunder's Edge faction in an older game)
+            if (own >= 0) list_.push_back({q, own, false});
+            for (int8_t k : pl.nekroMon)
+                if (k >= 0 && k < kMonumentCount && k != own) list_.push_back({q, int(k), true});
+        }
+        count_ = int(list_.size());
+    }
+    std::string header() const override {
+        int on = 0;
+        for (int q = 0; q < g_.numPlayers; ++q)
+            if (unitsOnBoard(g_, q, UnitType::Monument) > 0) ++on;
+        bool ds = false, older = false;  // (a Discordant Stars faction: its monument comes in 0.82.2 - 0.82.4; a Thunder's Edge faction in a
+        // game started before 0.82.1 has none)
+        for (int q = 0; q < g_.numPlayers; ++q)
+            if (playerMonument(g_, q) < 0) (monumentForFaction(g_.players[size_t(q)].faction) >= 0 ? older : ds) = true;
+        return std::to_string(count_) + (count_ == 1 ? " monument" : " monuments") + " \xC2\xB7 " + std::to_string(on) + " on the board. " +
+               (ds ? "Discordant Stars monuments are still to come."
+                   : older ? "This game began before some of these factions' monuments." : "Placed with the Construction card's primary ability.");
+    }
+    std::string emptyText() const override { return "No monuments in this game."; }
+    std::string where(int q) const {  // where the player's monument stands
+        int planet = -1;
+        const int sys = monumentSystem(g_, q, &planet);
+        if (sys < 0) return "";
+        if (planet >= 0) return std::string("On ") + kPlanets[g_.planets[size_t(planet)].def].name;
+        if (g_.players[size_t(q)].monStation >= 0 && !g_.planets[size_t(g_.players[size_t(q)].monStation)].destroyed)
+            return std::string("In ") + g_.systems[size_t(sys)].d().name + " (space station)";  // (0.82.1 Seraph Data Center)
+        return std::string("In ") + g_.systems[size_t(sys)].d().name + " (space)";
+    }
+    static float focusOf(int card) {  // where the picture's subject sits (the tile shows a strip of it)
+        static const std::pair<const char*, float> kFocus[] = {{"creuss", 0.42f}, {"hacan", 0.4f}, {"jolnar", 0.6f}, {"letnev", 0.5f}, {"muaat", 0.5f}};
+        for (const auto& f : kFocus)
+            if (!std::strcmp(kMonuments[card].key, f.first)) return f.second;
+        return 0.45f;
+    }
+    void drawCard(Canvas& c, int i, Rect r, bool sel, uint32_t now) override {
+        const Entry& e = list_[size_t(i)];
+        const MonumentDef& m = kMonuments[e.card];
+        const Player& pl = g_.players[size_t(e.seat)];
+        cardFrame(c, r, sel, pcol(g_, e.seat), now);
+        drawFactionIcon(c, pl.faction, r.x + 14, r.y + 8, 22);
+        const int u = unitByKey(m.unit);
+        const int iconsLeft = monumentcard::placeIcons(c, e.card, r.x + r.w - 10, r.y + 8, 18, 3);
+        drawText(c, FONT_SMB, r.x + 42, r.y + 7, fitText(FONT_SMB, u >= 0 ? kUnits[u].name : m.subtitle, iconsLeft - r.x - 48), theme::text);
+        const std::string sub = e.copied ? std::string(m.subtitle) + " \xC2\xB7 copied by the " + factionShortName(pl.faction)
+                                         : std::string(factionShortName(pl.faction)) + " monument \xC2\xB7 " + playerName(g_, e.seat);
+        drawText(c, FONT_XS, r.x + 42, r.y + 24, fitText(FONT_XS, sub, iconsLeft - r.x - 48), pcolours::readable(pcol(g_, e.seat)));
+        // the animated picture in place of the ability text (the full card: A); tiles start at different frames
+        const Rect ar{r.x + 14, r.y + 38, r.w - 50, 58};
+        c.fillRect(ar.x - 1, ar.y - 1, ar.w + 2, ar.h + 2, sel ? theme::gold : theme::border);
+        monumentcard::art(c, e.card, ar, now + uint32_t(i) * 1300, true, focusOf(e.card));
+        // the monument itself, small, in its owner's colour; and where it is
+        const std::string at = where(e.seat);
+        const bool on = !at.empty();
+        icons::drawUnitArtOn(c, "unit/monument", float(r.x + r.w - 20), float(r.y + r.h - 6), 22, 30, on ? pcol(g_, e.seat) : rgb(70, 76, 92), false,
+                             on ? 255 : 160);
+        std::string line = on ? at : "Not on the board";
+        if (on && pl.monExhausted) line += " \xC2\xB7 exhausted";
+        if (pl.monTG > 0 && !std::strcmp(m.key, "winnu")) line += " \xC2\xB7 " + std::to_string(pl.monTG) + " trade goods on it";
+        if (pl.monTokens > 0) line += " \xC2\xB7 " + std::to_string(pl.monTokens) + (pl.monTokens == 1 ? " token" : " tokens") + " on it";
+        if (const int et = !std::strcmp(m.key, "firmament") ? epiphanyTokens(g_, e.seat) : 0)  // (0.82.1) Epiphany's control tokens
+            line += " \xC2\xB7 " + std::to_string(et) + (et == 1 ? " control token" : " control tokens") + " on it";
+        if (pl.monCove > 0 && !std::strcmp(m.key, "florzen"))  // (0.82.3) Corsairs' Cove's fighters
+            line += " \xC2\xB7 " + std::to_string(pl.monCove) + (pl.monCove == 1 ? " fighter" : " fighters") + " on it";
+        drawText(c, FONT_XS, r.x + 14, r.y + r.h - 16, fitText(FONT_XS, line, r.w - 50), on ? theme::green : theme::faint);
+    }
+    void drawDetail(Canvas& c, int i, Rect r) override {
+        // the card in its own landscape shape, as large as the box allows
+        const float aspect = 574.f / 388.f;
+        int w = r.w, h = int(float(w) / aspect);
+        if (h > r.h) h = r.h, w = int(float(h) * aspect);
+        monumentcard::draw(c, list_[size_t(i)].card, Rect{r.x + (r.w - w) / 2, r.y + (r.h - h) / 2, w, h}, now_);
+    }
+};
+
 std::unique_ptr<InfoScreen> makeLawScreen(const Game& g, int human) { return std::unique_ptr<InfoScreen>(new LawScreen(g, human)); }
+std::unique_ptr<InfoScreen> makeMonumentScreen(const Game& g, int human) { return std::unique_ptr<InfoScreen>(new MonumentScreen(g, human)); }
 std::unique_ptr<InfoScreen> makePlanetScreen(const Game& g, int human) {
     return std::unique_ptr<InfoScreen>(new PlanetScreen(g, human));
 }

@@ -3,12 +3,15 @@
 #include <cstdio>
 #include <cstring>
 #include <ctime>
+#include <string>
+#include <utility>
 #include <sys/stat.h>
 #ifdef _WIN32
 #include <direct.h>
 #endif
 
 #include "core/log.h"
+#include "core/paths.h"
 #include "game/session.h"
 
 namespace bugreport {
@@ -30,8 +33,16 @@ std::string make(const char* suffix, bool gameLog) {
     mkdir(name, 0755);
 #endif
     int copied = 0;
-    for (const char* f : {"ti4.log", "ti4.prev.log", "savegame.ti4", "settings.cfg", "launch_log.txt"}) {
-        std::FILE* in = std::fopen(f, "rb");
+    // (0.85.1: the save, settings and profile live in the player's folder - core/paths)
+    const std::pair<std::string, const char*> files[] = {{"ti4.log", "ti4.log"},
+                                                         {"ti4.prev.log", "ti4.prev.log"},
+                                                         {GameSession::savePath(), "savegame.ti4"},
+                                                         {paths::user("settings.cfg"), "settings.cfg"},
+                                                         {paths::user("profile.cfg"), "profile.cfg"},
+                                                         {"launch_log.txt", "launch_log.txt"}};
+    for (const auto& fp : files) {
+        const char* f = fp.second;
+        std::FILE* in = std::fopen(fp.first.c_str(), "rb");
         if (!in) continue;
         std::FILE* out = std::fopen((std::string(name) + "/" + f).c_str(), "wb");
         if (out) {

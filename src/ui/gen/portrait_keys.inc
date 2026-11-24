@@ -8,6 +8,6 @@ static const char* const kPortraitKeys[] = {
     "freesystems", "ghemina", "ghoti", "gledge", "augers", "kollecc", "kolume", "kortali",
     "kyro", "lanefir", "lizho", "khrask", "mirveda", "mortheus", "mykomentori", "nivyn",
     "nokar", "olradin", "rohdhna", "tnelis", "vaden", "vaylerian", "veldyr", "zealots",
-    "zelian",
+    "zelian", "atokera", "belkosea", "pharadn",
 };
 static const int kPortraitFrames = 24, kPortraitSize = 64, kPortraitFrameMs = 125;

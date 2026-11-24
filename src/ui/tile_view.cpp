@@ -1,3 +1,5 @@
+#include "ui/superweapon_ui.h"
+#include "ui/pharadn_ui.h"
 #include "ui/tile_view.h"
 
 #include <algorithm>
@@ -429,6 +431,10 @@ void countBadge(Canvas& c, float x, float y, int n, uint32_t col) {
     drawTextAligned(c, FONT_SMB, int(x) - w / 2, int(y) + 1, w, Align::Center, s, lighter(col, 0.35f));
 }
 
+std::vector<std::pair<int, int>> g_draftMon;  // (Monuments+ drafts) planet, player
+}  // namespace
+void setDraftMonuments(const std::vector<std::pair<int, int>>& m) { g_draftMon = m; }
+namespace {
 // Retrowave: a unit drawn, then cut into chunky pixels (drawn small, enlarged - like the tile art)
 int g_unitBlock = 0;
 void pixelate(Canvas& c, float x, float y, float size) {
@@ -474,6 +480,16 @@ namespace {
 void drawSlots(Canvas& c, const Game& g, const std::vector<Slot>& slots, const std::vector<Placed>& at, bool faceLeft, uint32_t now) {
     for (size_t i = 0; i < slots.size() && i < at.size(); ++i) {
         const Slot& s = slots[i];
+        if (s.t == UnitType::Monument) {  // (0.82.1) a monument in a space area: the spire picture with a dark rim, as on a planet
+            const float sz = at[i].size * 1.2f, foot = at[i].y + at[i].size * 0.55f;
+            pcolours::Finish fin(c, pcolours::around(at[i].x, at[i].y, sz * 0.6f, sz * 0.7f), pcolours::of(g, s.player), uint32_t(i) * 7u + 3u);
+            for (int k = 0; k < 4; ++k)
+                icons::drawUnitArtOn(c, "unit/monument", at[i].x + (k == 0 ? 1.5f : k == 1 ? -1.5f : 0.f), foot + (k == 2 ? 1.5f : k == 3 ? -1.5f : 0.f),
+                                     int(sz * 0.8f), int(sz * 1.15f), rgb(0, 0, 0), false, 200);
+            icons::drawUnitArtOn(c, "unit/monument", at[i].x, foot, int(sz * 0.8f), int(sz * 1.15f), pcol(g, s.player));
+            pixelate(c, at[i].x, at[i].y, sz);
+            continue;
+        }
         pcolours::Finish fin(c, pcolours::around(at[i].x, at[i].y, at[i].size * 0.62f, at[i].size * 0.55f), pcolours::of(g, s.player), uint32_t(i) * 7u + 3u);
         if (drawUnitPx(c, s.t, at[i].x, at[i].y, at[i].size, pcol(g, s.player), faceLeft, s.damaged, now)) continue;
         // Retrowave: a dark rim so the ships stand out from the art (0.28.0, owner)
@@ -539,7 +555,7 @@ void drawUnit(Canvas& c, UnitType t, float cx, float cy, float size, uint32_t co
     static const char* kArt[kUnitTypes] = {"unit/carrier", "unit/cruiser",  "unit/destroyer", "unit/dreadnought",
                                            "unit/fighter", "unit/flagship", "unit/warsun",    "unit/infantry",
                                            "unit/mech",    "unit/pds",      "unit/spacedock", "unit/flagship"};
-    if (int(t) < kUnitTypes && icons::available()) {
+    if (int(t) < kUnitTypes && kArt[int(t)] && icons::available()) {  // (0.82.0: monuments have no picture here)
         const bool ship = isShip(t);
         const float tall = t == UnitType::WarSun ? 1.1f : ship ? 0.8f : 1.f;  // the war sun stands (owner, 0.21.1)
         const int maxW = std::max(4, int(size)), maxH = std::max(4, int(size * tall));
@@ -867,11 +883,37 @@ void draw(Canvas& c, const Game& g, int sys, Rect area, uint32_t now, const Comb
             c.fillCircle(px + pr * 0.9f, py + pr * 0.7f, 7.f, rgb(20, 40, 44));
             c.ring(px + pr * 0.9f, py + pr * 0.7f, 7.f, 2.f, rgb(90, 220, 200));
         }
+        if (ps.superweapon >= 0) {  // (0.84.0) a Belkosea superweapon: the sphere just off the planet's right edge (0.84.1: clear of the
+                                    // units standing on it), its name under it
+            const bool ex = ps.owner >= 0 && ps.owner < g.numPlayers && ((g.players[size_t(ps.owner)].swExhausted >> ps.superweapon) & 1);
+            const float sr = std::max(6.f, pr * 0.24f), sx = px + pr + sr * 1.25f, sy = py - pr * 0.05f;
+            superweapon::drawPiece(c, ps.superweapon, sx, sy, sr, now, ex);
+            TextHalo halo;
+            drawTextAligned(c, FONT_XS, int(sx) - 40, int(sy + sr) + 3, 80, Align::Center, kSuperweapons[ps.superweapon].name,
+                            superweapon::colour(ps.superweapon));
+        }
+        if (ps.tomb) {  // (0.85.0) a Pharad'n tomb token (Ancient Empire): just off the planet's left edge, "Tomb" under it
+            const float tr = std::max(6.f, pr * 0.22f), tx = px - pr - tr * 1.25f, ty = py - pr * 0.05f;
+            pharadn::drawTomb(c, tx, ty, tr, now);
+            TextHalo halo;
+            drawTextAligned(c, FONT_XS, int(tx) - 40, int(ty + tr) + 3, 80, Align::Center, "Tomb", pharadn::gold());
+        }
         if (ps.exhausted)
             drawTextAligned(c, FONT_XS, int(px) - 40, int(py + pr) + 5, 80, Align::Center, "exhausted", rgb(200, 200, 210));
         // ground forces and structures stand on the planet (owner, 0.20.1): one picture per
         // kind with the count, outlined so they stand out from the surface
         std::vector<Slot> slots;
+        int monSlot = -1;  // (0.82.0 Monuments+) a monument stands first, a little larger
+        for (const auto& m : g_draftMon)
+            if (m.first == pl) {
+                monSlot = 0;
+                slots.push_back({UnitType::SpaceDock, 1, m.second, false});
+            }
+        for (int q = 0; q < g.numPlayers && monSlot < 0; ++q)
+            if (ps.units[size_t(q)].count(UnitType::Monument)) {
+                monSlot = 0;
+                slots.push_back({UnitType::SpaceDock, 1, q, false});
+            }
         for (int q = 0; q < kSides; ++q) {  // (kNeutral: Thunder's Edge's neutral units)
             if (q >= g.numPlayers && q != kNeutral) continue;
             const Force& f = ps.units[size_t(q)];
@@ -884,6 +926,16 @@ void draw(Canvas& c, const Game& g, int sys, Rect area, uint32_t now, const Comb
             for (Placed& p2 : at) p2.size = std::min(p2.size, pr * 0.72f);
             for (size_t q = 0; q < slots.size() && q < at.size(); ++q) {
                 const Slot& sl = slots[q];
+                if (int(q) == monSlot) {  // (Monuments+ drafts) the monument: the spire picture, a dark rim, no count
+                    const float sz = std::min(at[q].size * 1.6f, pr * 1.15f), foot = at[q].y + at[q].size * 0.55f;
+                    pcolours::Finish fin(c, pcolours::around(at[q].x, at[q].y, sz * 0.6f, sz * 0.7f), pcolours::of(g, sl.player), uint32_t(q) * 7u + 5u);
+                    for (int k = 0; k < 4; ++k)
+                        icons::drawUnitArtOn(c, "unit/monument", at[q].x + (k == 0 ? 1.5f : k == 1 ? -1.5f : 0.f), foot + (k == 2 ? 1.5f : k == 3 ? -1.5f : 0.f),
+                                             int(sz * 0.8f), int(sz * 1.15f), rgb(0, 0, 0), false, 200);
+                    icons::drawUnitArtOn(c, "unit/monument", at[q].x, foot, int(sz * 0.8f), int(sz * 1.15f), pcol(g, sl.player));
+                    pixelate(c, at[q].x, at[q].y, sz);
+                    continue;
+                }
                 {
                     pcolours::Finish fin(c, pcolours::around(at[q].x, at[q].y, at[q].size * 0.6f, at[q].size * 0.6f), pcolours::of(g, sl.player), uint32_t(q) * 7u + 5u);
                     if (!drawUnitPx(c, sl.t, at[q].x, at[q].y, at[q].size, pcol(g, sl.player), false, false, now)) {
@@ -981,7 +1033,11 @@ void draw(Canvas& c, const Game& g, int sys, Rect area, uint32_t now, const Comb
     } else {
         // every player's ships in space, one row group per player
         std::vector<Slot> slots;
-        for (int q = 0; q < g.numPlayers; ++q) shipSlots(s.space[size_t(q)], q, slots);
+        for (int q = 0; q < g.numPlayers; ++q) {
+            shipSlots(s.space[size_t(q)], q, slots);
+            // (0.82.1) a monument in the space area (The Panopticon, the Seraph Data Center): its spire with the ships
+            if (s.space[size_t(q)].count(UnitType::Monument)) slots.push_back({UnitType::Monument, 1, q, false});
+        }
         shipSlots(s.space[size_t(kNeutral)], kNeutral, slots);  // Thunder's Edge
         if (!slots.empty()) {
             std::vector<Placed> at = layout(slots, cx - halfW, top, 2.f * halfW, bottom - top, R * 0.38f);

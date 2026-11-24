@@ -22,8 +22,14 @@ enum DealFlags {
     kDealBlackMarket = 16, // Black Market Dealings (Thunder's Edge): relics, action cards and secrets too
     kDealHire = 32,        // Hired Guns (Discordant Stars, 0.43.0): the Nokar may hire out ships (Decision::value = how many)
     kDealHub = 64,         // Encrypted Trade Hub (Edyn technology, 0.44.5): 1 relic may change hands
+    kDealRelics = 128,     // (0.82.0) Quantum Reliquary (Naaz-Rokha monument): relics may change hands
+    kDealUnits = 256,      // (0.82.0) Mowshir Freeport (Hacan monument): units in space areas near it may change hands
 };
 bool blackMarketPair(const Game& g, int a, int b);  // Black Market Dealings was played between them
+// (0.82.0) Monuments+: Quantum Reliquary - a or b holds it (on the board) and the other controls units in or next to its system
+bool reliquaryPair(const Game& g, int a, int b);
+// Mowshir Freeport - the systems in or next to a Hacan monument on the board (their space areas' units may be traded)
+std::vector<int> freeportSystems(const Game& g);
 int encryptedHubOf(const Game& g, int a, int b);    // (0.44.5) a or b with a ready Encrypted Trade Hub, else -1
 std::vector<int> lawsHeldBy(const Game& g, int p);  // (fixes 28) agendas (laws) p holds - tradeable with Encrypted Trade Hub
 

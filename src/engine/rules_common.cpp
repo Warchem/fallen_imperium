@@ -55,6 +55,7 @@ int maxAbsorbableHits(const Game& g, int p, int sys, int planet, int mask, bool 
         if (mask && !((mask >> t) & 1)) continue;
         n += f.n[t];
         if (!noSustain && unitSustainsAt(g, p, UnitType(t), sys, planet)) n += (f.n[t] - f.dmg[t]) * sustainWorth(g, p);
+        else if (!noSustain && modularSustainLeft(g, p, UnitType(t), sys, planet) > 0) n += sustainWorth(g, p);  // (0.83.0) Modular Designs
         else if (!noSustain && f.n[t] > f.dmg[t] && metaliSustain(g, p, UnitType(t), sys, planet)) {
             const int own = planet < 0 ? std::min(f.n[t] - f.dmg[t], galeLeft(g, p, sys, UnitType(t))) : 0;
             gale += own;
@@ -85,9 +86,14 @@ std::string checkHits(const Game& g, int p, int sys, int planet, int hits, int m
         if (destroy[t] > f.n[t]) return "Not that many " + std::string(unitTypeName(UnitType(t), true)) + ".";
         if (sustain[t]) {
             if (!unitSustainsAt(g, p, UnitType(t), sys, planet)) {
-                if (!metaliSustain(g, p, UnitType(t), sys, planet))
-                    return std::string(unitTypeName(UnitType(t), true)) + " can't sustain damage here.";
-                metali += sustain[t];
+                const int rest = sustain[t] - modularSustainLeft(g, p, UnitType(t), sys, planet);  // (0.83.0) Modular Designs' unit first
+                if (rest > 0) {
+                    if (!metaliSustain(g, p, UnitType(t), sys, planet))
+                        return modularSustainLeft(g, p, UnitType(t), sys, planet) > 0
+                                   ? std::string("Only the unit chosen for Modular Designs may sustain damage here.")
+                                   : std::string(unitTypeName(UnitType(t), true)) + " can't sustain damage here.";
+                    metali += rest;
+                }
             }
             if (sustain[t] > f.n[t] - f.dmg[t]) return "Those units are already damaged.";
         }
@@ -98,7 +104,8 @@ std::string checkHits(const Game& g, int p, int sys, int planet, int hits, int m
     if (g.fixes >= 28 && planet < 0) {  // (the Khrask review) the Splintering Gale's ships are the ones chosen: per type
         int over = 0;
         for (int t = 0; t < kUnitTypes; ++t)
-            if (sustain[t] && !unitSustainsAt(g, p, UnitType(t), sys, planet)) over += std::max(0, sustain[t] - galeLeft(g, p, sys, UnitType(t)));
+            if (sustain[t] && !unitSustainsAt(g, p, UnitType(t), sys, planet))
+                over += std::max(0, sustain[t] - galeLeft(g, p, sys, UnitType(t)) - modularSustainLeft(g, p, UnitType(t), sys, planet));
         if (over > extraSustainsPooled(g, p, sys, planet)) return "Only the ships chosen for the Splintering Gale may sustain damage here.";
     }
     int need = std::min(hits, maxAbsorbableHits(g, p, sys, planet, mask, noSustain));
@@ -219,7 +226,8 @@ std::string checkMovePlan(const Game& g, int p, int active, const std::vector<in
         if (from == active && loc < 0) return "Units already in the active system don't move.";
         // (owner 2026-11-11: not the pick-up from the active system's planets - its token is this activation's; that
         // pick-up was always refused since 0.30.0. Refused answers are never saved, so old games replay unchanged)
-        if (g.systems[from].hasToken(p) && !(from == active && loc >= 0) && !g.fx.dominusOrb && !(heroActive(g, p, "nomad") && flagshipIn(g, p, from)))
+        if (g.systems[from].hasToken(p) && !(from == active && loc >= 0) && !g.fx.dominusOrb && !(heroActive(g, p, "nomad") && flagshipIn(g, p, from)) &&
+            !freeholdAt(g, p, from))  // (0.82.2) Freehold Starport (Nokar monument): theirs may leave and carry units
             return "Units can't leave a system that has your command token.";
         if (t < 0 || t >= kUnitTypes || k <= 0) return "Bad units.";
         UnitType ut = UnitType(t);
@@ -252,9 +260,15 @@ std::string checkMovePlan(const Game& g, int p, int active, const std::vector<in
     const bool v13 = g.fixes >= 13;    // (0.44.9: boosts stack on one ship - owner's answer P6; detours use them - P8)
     const int bmax = moveBonusMax(g, p);
     struct MovingScope {  // Gravleash Maneuvers (0.44.4): the ships moving out of each system, for moveValue
-        explicit MovingScope(const std::map<int, Force>* m) { g_movingShips = m; }
-        ~MovingScope() { g_movingShips = nullptr; }
-    } movingScope(&takeSpace);
+        MovingScope(const std::map<int, Force>* m, const std::map<int, int>* pl) {
+            g_movingShips = m;
+            g_movingFromPlanets = pl;  // (0.85.0 Sedtra)
+        }
+        ~MovingScope() {
+            g_movingShips = nullptr;
+            g_movingFromPlanets = nullptr;
+        }
+    } movingScope(&takeSpace, &takeFromPlanets);
     struct Mover {
         int sys;
         UnitType t;
@@ -587,7 +601,7 @@ std::string checkProducePlan(const Game& g, int p, int sys, const std::vector<in
         if (isStructure(ut)) return "Structures can't be produced.";
         if (typeMask && !((typeMask >> t) & 1)) return std::string(unitTypeName(ut, true)) + " can't be produced this time.";
         if (unitDef(g, p, ut).cost2 <= 0) return std::string(unitTypeName(ut, true)) + " can't be produced.";
-        if (k > (reclaim ? unitsPlaceable(g, p, ut) : unitsAvailable(g, p, ut)))
+        if (k > (reclaim ? unitsPlaceable(g, p, ut) : unitsAvailable(g, p, ut)) + amalgamationOwn(g, p, ut))  // (fixes 35: Amalgamation)
             return "Not enough " + std::string(unitTypeName(ut, true)) +
                    (reclaim && reclaimAllowed(g, p, ut) ? " left in your supply or outside the systems with your command tokens." : " left in your supply.");
         if (isShip(ut) && enemyShips) return "Blockaded: other players' ships are here, so only ground forces can be produced.";
@@ -659,8 +673,14 @@ std::string checkProducePlan(const Game& g, int p, int sys, const std::vector<in
     if ((g.fixes < 14 || fleetStrict) && fleetUse(g, p, sys, after) > limit && fleetUse(g, p, sys, after) > fleetUseIn(g, p, sys))
         return "Your fleet pool allows only " + std::to_string(fleetLimit(g, p)) + " non-fighter ships here" +
                (fightersFree(g, p) ? " (fighters beyond capacity count too)." : ".");
-    if (overflowOf(g, p, sys, after) > capacityOverflow(g, p, sys))
-        return "Not enough capacity for those fighters / ground forces in space.";
+    if (overflowOf(g, p, sys, after) > capacityOverflow(g, p, sys)) {
+        // (0.82.3) Corsairs' Cove (Florzen monument): "When you produce fighters, you may place that many plastic fighter units on this
+        // card, instead." - fighters beyond the capacity go there (Rules::coveTake)
+        Force noFighters = after;
+        noFighters.n[int(UnitType::Fighter)] = uint8_t(std::max(0, int(noFighters.n[int(UnitType::Fighter)]) - data[int(UnitType::Fighter)]));
+        if (!(data[int(UnitType::Fighter)] > 0 && coveHolder(g, p) && overflowOf(g, p, sys, noFighters) <= capacityOverflow(g, p, sys)))
+            return "Not enough capacity for those fighters / ground forces in space.";
+    }
     return "";
 }
 
@@ -743,6 +763,7 @@ int Rules::pick(int p, Tag tag, const std::string& prompt, std::vector<Option> o
     d.ability = curAbility_;
     d.value = curValue_;
     if (curFor_ >= 0) d.targetPlayer = curFor_;
+    if (curPlanet_ >= 0) d.planet = curPlanet_;
     std::vector<Option> copy = d.options;
     d.validate = [copy](const Answer& a) -> std::string {
         if (a.picks.size() != 1) return "Choose one option.";
@@ -803,7 +824,7 @@ bool Rules::yesNo(int p, Tag tag, const std::string& prompt, const std::string& 
 bool Rules::pay(int p, int amount, bool influence, const std::string& why, bool optional, int extraInfluence,
                 int tradeGoodsToo, bool mixed) {
     // Ocean cards (Deepwrought, Thunder's Edge): planet cards worth 1 resource or 1 influence each
-    if (const int oc = amount > 0 && !inOcean_ ? oceansReady(G, p) : 0) {
+    if (const int oc = amount > 0 && !inOcean_ && !tgOnly_ ? oceansReady(G, p) : 0) {
         std::vector<Option> opts;
         for (int k = std::min(oc, amount); k >= 0; --k) opts.push_back({k, std::to_string(k) + " ocean card" + (k == 1 ? "" : "s"), ""});
         const bool banners = G.players[size_t(p)].oceans == 0;  // (Bannerhalls: Kjalengard)
@@ -822,7 +843,7 @@ bool Rules::pay(int p, int amount, bool influence, const std::string& why, bool 
         return ok;
     }
     // Custodia Vigilia (Keleres breakthrough): a planet card without a place on the board
-    if (const int cv = amount > 0 && !inCustodia_ ? custodiaValue(G, p, influence) : 0) {
+    if (const int cv = amount > 0 && !inCustodia_ && !tgOnly_ ? custodiaValue(G, p, influence) : 0) {
         curValue_ = amount;  // (0.44.4: what is needed, for the AI)
         const bool use = fyes(p, Ab::BtKeleres, "Exhaust Custodia Vigilia for " + std::to_string(cv) + (influence ? " influence?" : " resources?"),
                               "Toward " + why + " (" + std::to_string(amount) + " needed).");
@@ -837,7 +858,7 @@ bool Rules::pay(int p, int amount, bool influence, const std::string& why, bool 
         return ok;
     }
     // The Triad (Thunder's Edge relic): exhausted like a planet card toward this payment
-    if (const int tv = amount > 0 && !inTriad_ ? triadValue(G, p) : 0) {
+    if (const int tv = amount > 0 && !inTriad_ && !tgOnly_ ? triadValue(G, p) : 0) {
         const int r = findRelic("thetriad");
         curRelic_ = r;
         const bool use = yesNo(p, Tag::RelicChoice, "Exhaust The Triad for " + std::to_string(tv) + (influence ? " influence?" : " resources?"),
@@ -939,6 +960,7 @@ bool Rules::payCore(int p, int amount, bool influence, const std::string& why, b
     const int worth = tgWorth(G, p);  // Mirror Computing
     // (commodities only count when Xander was used: then they are already among the trade goods)
     bool afford = (mixed ? spendableMixed(G, p) : spendable(G, p, influence)) - xanderCommodities(G, p) * worth - tradeGoodsToo * worth >= amount;
+    if (tgOnly_) afford = (pl.tradeGoods - tradeGoodsToo) * worth >= amount && extraInfluence <= 0;  // (0.81.0) trade goods only
     if (afford && extraInfluence > 0) {  // resources and influence: the same planet can't pay both
         pl.tradeGoods = int8_t(pl.tradeGoods - tradeGoodsToo);
         afford = canPayBoth(G, p, influence ? 0 : amount, extraInfluence + (influence ? amount : 0));
@@ -962,6 +984,10 @@ bool Rules::payCore(int p, int amount, bool influence, const std::string& why, b
     d.mixed = mixed;
     d.amount2 = extraInfluence;
     d.planets = ti::readyPlanets(G, p);
+    if (tgOnly_) {  // (0.81.0, Discretionary Spending) only trade goods
+        d.planets.clear();
+        d.context = "Discretionary Spending: pay with trade goods only.";
+    }
     d.maxPick = optional ? 1 : 0;  // UI hint: declining allowed
     Decision copy = d;
     const Game* gp = &G;
@@ -1020,11 +1046,19 @@ int Rules::tokensOnBoard(int p) const {
 }
 
 int Rules::reinforcementTokens(int p) const {
-    return kCommandTokens - tokensInPools(p) - tokensOnBoard(p) - edictTokensOf(G, p);  // Edict: tokens in Mahact's fleet pool
+    // (fixes 43) the tokens on the Keleres monument card (Pharus Iustitiae) came from the reinforcements: they aren't there now
+    const int onCard = G.fixes >= 43 && p >= 0 && p < G.numPlayers ? G.players[size_t(p)].monTokens : 0;
+    const int purged = p >= 0 && p < G.numPlayers ? G.players[size_t(p)].brTokensPurged : 0;  // (0.84.0) Trinity Stockpile: out of the game
+    return kCommandTokens - tokensInPools(p) - tokensOnBoard(p) - edictTokensOf(G, p) - onCard - purged;  // Edict: tokens in Mahact's fleet pool
 }
 
 void Rules::placeTokenFromReinforcements(int p, int sys, const std::string& why) {
     if (G.systems[sys].hasToken(p)) return;  // LRR 20.6: nothing more to place
+    if (monumentsOn() && p >= 0 && p < G.numPlayers && monCommandToken(p, sys, false)) {  // (0.82.0) the Keleres monument's tokens
+        G.systems[sys].tokens |= uint16_t(1u << p);
+        zeuTE(p, sys);
+        return;
+    }
     if (reinforcementTokens(p) <= 0) {
         // LRR 20.3b / 32.2a / 78.7d: take one from a pool on the command sheet instead.
         Player& pl = G.players[p];
@@ -1061,7 +1095,7 @@ void Rules::gainTokens(int p, int n, bool redistribute, const std::string& why, 
     int maxShips = 0;
     for (size_t s = 0; s < G.systems.size(); ++s) maxShips = std::max(maxShips, fleetUseIn(G, p, int(s)));
     maxShips -= fleetLimit(G, p) - pl.fleet;  // Armada: 2 ships more than the fleet pool tokens
-    const int fleetCap = lawInPlay(G, "regulations") ? 4 : 99;  // Fleet Regulations
+    const int fleetCap = fleetPoolCap(G, p);  // Fleet Regulations (0.81.0: Absol's too)
     d.value = fleetCap;
     d.validate = [=](const Answer& a) -> std::string {
         if (a.data.size() != 3) return "Bad answer.";
@@ -1084,6 +1118,10 @@ void Rules::gainTokens(int p, int n, bool redistribute, const std::string& why, 
 }
 
 void Rules::addUnits(int p, UnitType t, int k, int sys, int planet) {
+    // (0.83.0) Living Metals (Atokera): an agenda outcome / an action card's ACTION can't put another player's units on their planets
+    if (livingMetals_ && planet >= 0 && G.planets[size_t(planet)].owner >= 0 && G.planets[size_t(planet)].owner != p &&
+        livingMetalsBlocks(G.planets[size_t(planet)].owner, "place other players' units on the planets of"))
+        return;
     // Gauss Cannon (Mirveda PDS, Discordant Stars): placed in the space area instead of on a planet
     if (planet >= 0 && t == UnitType::PDS && (G.modules & kModDiscordant) && p >= 0 && p < G.numPlayers && unitDef(G, p, t).spaceOnly) planet = -1;
     // (0.61.2, fixes 33 - owner X1) LRR 23.4a for every placement: with no piece of that type left, the player may take one of theirs
@@ -1107,6 +1145,16 @@ void Rules::addUnits(int p, UnitType t, int k, int sys, int planet) {
         say(p, std::string("Infantry can't be placed on ") + planetName(planet) + " (Arcane Shield Emitter).");
         return;
     }
+    // (0.82.0) The Cenotaph (Sol): infantry placed on a planet may go to its planet instead
+    if (planet >= 0 && t == UnitType::Infantry && monumentsOn() && !monSolBusy_ && p >= 0 && p < G.numPlayers) {
+        k -= monInfantryPlaced(p, planet, k);
+        if (k <= 0) return;
+    }
+    // (0.85.0) Mark of Pharad'n: their infantry placed on the board are produced - 1 captured infantry returned for each
+    if (t == UnitType::Infantry && brOn() && p >= 0 && p < G.numPlayers && markOfPharadn(G, p)) {
+        k = pharPlace(p, k);
+        if (k <= 0) return;
+    }
     if (planet >= 0) G.planets[planet].units[p].add(t, k);
     else G.systems[sys].space[p].add(t, k);
     if (planet < 0 && isShip(t)) fleetDirty_ = true;  // (0.46.1: the fleet pool is checked before the next question)
@@ -1117,6 +1165,7 @@ void Rules::destroyUnits(int p, UnitType t, int k, int sys, int planet, int byPl
     Force& f = planet >= 0 ? G.planets[planet].units[p] : G.systems[sys].space[p];
     k = std::min<int>(k, f.n[int(t)]);
     if (k <= 0) return;
+    if (livingMetals_ && livingMetalsBlocks(p, removing_ ? "remove" : "destroy")) return;  // (0.83.0) Living Metals (Atokera)
     if ((G.modules & kModDiscordant) && !removing_ && p < G.numPlayers) k -= dsSaveUnits(p, t, k, sys, planet, byPlayer);  // Pustule (Kyro mech)
     if (k <= 0) return;
     // Silence of Stars (Li-Zho flagship, 0.43.0 D126): only an uncanceled hit can destroy it (not Direct Hit, a gravity
@@ -1148,6 +1197,13 @@ void Rules::destroyUnits(int p, UnitType t, int k, int sys, int planet, int byPl
                                       : std::to_string(k) + " " + unitTypeName(t, k > 1)) +
              (how && *how ? std::string(" (") + how + ")" : "");
     E.emit(e);
+    // (0.82.0) Valefar Assimilator "M" (Nekro): "When you destroy another player's structure"
+    if (monumentsOn() && isStructure(t) && !removing_ && p < G.numPlayers) monStructureDestroyed(byPlayer, p);
+    if (monumentsOn() && !removing_ && p < G.numPlayers) monUnitsDestroyed(p, t, k, sys);  // (0.82.2) Queen's Rest (Kortali)
+    // (0.82.0) Topple a Monument (Monuments+ secret): "Destroy another player's monument during a tactical action."
+    if (monumentsOn() && t == UnitType::Monument && !removing_ && p < G.numPlayers && byPlayer >= 0 && byPlayer < G.numPlayers && byPlayer != p &&
+        G.phase == Phase::Action && G.activeSystem >= 0)
+        actionSecret(byPlayer, "tam");
     // (fixes 31, the secret objectives' pass) Destroy Their Greatest Ship: destroyed - a unit removed isn't (LRR 61.9a)
     if (byPlayer >= 0 && byPlayer != p && (t == UnitType::WarSun || isFlagship(t)) && !(G.fixes >= 31 && removing_)) actionSecret(byPlayer, "dtgs");
     if (G.events) eventDestroyed(p, t, k, byPlayer);  // Total War (galactic event)
@@ -1155,6 +1211,7 @@ void Rules::destroyUnits(int p, UnitType t, int k, int sys, int planet, int byPl
         G.players[size_t(p)].purgedUnits[int(t)] = uint8_t(G.players[size_t(p)].purgedUnits[int(t)] + k);
     if (G.modules & kModDiscordant) dsUnitsDestroyed(p, t, k, sys, planet, byPlayer);  // Raze, Chitin Hulk, Nauplius
     if (p >= G.numPlayers) return;  // (Thunder's Edge: neutral units have no abilities that answer to their losses)
+    if (t == UnitType::Infantry && brOn()) pharInfantryLost(p, k, sys, planet);  // (0.85.0) Immortal (Pharad'n): captured; Sacrotitan
     if (t == UnitType::Infantry && !removing_) infantryDestroyed(p, k);  // Infantry II / Spec Ops II
     if (t == UnitType::Infantry && !removing_ && (G.modules & kModDiscordant) && breakthroughsOn(G)) dsbtInfantryDied(p, planet, k);  // Dreamwalkers
     if (t == UnitType::Mech && G.players[size_t(p)].eidolonMax) eidolonLost(p);  // Absolute Synergy (Thunder's Edge)
@@ -1184,6 +1241,7 @@ void Rules::setControl(int planet, int p) {
     PlanetState& pl = G.planets[planet];
     int old = pl.owner;
     if (old == p) return;
+    if (monumentsOn()) monDeploy(p, planet);  // (0.82.0) She Consumes Worlds (Vuil'raith): DEPLOY, capturing the structures
     // (fixes 25, owner's faction debug pass) control passing because of coexistence (Viper EX-23 / Research Team, Puppets
     // of the Blade, Viper Hollow - the old owner coexists by now): their structures stay, coexisting - "Coexisting
     // structures are always blockaded" (TE rulebook); the same for neutral units that coexist there. Assimilate and
@@ -1204,13 +1262,18 @@ void Rules::setControl(int planet, int p) {
         }
         // the old owner's structures there are lost (LRR 49.5a)
         Force& f = pl.units[old];
-        for (UnitType t : {UnitType::PDS, UnitType::SpaceDock}) {
+        for (UnitType t : {UnitType::PDS, UnitType::SpaceDock, UnitType::Monument}) {  // (0.82.0: monuments are structures)
             int k = f.count(t);
             if (!k || (oldCoexists && !infiltrate)) continue;
+            if (t == UnitType::Monument && infiltrate) infiltrate = false;  // (Infiltrate replaces PDS and space docks only)
             destroyUnits(old, t, k, pl.system, planet, p, infiltrate ? "Infiltrate" : "captured");
             if (infiltrate) addUnits(p, t, std::min(k, unitsForPlacement(G, p, t)), pl.system, planet);
         }
+    } else if (old >= 0 && pl.units[old].count(UnitType::Monument) && !oldCoexists) {
+        // (0.82.0 Monuments+) Assimilate took the PDS and space docks: the monument is lost (LRR 49.5a)
+        destroyUnits(old, UnitType::Monument, pl.units[old].count(UnitType::Monument), pl.system, planet, p, "captured");
     }
+    if (pl.superweapon >= 0) brSuperweaponLost(planet, "taken");  // (0.84.0) Arrogance (Belkosea): destroyed - purged with its card
     if (old >= 0 && G.systems[pl.system].home >= 0) actionSecret(old, "bam");
     if (p >= 0 && !neutralCoexists)  // Thunder's Edge: neutral structures left on the planet are lost too (as another player's, LRR 49.5a)
         for (int t = 0; t < kUnitTypes; ++t)
@@ -1218,6 +1281,7 @@ void Rules::setControl(int planet, int p) {
     pl.owner = int8_t(p);
     pl.exhausted = true;  // newly gained planets arrive exhausted
     persControl(planet, old, p);
+    absolControlChanged(planet, old, p);  // (0.81.0) the Ixthian Artifact on Mecatol Rex (Absol's Agendas)
     {  // (0.70.0, display only) other = the player it was taken from (the "planet taken" sound)
         Event e;
         e.kind = EventKind::Control;
@@ -1241,6 +1305,7 @@ void Rules::setControl(int planet, int p) {
         w.planet = planet;
         window(w);
     }
+    if (brOn() && pl.tomb) pharControl(planet, p);  // (0.85.0) Ancient Empire (Pharad'n): a tomb opened - before Integrated Economy
     if (G.phase == Phase::Action && G.fixes < 9) integratedEconomy(p, planet);
     afterGainControl(planet, p, old);
     gainedControl3(planet, p, old);  // Scavenge, Scavenger Zeta, Reclamation
@@ -1252,6 +1317,9 @@ void Rules::setControl(int planet, int p) {
     // no phase; e.g. Colonial Redistribution in the agenda phase)
     const bool ieWhen = G.phase == Phase::Action || (G.fixes >= 27 && G.phase != Phase::Setup && G.phase != Phase::GameOver);
     if (ieWhen && G.fixes >= 9 && G.planets[size_t(planet)].owner == p) integratedEconomy(p, planet);
+    // (0.82.1) Seraph Data Center: "When you lose control of this station, destroy it and produce 2 hits against ships in this system."
+    if (monumentsOn() && old >= 0 && G.players[size_t(old)].monStation == planet && G.planets[size_t(planet)].owner == p && p != old)
+        monStationLost(planet, old, p);
 }
 
 bool Rules::owns(int p, const char* key) const { return ownsTechKey(G, p, key); }

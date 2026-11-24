@@ -1,7 +1,7 @@
 """Every faction's codec portrait: key -> (display name, set, function(t))."""
 import sys
 sys.path.insert(0, __import__('os').path.dirname(__import__('os').path.abspath(__file__)))
-import faces, faces_b1, faces_b2, faces_b3, faces_b4, faces_b5, faces_b6, faces_b7, faces_v2  # noqa: E402
+import faces, faces_b1, faces_b2, faces_b3, faces_b4, faces_b5, faces_b6, faces_b7, faces_v2, faces_br  # noqa: E402
 
 ORDER = [
     ('Base game', [('arborec', 'The Arborec', faces_b1), ('letnev', 'The Barony of Letnev', faces_b1),
@@ -39,6 +39,9 @@ ORDER = [
                           ('vaden', 'The Vaden Banking Clans', faces_b7), ('vaylerian', 'The Vaylerian Scourge', faces_b7),
                           ('veldyr', 'The Veldyr Sovereignty', faces_b7), ('rhodun', 'The Zealots of Rhodun', faces_b7),
                           ('zelian', 'The Zelian Purifiers', faces_b7)]),
+    # (0.83.0) Blue Reverie: each faction as it comes into the game (approved drafts in faces_br.py)
+    ('Blue Reverie', [('atokera', 'The Atokera Legacy', faces_br), ('belkosea', 'The Belkosea Allied States', faces_br),
+                      ('pharadn', "The Pharad'n Order", faces_br)]),
 ]
 
 

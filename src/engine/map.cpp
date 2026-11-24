@@ -698,12 +698,14 @@ bool boardAdjacent(const Game& g, int u, int v) {
 
 void computeAdjacency(Game& g) {
     const int n = int(g.systems.size());
-    const bool travelBan = lawInPlay(g, "travel_ban");
-    const bool joinAB = lawInPlay(g, "wormhole_recon") || g.fx.lostStarChart;
+    // (0.81.0) Absol's Agendas: Enforced Travel Ban / Wormhole Reconstruction / Nexus Sovereignty - the active player may ignore the first
+    // and the last this turn (a token discarded / Mallice's influence spent: Game::absolIgnore)
+    const bool travelBan = lawInPlay(g, "travel_ban") || (absolLaw(g, "absol_travelban") && !(g.absolIgnore & 2));
+    const bool joinAB = lawInPlay(g, "wormhole_recon") || g.fx.lostStarChart || absolLaw(g, "absol_recon");
     // (fixes 30, the agenda pass - FAQ: "Enforced Travel Ban does not prevent Space Cannon usage") the two laws only stop
     // movement: the wormhole links stay in adj, and the ones movement can't use are listed in adjNoMove
     const bool moveOnly = g.fixes >= 30;
-    const bool nexusSov = moveOnly && lawInPlay(g, "nexus");
+    const bool nexusSov = moveOnly && (lawInPlay(g, "nexus") || (absolLaw(g, "absol_nexus") && !(g.absolIgnore & 4)));
     auto moveMask = [&](int s, uint8_t w) {
         if (travelBan || (nexusSov && s == g.nexus)) w &= uint8_t(~(kAlpha | kBeta));
         return w;

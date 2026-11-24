@@ -341,9 +341,9 @@ const char* sfxName(Sfx s) {
     static_assert(sizeof moments / sizeof moments[0] == size_t(int(Sfx::CodecAlert) - int(Sfx::TurnYours) + 1), "a name for every moment");
     if (int(s) >= int(Sfx::TurnYours) && int(s) <= int(Sfx::CodecAlert)) return moments[int(s) - int(Sfx::TurnYours)];
     if (int(s) >= int(Sfx::VoiceFirst) && int(s) <= int(Sfx::VoiceLast)) {  // (0.70.0) "voice_<faction key>"
-        static std::string voices[kMoveSounds];
+        static std::string voices[kVoiceSounds];
         std::string& m = voices[int(s) - int(Sfx::VoiceFirst)];
-        if (m.empty()) m = std::string("voice_") + moveSoundKey(int(s) - int(Sfx::VoiceFirst));
+        if (m.empty()) m = std::string("voice_") + voiceSoundKey(int(s) - int(Sfx::VoiceFirst));
         return m.c_str();
     }
     static_assert(sizeof names / sizeof names[0] == size_t(Sfx::MoveFirst), "a name for every sound");

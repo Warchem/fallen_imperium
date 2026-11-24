@@ -187,9 +187,10 @@ bool Engine::answer(const Answer& in, std::string* err) {
         return false;
     }
     Answer a = in;
-    // 0.52.0: one more unit type (the second flagship, last) - a production answer from an older save is one number short
-    if (pending_.kind == DecisionKind::Produce && a.data.size() == size_t(kUnitTypes))
-        a.data.insert(a.data.begin() + (kUnitTypes - 1), 0);
+    // A production answer is a count per unit type, then the planet for ground forces. Unit types are added last (0.52.0 the
+    // second flagship, 0.82.0 the monument): an older save's answer is short by those - 0 of each goes in before the planet.
+    if (pending_.kind == DecisionKind::Produce)
+        while (a.data.size() >= size_t(kUnitTypes) - 1 && a.data.size() < size_t(kUnitTypes) + 1) a.data.insert(a.data.end() - 1, 0);
     if (pending_.validate) {
         std::string e = pending_.validate(a);
         if (!e.empty()) {
@@ -209,7 +210,7 @@ void Engine::emit(Event e) {
     // paces checkUnlocks, and old saves must replay exactly as before.
     const bool display = e.kind == EventKind::ObjectiveScored || e.kind == EventKind::RelicUsed || e.kind == EventKind::ComponentUsed ||
                          e.kind == EventKind::Planetfall || e.kind == EventKind::CardDrawn || e.kind == EventKind::ObjectiveRevealed ||
-                         e.kind == EventKind::Note || e.kind == EventKind::WarSunAge;
+                         e.kind == EventKind::Note || e.kind == EventKind::WarSunAge || e.kind == EventKind::MonumentPlaced;
     if (e.kind != EventKind::Dice && !display && !e.text.empty()) g_.log.push_back(e.text);
     events_.push_back(std::move(e));
 }
@@ -300,6 +301,8 @@ std::string Engine::saveText() const {
     if (setup_.modules) o << "modules " << setup_.modules << "\n";
     if (setup_.events) o << "events " << setup_.events << "\n";
     if (setup_.modules & kModDiscordant) o << "dslevel " << setup_.dsLevel << "\n";
+    if (setup_.modules & kModBlueReverie) o << "brlevel " << setup_.brLevel << "\n";  // (0.83.0)
+    if ((setup_.modules & kModBlueReverie) && setup_.brMask != 0xFFFFFFFFu) o << "brmask " << setup_.brMask << "\n";  // (0.85.3)
     if (setup_.fixes) o << "fixes " << setup_.fixes << "\n";
     o << "factions";
     for (int f : setup_.factions) o << ' ' << f;
@@ -336,6 +339,13 @@ std::string Engine::saveText() const {
     if (anyGrudge) {
         o << "grudges";
         for (int gr : setup_.grudges) o << ' ' << gr;
+        o << "\n";
+    }
+    bool anyCommander = false;
+    for (const std::string& cm : setup_.commanders) anyCommander |= !cm.empty();
+    if (anyCommander) {
+        o << "commanders";
+        for (const std::string& cm : setup_.commanders) o << ' ' << (cm.empty() ? "-" : cm);
         o << "\n";
     }
     o << "answers " << answers_.size() << "\n";
@@ -380,8 +390,16 @@ bool Engine::loadText(const std::string& text, std::string* err) {
         else if (word == "modules") in >> s.modules;
         else if (word == "events") in >> s.events;
         else if (word == "dslevel") in >> s.dsLevel;
+        else if (word == "brlevel") in >> s.brLevel;
+        else if (word == "brmask") in >> s.brMask;  // (0.85.3)
         else if (word == "fixes") in >> s.fixes;
         else if (word == "speaker") in >> s.speaker;
+        else if (word == "commanders") {
+            std::string rest, w;
+            std::getline(in, rest);
+            std::istringstream ws(rest);
+            while (ws >> w) s.commanders.push_back(w == "-" ? std::string() : w);
+        }
         else if (word == "auto") {
             int v = 0;
             in >> v;

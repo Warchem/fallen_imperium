@@ -11,6 +11,7 @@ namespace ti {
 
 namespace {
 bool agKey(int a, const char* k) { return a >= 0 && a < kAgendaCount && !std::strcmp(kAgendas[a].key, k); }
+bool isCovert(int a) { return agKey(a, "covert") || agKey(a, "absol_covert"); }  // (0.81.0: Absol's Covert Legislation too)
 constexpr int kAbstain = -100;
 
 bool isHomePlanetIdx(const Game& g, int x) { return g.systems[g.planets[x].system].home >= 0; }
@@ -20,7 +21,7 @@ bool isHomePlanetIdx(const Game& g, int x) { return g.systems[g.planets[x].syste
 std::vector<Option> Rules::agendaOutcomes(int a) const {
     std::vector<Option> v;
     if (a < 0) return v;
-    if (agKey(a, "covert") && G.covertAgenda >= 0) a = G.covertAgenda;
+    if (isCovert(a) && G.covertAgenda >= 0) a = G.covertAgenda;
     switch (kAgendas[a].elect) {
         case Elect::ForAgainst:
             v.push_back({0, "For", agendaText(a, false)});
@@ -54,6 +55,24 @@ std::vector<Option> Rules::agendaOutcomes(int a) const {
             for (int c = 0; c < kStrategyCards; ++c) v.push_back({c, std::to_string(c + 1) + " " + strategyName(c), strategySecondary(c)});
             break;
         case Elect::Covert: break;
+        case Elect::NonHome:  // (0.81.0, Absol's Compensated Disarmament) any planet but a home planet - Mecatol Rex too
+            for (size_t x = 0; x < G.planets.size(); ++x) {
+                const PlanetState& ps = G.planets[x];
+                if (ps.owner < 0 || isHomePlanetIdx(G, int(x)) || isStation(G, int(x))) continue;
+                v.push_back({int(x), planetName(int(x)), pn(ps.owner) + "'s planet"});
+            }
+            break;
+        case Elect::UnitUpgrade: {  // (0.81.0, Absol's Publicize Weapon Schematics) a non-faction unit upgrade a player owns
+            std::vector<int> seen;
+            for (int q = 0; q < G.numPlayers; ++q)
+                for (int16_t t : G.players[size_t(q)].techs)
+                    if (kTechs[t].unitUpgrade && kTechs[t].faction < 0 && std::find(seen.begin(), seen.end(), int(t)) == seen.end()) {
+                        seen.push_back(t);
+                        v.push_back({t, kTechs[t].name, techSummary(t)});
+                    }
+            break;
+        }
+        case Elect::None: break;  // (Emergency Session: not voted on)
     }
     return v;
 }
@@ -67,6 +86,10 @@ std::string Rules::outcomeName(int a, int outcome) const {
 bool Rules::agendaRevealable(int a) const {
     // "If there are no laws in play, discard this card and reveal another."
     if (agKey(a, "abolishment") || agKey(a, "constitution") || agKey(a, "miscount")) return !G.laws.empty();
+    // (0.81.0, Absol's Agendas) Miscount Disclosed: no laws - discarded; Publicize Weapon Schematics: no eligible technology in play;
+    // Classified Document Leak: nothing to elect
+    if (agKey(a, "absol_miscount")) return !G.laws.empty();
+    if (agKey(a, "absol_schematics") || agKey(a, "absol_leak")) return !agendaOutcomes(a).empty();
     if (agKey(a, "classified")) {
         for (int q = 0; q < G.numPlayers; ++q)
             for (int16_t o : G.players[size_t(q)].scored)
@@ -87,6 +110,7 @@ int Rules::revealAgenda() {
         int a = G.agendaDeck.back();
         G.agendaDeck.pop_back();
         E.revealed();
+        if (absolRevealSkip(a)) continue;  // (0.81.0) Emergency Session: set aside, the next card is revealed
         if (!agendaRevealable(a)) {
             say(-1, std::string(kAgendas[a].name) + " is revealed but can't be voted on now - it is discarded.");
             G.agendaDiscard.push_back(int16_t(a));
@@ -105,6 +129,7 @@ void Rules::agendaPhase() {
     readyOnly3_ = false;
     mawOfWorlds();  // "at the start of the agenda phase"
     twilightMirror();  // Uncharted Space relic (0.33.0)
+    if (monumentsOn()) monAgendaStart();  // (0.82.0) Imperial Vault (Winnu): "At the start of the agenda phase"
     if (G.modules & kModDiscordant) dsAgendaPhaseStart();  // Contractual Obligations (Roh'Dhna)
     if (G.extras & 16) loansDue();  // 0.30.0: debts (X-1 credit, loans) are paid back here
     {
@@ -112,11 +137,22 @@ void Rules::agendaPhase() {
         c.w = Win::AgendaStart;
         window(c);
     }
+    absolAgendaPhaseStart();  // (0.81.0) Judicial Abolishment (For)
     // (fixes 31, the secret objectives' pass) LRR 61.5c "at any time during that phase": Dictate Policy with 3 laws already in play
     // is scored at the start (before, only after an agenda - lost if the first one discarded a law)
     if (G.fixes >= 31)
         for (int q = 0; q < G.numPlayers; ++q) agendaSecrets(q);
-    for (int i = 0; i < 2; ++i) resolveAgenda(i);
+    for (int i = 0; i < 2 && !absolSkip_; ++i) resolveAgenda(i);
+    // (0.81.0, Absol's Agendas) Emergency Session: "After all other agendas are resolved during the agenda phase, the speaker reveals
+    // and the players vote on 1 additional agenda." (Pax Magnifica's Against skips straight to readying the planets)
+    // (Absol rulebook 8.3a: each copy one at a time, then that copy is discarded)
+    for (int i = 2; absolOn() && G.emergency > 0 && !absolSkip_ && i < 16; ++i) {
+        G.emergency = int8_t(G.emergency - 1);
+        say(-1, "Emergency Session: one more agenda.");
+        resolveAgenda(i);
+        absolEmergencyDone();
+    }
+    absolAgendaPhaseEnd();
     G.currentAgenda = -1;
     curAgenda_ = -1;
     // Political Secret silences a player for that agenda only (0.24.0: it used to last until the
@@ -163,6 +199,7 @@ void Rules::runAgenda(int a, bool miscount) {
     cannotVote_ = G.noVote;
     silenced_ = 0;
     mustVote_ = false;
+    absolAble_ = 0;  // (0.81.0) nobody has been asked to vote yet (Committee Formation: nobody is)
     lastVoter_ = -1;
     for (auto& v : predictions_) v.clear();
     G.votedFor.assign(n, kNoVote);
@@ -184,7 +221,8 @@ void Rules::runAgenda(int a, bool miscount) {
             std::vector<Played> played = window(c);
             for (int q : clockwiseFrom(G, G.speaker))
                 for (int16_t note : std::vector<int16_t>(G.players[q].notes))
-                    if (noteType(note) == kNotePoliticalSecret && noteOwner(note) != q && !G.players[noteOwner(note)].eliminated &&
+                    // (0.81.0, owner) with Absol's Agendas Political Secret is Absol's card - played when its holder casts votes
+                    if (!(absolOn() && G.fixes >= 36) && noteType(note) == kNotePoliticalSecret && noteOwner(note) != q && !G.players[noteOwner(note)].eliminated &&
                         !((silenced_ >> noteOwner(note)) & 1) &&
                         playNoteWindow(q, kNotePoliticalSecret, noteOwner(note),
                                        "Play " + pn(noteOwner(note)) + "'s Political Secret?")) {
@@ -206,7 +244,7 @@ void Rules::runAgenda(int a, bool miscount) {
 
     // Covert Legislation: the speaker secretly draws the agenda that is voted on.
     int real = a;
-    if (agKey(a, "covert")) {
+    if (isCovert(a)) {
         int h = revealAgenda();
         if (h < 0) {
             G.agendaDiscard.push_back(int16_t(a));
@@ -227,7 +265,9 @@ void Rules::runAgenda(int a, bool miscount) {
 
     // Committee Formation: its owner may pick the elected player without a vote (-1: not used). (fixes 30, owner
     // 2026-11-17: asked after the "after an agenda is revealed" window - riders can be played on that election)
-    const int committee = lawOwner(G, "committee");
+    // ((0.81.0) Absol's Committee Formation: the same, and its owner "is considered to have cast the most votes for the resolved outcome")
+    const bool absolCommittee = lawOwner(G, "committee") < 0 && lawOwner(G, "absol_formation") >= 0;
+    const int committee = absolCommittee ? lawOwner(G, "absol_formation") : lawOwner(G, "committee");
     auto committeeAsk = [&]() -> int {
         if (kind != Elect::Player || committee < 0 || G.players[committee].eliminated) return -1;
         const int prev = curAgenda_;
@@ -246,11 +286,12 @@ void Rules::runAgenda(int a, bool miscount) {
                                         : std::string("Committee Formation: who is elected for ") + kAgendas[real].name + "?",
                                  agendaOutcomes(real));
         for (size_t i = 0; i < G.laws.size(); ++i)
-            if (agKey(G.laws[i].agenda, "committee")) {
+            if (agKey(G.laws[i].agenda, absolCommittee ? "absol_formation" : "committee")) {
                 discardLaw(int(i), "used");
                 break;
             }
         curAgenda_ = prev;
+        if (absolCommittee) absolTopOverride_ = committee;
         return elected;
     };
     if (G.fixes < 30) {
@@ -259,6 +300,7 @@ void Rules::runAgenda(int a, bool miscount) {
             if (real != a) G.agendaDiscard.push_back(int16_t(a));
             std::vector<int> none(n, kNoVote), zero(n, 0);
             resolveOutcome(real, elected, none, zero);
+            absolTopOverride_ = -1;
             G.covertAgenda = -1;
             return;
         }
@@ -272,6 +314,7 @@ void Rules::runAgenda(int a, bool miscount) {
             if (!std::strcmp(kActionCards[x.card].key, "hack")) lastVoter_ = x.player;
     }
     keleresAgendaRevealed(real);  // Keleres Rider, Odlynn Myrr
+    if (brOn()) brAgendaRevealed(real);  // (0.83.0) Ordagka (Atokera commander)
     if (G.modules & kModDiscordant) dsAgendaRevealed(real);  // Kyro Rider (Discordant Stars)
 
     nekroPredict(real);  // Galactic Threat
@@ -285,9 +328,10 @@ void Rules::runAgenda(int a, bool miscount) {
         // Voting
         votingStep(real, G.votedFor, G.voteCount, cannotVote_, lastVoter_);
         keleresAfterVoting();                // Odlynn Myrr pays out
+        if (brOn()) brAfterVoting(G.votedFor, G.voteCount);  // (0.83.0) Ordagka's unlock
         if (G.modules & kModDiscordant) dsAfterVoting(G.votedFor, G.voteCount);  // Silas Deriga (Kyro commander)
         // Empyrean note: +4 votes ((fixes 30) not under Representative Government: "Players cannot cast additional votes")
-        if (!(G.fixes >= 30 && lawInPlay(G, "rep_govt"))) bloodPact(G.votedFor, G.voteCount);
+        if (!(G.fixes >= 30 && lawInPlay(G, "rep_govt")) && !(absolOn() && lawInPlay(G, "absol_government"))) bloodPact(G.votedFor, G.voteCount);
         persVotes();                         // "vote them down" betrayals
 
         // Tally (LRR 8.19: ties, or no votes at all, are decided by the speaker)
@@ -356,6 +400,7 @@ void Rules::runAgenda(int a, bool miscount) {
                 G.agendaDiscard.push_back(int16_t(real));
             }
             G.covertAgenda = -1;
+            absolTopOverride_ = -1;
             return;
         }
     }
@@ -371,13 +416,18 @@ void Rules::runAgenda(int a, bool miscount) {
     std::vector<int> voted = G.votedFor, counts = G.voteCount;
     bool pis[kMaxPlayers];
     std::copy(piUsed_, piUsed_ + kMaxPlayers, pis);
+    // (0.82.0) every prediction made on this agenda, collected before the abilities below pay out (and clear) them
+    std::vector<int> guessed[kMaxPlayers];
+    allPredictions(guessed, preds);
     tarrockCheck(outcome);
     lift(real);
     resolveOutcome(real, outcome, voted, counts);
+    absolTopOverride_ = -1;
     keleresAgendaResolved(outcome);      // Keleres Rider
     if (G.modules & kModDiscordant) dsAgendaResolved(outcome, voted);  // Kyro Rider, Indoctrination Teams
     nekroResolve(real, outcome, voted);  // Galactic Threat
-    futureSight(outcome, voted, preds);  // Nomad
+    futureSight(outcome, voted, G.fixes >= 38 ? guessed : preds);  // Nomad ((fixes 38) every kind of prediction, not only riders)
+    if (brOn()) brOutcomeResolved(real, outcome, voted, guessed);  // (0.83.0) Mirrorshard II, Ordagka (Atokera)
 
     // Predictive Intelligence is exhausted if its votes went to a losing outcome.
     for (int q = 0; q < n; ++q)
@@ -404,8 +454,11 @@ void Rules::runAgenda(int a, bool miscount) {
             else if (!std::strcmp(k, "tech_rider")) researchStep(q, 0, "Technology Rider");
             else if (!std::strcmp(k, "politic_rider")) {
                 drawActionCards(q, 3, "Politics Rider");
-                G.speaker = int8_t(q);
-                say(q, pn(q) + " becomes the speaker.");
+                if (absolOn()) absolSetSpeaker(q, "Politics Rider");  // (0.81.0: Political Censure / Term Limits)
+                else {
+                    G.speaker = int8_t(q);
+                    say(q, pn(q) + " becomes the speaker.");
+                }
             } else if (!std::strcmp(k, "const_rider")) {
                 if (unitsForPlacement(G, q, UnitType::SpaceDock) > 0) placeStructure(q, -1, true, false, false);
             } else if (!std::strcmp(k, "war_rider")) {
@@ -446,6 +499,8 @@ void Rules::runAgenda(int a, bool miscount) {
             }
             curCard_ = prev;
         }
+    // (0.82.0) Calm Seas Sanatorium (Jol-Nar), Qanoj Shield Array (Xxcha): "an agenda outcome you voted for or predicted is resolved"
+    if (monumentsOn()) monAgendaResolved(outcome, voted, counts, guessed);
     for (int q = 0; q < n; ++q) agendaSecrets(q);
 }
 
@@ -468,24 +523,32 @@ void Rules::votingStep(int a, std::vector<int>& votedFor, std::vector<int>& vote
     (void)lastVoter;
     agendaNegotiations(order);  // Negotiations: deals before the vote
     const bool repGov = lawInPlay(G, "rep_govt");
+    // (0.81.0) Absol's Representative Government: "votes equal to the number of planets exhausted ... A player that exhausts Mecatol Rex
+    // casts 1 additional vote. Players cannot cast additional votes from other sources."
+    const bool absolGov = absolOn() && lawInPlay(G, "absol_government");
+    absolAble_ = 0;
     for (int p : order) {
         if (G.players[p].eliminated) continue;
         bool blocked = ((cannotVote_ >> p) & 1) || ((silenced_ >> p) & 1) || ((G.noVote >> p) & 1);
+        const bool qanojOnly = blocked;  // (0.81.0) Absol 8.16b: voting only through Elder Qanoj - "voted" only if they do
         if (commanderUsable(G, p, "xxcha")) blocked = false;  // Elder Qanoj: nothing stops you voting
         if (fac(p, "nekro")) blocked = true;  // Galactic Threat: the Nekro Virus never votes
         if (eventOn(G, kEvAtomics) && !G.players[size_t(p)].atomics) blocked = true;  // Stellar Atomics: the token spent
         (void)cannotVote;
-        const bool exec = p == execVoter_ && !repGov;  // Executive Order: resources and trade goods count as votes
+        const bool exec = p == execVoter_ && !repGov && !absolGov;  // Executive Order: resources and trade goods count as votes
         int avail = repGov ? 1 : availableVotes(G, p);
         if (exec) {
             avail = G.players[p].tradeGoods;
             for (int x : ti::readyPlanets(G, p)) avail += std::max(voteValue(G, p, x), planetResources(G, x));
         }
         // Predictive Intelligence: 3 more votes in the agenda phase only (0.44.5, fixes 9: not Executive Order's agenda)
-        bool pi = !repGov && techReady(p, "pi") && !(G.fixes >= 9 && G.phase != Phase::Agenda);
-        const bool gila = !repGov && commanderUsable(G, p, "hacan") && G.players[p].tradeGoods > 0;
-        const bool odlynn = p == odlynn_;  // Odlynn Myrr: 6 more votes
-        if (!blocked && (avail > 0 || pi || gila || odlynn)) {
+        bool pi = !repGov && !absolGov && techReady(p, "pi") && !(G.fixes >= 9 && G.phase != Phase::Agenda);
+        const bool gila = !repGov && !absolGov && commanderUsable(G, p, "hacan") && G.players[p].tradeGoods > 0;
+        const bool odlynn = p == odlynn_ && !absolGov;  // Odlynn Myrr: 6 more votes
+        const bool miscountBonus = p == absolMiscount_;  // (0.81.0) Absol's Miscount Disclosed: 1 more vote per player
+        const bool absolPs = absolPoliticalSecretUsable(p);  // (0.81.0) Absol's Political Secret: votes from its owner's planets
+        if (!blocked && (avail > 0 || pi || gila || odlynn || miscountBonus || absolPs)) {
+            if (!qanojOnly) absolAble_ = uint16_t(absolAble_ | (1u << p));
             std::vector<Option> opts = agendaOutcomes(G.currentAgenda);
             // show the votes so far (Hidden Agenda: only the Argent's are known)
             const bool hidden = eventOn(G, kEvHidden);
@@ -495,7 +558,7 @@ void Rules::votingStep(int a, std::vector<int>& votedFor, std::vector<int>& vote
                     if (votedFor[q] == o.id && (!hidden || fac(q, "argent"))) t += votes[q];
                 if (t) o.detail = std::to_string(t) + " votes so far" + (hidden ? " (the Argent's)" : "") + ". " + o.detail;
             }
-            if (agKey(G.currentAgenda, "covert") && p != G.speaker)
+            if (isCovert(G.currentAgenda) && p != G.speaker)
                 for (Option& o : opts) o.detail = o.detail.find("votes so far") != std::string::npos
                                                       ? o.detail.substr(0, o.detail.find(". ") + 1)
                                                       : "";
@@ -513,9 +576,10 @@ void Rules::votingStep(int a, std::vector<int>& votedFor, std::vector<int>& vote
                                     (repGov ? " vote." : exec ? " votes (Executive Order: planets give resources or influence, trade goods count)."
                                                               : " votes from ready planets.");
             if (odlynn) votesText += " Odlynn Myrr: 6 more.";
+            if (monumentsOn() && !absolGov && !repGov) votesText += monVoteHint(p);  // (0.82.0, owner M18) Palatine Obelisk, Glory Furnace
             {  // 0.43.0 (owner: "show everything others voted before my turn"): who voted what, in order
                 std::string before;
-                const bool covertHidden = agKey(G.currentAgenda, "covert") && p != G.speaker;
+                const bool covertHidden = isCovert(G.currentAgenda) && p != G.speaker;
                 for (int q : order) {
                     if (q == p) break;
                     if (G.players[q].eliminated) continue;
@@ -533,7 +597,7 @@ void Rules::votingStep(int a, std::vector<int>& votedFor, std::vector<int>& vote
                 }
                 if (!before.empty()) votesText += " Before you: " + before + ".";
             }
-            if (agKey(G.currentAgenda, "covert") && p != G.speaker)
+            if (isCovert(G.currentAgenda) && p != G.speaker)
                 d.context = "Covert Legislation: only the speaker knows what these outcomes do. " + votesText;
             else if (kAgendas[a].elect != Elect::ForAgainst)
                 d.context = std::string(agendaText(a, false)) + " " + votesText;
@@ -574,7 +638,8 @@ void Rules::votingStep(int a, std::vector<int>& votedFor, std::vector<int>& vote
                         v.tag = Tag::VotePlanets;
                         v.agenda = a;
                         v.prompt = "Exhaust planets to cast votes for " + outcomeName(G.currentAgenda, o);
-                        v.context = "Each planet gives votes equal to its influence. They are readied at the end of the agenda phase.";
+                        v.context = absolGov ? "Representative Government: each planet you exhaust is 1 vote (Mecatol Rex 2). They are readied at the end of the agenda phase."
+                                             : "Each planet gives votes equal to its influence. They are readied at the end of the agenda phase.";
                         v.planets = ready;
                         v.influence = true;
                         v.amount = 0;
@@ -590,6 +655,9 @@ void Rules::votingStep(int a, std::vector<int>& votedFor, std::vector<int>& vote
                         if (exec)
                             v.context = "Executive Order: each planet gives its resources or its influence (the higher), "
                                         "and each trade good is 1 vote.";
+                        if (monumentsOn() && !absolGov) v.context += monVoteHint(p);  // (0.82.0, owner M18)
+                        // (0.82.5, a tester's report: a 0-influence planet "gave no vote" - the screen's total left Elder Qanoj out)
+                        if (!absolGov && commanderUsable(G, p, "xxcha")) v.context += " Elder Qanoj: each planet gives 1 more vote.";
                         if (forced != kNoVote) {
                             v.amount = 1;  // Genetic Recombination: at least 1 vote
                             v.context = "Genetic Recombination: cast at least 1 vote for it.";
@@ -617,18 +685,23 @@ void Rules::votingStep(int a, std::vector<int>& votedFor, std::vector<int>& vote
                             if (G.planets[x].exhausted) continue;
                             G.planets[x].exhausted = true;
                             spent.push_back(x);
-                            count += exec ? std::max(voteValue(G, p, x), planetResources(G, x)) : voteValue(G, p, x);
+                            count += exec       ? std::max(voteValue(G, p, x), planetResources(G, x))
+                                     : absolGov ? 1 + (G.planets[size_t(x)].system == G.mecatol() && !std::strcmp(kPlanets[G.planets[size_t(x)].def].key, "mr") ? 1 : 0)
+                                                : voteValue(G, p, x);
                         }
                         planetsExhausted(p, spent);  // Arcane Citadel
-                        if (G.modules & kModDiscordant) count += dsVoteBonus(p, spent);  // Control (Olradin policy)
+                        if (brOn() && !absolGov && !exec) count += brMagruda(p, spent);  // (0.83.0) Magruda (Atokera agent)
+                        if (monumentsOn() && !absolGov) count += monVotes(p, spent);  // (0.82.0) Palatine Obelisk, Glory Furnace
+                        if ((G.modules & kModDiscordant) && !absolGov) count += dsVoteBonus(p, spent);  // Control (Olradin policy)
                         if (exec && ans.number > 0) {
                             const int t = std::min<int>(ans.number, G.players[p].tradeGoods);
                             G.players[p].tradeGoods = int8_t(G.players[p].tradeGoods - t);
                             count += t;
                         }
                     }
+                    if (absolPs) count += absolPoliticalSecret(p, exec, absolGov);  // (0.81.0) Absol's Political Secret
                     // Custodia Vigilia (Keleres, I.I.H.Q. Modernization - 0.43.0 T8i): the planet card votes too (3 influence)
-                    if (G.fixes >= 2 && custodiaValue(G, p, true) > 0 &&
+                    if (G.fixes >= 2 && !absolGov && custodiaValue(G, p, true) > 0 &&
                         yesNo(p, Tag::UseTech, "Exhaust the Custodia Vigilia card for 3 more votes?", "It counts as a planet with 3 influence.")) {
                         G.players[size_t(p)].custodiaExhausted = true;
                         count += 3;
@@ -637,7 +710,7 @@ void Rules::votingStep(int a, std::vector<int>& votedFor, std::vector<int>& vote
                     // they vote too - 1 each (their influence)
                     // (fixes 27, the Deepwrought review) ocean cards are planet cards too (1 influence each)
                     const bool oceanVotes = G.fixes >= 27 && G.players[size_t(p)].oceans > 0;
-                    if (((G.fixes >= 13 && bannerhalls(G, p)) || oceanVotes) && oceansReady(G, p) > 0) {
+                    if (((G.fixes >= 13 && bannerhalls(G, p)) || oceanVotes) && oceansReady(G, p) > 0 && !absolGov) {
                         std::vector<Option> bo;
                         const char* one = oceanVotes ? " ocean card" : " Bannerhall";
                         const char* many = oceanVotes ? " ocean cards" : " Bannerhalls";
@@ -656,13 +729,20 @@ void Rules::votingStep(int a, std::vector<int>& votedFor, std::vector<int>& vote
                         // (fixes 27, the shared technologies - the 3 votes left no line in the log)
                         if (G.fixes >= 27) say(p, pn(p) + " casts 3 more votes (Predictive Intelligence).");
                     }
-                    count += extraVotes(p, o);  // Gila the Silvertongue
+                    if (!absolGov) count += extraVotes(p, o);  // Gila the Silvertongue
                     if (odlynn) {
                         count += 6;
                         say(p, pn(p) + " casts 6 more votes (Odlynn Myrr).");
                     }
                 }
-                if (count > 0 && zeal(p) > 0 && !(G.fixes >= 30 && repGov)) {  // Zeal: 1 more vote per player in the game ((fixes 30) not under Representative Government)
+                if (miscountBonus) {  // (0.81.0) Absol's Miscount Disclosed
+                    int k = 0;
+                    for (int q = 0; q < n; ++q)
+                        if (!G.players[size_t(q)].eliminated) ++k;
+                    count += k;
+                    say(p, pn(p) + " casts " + std::to_string(k) + " more votes (Miscount Disclosed).");
+                }
+                if (count > 0 && zeal(p) > 0 && !(G.fixes >= 30 && repGov) && !absolGov) {  // Zeal: 1 more vote per player in the game ((fixes 30) not under Representative Government)
                     count += zeal(p);
                     say(p, pn(p) + " casts " + std::to_string(zeal(p)) + " more votes (Zeal).");
                 }
@@ -730,12 +810,15 @@ void Rules::addLaw(int a, int owner, int target) {
     l.target = int16_t(target);
     G.laws.push_back(l);
     say(owner, std::string(kAgendas[a].name) + " is now a law" + (owner >= 0 ? " held by " + pn(owner) : std::string()) + ".");
-    if (agKey(a, "travel_ban") || agKey(a, "wormhole_recon") || agKey(a, "nexus")) computeAdjacency(G);
+    if (agKey(a, "travel_ban") || agKey(a, "wormhole_recon") || agKey(a, "nexus") || agKey(a, "absol_travelban") || agKey(a, "absol_recon") ||
+        agKey(a, "absol_nexus"))
+        computeAdjacency(G);
     for (int q = 0; q < G.numPlayers; ++q) agendaSecrets(q);
     // (fixes 25, owner's faction debug pass) 3 or more laws: the Firmament meets another player's Dictate Policy (after
     // everyone's own scoring, so one scored just now counts too)
     if (G.fixes >= 25 && G.laws.size() >= 3)
         for (int q = 0; q < G.numPlayers; ++q) plotsWithinPlots(q, "dp");
+    if (monumentsOn()) monLawEntered();  // (0.82.0) the Keleres monument: "After a law enters play"
 }
 
 void Rules::discardLaw(int i, const std::string& why) {
@@ -744,6 +827,7 @@ void Rules::discardLaw(int i, const std::string& why) {
     G.laws.erase(G.laws.begin() + i);
     G.agendaDiscard.push_back(l.agenda);
     say(-1, std::string(kAgendas[l.agenda].name) + " is discarded (" + why + ").");
+    absolLawLeaves(l, true);  // (0.81.0)
     if (agKey(l.agenda, "censure") && l.owner >= 0) loseVP(l.owner, 1, "lost Political Censure");
     if (agKey(l.agenda, "travel_ban") || agKey(l.agenda, "wormhole_recon") || agKey(l.agenda, "nexus")) computeAdjacency(G);
     if (agKey(l.agenda, "classified") && l.target >= 0) {
@@ -759,6 +843,7 @@ void Rules::liftLaw(int agenda) {
         if (G.laws[i].agenda != agenda) continue;
         const Law l = G.laws[i];
         G.laws.erase(G.laws.begin() + long(i));
+        absolLawLeaves(l, false);  // (0.81.0)
         if (agKey(l.agenda, "censure") && l.owner >= 0) loseVP(l.owner, 1, "lost Political Censure");
         if (agKey(l.agenda, "travel_ban") || agKey(l.agenda, "wormhole_recon") || agKey(l.agenda, "nexus")) computeAdjacency(G);
         if (agKey(l.agenda, "classified") && l.target >= 0) {
@@ -777,12 +862,19 @@ bool Rules::gainableTech(int p, int t) const {
     if (d.source == Source::Base || d.source == Source::PoK) return true;
     if (G.fixes < 30 || d.faction < 0) return false;
     if (d.source == Source::ThundersEdge) return std::strcmp(kFactions[d.faction].key, "obsidian") != 0;
-    return d.source == Source::Discordant;
+    return d.source == Source::Discordant || d.source == Source::BlueReverie;  // (0.83.0: Blue Reverie factions' own too)
 }
 
 // ------------------------------------------------------------------ resolving
 void Rules::resolveOutcome(int a, int o, const std::vector<int>& votedFor, const std::vector<int>& votes) {
     const int n = G.numPlayers;
+    // (0.83.0) Living Metals (Atokera): an agenda outcome can't destroy / remove their units or put another player's on their planets
+    struct LivingMetals {
+        int& v;
+        int was;
+        ~LivingMetals() { v = was; }
+    } livingMetals{livingMetals_, livingMetals_};
+    if (brOn()) livingMetals_ = 1;
     const char* k = kAgendas[a].key;
     auto is = [&](const char* x) { return !std::strcmp(k, x); };
     const bool against = kAgendas[a].elect == Elect::ForAgainst && o == 1;
@@ -813,7 +905,7 @@ void Rules::resolveOutcome(int a, int o, const std::vector<int>& votedFor, const
         if (G.fixes >= 25 && p < G.numPlayers) plotsWithinPlots(p, "dtd");
     };
     if (kAgendas[a].elect == Elect::Player) debated(o);
-    if (kAgendas[a].elect == Elect::Planet || kAgendas[a].elect == Elect::NonHomePlanet) {
+    if (kAgendas[a].elect == Elect::Planet || kAgendas[a].elect == Elect::NonHomePlanet || kAgendas[a].elect == Elect::NonHome) {
         debated(G.planets[o].owner);
         // (fixes 25, owner's faction debug pass) Captain Aroz: a planet in a system with your ships counts as yours for
         // scoring secret objectives - the elected planet too
@@ -822,6 +914,18 @@ void Rules::resolveOutcome(int a, int o, const std::vector<int>& votedFor, const
                 if (q != G.planets[o].owner && !G.players[size_t(q)].eliminated && commanderUsable(G, q, "firmament") &&
                     hasShips(G, q, G.planets[o].system))
                     debated(q);
+    }
+
+    // (0.82.0) Monuments+'s laws (rules_monuments3.cpp), in either deck
+    if (kAgendas[a].source == Source::Monuments) {
+        if (!against) monLawResolve(a, o);
+        else G.agendaDiscard.push_back(int16_t(a));
+        return;
+    }
+    // (0.81.0) Absol's Agendas: their own code (rules_absol.cpp)
+    if (kAgendas[a].source == Source::Absol) {
+        absolResolve(a, o, votedFor, votes);
+        return;
     }
 
     // ---------------- laws
@@ -994,55 +1098,7 @@ void Rules::resolveOutcome(int a, int o, const std::vector<int>& votedFor, const
                 }
                 optionalResearch_ = false;
             } else {
-                int mec = G.mecatol();
-                for (int q = 0; q < n; ++q) {
-                    for (int t = 0; t < kUnitTypes; ++t)
-                        if (G.systems[mec].space[q].n[t]) destroyUnits(q, UnitType(t), G.systems[mec].space[q].n[t], mec, -1, -1, "Ixthian Artifact");
-                    for (int16_t x : G.systems[mec].planets)
-                        for (int t = 0; t < kUnitTypes; ++t)
-                            if (G.planets[x].units[q].n[t]) destroyUnits(q, UnitType(t), G.planets[x].units[q].n[t], mec, x, -1, "Ixthian Artifact");
-                }
-                // Each player chooses 3 of their units to destroy in each system next to
-                // Mecatol Rex (owner confirmed: the player's choice, RULES-CHECK 0.4.0 #6).
-                static const UnitType order[] = {UnitType::Fighter, UnitType::Infantry, UnitType::Destroyer, UnitType::Mech,
-                                                 UnitType::Cruiser, UnitType::PDS, UnitType::Carrier, UnitType::Dreadnought,
-                                                 UnitType::SpaceDock, UnitType::Flagship, UnitType::Flagship2, UnitType::WarSun};
-                for (int16_t s : G.systems[mec].adj) {
-                    const SystemState& sy = G.systems[s];
-                    for (int q : clockwiseFrom(G, G.speaker)) {
-                        // locations: 0 = space area, 1.. = planets of the system
-                        std::vector<Option> opts;
-                        int total = 0;
-                        for (UnitType t : order) {
-                            for (int loc = 0; loc <= int(sy.planets.size()); ++loc) {
-                                const Force& f = loc == 0 ? sy.space[q] : G.planets[sy.planets[loc - 1]].units[q];
-                                int k = f.count(t);
-                                total += k;
-                                for (int i = 0; i < k && i < 3; ++i)
-                                    opts.push_back({loc * 64 + int(t) * 4 + i,
-                                                    std::string(unitTypeName(t)) +
-                                                        (loc == 0 ? " (space)" : " on " + planetName(sy.planets[loc - 1])),
-                                                    ""});
-                            }
-                        }
-                        if (total == 0) continue;
-                        std::vector<int> picks;
-                        if (total <= 3) {
-                            for (const Option& o : opts) picks.push_back(o.id);
-                        } else {
-                            picks = pickMany(q, Tag::AgendaChoice, "Ixthian Artifact: destroy 3 of your units in " + sysName(s), opts, 3, 3,
-                                             "The artifact failed: every player loses 3 units in each system next to Mecatol Rex.");
-                        }
-                        int kill[4][kUnitTypes] = {};
-                        for (int id : picks) ++kill[id / 64][(id % 64) / 4];
-                        for (int loc = 0; loc <= int(sy.planets.size()) && loc < 4; ++loc)
-                            for (int t = 0; t < kUnitTypes; ++t)
-                                if (kill[loc][t])
-                                    destroyUnits(q, UnitType(t), kill[loc][t], s, loc == 0 ? -1 : sy.planets[loc - 1], -1, "Ixthian Artifact");
-                        removeExcessCapacity(q, s);
-                    }
-                }
-                checkEliminations();
+                ixthianFails();
             }
         }
     } else if (is("cladenstine")) {
@@ -1270,6 +1326,61 @@ void Rules::resolveOutcome(int a, int o, const std::vector<int>& votedFor, const
     }
 }
 
+// Ixthian Artifact rolled low (PoK 1-5, Absol's 1-6): every unit in Mecatol Rex's system is destroyed, and each player loses 3 of
+// their units in each system next to it.
+void Rules::ixthianFails() {
+    const int n = G.numPlayers;
+    int mec = G.mecatol();
+    for (int q = 0; q < n; ++q) {
+        for (int t = 0; t < kUnitTypes; ++t)
+            if (G.systems[mec].space[q].n[t]) destroyUnits(q, UnitType(t), G.systems[mec].space[q].n[t], mec, -1, -1, "Ixthian Artifact");
+        for (int16_t x : G.systems[mec].planets)
+            for (int t = 0; t < kUnitTypes; ++t)
+                if (G.planets[x].units[q].n[t]) destroyUnits(q, UnitType(t), G.planets[x].units[q].n[t], mec, x, -1, "Ixthian Artifact");
+    }
+    // Each player chooses 3 of their units to destroy in each system next to
+    // Mecatol Rex (owner confirmed: the player's choice, RULES-CHECK 0.4.0 #6).
+    static const UnitType order[] = {UnitType::Fighter, UnitType::Infantry, UnitType::Destroyer, UnitType::Mech,
+                                     UnitType::Cruiser, UnitType::PDS, UnitType::Carrier, UnitType::Dreadnought,
+                                     UnitType::SpaceDock, UnitType::Flagship, UnitType::Flagship2, UnitType::WarSun};
+    for (int16_t s : G.systems[mec].adj) {
+        const SystemState& sy = G.systems[s];
+        for (int q : clockwiseFrom(G, G.speaker)) {
+            // locations: 0 = space area, 1.. = planets of the system
+            std::vector<Option> opts;
+            int total = 0;
+            for (UnitType t : order) {
+                for (int loc = 0; loc <= int(sy.planets.size()); ++loc) {
+                    const Force& f = loc == 0 ? sy.space[q] : G.planets[sy.planets[loc - 1]].units[q];
+                    int k = f.count(t);
+                    total += k;
+                    for (int i = 0; i < k && i < 3; ++i)
+                        opts.push_back({loc * 64 + int(t) * 4 + i,
+                                        std::string(unitTypeName(t)) +
+                                            (loc == 0 ? " (space)" : " on " + planetName(sy.planets[loc - 1])),
+                                        ""});
+                }
+            }
+            if (total == 0) continue;
+            std::vector<int> picks;
+            if (total <= 3) {
+                for (const Option& o : opts) picks.push_back(o.id);
+            } else {
+                picks = pickMany(q, Tag::AgendaChoice, "Ixthian Artifact: destroy 3 of your units in " + sysName(s), opts, 3, 3,
+                                 "The artifact failed: every player loses 3 units in each system next to Mecatol Rex.");
+            }
+            int kill[4][kUnitTypes] = {};
+            for (int id : picks) ++kill[id / 64][(id % 64) / 4];
+            for (int loc = 0; loc <= int(sy.planets.size()) && loc < 4; ++loc)
+                for (int t = 0; t < kUnitTypes; ++t)
+                    if (kill[loc][t])
+                        destroyUnits(q, UnitType(t), kill[loc][t], s, loc == 0 ? -1 : sy.planets[loc - 1], -1, "Ixthian Artifact");
+            removeExcessCapacity(q, s);
+        }
+    }
+    checkEliminations();
+}
+
 // Galactic Crisis Pact: everyone may use the elected card's secondary for free.
 void Rules::secondaryForFree(int p, int card) {
     if (G.players[p].eliminated || card == 0) {
@@ -1304,6 +1415,10 @@ void Rules::applyPendingEffects() {
         const char* k = kAgendas[pe.agenda].key;
         for (int q = 0; q < G.numPlayers; ++q) {
             if (!((pe.players >> q) & 1) || G.players[q].eliminated) continue;
+            if (kAgendas[pe.agenda].source == Source::Absol) {  // (0.81.0)
+                absolPending(pe, q);
+                continue;
+            }
             if (!std::strcmp(k, "arms_reduction")) {
                 for (int x : controlledPlanets(G, q))
                     if (planetHasSkip(G, x)) G.planets[x].exhausted = true;
@@ -1375,6 +1490,33 @@ void Rules::politicsPeek(int p) {
     G.players[size_t(p)].agendaSeen[0] = G.players[size_t(p)].agendaSeen[1] = -1;
     for (size_t i = 0; i < toTop.size() && i < 2; ++i) G.players[size_t(p)].agendaSeen[i] = int16_t(toTop[i]);
     say(p, pn(p) + " looks at the top of the agenda deck.");
+}
+
+// (0.82.0, owner 2026-11-22: "check if other cards allow predictions besides riders") every outcome each player predicted on
+// the agenda being resolved, as a plain list of outcomes per player: action card riders (preds = predictions_: card, outcome
+// pairs), the Keleres Rider, Kyro and Edyn Riders, Council Black Site (Tarrock, also through Cordo Haved), Galactic Threat,
+// Odlynn Myrr, Radiance and Unity Algorithm. Read before tarrockCheck / nekroResolve / the riders clear them.
+void Rules::allPredictions(std::vector<int> out[kMaxPlayers], const std::vector<int>* preds) const {
+    for (int q = 0; q < kMaxPlayers; ++q) {
+        out[q].clear();
+        for (size_t i = 0; i + 1 < preds[q].size(); i += 2) out[q].push_back(preds[q][i + 1]);
+        if (riderGuess_[q] >= 0) out[q].push_back(riderGuess_[q]);      // Keleres Rider
+        if (dsRiderGuess_[q] >= 0) out[q].push_back(dsRiderGuess_[q]);  // Kyro Rider
+        if (dsEdynRider_[q] >= 0) out[q].push_back(dsEdynRider_[q]);    // Edyn Rider
+        if (dsUnityGuess_[q] >= 0) out[q].push_back(dsUnityGuess_[q]);  // Unity Algorithm (a copy)
+        if (brGuess_[q] >= 0) out[q].push_back(brGuess_[q]);            // (0.83.0) Ordagka (Atokera commander)
+    }
+    for (const auto& pr : tarrockPicks_)
+        if (pr.first >= 0 && pr.first < kMaxPlayers) out[pr.first].push_back(pr.second);
+    if (nekroGuess_ >= 0 && nekroGuess_ != kNoVote) {
+        const int n = playerOfFaction(G, "nekro");
+        if (n >= 0) out[n].push_back(nekroGuess_);
+    }
+    if (odlynnUser_ >= 0 && odlynnUser_ < kMaxPlayers && odlynnGuess_ >= 0) out[odlynnUser_].push_back(odlynnGuess_);
+    if (dsEdynGuess_ >= 0) {  // Radiance (the Edyn)
+        const int ed = playerOfFaction(G, "edyn");
+        if (ed >= 0) out[ed].push_back(dsEdynGuess_);
+    }
 }
 
 }  // namespace ti

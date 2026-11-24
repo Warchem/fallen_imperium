@@ -297,6 +297,8 @@ const Goals& aiGoals(const Game& g, int p) {
             }
         } else if (keyIs(o, "pem")) G.production += step;
         else if (keyIs(o, "otf")) G.groundStack += step;
+        else if (keyIs(o, "tam")) G.topple += step;           // (0.82.0) Topple a Monument
+        else if (keyIs(o, "dagw")) G.guardMonument += step;   // (0.82.0) Defend a Great Work
         // ---- technology
         else if (keyIs(o, "develop") || keyIs(o, "revolutionize")) G.upgrade += step;
         else if (keyIs(o, "ans")) G.factionTech += step;

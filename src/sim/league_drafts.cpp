@@ -12,6 +12,9 @@
 #include "gfx/canvas.h"
 #include "ui/hits.h"
 #include "ui/pcolors.h"
+#include "ui/emblems.h"
+#include "ui/unlock_banner.h"
+#include "engine/data.h"
 
 namespace {
 float testScale() {  // (as uitest.cpp: TI4_SCALE=2.25 draws as on a 1080p monitor)
@@ -189,7 +192,96 @@ int leagueDraftScreens(const std::string& outDir) {
     }
     shot("league_rivals", [&](Canvas& c, uint32_t now) { drawRivals(c, gold, cards, 1, now); });
     shot("league_emblems", [&](Canvas& c, uint32_t now) { drawEmblemSheet(c, now); });
+    // (0.85.2) the Blue Reverie leagues: their cards in the ladder (open - the faction a secret), a win (the faction revealed)
+    {
+        std::vector<LadderEntry> open = ladder;
+        for (LadderEntry& e : open)
+            if (std::string(e.def->id) == "gold") e.state = kFinished;
+            else if (std::string(e.def->after ? e.def->after : "") == "gold" && e.state == kLocked) e.state = kOpen;
+        for (const char* id : {"forge", "arsenal", "necropolis"}) {
+            const std::string nm = std::string("league_ladder_br_") + id;
+            shot(nm.c_str(), [&](Canvas& c, uint32_t now) { drawLadder(c, open, indexOf(open, id), now); });
+        }
+        shot("league_ladder_b_br", [&](Canvas& c, uint32_t now) { drawLadderMap(c, open, indexOf(open, "arsenal"), now); });
+        if (const league::LeagueDef* ars = league::find("arsenal")) {
+            WonView bw;
+            bw.def = ars;
+            bw.points = 33, bw.games = 7;
+            shot("league_won_br", [&](Canvas& c, uint32_t now) { drawWon(c, bw, now); });
+        }
+    }
     hits::clear();
     std::printf("uitest: %d league draft screens\n", n);
+    return n;
+}
+
+// 0.81.0 drafts (owner 2026-11-21 09:20): the unlock banner for each kind of unlock, over the Tournament's backdrop, on a 16:9
+// screen (TI4_UITEST_ONLY=unlockdrafts; frames TI4_UNLOCK_FRAMES at 80 ms from the start for a GIF; stills at 2.4 s).
+int unlockDraftScreens(const std::string& outDir) {
+    const float sc = testScale();
+    const int W = std::getenv("TI4_UNLOCK_W") ? std::atoi(std::getenv("TI4_UNLOCK_W")) : 854;
+    const int frames = std::getenv("TI4_UNLOCK_FRAMES") ? std::max(0, std::atoi(std::getenv("TI4_UNLOCK_FRAMES"))) : 0;
+    std::vector<std::pair<const char*, unlockbanner::Unlock>> shots;
+    {
+        unlockbanner::Unlock u;
+        u.kind = unlockbanner::kRival;
+        u.category = "RIVAL COMMANDER";
+        const league::RivalDef* r = league::rivalsOf("bronze").empty() ? nullptr : league::rivalsOf("bronze")[0];
+        u.name = r ? r->name : "Speaker Ollo Mire";
+        u.faction = r ? ti::findFaction(r->faction) : ti::findFaction("xxcha");
+        u.line = "Now a commander you can seat in a Casual Game.";
+        u.source = "Beaten in the Bronze League";
+        shots.push_back({"unlock_rival", u});
+    }
+    {
+        unlockbanner::Unlock u;
+        u.kind = unlockbanner::kColour;
+        u.category = "FACTION COLOUR";
+        u.colour = 23;
+        u.name = pcolours::info(23).name;
+        u.line = "A new colour for your fleets, borders and structures.";
+        u.source = "Earned by finishing the Ultimate League";
+        shots.push_back({"unlock_colour", u});
+    }
+    {
+        unlockbanner::Unlock u;
+        u.kind = unlockbanner::kEmblem;
+        u.category = "EMBLEM";
+        u.emblem = "gold";
+        u.emblemColour = league::find("gold") ? league::find("gold")->color : rgb(240, 200, 80);
+        u.name = emblems::name("gold");
+        u.line = "Shown under the title menu, for everyone to see.";
+        u.source = "Earned by winning the Gold League";
+        shots.push_back({"unlock_emblem", u});
+    }
+    {
+        unlockbanner::Unlock u;
+        u.kind = unlockbanner::kFaction;
+        u.category = "FACTION";
+        u.name = "Uydai Conclave";
+        u.faction = ti::findFaction("nivyn");  // (draft: a stand-in portrait until the Blue Reverie portraits are drawn)
+        u.line = "A Blue Reverie faction, now in the faction picker.";
+        u.source = "Earned by winning the Uydai Conclave's league";
+        shots.push_back({"unlock_faction", u});
+    }
+    int n = 0;
+    for (const auto& s : shots) {
+        for (int f = 0; f <= frames; ++f) {
+            const uint32_t t = f < frames ? uint32_t(f) * 80u : 2400u;
+            const uint32_t now = 5000u + t;
+            pcolours::setNow(now);
+            Canvas c(W, 480, sc);
+            hits::clear();
+            leagueui::drawBackdrop(c, now);
+            unlockbanner::draw(c, s.second, t, now);
+            char buf[96];
+            if (f < frames) std::snprintf(buf, sizeof buf, "/%s_%03d.ppm", s.first, f);
+            else std::snprintf(buf, sizeof buf, "/%s.ppm", s.first);
+            savePpm(c, outDir + buf);
+            ++n;
+        }
+    }
+    hits::clear();
+    std::printf("uitest: %d unlock banner drafts\n", n);
     return n;
 }

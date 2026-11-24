@@ -15,7 +15,7 @@ class Canvas;
 
 namespace playarea {
 
-enum class Kind { Note, Hero, Techs, Objective, Policy, Order, Omen, Sowing, Relic, Law };
+enum class Kind { Note, Hero, Techs, Objective, Policy, Order, Omen, Sowing, Relic, Law, Superweapon };
 
 struct Item {
     Kind kind = Kind::Note;

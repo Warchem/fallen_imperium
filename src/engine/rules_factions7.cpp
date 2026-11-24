@@ -294,7 +294,9 @@ void Rules::myruVos25(int p, int sys) {
         G.fx.myruThrough = int8_t(p);
         const int bonus = moveBonusMax(G, p);
         for (size_t s = 0; s < G.systems.size() && !canMove; ++s) {
-            if (int(s) == sys || (G.systems[s].hasToken(p) && !G.fx.dominusOrb && !(heroActive(G, p, "nomad") && flagshipIn(G, p, int(s))))) continue;
+            if (int(s) == sys ||
+                (G.systems[s].hasToken(p) && !G.fx.dominusOrb && !(heroActive(G, p, "nomad") && flagshipIn(G, p, int(s))) && !freeholdAt(G, p, int(s))))
+                continue;
             const Force& f = G.systems[s].space[size_t(p)];
             auto check = [&](UnitType t) {
                 if (shipReachNoMyru(G, p, int(s), sys, t, bonus).ok) canMove = true;
@@ -650,6 +652,8 @@ std::vector<Option> Rules::factionActionOptions9(int p) {
         if (free) add(Ab::FirmamentHero, "Hero: Sharsiss", "Place a plot card with another player's token, then another token on one of your plots. Purged afterwards.");
     }
     if (fac(p, "obsidian") && heroUnlocked(G, p)) add(Ab::ObsidianHero, "Hero: Sharsiss Hollow", "Ready all your planets. Purged afterwards.");
+    if (brOn()) brActionOptions(p, o);  // (0.84.0) Classified Developments (Belkosea)
+    if (brOn()) pharActionOptions(p, o);  // (0.85.0) Avhkan's unlocking ACTION (Pharad'n)
     return o;
 }
 
@@ -697,6 +701,8 @@ bool Rules::factionAction9(int p, Ab ab) {
             return true;
         }
         default:
+            if (int(ab) >= int(Ab::PharTombs)) return pharAction(p, ab);    // (0.85.0) the Pharad'n (rules_br3.cpp)
+            if (int(ab) >= int(Ab::BrClassified)) return brAction(p, ab);  // (0.84.0) Blue Reverie (rules_br2.cpp)
             if (int(ab) >= int(Ab::DsZealous)) return dsAction(p, ab);  // Discordant Stars (rules_ds.cpp)
             return eventAction(p, ab);  // galactic events (rules_events.cpp)
     }

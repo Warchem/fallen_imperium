@@ -14,7 +14,9 @@
 #include "game/profile.h"
 #include "game/session.h"
 #include "ui/hits.h"
+#include "ui/emblems.h"
 #include "ui/pcolors.h"
+#include "ui/unlock_banner.h"
 
 std::unique_ptr<Scene> makeGameScene(std::unique_ptr<GameSession> session);
 
@@ -99,6 +101,7 @@ public:
                 k.def = r;
                 const leaguerun::Career c = leaguerun::career(r->id);
                 k.games = c.games, k.youAbove = c.youAbove, k.theyAbove = c.theyAbove, k.broken = c.broken;
+                k.commander = leaguerun::beaten(r->id);
                 cards_.push_back(k);
             }
     }
@@ -148,6 +151,82 @@ public:
 private:
     const league::LeagueDef* d_;
 };
+
+// ------------------------------------------------------------------ unlocked (0.80.11)
+// The unlock banners, one after another (A when each has come in): a rival commander beaten for the first time, a league's emblem
+// and colour the first time it is won. Drawn on the whole width of the screen.
+class UnlockScene : public Scene {
+public:
+    explicit UnlockScene(std::vector<unlockbanner::Unlock> q) : q_(std::move(q)) {}
+    void update(App& app, const Input& in, uint32_t now) override {
+        if (!started_) started_ = true, t0_ = now, audio::play(audio::Sfx::Victory, 0.7f);
+        if ((in.pressed(Btn::A) || in.pressed(Btn::B) || in.pressed(Btn::Menu)) && unlockbanner::ready(now - t0_)) {
+            if (++at_ >= q_.size()) {
+                app.pop();
+                return;
+            }
+            t0_ = now;
+            audio::play(audio::Sfx::Victory, 0.7f);
+        }
+    }
+    bool animating() const override { return true; }
+    bool wide() const override { return true; }
+    void draw(App&, Canvas& c, uint32_t now) override {
+        pcolours::setNow(now);
+        setPickTarget(nullptr);
+        c.fillRect(0, 0, c.width(), 480, rgb(4, 3, 12));
+        if (at_ < q_.size()) unlockbanner::draw(c, q_[at_], started_ ? now - t0_ : 0, now);
+        hits::addAction(Rect{0, 0, c.width(), 480}, [] {});
+    }
+
+private:
+    std::vector<unlockbanner::Unlock> q_;
+    size_t at_ = 0;
+    bool started_ = false;
+    uint32_t t0_ = 0;
+};
+
+// what this game unlocked: the rivals beaten for the first time, and a first win's emblem and colour
+std::vector<unlockbanner::Unlock> unlocksOf(const Outcome& o) {
+    std::vector<unlockbanner::Unlock> v;
+    const league::LeagueDef* d = league::find(o.league);
+    for (const std::string& id : o.newCommanders) {
+        const league::RivalDef* r = league::rival(id);
+        if (!r) continue;
+        unlockbanner::Unlock u;
+        u.kind = unlockbanner::kRival;
+        u.category = "RIVAL COMMANDER";
+        u.name = r->name;
+        u.faction = r->faction && *r->faction ? ti::findFaction(r->faction) : -1;
+        u.line = "You finished above them in a league game. Now you can seat them in a Casual Game - and they remember you.";
+        u.source = d ? std::string(d->name) + ", game " + std::to_string(o.game + 1) : std::string();
+        v.push_back(u);
+    }
+    if (o.ended == 1 && o.firstWin && d) {
+        if (d->emblem && *d->emblem) {
+            unlockbanner::Unlock u;
+            u.kind = unlockbanner::kEmblem;
+            u.category = "EMBLEM";
+            u.emblem = d->emblem;
+            u.emblemColour = d->color;
+            u.name = emblems::name(d->emblem);
+            u.line = "Shown under the title menu, for everyone to see.";
+            u.source = std::string("Earned by winning the ") + d->name;
+            v.push_back(u);
+        }
+        if (d->colour >= 0) {
+            unlockbanner::Unlock u;
+            u.kind = unlockbanner::kColour;
+            u.category = "FACTION COLOUR";
+            u.colour = d->colour;
+            u.name = pcolours::info(d->colour).name;
+            u.line = "A new colour for your fleets, borders and structures - pick it in Casual Game.";
+            u.source = std::string("Earned by winning the ") + d->name;
+            v.push_back(u);
+        }
+    }
+    return v;
+}
 
 // ------------------------------------------------------------------ the league won or lost
 class EndScene : public Scene {
@@ -213,6 +292,8 @@ public:
             const Outcome o = o_;
             app.pop();
             if (o.ended) app.push(std::unique_ptr<Scene>(new EndScene(o)));
+            std::vector<unlockbanner::Unlock> u = unlocksOf(o);  // (0.80.11) the unlock banners come first
+            if (!u.empty()) app.push(std::unique_ptr<Scene>(new UnlockScene(std::move(u))));
         }
     }
     bool animating() const override { return true; }
@@ -265,6 +346,7 @@ public:
             move(in);
             if (in.pressed(Btn::A) && v_.sel >= 0 && v_.sel < int(v_.offer.size())) {
                 const int f = v_.offer[size_t(v_.sel)];
+                if (lockedForYou(f, now)) return;
                 leaguerun::setKeptFaction(d_->id, f);
                 leaguerun::dealFactions(d_, table_, f, seed_);
                 start(app, -1, now);
@@ -281,7 +363,8 @@ public:
         DraftSeat& cur = v_.order[size_t(v_.current)];
         if (cur.you) {
             move(in);
-            if (in.pressed(Btn::A) && v_.sel >= 0 && v_.sel < int(v_.offer.size()) && free(v_.offer[size_t(v_.sel)])) {
+            if (in.pressed(Btn::A) && v_.sel >= 0 && v_.sel < int(v_.offer.size()) && free(v_.offer[size_t(v_.sel)]) &&
+                !lockedForYou(v_.offer[size_t(v_.sel)], now)) {
                 cur.faction = v_.offer[size_t(v_.sel)];
                 audio::play(audio::Sfx::Confirm);
                 advance(now);
@@ -309,6 +392,14 @@ public:
     }
 
 private:
+    // (0.85.2) a Blue Reverie faction not earned yet: say how to earn it
+    bool lockedForYou(int f, uint32_t now) {
+        if (std::find(v_.locked.begin(), v_.locked.end(), f) == v_.locked.end()) return false;
+        const league::LeagueDef* by = league::find(profile::factionLeague(ti::kFactions[f].key));
+        err_.show("Finish the " + std::string(by ? by->name : "its league") + " to play as the " + ti::factionShortName(f) + ".", now);
+        audio::play(audio::Sfx::Back);
+        return true;
+    }
     bool free(int f) const {
         for (const DraftSeat& s : v_.order)
             if (s.faction == f) return false;
@@ -495,7 +586,7 @@ public:
             if (e.state == kLocked) {
                 toast_.show(std::string("Locked: ") + (e.def->unlockText && *e.def->unlockText ? e.def->unlockText : "not open yet"), now);
             } else if (e.def->builder) {
-                toast_.show("The Tournament Builder comes in a later build.", now);
+                toast_.show("The Custom League (Tournament Builder) comes in Version 1.1.", now);
             } else {
                 audio::play(audio::Sfx::Confirm);
                 app.push(std::unique_ptr<Scene>(new HubScene(e.def)));

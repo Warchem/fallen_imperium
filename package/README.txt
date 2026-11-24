@@ -1,6 +1,229 @@
 FALLEN IMPERIUM - Miyoo Mini Plus homebrew
 (an unofficial fan project of Twilight Imperium)
-Version 0.80.0 - Pre-Beta
+Not affiliated with or endorsed by Asmodee or Fantasy Flight Games.
+Version 0.86.0 - Pre-Beta
+
+NEW IN 0.86.0 - bots that defend what they hold, Blue Reverie voices
+  - Competitive bots now defend their systems - Mecatol Rex, their home,
+    their best planets - but only against an attack that is really coming.
+    Before it moves, a Competitive bot works out what each rival with ships
+    nearby would do on its own turn (with that rival's own way of choosing),
+    and which fleet a rival is gathering over several turns toward its
+    systems. It sends ships to guard a system only when one of those plans
+    attacks it, when the guard would really change how that fight goes, and
+    when what it would lose is worth more than its other moves. A big fleet
+    parked nearby that has better things to do is not guarded against.
+    In a test (a strong fleet gathering next to a lightly held Mecatol Rex,
+    20 games), the holder now reinforces it first in 8 games (never before)
+    and still holds it after the round in 9 (7 before).
+  - The other difficulty levels and the A.I. difficulty play as before.
+  - Voices for the Atokera, the Belkosea and the Pharad'n: their made-up
+    tongues now play under their lines over the codec, in deals and in
+    combat, like every other faction's.
+
+NEW IN 0.85.3 - secret factions, the Pharad'n tombs
+  - The Blue Reverie factions are secret unlockables now: the Modules screen
+    no longer has a Blue Reverie box. Until you finish a faction's league
+    nobody plays it - not you, not the bots - and the faction list shows a
+    "?" there. Once unlocked it joins every game you set up (you and the
+    bots may both play it). Options > "Unlock everything (testing)" opens
+    them all.
+  - The Career's three Blue Reverie leagues keep their factions a secret
+    until you win (the reward reads "A secret faction").
+  - Pharad'n tombs: only the Pharad'n purge a tomb (and capture 2 infantry)
+    when they take its planet; another player taking it leaves it there, as
+    the card says. Games started in 0.85.0 - 0.85.2 keep the old way.
+
+NEW IN 0.85.2 - the Blue Reverie leagues
+  - Three new advanced leagues in the Career, open once you finish the Gold
+    League - each one unlocks a secret Blue Reverie faction for you:
+      Living Forge Synod   Absol's agendas and Competitive politicians in a
+                           race to 12 points
+      Arsenal Directive    a war economy with Thunder's Edge and Monuments+:
+                           no free refills, no X-1
+      Necropolis Eternal   five seats, races to 14, Uncharted Space and
+                           Monuments+, you choose the galaxy
+    Each has its own rival commanders and its own emblem.
+  - New descriptions for the Silver, Gold, Ultimate, Grand, Space Quest '26,
+    SCPT Open and Caco Invitationals leagues.
+
+NEW IN 0.85.1 - your profile folder: progress kept between versions
+  - On Windows and the Steam Deck your Career progress, unlocks, options and
+    the autosave now live in a folder outside the game's folder (Windows:
+    Saved Games\Fallen Imperium; Steam Deck: ~/.local/share/Fallen
+    Imperium), so a new version keeps them. The first start brings them over
+    from your older version by itself (the game's folder or an older copy
+    beside it) and says so on the title screen. Options > "Your profile
+    folder" shows where it is. The Miyoo keeps its files next to the game.
+
+NEW IN 0.85.0 - Blue Reverie: the Pharad'n Order
+  - The third Blue Reverie faction (Modules > "Blue Reverie"): an undying
+    empire that pays for its infantry with captured soldiers - and captures
+    its own fallen. They start with tomb tokens on up to 14 planets; taking
+    one opens it and captures 2 infantry. Everything on their cards with the
+    cards' exact wording: Ancient Empire, Dark Purpose, Mark of Pharad'n,
+    Immortal I / II, the Sacrotitan mech, the Sedtra flagship, Nokash,
+    Avhkan, Pharad'n the Immortal, Death Binding, the Reality-Field
+    Impactor, the Hidden Vaults breakthrough (Thunder's Edge games) and,
+    with Monuments+, the Black Pyramid. My readings and your answers:
+    RULES-CHECK.txt, P1-P13 (Nokash can be sold in Negotiations; Avhkan
+    hits either side's infantry; the Impactor's anomaly is picked on the
+    map; since 0.85.3 only the Pharad'n purge a tomb when they take it).
+  - Tombs on the board: a small stepped pyramid with a glowing doorway at
+    the foot of its planet (map) or beside it (expanded tile). The faction
+    sheet's tray counts their captured infantry and the tombs still closed.
+  - Their emblem, Retrowave / Voidfall home planet (Phar, a desert tomb
+    world), a codec portrait, their own lines and the Black Pyramid's
+    picture; the bots play them with their own strategy and two faction
+    traits (Tomb Raiders, Endless Legion).
+
+NEW IN 0.84.1 - your 0.84.0 notes
+  - Negotiations: a SEND OFFER button at the top right of the offer screen,
+    always in view (it was the last row of the scrolling list). Click it or
+    press START / Enter; it is grey while the offer is empty or not allowed.
+    The old row at the end of the list still works too.
+  - The superweapon megastructure no longer floats: the cannon sits in a
+    mount ring on a brutalist breech house to its right, with power lines
+    that glow as it charges.
+  - Superweapon tokens stand on the right edge of their planet, above the
+    units' badges (in 0.84.0 a "2D" badge could hide them); in the expanded
+    tile they sit just off the planet's edge with their name.
+
+NEW IN 0.84.0 - Blue Reverie: the Belkosea Allied States
+  - The second Blue Reverie faction (Modules > "Blue Reverie"): an arms race
+    of five superweapons - Availyn, Caled, Glatison, Grom and Mors - built on
+    their planets with Classified Developments and fired "at any time" (on
+    their turn, or at the start of each round of a combat they fight).
+    Everything on their cards with the cards' exact wording: Arrogance, the
+    Wyvern fighters that fight on the ground, the Uzean Wardog mech, the
+    Ascendancy flagship, Razalka Gris, Ciphus Gault, Spike, Mercenary
+    Sortie, Synchrony Matrix, S.O.L.G. Industries Group on Conviction, the
+    Trinity Stockpile breakthrough (Thunder's Edge games) and, with
+    Monuments+, the Armageddon Project. My readings: RULES-CHECK.txt, S1-S18.
+  - Superweapons on the board: a grey sphere with a glowing slit on its
+    planet (map, expanded tile), in their play area, and in the faction
+    sheet's tray - Y opens the Superweapons window: the five cards round the
+    megastructure firing its plasma cannon.
+  - Caled's line: while you pick a system to activate (or are asked to use a
+    superweapon in a combat), the map shows how far Caled sees along its six
+    straight lines, and a line to the system under the cursor - green when
+    Caled can fire there, red where an anomaly or the board's edge stops it.
+  - Their emblem, Retrowave / Voidfall home planet, a codec portrait and
+    their own lines; the bots play them with their own strategy and two
+    faction traits.
+
+NEW IN 0.83.0 - Blue Reverie (a fan-made module by TacticBlue): the Atokera Legacy
+  - Title screen > Modules > "Blue Reverie": its factions join the New Game
+    faction list (their own group) and the random pool. The first one is the
+    Atokera Legacy - living metal that turns every world it holds into a
+    forge; Belkosea, Pharad'n, Qhet and Uydai come one by one. A saved game
+    keeps the module it started with.
+  - Everything on the Atokera's cards, with the cards' exact wording:
+    Synthesis (every readied planet produces and is shielded), Living Metals,
+    the Kohi flagship, the Obelisk mech, Mirrorshard cruisers, Modular
+    Designs, Magruda, Ordagka, Kapoko Vui, Tri-Weave Shielding, the Panoply
+    Animus breakthrough (Thunder's Edge games) and, with Monuments+, the
+    Deepmantle Interface monument. My readings: RULES-CHECK.txt, B1-B12.
+  - Their emblem, Retrowave / Voidfall home planet, a codec portrait and
+    their own lines in negotiations and battles.
+  - The bots play them with their own strategy (agenda-phase politics and
+    production everywhere) and two faction traits.
+
+NEW IN 0.82.5 - a tester's report
+  - Voting with Elder Qanoj (the Xxcha commander): the vote screen's total
+    now counts its 1 extra vote per planet (a 2/0 planet showed "Votes: 0";
+    the game itself always counted the vote), and the screen says so.
+
+NEW IN 0.82.4 - Monuments+ (a fan-made module by Cacotopos, after Blarknob's Monuments)
+  - Title screen > Modules > "Monuments+": every faction gets its own
+    monument - all 24 Prophecy of Kings factions and the Council Keleres, the
+    Thunder's Edge factions and all 34 Discordant Stars factions (the Rhodun's
+    card has two sides). A saved game keeps the module it started with.
+  - A monument is a structure, raised with the Construction card (Monuments+
+    replaces the Construction card: "If your monument is not on the board, you
+    may place it"); it stands only on the planets its card allows (the icons
+    on the card) and is lost with the planet, like a PDS or a space dock.
+  - Each monument has its own ability, with the card's exact wording; the
+    rules follow the Living Rules first, then the Monuments+ rulebook, then
+    the online version (my readings are in RULES-CHECK.txt, M1-M80).
+  - Menu > Monuments shows every monument in the game (animated pictures from
+    the Monuments+ card art, turned into pixel art), where each one stands, and
+    the full card on A. On PC a temple button on the map opens it.
+  - Also from Monuments+: 3 action cards (Festival, Rebel Bombing,
+    Renovation), 2 agendas and 2 secret objectives.
+  - The bots raise their monuments where the ability works best and use
+    every ability.
+  - All of Monuments+ is new in this build (its RULES-CHECK sections 0.82.0 -
+    0.82.4: M1-M80, with the rules pass over every card in M74-M80); also the
+    Debris Field's reminder token on the map.
+
+NEW IN 0.81.1 - Absol's Political Secret, scroll bars, the mouse wheel
+  - With Absol's Agendas ticked, Political Secret is Absol's version: "When
+    you cast votes: You may exhaust up to 3 of its owner's planets and cast
+    votes as if you controlled the exhausted planets. Then return this card
+    to its owner." You're asked while casting your votes (even with no ready
+    planets of your own). Games started in 0.81.0 keep the original card.
+  - Every list with more than fits on screen now has a slim scroll bar on
+    its right side (click above or below the handle to page through it).
+  - The Units screen shows all 11 units at once (the mech card was easy to
+    miss below the first two rows).
+  - The mouse wheel moves the list itself in the deal screen and the card
+    screens (Units, Technology, research ...): the highlight only moves
+    when it would leave the screen.
+
+NEW IN 0.81.0 - Absol's Agendas (a fan-made agenda deck by Absol197)
+  - Title screen > Modules > "Absol's Agendas": tick it and its 60 cards
+    replace the normal agenda deck in your next games (untick it for the
+    normal deck). A saved game keeps the deck it started with.
+  - The cards use their exact printed wording (checked against Absol's own
+    Version 4 cards), and the rules follow his rulebook and FAQ.
+  - New kinds of votes: elect a non-home planet (Mecatol Rex allowed) or a
+    unit upgrade technology. Emergency Session is not voted on: it adds one
+    more agenda at the end of the agenda phase.
+  - A tie for "the player who cast the most votes": the speaker decides.
+    "Exhaust the X strategy card": nobody can pick that card in the next
+    strategy phase.
+  - Many laws carry control tokens or go into play on their "Against" side:
+    Menu > Laws shows the tokens, the side in play and exhausted cards;
+    "All agendas" lists the deck in play.
+  - The bots know every card: how they vote, what they choose, when they
+    spend a law's tokens.
+  - Long cards fit: the agenda card shrinks its text when it must, and the
+    side panel shows the whole text during the vote.
+  - The game now says it is not affiliated with or endorsed by Asmodee or
+    Fantasy Flight Games (title screen and Credits).
+  - RULES-CHECK: what Absol's rulebook settled, two questions for you, and
+    my choices where the cards still leave room.
+
+NEW IN 0.80.11 - the Career, and rival commanders in Casual Game
+  - The Tournament is now called the Career (title screen > Career): the
+    same ladder of leagues against rival commanders who remember you.
+  - Beat a rival - finish above them in a league game - and they become
+    one of your commanders: a banner shows it the first time. Nothing
+    tells you about this before it happens.
+  - Casual Game > Factions & seats > Personality: once you have beaten a
+    rival, a "Rival commanders" list appears under the ten personalities.
+    Seat one and they play with their own personality, bring their own
+    faction when the seat's faction is Random, show their name on the
+    Players screen and at the end of the game - and they remember your
+    Career games with them: break promises to them in a league and they
+    come to your table holding a grudge.
+  - Winning a league for the first time shows its emblem and its faction
+    colour in the same banner.
+  - Their cards on a league's Rivals page say "In Casual Game" once beaten.
+  - Options > "Unlock everything (testing)" opens every commander too.
+
+NEW IN 0.80.1 - two players' reports from GitHub
+  - Keeping a secret objective (at the start of a game): the two secret
+    objectives now show as two cards side by side. With the mouse, the
+    first click on a card picks it out in gold and says "Click again to
+    keep it"; a second click keeps it - one stray click can't keep the
+    wrong one. With a controller or the keyboard: left / right, then A.
+  - The Vuil'raith can build with their own captured units again. When
+    The Terror Between captures their own ships, those ships no longer
+    block building that kind of ship: Amalgamation gives them back to build
+    it (they were refused with "none left"). Games started with 0.80.1 have
+    this; older saves play as before.
 
 NEW IN 0.80.0 - the Tournament (league mode)
   - Title screen > Tournament: a ladder of 17 leagues. Each league is a

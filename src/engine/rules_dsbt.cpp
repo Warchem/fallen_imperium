@@ -503,6 +503,7 @@ bool Rules::dsbtAction(int p, int ab) {
                 bool shield = false;
                 for (int t = 0; t < kUnitTypes; ++t)
                     if (G.planets[size_t(x)].units[size_t(q)].n[t] && unitDef(G, q, UnitType(t)).shield) shield = true;
+                if (brPlanetShield(G, q, x)) shield = true;  // (0.83.0) Synthesis / Kohi
                 if (shield) {
                     say(p, pn(q) + "'s Planetary Shield holds on " + planetName(x) + ".", sys);
                     continue;

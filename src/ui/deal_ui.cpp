@@ -870,8 +870,13 @@ public:
     bool stepsWithKeys() const override { return true; }
 
     bool update(const Input& in, uint32_t) override {
-        if (in.pressed(Btn::Up)) moveCursor(-1, false);
-        if (in.pressed(Btn::Down)) moveCursor(1, false);
+        // (0.81.1, owner: "the scroll wheel ... scrolls the highlighted item, rather than scrolling the menu itself") the wheel's
+        // Up / Down move the list; the highlight only follows when it would leave the screen
+        const bool byWheel = in.mouse().wheel != 0.f;
+        if (byWheel && in.pressed(Btn::Up)) scrollBy(-1);
+        else if (in.pressed(Btn::Up)) moveCursor(-1, false);
+        if (byWheel && in.pressed(Btn::Down)) scrollBy(1);
+        else if (in.pressed(Btn::Down)) moveCursor(1, false);
         if (in.pressed(Btn::L1)) for (int k = 0; k < 5; ++k) moveCursor(-1, false);
         if (in.pressed(Btn::R1)) for (int k = 0; k < 5; ++k) moveCursor(1, false);
         const bool sendRow = cursor_ >= 0 && cursor_ < int(rows_.size()) && rows_[size_t(cursor_)].key == "send";
@@ -964,8 +969,26 @@ public:
             return y;
         };
         factionDisc(c, g_, me_, float(r.x + 26), float(r.y + 26), 18.f);
-        drawText(c, FONT_LG, r.x + 52, r.y + 6, fitText(FONT_LG, d_.prompt, 330), theme::gold);
-        drawText(c, FONT_XS, r.x + 52, r.y + 32, fitText(FONT_XS, d_.context, 340), theme::dim);
+        const std::string sendLab = counter_ ? "SEND COUNTER-OFFER" : "SEND OFFER";
+        const int sendW = std::max(196, textWidth(FONT_SMB, sendLab) + buttonBadgeWidth("START") + 34);
+        const int titleW = std::min(340, r.w - sendW - 16 - 52);
+        drawText(c, FONT_LG, r.x + 52, r.y + 6, fitText(FONT_LG, d_.prompt, titleW), theme::gold);
+        drawText(c, FONT_XS, r.x + 52, r.y + 32, fitText(FONT_XS, d_.context, titleW), theme::dim);
+        {  // (0.84.1, owner 2026-11-24: "the confirm/send button ... is hidden in the scroll menu") the Send button at the top right,
+           // always on screen: a click (or START) sends; green when the offer can go, grey while it is empty or not allowed
+            const Deal now0 = current();
+            const bool ready = !now0.empty() && live_.empty();
+            const std::string& lab = sendLab;
+            const int bw = sendW, bh = 34;
+            const Rect b{r.x + r.w - bw - 8, r.y + 8, bw, bh};
+            const uint32_t edge = !ready ? rgb(80, 90, 100) : theme::green;  // (the pointer lights it like every button - hits)
+            c.fillRoundRect(b.x, b.y, b.w, b.h, 8, !ready ? rgb(26, 30, 38) : rgb(28, 62, 36), 250);
+            c.frameRoundRect(b.x, b.y, b.w, b.h, 8, edge, 2);
+            const int kw = drawButtonBadge(c, b.x + 10, b.y + (bh - 18) / 2, "START", ready);
+            drawTextAligned(c, FONT_SMB, b.x + 10 + kw, b.y + (bh - FONT_SMB.lineHeight) / 2 + 1, b.w - 20 - kw, Align::Center, lab,
+                            ready ? theme::text : rgb(130, 136, 146));
+            hits::addButton(b, Btn::Start);
+        }
         // rows on the left
         const int lx = r.x + 6, lw = 392;
         const int top = r.y + 52 + (look == 2 ? 106 : 0), rowH = 21;
@@ -975,6 +998,7 @@ public:
         }
         const int bottom = r.y + r.h - 8 - ((error_.empty() && live_.empty()) ? 0 : 34);
         const int visible = std::max(1, (bottom - top) / rowH);
+        visible_ = visible;
         if (cursor_ < scroll_) scroll_ = cursor_;
         if (cursor_ >= scroll_ + visible) scroll_ = cursor_ - visible + 1;
         // keep a section header visible above the cursor where possible
@@ -1020,8 +1044,8 @@ public:
             }
             y += rowH;
         }
-        if (scroll_ > 0) drawText(c, FONT_SM, lx + lw - 16, top - 12, "\xE2\x96\xB2", theme::dim);
-        if (scroll_ + visible < int(rows_.size())) drawText(c, FONT_SM, lx + lw - 16, bottom - 12, "\xE2\x96\xBC", theme::dim);
+        drawScrollBar(c, Rect{lx + lw - 3, top, 4, visible * rowH - 2}, scroll_, visible, int(rows_.size()),
+                      [this](int dir) { scrollBy(dir * std::max(1, visible_ - 1)); });  // (0.81.1)
         // the deal so far, on the right
         const Rect s{r.x + 404, r.y + 48, r.w - 410, r.h - 54};
         drawPanel(c, s, theme::panel, theme::border, 8);
@@ -1076,7 +1100,15 @@ public:
             if (boxTop + 30 < sb) {
                 c.hline(s.x + 8, s.x + s.w - 8, boxTop, theme::border);
                 int ty = boxTop + 4;
-                drawText(c, FONT_SMB, sx, ty, fitText(FONT_SMB, row.value, sw), theme::gold);
+                // (0.82.0) a row whose value is a number or Yes / No (units, relics, laws) is titled by its name
+                bool plain = row.value == "Yes" || row.value == "No" || row.value.empty();
+                if (!plain) {
+                    plain = true;
+                    for (char ch : row.value) plain = plain && ch >= '0' && ch <= '9';
+                }
+                std::string head = plain ? row.label : row.value;
+                if (plain && !row.value.empty() && row.value != "No" && row.value != "Yes") head = row.value + " x " + row.label;
+                drawText(c, FONT_SMB, sx, ty, fitText(FONT_SMB, head, sw), theme::gold);
                 ty += 16;
                 for (const std::string& l : wrapMax(FONT_XS, row.cardText, sw, 7)) {
                     if (ty + 13 > sb) break;
@@ -1124,6 +1156,7 @@ private:
         std::map<int, int> frags;
         int ac[2] = {-1, -1};
         std::map<int, int> relics, secrets;  // Thunder's Edge (0.34.0): chosen (1) or not
+        std::map<int, int> units;            // (0.82.0) Mowshir Freeport: system * 16 + type -> how many
         std::map<int, int> techs;            // Age of Commerce (galactic event, 0.36.0): shared (1) or not
         std::map<int, int> laws;             // Encrypted Trade Hub (fixes 28): agendas held, given (1) or not
     };
@@ -1173,6 +1206,8 @@ private:
         d.hire = s.hire;
         for (auto& l : s.laws)
             if (l.second) d.laws.push_back(l.first);
+        for (auto& u : s.units)
+            for (int k = 0; k < u.second; ++k) d.units.push_back(u.first);
         return d;
     }
     SideSt fromSide(const DealSide& d) const {
@@ -1191,6 +1226,7 @@ private:
         for (int o : d.orders) s.orders[o] = 1;
         s.hire = d.hire;
         for (int l : d.laws) s.laws[l] = 1;
+        for (int u : d.units) ++s.units[u];
         return s;
     }
     void load(const Deal& d) {
@@ -1364,7 +1400,7 @@ private:
         }
         // Thunder's Edge: The Silver Flame always, every relic and (giving) secret objectives with Black Market Dealings
         for (int16_t rl : pl.relics) {
-            if (!(d_.dealFlags & (kDealBlackMarket | kDealHub)) && std::strcmp(kRelics[rl].key, "thesilverflame")) continue;  // (Encrypted Trade Hub)
+            if (!(d_.dealFlags & (kDealBlackMarket | kDealHub | kDealRelics)) && std::strcmp(kRelics[rl].key, "thesilverflame")) continue;  // (Encrypted Trade Hub; 0.82.0 Quantum Reliquary)
             DRow r;
             r.key = pre + "relic." + std::to_string(rl);
             r.label = kRelics[rl].name;
@@ -1399,6 +1435,23 @@ private:
                 r.cardText = agendaText(a, false);
                 r.change = [&v](int, bool) { v = 1 - v; };
                 rows_.push_back(r);
+            }
+        if (d_.dealFlags & kDealUnits)  // (0.82.0) Mowshir Freeport (Hacan monument): units in space areas near it
+            for (int s : freeportSystems(g_)) {
+                const Force& f = g_.systems[size_t(s)].space[size_t(who)];
+                for (int t = 0; t < kUnitTypes; ++t) {
+                    if (!f.n[t] || isStructure(UnitType(t))) continue;
+                    DRow r;
+                    r.key = pre + "unit." + std::to_string(s * 16 + t);
+                    r.label = std::string(unitTypeName(UnitType(t), true)) + " in " + sysLabel(g_, s);
+                    r.icon = "warfare";
+                    int& v = st.units[s * 16 + t];
+                    r.value = std::to_string(v);
+                    const int max = f.n[t];
+                    r.cardText = "Mowshir Freeport: " + playerName(g_, other) + " replaces them with their own units in a system with their ships and a command token.";
+                    r.change = [&v, max](int step, bool a) { count(v, step, max, a); };
+                    rows_.push_back(r);
+                }
             }
         if ((d_.dealFlags & kDealBlackMarket) && giving)
             for (int16_t o : pl.secrets) {
@@ -1620,6 +1673,20 @@ private:
         }
     }
 
+    // (0.81.1) the list moves by d rows (the wheel, the scroll bar); the highlight stays on screen, on a row that isn't a heading
+    void scrollBy(int d) {
+        const int n = int(rows_.size());
+        if (n == 0) return;
+        scroll_ = std::max(0, std::min(std::max(0, n - visible_), scroll_ + d));
+        const int lo = scroll_, hi = std::min(n, scroll_ + visible_) - 1;
+        if (cursor_ < lo) {
+            cursor_ = lo;
+            while (cursor_ < hi && rows_[size_t(cursor_)].header) ++cursor_;
+        } else if (cursor_ > hi) {
+            cursor_ = hi;
+            while (cursor_ > lo && rows_[size_t(cursor_)].header) --cursor_;
+        }
+    }
     void moveCursor(int dir, bool fromStart) {
         int n = int(rows_.size());
         if (n == 0) return;
@@ -1666,6 +1733,7 @@ private:
     int threat_ = -1;
     std::vector<DRow> rows_;
     int cursor_ = 0, scroll_ = 0;
+    int visible_ = 8;  // (0.81.1) rows shown, from the last draw
     std::string live_;
 };
 

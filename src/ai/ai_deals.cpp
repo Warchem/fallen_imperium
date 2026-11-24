@@ -257,6 +257,16 @@ float sideReceived(const Game& g, int p, const DealSide& s) {
         v += isFaction(g, p, "axis") ? 0.3f : (o < 6 ? float(3 - o / 2) + 1.f : 2.5f) * (g.round >= 6 ? 0.7f : 1.f);
     if (s.hire) v += hireWorth(g, p, s.hire);  // Hired Guns (0.43.0)
     for (int a : s.laws) v += lawWorth(g, p, a);  // Encrypted Trade Hub (fixes 28): an agenda
+    if (!s.units.empty()) {  // (0.82.0) Mowshir Freeport: replaced by our own, in a system with our ships and a command token - if any
+        bool dest = false;
+        for (size_t x = 0; x < g.systems.size() && !dest; ++x)
+            dest = hasShips(g, p, int(x)) && g.systems[x].hasToken(p) && !otherShipsIn(g, p, int(x));
+        if (dest)
+            for (int u : s.units) {
+                const UnitType t = UnitType(u % 16);
+                if (unitsAvailable(g, p, t) > 0) v += 0.35f * float(unitCost2(g, p, t));
+            }
+    }
     return v;
 }
 
@@ -282,6 +292,7 @@ float sideGiven(const Game& g, int p, int q, const DealSide& s) {
     for (int o : s.orders)  // Axis Orders: the Axis can't use them - only the ships they put in someone else's fleet
         v += isFaction(g, p, "axis") ? 0.4f : (o < 6 ? float(3 - o / 2) + 1.f : 2.5f) * 0.8f;
     v += 0.7f * float(s.hire);  // Hired Guns: the Nokar's ships leave the board (they rebuild them)
+    for (int u : s.units) v += 0.5f * float(unitCost2(g, p, UnitType(u % 16))) + 0.5f;  // (0.82.0) Mowshir Freeport: our units leave the board
     for (int a : s.laws)  // Encrypted Trade Hub (fixes 28): an agenda we hold - giving away Political Censure costs its point
         v += a >= 0 && a < kAgendaCount && !std::strcmp(kAgendas[a].key, "censure") ? 10.f : std::max(0.3f, lawWorth(g, p, a));
     return v * boostFactor(g, q);

@@ -1,3 +1,5 @@
+#include "ui/superweapon_ui.h"
+#include "ui/pharadn_ui.h"
 #include "ui/map_view.h"
 
 #include "ui/cards.h"
@@ -25,6 +27,7 @@
 using namespace ti;
 
 namespace {
+std::vector<std::pair<int, int>> g_draftMonMap;  // (Monuments+ drafts) planet, player
 // (0.73.5, owner: "When a game would start that uses Thunder's Edge, the Fracture is hidden") where the Fracture will come:
 // not drawn until it is in play, but the map keeps its room so nothing moves when it appears
 std::vector<Hex> hiddenFracture(const Game& g) {
@@ -914,6 +917,23 @@ void MapView::draw(Canvas& c, const Game& g, uint32_t now) const {
             continue;
         drawSystem(c, g, int(i), x, y, size);
     }
+    if (g.modules & kModBlueReverie)  // (0.84.0) Availyn: "This system is a nebula." - a violet haze drifting over the tile
+        for (size_t s = 0; s < g.systems.size(); ++s) {
+            if (g.systems[s].offBoard || (g.systems[s].d().anomalies & kNebula) || !availynNebula(g, int(s))) continue;
+            float x, y;
+            hexToPixel(g.systems[s].pos, size, x, y);
+            x += ox;
+            y += oy;
+            if (x + size < area.x || x - size > area.x + area.w || y + size < area.y || y - size > area.y + area.h) continue;
+            float xs[6], ys[6];
+            hexCorners(x, y, size - 2.f, xs, ys);
+            c.fillPolygon(xs, ys, 6, rgb(140, 70, 200), 34);
+            for (int k = 0; k < 4; ++k) {
+                const float t = float((now + uint32_t(k) * 2300u) % 9000u) / 9000.f * 2.f * kPi;
+                const float bx = x + std::cos(t + float(k) * 1.7f) * size * 0.32f, by = y + std::sin(t * 0.7f + float(k)) * size * 0.26f;
+                c.fillCircle(bx, by, size * (0.22f + 0.05f * float(k % 2)), rgb(170, 90, 230), 22);
+            }
+        }
     float pulse = 0.5f + 0.5f * std::sin(float(now % 1000) / 1000.f * 2.f * kPi);
     auto outline = [&](int s, uint32_t col, float thick, int alpha, float inset) {
         float x, y;
@@ -1042,6 +1062,7 @@ void MapView::draw(Canvas& c, const Game& g, uint32_t now) const {
             }
         }
     }
+    if (caledFrom_ >= 0 && !g.draft.active) drawCaled(c, g, ox, oy, size, now);  // (0.84.0)
     if (g.draft.active) drawDraft(c, g, ox, oy, size, now);
     if (!freeSpots_.empty()) drawFreeSpots(c, ox, oy, size, now);  // (0.61.2)
     if (infoTiles_ && !g.draft.active) drawInfoTiles(c, g, ox, oy, size, now);
@@ -1095,6 +1116,136 @@ void MapView::draw(Canvas& c, const Game& g, uint32_t now) const {
 // Top: command tokens (tactic / fleet / strategy). Middle: the faction, its
 // victory points, strategy cards and secret objectives. Bottom: trade goods,
 // commodities and action cards. Fewer details when zoomed out.
+// Caled's line (0.84.0): the card fires along one of the six straight hex lines, through systems that are on the board and
+// no anomaly (query caledLine). Faint rays show each line as far as it reaches (a red bar where an anomaly or the board's edge
+// stops it); the line to the system aimed at is green when Caled can fire there, red from where it is stopped, and a tag
+// under the target says why.
+void MapView::drawCaled(Canvas& c, const Game& g, float ox, float oy, float size, uint32_t now) const {
+    const int n = int(g.systems.size());
+    if (caledFrom_ < 0 || caledFrom_ >= n) return;
+    const SystemState& home = g.systems[size_t(caledFrom_)];
+    if (home.offBoard) return;
+    auto at = [&](Hex h, float& x, float& y) {
+        hexToPixel(h, size, x, y);
+        x += ox;
+        y += oy;
+    };
+    auto stepHex = [&](int d, int i) { return Hex{home.pos.q + hexDir(d).q * i, home.pos.r + hexDir(d).r * i}; };
+    auto open = [&](Hex h) {
+        const int s = g.findSystemAt(h);
+        return s >= 0 && !g.systems[size_t(s)].offBoard && !isAnomaly(g, s);
+    };
+    const bool homeOpen = !isAnomaly(g, caledFrom_);
+    const float pulse = 0.5f + 0.5f * std::sin(float(now % 1600u) / 1600.f * 2.f * kPi);
+    const uint32_t red = superweapon::colour(kSwCaled), green = rgb(110, 255, 140);
+    const float th = std::max(1.5f, size * 0.035f);
+    float x0, y0;
+    at(home.pos, x0, y0);
+    auto bar = [&](float x, float y, float dx, float dy) {  // a short red bar across the line where it stops
+        const float h = size * 0.32f;
+        c.line(x - dy * h, y + dx * h, x + dy * h, y - dx * h, rgb(0, 0, 0), th + 3.f, 170);
+        c.line(x - dy * h, y + dx * h, x + dy * h, y - dx * h, red, th + 1.f, 240);
+    };
+    // the six rays
+    for (int d = 0; d < 6; ++d) {
+        int far = 0;
+        if (homeOpen)
+            while (far < 40 && open(stepHex(d, far + 1))) ++far;
+        float x1, y1;
+        at(stepHex(d, 1), x1, y1);
+        float dx = x1 - x0, dy = y1 - y0;
+        const float len = std::sqrt(dx * dx + dy * dy);
+        if (len < 1.f) continue;
+        dx /= len, dy /= len;
+        const float reach = len * (float(far) + 0.5f);  // to the far edge of the last system it sees
+        for (float t = size * 0.3f; t < reach; t += size * 0.36f) {  // dashed
+            const float t1 = std::min(reach, t + size * 0.2f);
+            c.line(x0 + dx * t, y0 + dy * t, x0 + dx * t1, y0 + dy * t1, red, th, 90 + int(pulse * 50));
+        }
+        if (g.findSystemAt(stepHex(d, far + 1)) >= 0) bar(x0 + dx * reach, y0 + dy * reach, dx, dy);  // stopped by an anomaly
+    }
+    // Caled itself: a ring in its colour
+    for (int k = 0; k < 24; k += 2) {
+        const float rr = size * (0.56f + 0.04f * pulse);
+        const float a0 = float(k) / 24.f * 2.f * kPi, a1 = float(k + 1) / 24.f * 2.f * kPi;
+        c.line(x0 + std::cos(a0) * rr, y0 + std::sin(a0) * rr, x0 + std::cos(a1) * rr, y0 + std::sin(a1) * rr, red, th + 0.5f, 220);
+    }
+    // the line to the target
+    const int to = caledTo_ >= 0 ? caledTo_ : cursor_;
+    if (to < 0 || to >= n || to == caledFrom_ || g.systems[size_t(to)].offBoard) return;
+    const Hex tp = g.systems[size_t(to)].pos;
+    float x1, y1;
+    at(tp, x1, y1);
+    float dx = x1 - x0, dy = y1 - y0;
+    const float len = std::sqrt(dx * dx + dy * dy);
+    if (len < 1.f) return;
+    dx /= len, dy /= len;
+    const int dist = hexDistance(home.pos, tp);
+    int dir = -1;
+    for (int d = 0; d < 6 && dir < 0; ++d)
+        if (stepHex(d, dist) == tp) dir = d;
+    int stop = -1;  // the first step that is not open (0 = Caled's own system)
+    if (dir >= 0)
+        for (int i = 0; i <= dist && stop < 0; ++i)
+            if (!(i == 0 ? homeOpen : open(stepHex(dir, i)))) stop = i;
+    const bool ok = dir >= 0 && stop < 0;
+    const float sx = x0 + dx * size * 0.3f, ex = x1 - dx * size * 0.3f, sy = y0 + dy * size * 0.3f, ey = y1 - dy * size * 0.3f;
+    const float lt = std::max(2.5f, size * 0.07f);
+    auto seg = [&](float a, float b, uint32_t col, bool dashed) {  // a..b: fractions of the line
+        const float L = std::sqrt((ex - sx) * (ex - sx) + (ey - sy) * (ey - sy));
+        if (L < 1.f || b <= a) return;
+        const float step = dashed ? size * 0.3f : L;
+        for (float t = a * L; t < b * L; t += step) {
+            const float t1 = std::min(b * L, t + (dashed ? size * 0.18f : L));
+            const float px0 = sx + (ex - sx) * t / L, py0 = sy + (ey - sy) * t / L;
+            const float px1 = sx + (ex - sx) * t1 / L, py1 = sy + (ey - sy) * t1 / L;
+            c.line(px0, py0, px1, py1, rgb(0, 0, 0), lt + 2.f, 160);
+            c.line(px0, py0, px1, py1, col, lt, 240);
+        }
+    };
+    std::string why;
+    if (ok) {
+        seg(0.f, 1.f, green, false);
+        why = "Caled: in line";
+    } else if (dir < 0) {
+        seg(0.f, 1.f, red, true);
+        why = "Caled: not in a straight line";
+    } else {
+        // green up to the border before the step that stops it, red after it
+        const float full = std::sqrt((ex - sx) * (ex - sx) + (ey - sy) * (ey - sy));
+        const float border = len * (float(stop) - 0.5f) / float(dist);  // from Caled's centre
+        const float cut = std::max(0.f, std::min(1.f, (border - size * 0.3f) / std::max(1.f, full)));
+        seg(0.f, cut, green, false);
+        seg(cut, 1.f, red, true);
+        if (stop > 0) bar(x0 + dx * border, y0 + dy * border, dx, dy);
+        const int bs = stop == 0 ? caledFrom_ : g.findSystemAt(stepHex(dir, stop));
+        std::string what = "an anomaly";
+        if (bs >= 0) {
+            const uint8_t an = anomaliesFor(g, -2, bs);  // (-2: nobody - not the active player)
+            what = an & kNebula ? "a nebula" : an & kAsteroid ? "an asteroid field" : an & kSupernova ? "a supernova" : an & kRift ? "a gravity rift"
+                   : an & kScar ? "an entropic scar" : "an anomaly";
+            if (g.systems[size_t(bs)].d().planetCount > 0) what += std::string(" (") + g.systems[size_t(bs)].d().name + ")";
+        }
+        why = stop == 0 ? "Caled: its own system is " + what : bs < 0 ? "Caled: the line leaves the board" : "Caled: blocked by " + what;
+    }
+    // target ring + tag
+    const uint32_t tc = ok ? green : red;
+    for (int k = 0; k < 24; ++k) {
+        const float rr = size * 0.5f;
+        const float a0 = float(k) / 24.f * 2.f * kPi, a1 = float(k + 1) / 24.f * 2.f * kPi;
+        c.line(x1 + std::cos(a0) * rr, y1 + std::sin(a0) * rr, x1 + std::cos(a1) * rr, y1 + std::sin(a1) * rr, tc, th + 1.f, 230);
+    }
+    const FontData& f = FONT_XS;
+    const int w = textWidth(f, why) + 10, h = f.lineHeight + 4;
+    const Rect area = drawArea();
+    const int tx = std::max(area.x + 2, std::min(area.x + area.w - w - 2, int(x1) - w / 2));
+    int ty = int(y1 + size * 0.62f);
+    if (ty + h > area.y + area.h - 2) ty = int(y1 - size * 0.62f) - h;
+    c.fillRoundRect(tx, ty, w, h, 3, rgb(8, 8, 12), 215);
+    c.frameRoundRect(tx, ty, w, h, 3, tc, 1, 230);
+    drawTextAligned(c, f, tx, ty + 2, w, Align::Center, why, ok ? rgb(190, 255, 200) : rgb(255, 190, 180));
+}
+
 void MapView::drawInfoTiles(Canvas& c, const Game& g, float ox, float oy, float size, uint32_t now) const {
     const auto& info = infoCells(g);
     for (int p = 0; p < g.numPlayers && p < int(info.size()); ++p) {
@@ -1871,6 +2022,19 @@ void MapView::drawSystem(Canvas& c, const Game& g, int sys, float cx, float cy, 
             float dx[4] = {ax, ax + ar, ax, ax - ar}, dy[4] = {ay - ar, ay, ay + ar, ay};
             c.fillPolygon(dx, dy, 4, hasAttachment(g, pl, "dmz") ? rgb(230, 230, 230) : theme::gold);
         }
+        // (0.84.0) a Belkosea superweapon standing on the planet: the sphere on its right edge, above the units' badges (0.84.1: it was
+        // at the lower right, under them; left edge when the planet's values are on its right)
+        if (ps.superweapon >= 0 && size >= 24) {
+            const bool ex = ps.owner >= 0 && ps.owner < g.numPlayers && ((g.players[size_t(ps.owner)].swExhausted >> ps.superweapon) & 1);
+            const float sr = std::max(3.f, size * 0.1f);
+            superweapon::drawPiece(c, ps.superweapon, px + dir * (pr + sr * 0.45f), py - pr * 0.3f, sr, g_mapNow, ex);
+        }
+        // (0.85.0) a Pharad'n tomb token (Ancient Empire): at the planet's foot (clear of its values, the badges and a superweapon)
+        if (ps.tomb && size >= 24) {
+            const float tr = std::max(3.f, size * 0.085f);
+            const float off = s.custodians ? pr * 0.75f : pr * 0.1f;  // (clear of the custodians token on Mecatol Rex)
+            pharadn::drawTomb(c, px - dir * off, py + pr + tr * 0.25f, tr, g_mapNow);
+        }
         // 0.57.1 (tester): who holds the planet - a flag in their colour planted on it (0.58.4: zoomed in only)
         if (ps.owner >= 0 && ps.owner < g.numPlayers && size >= kFlagFrom) {
             const float fh = std::max(7.f, size * 0.24f);
@@ -1907,11 +2071,22 @@ void MapView::drawSystem(Canvas& c, const Game& g, int sys, float cx, float cy, 
             if (f.empty()) continue;
             int gf = f.groundForces() - (mechArt ? f.count(UnitType::Mech) : 0);
             int st = f.structures();
+            bool mon = f.count(UnitType::Monument) > 0;  // (0.82.0 Monuments+) "M" for a monument, like D and P
+            for (const auto& m : g_draftMonMap)
+                if (m.first == pl && m.second == q) mon = true;
             std::string label;
             if (gf) label += std::to_string(gf);
-            if (st && size >= 34) {
+            if ((st || mon) && size >= 34) {
                 if (f.count(UnitType::SpaceDock)) label += "D";
                 if (f.count(UnitType::PDS)) label += std::string(f.count(UnitType::PDS), 'P');
+                if (mon) label += "M";
+            }
+            if (mon && size >= 34) {  // (owner 2026-11-21: on top of the planet, next to the flag)
+                const float sh = std::max(9.f, size * 0.3f), fx = px - pr * 0.25f, fy = py - pr * 0.62f;
+                for (int k = 0; k < 4; ++k)
+                    icons::drawUnitArtOn(c, "unit/monument", fx + (k == 0 ? 1.f : k == 1 ? -1.f : 0.f), fy + (k == 2 ? 1.f : k == 3 ? -1.f : 0.f),
+                                         int(sh * 0.7f), int(sh), rgb(0, 0, 0), false, 200);
+                icons::drawUnitArtOn(c, "unit/monument", fx, fy, int(sh * 0.7f), int(sh), playerColor(g, q));
             }
             if (label.empty()) continue;
             const FontData& font = size >= 50 ? FONT_SMB : FONT_XS;
@@ -1931,6 +2106,16 @@ void MapView::drawSystem(Canvas& c, const Game& g, int sys, float cx, float cy, 
         c.ring(cx, cy + size * 0.42f, r, 1.2f, rgb(120, 90, 30));
     }
     drawUnits(c, g, sys, cx, cy, size);
+    // (0.82.0 Monuments+) a monument standing in the space area (The Panopticon): its spire low on the tile's left
+    if (size >= 26)
+        for (int q = 0; q < g.numPlayers; ++q)
+            if (s.space[size_t(q)].count(UnitType::Monument)) {
+                const float sh = std::max(9.f, size * 0.34f), fx = cx - size * 0.38f, fy = cy + size * 0.36f;
+                for (int k = 0; k < 4; ++k)
+                    icons::drawUnitArtOn(c, "unit/monument", fx + (k == 0 ? 1.f : k == 1 ? -1.f : 0.f), fy + (k == 2 ? 1.f : k == 3 ? -1.f : 0.f),
+                                         int(sh * 0.7f), int(sh), rgb(0, 0, 0), false, 200);
+                icons::drawUnitArtOn(c, "unit/monument", fx, fy, int(sh * 0.7f), int(sh), playerColor(g, q));
+            }
 
     // command tokens (board-game shape) in a row along the top edge
     int nt = 0;
@@ -1950,6 +2135,16 @@ void MapView::drawSystem(Canvas& c, const Game& g, int sys, float cx, float cy, 
             }
             x += float(w + 1);
         }
+    }
+    // (0.82.3) Debris Field (Zelian monument): "Place the Zelian asteroid field token in this system as a reminder" - three rocks with
+    // a red rim near the lower right corner, every tileset (last: over the planets and ships)
+    if (size >= 24 && debrisField(g, sys)) {
+        const float ax = cx + size * 0.50f, ay = cy + size * 0.56f, r = std::max(3.f, size * 0.10f);
+        c.fillCircle(ax, ay, r * 1.25f, rgb(40, 14, 12), 200);
+        c.ring(ax, ay, r * 1.25f, std::max(1.f, size * 0.02f), rgb(196, 60, 40), 230);
+        c.fillCircle(ax - r * 0.42f, ay + r * 0.18f, r * 0.52f, rgb(140, 112, 86), 255);
+        c.fillCircle(ax + r * 0.40f, ay + r * 0.28f, r * 0.40f, rgb(116, 92, 70), 255);
+        c.fillCircle(ax + r * 0.08f, ay - r * 0.42f, r * 0.36f, rgb(162, 132, 100), 255);
     }
     if (sys == g.nexus && size >= 34)
         drawTextAligned(c, FONT_XS, int(cx - size), int(cy + size * 0.55f), int(2 * size), Align::Center,
@@ -2071,3 +2266,6 @@ void MapView::drawUnits(Canvas& c, const Game& g, int sys, float cx, float cy, f
         drawText(c, font, int(bx + h * 0.7f) + 2, int(by), label, pcolours::readable(playerColor(g, q)));
     }
 }
+
+// (Monuments+ drafts, the 0.82.0 plan) monuments marked on the map for the draft pictures
+void setMapDraftMonuments(const std::vector<std::pair<int, int>>& m) { g_draftMonMap = m; }

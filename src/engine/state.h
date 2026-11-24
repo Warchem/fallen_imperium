@@ -14,6 +14,10 @@ namespace ti {
 
 // Modules (0.31.0): Setup::modules / Game::modules bits
 constexpr int kModCodex = 1, kModUncharted = 2, kModThundersEdge = 4, kModDiscordant = 8;
+// (0.81.0) Absol's Agendas: Absol197's 60-card agenda deck REPLACES the normal one (owner 2026-11-21)
+constexpr int kModAbsol = 16;
+constexpr int kModMonuments = 32;  // 0.82.0: Monuments+ (Cacotopos / Blarknob) - monuments, its Construction card, cards
+constexpr int kModBlueReverie = 64;  // 0.83.0: Blue Reverie (TacticBlue) - its 9 factions, one by one (Setup::brLevel)
 // Computer difficulty levels (Setup::aiLevel / levels, Game::aiLevel, Player::aiLevel). 4 = A.I. (0.74.0, experimental):
 // Competitive's play with no personality - no archetype, traits, B-Factor or betrayals - and its own extra thinking
 // (src/ai/ai_ai.cpp). Older saves never hold 4, so they replay unchanged.
@@ -54,7 +58,7 @@ struct Force {
         for (int t = 0; t < kUnitTypes; ++t) k += n[t];
         return k;
     }
-    int structures() const { return n[int(UnitType::PDS)] + n[int(UnitType::SpaceDock)]; }
+    int structures() const { return n[int(UnitType::PDS)] + n[int(UnitType::SpaceDock)] + n[int(UnitType::Monument)]; }
     void add(UnitType t, int k) { n[int(t)] = uint8_t(n[int(t)] + k); }
     // Remove k units, taking undamaged ones first unless damagedFirst.
     void remove(UnitType t, int k, bool damagedFirst = false) {
@@ -87,6 +91,8 @@ struct PlanetState {
     int8_t monument = -1;              // Monuments to the Ages: commodities under the monument here (-1 = none)
     int8_t minor = -1;                 // Minor Factions: the faction (not in play) whose home this planet was
     bool claimed = false;              // someone has controlled it (Dangerous Wilds: "from the deck")
+    int8_t superweapon = -1;           // (0.84.0 Blue Reverie) Belkosea: the superweapon here (0 Availyn .. 4 Mors), its owner's structure
+    bool tomb = false;                 // (0.85.0 Blue Reverie) Pharad'n tomb token (Ancient Empire): the Pharad'n capture 2 infantry when they take it
     std::array<Force, kSides> units;  // [kNeutral] = neutral units
 };
 
@@ -149,6 +155,11 @@ struct Law {
     int16_t agenda = -1;
     int8_t owner = -1;    // player who holds it (elected), -1 = common play area
     int16_t target = -1;  // elected planet / objective, if any
+    // (0.81.0, Absol's Agendas) players' control tokens on the card (count per player), the card exhausted (Minister of War),
+    // in play as its "Against" side (Affirmation of Divine Right: the custodians token on it)
+    uint8_t tokens[8] = {};
+    bool exhausted = false;
+    bool against = false;
 };
 
 // Agenda effects that wait for the start of the next strategy phase.
@@ -228,6 +239,26 @@ struct Player {
     Force phantom;                     // Homesick Phantom (Crimson hero): ships waiting on the card
     bool breachedOthers = false;       // put a breach in a system with another player's unit (Ahk Siever unlocks)
     bool custodiaExhausted = false;
+    // Monuments+ (0.82.0): the player's monument card - exhausted (readied in the status phase), the trade goods on it (the
+    // Winnu's Imperial Vault) and the command tokens on it (the Keleres card); the Nekro's "M" / "Z" assimilator tokens: the
+    // monument card each one is on (kMonuments index, -1 = none); the Saar's Beacon of Ragh: the system of the space dock it
+    // is treated as adjacent to (-1 = chosen when needed)
+    bool monExhausted = false;
+    int8_t monTG = 0, monTokens = 0;
+    int8_t nekroMon[2] = {-1, -1};
+    int16_t saarBeacon = -1;
+    int8_t cathedralVP = 0;  // (0.82.0) Cathedral of Ixth: 1 = holds its point (monument on its planet), 2 = there but no point
+    // (0.82.1) Thunder's Edge's monuments: the Seraph Data Center's space station card (its G.planets index once made, -1 none), where
+    // the monument stood at the last check (Rules::monSync: 0 off the board, planet + 1, -(system + 1) in a space area) and the
+    // control tokens on the Epiphany card (bit per player)
+    int16_t monStation = -1;
+    int32_t monAt = 0;
+    uint16_t epiphanyTok = 0;
+    int8_t monCove = 0;  // (0.82.3) Corsairs' Cove (Florzen): fighters waiting on the card
+    // (0.82.4) Forbidden Library / Krotas Bannerhall: the action they were used in ("once per action": Game::turnCount + 1); the Rhodun's
+    // card turned to Reliquat Unleashed
+    int32_t monLibrary = 0, monBanner = 0;
+    bool monFlipped = false;
     // The Firmament / The Obsidian (0.35.0): plot cards (kPlotEnervate..) in the play area, the players whose control
     // tokens are on each (their puppets once the Obsidian reveal them), secrets scored with Plots Within Plots and the
     // trade goods on The Sowing / The Reaping
@@ -264,6 +295,15 @@ struct Player {
     // Discordant Stars batch 6 (0.42.0)
     bool dsGhotiExhausted = false;     // Spawning Grounds (Ghoti): their planet card (3/3, not on the board) is exhausted
                                        // (also The Grove: Khrask breakthrough, 2/0)
+    // Blue Reverie (0.83.0)
+    bool brMostVotes = false;          // Ordagka (Atokera commander) unlocks: they cast more votes for an outcome than any other player
+    int16_t brOrdagkaRound = -1;       // Ordagka: the round of their last prediction (once per agenda phase)
+    // (0.84.0) the Belkosea Allied States: superweapon cards (bit k = kSuperweapons[k]) in the play area / exhausted / purged
+    uint8_t swCards = 0, swExhausted = 0, swPurged = 0;
+    uint8_t swArm = 0;                 // Armageddon Project (Belkosea monument): superweapon cards with this player's control token
+    int8_t brTokensPurged = 0;         // Trinity Stockpile: command tokens purged from the strategy pool (out of the game)
+    int32_t pharMech = 0;              // (0.85.0) Sacrotitan (Pharad'n mech): the action its DEPLOY was used in ("once per action")
+    bool pharUnlock = false;           // (0.85.0) Avhkan (Pharad'n commander): its unlocking ACTION is done
     // 0.65.0 (the agenda voting plan, task #494): agendas this player saw and put on top of the deck (Politics) - the AI
     // knows the next agenda while one of these is still the deck's top card. Display / AI only: nothing reads it in the rules.
     int16_t agendaSeen[2] = {-1, -1};
@@ -377,6 +417,21 @@ struct TacticalEffects {
     bool tempesta = false;           // Ionian Fuel Refinery (Thunder's Edge): 1 more ship may move 1 further
     bool imperator = false;          // Imperator (Winnu breakthrough): the same, after activating a legendary planet's system
     std::vector<int16_t> wing;       // Wing Transfer (Argent breakthrough): systems given a token - ships may move among them
+    int16_t monCyclotron = -1;       // (0.82.3) Flotilla Cyclotron (Dih-Mohn monument): the active player's ships there move 1 further
+    // Blue Reverie (0.83.0): Modular Designs (Atokera) - "choose 1 of your units and 1 unit ability. That unit gains that unit
+    // ability with a value of 3, if applicable, until the end of that action": 1 Sustain Damage, 2 Anti-Fighter Barrage 3,
+    // 3 Bombardment 3, 4 Space Cannon 3, 5 Production 3 (query_br.cpp modularAt)
+    int8_t modOwner = -1, modType = -1, modAbility = 0;
+    int16_t modSys = -1, modPlanet = -1;  // (modPlanet -1 space, -2 anywhere in the system: Sustain Damage)
+    int8_t modDmg0 = 0;                   // Sustain Damage: that type's damaged units in the system when it was chosen
+    // Tri-Weave Shielding (Atokera note): this player's units on this planet have Planetary Shield this action
+    int8_t triOwner = -1;
+    int16_t triPlanet = -1;
+    // Kapoko Vui (Atokera hero): this player's ships committed to planets as ground forces - back to space at the end of the action
+    int8_t kapokoOwner = -1;
+    // (0.84.0) Razalka Gris (Belkosea agent): until the end of movement, other players' ships here don't affect ships' movement
+    int16_t razalkaSys = -1;
+    int16_t rfiSys = -1;      // (0.85.0) Reality-Field Impactor (Pharad'n): this anomaly has no effect until the end of the tactical action
 };
 
 // ---- Negotiations (Stage 6) --------------------------------------------------
@@ -426,9 +481,11 @@ struct DealSide {
                                     // receiver in the active system (only offered right after a system is activated)
     std::vector<int> laws;          // Discordant Stars (Encrypted Trade Hub, fixes 28): agendas (laws) the giver holds - their
                                     // agenda ids
+    std::vector<int> units;         // (0.82.0) Mowshir Freeport (Hacan monument): the giver's units in space areas - one entry per
+                                    // unit, system * 16 + unit type
     bool empty() const {
         return !tg && !comm && note < 0 && fragments.empty() && actionCards.empty() && planet < 0 && captured.empty() && relics.empty() &&
-               secrets.empty() && techs.empty() && !debt && orders.empty() && !hire && laws.empty();
+               secrets.empty() && techs.empty() && !debt && orders.empty() && !hire && laws.empty() && units.empty();
     }
 };
 struct Deal {
@@ -496,6 +553,8 @@ struct Game {
     uint8_t modules = 0;        // Setup::modules (0.31.0): kModCodex, kModUncharted, kModThundersEdge, kModDiscordant
     uint32_t events = 0;        // Setup::events (0.36.0): galactic events in play (Thunder's Edge)
     int8_t dsLevel = 0;         // Setup::dsLevel (0.37.0): Discordant Stars batches the random pools draw from
+    int8_t brLevel = 0;         // Setup::brLevel (0.83.0): the Blue Reverie factions the random pools draw from
+    uint32_t brMask = 0xFFFFFFFFu;  // Setup::brMask (0.85.3): ... those of them unlocked
     bool lawsBlank = false;     // Law's Order (Keleres): all laws are blank until the end of this turn
     int8_t mecHolder = -1;      // Kingslay: who holds Mecatol Rex ...
     int16_t mecTurns = 0;       // ... and for how many of their turns
@@ -523,6 +582,11 @@ struct Game {
     std::vector<int16_t> agendaDeck, agendaDiscard;  // kAgendas indices, top = back()
     std::vector<Law> laws;
     std::vector<PendingEffect> pending;              // at the start of the next strategy phase
+    // (0.81.0, Absol's Agendas - state only, set again by the replay)
+    uint8_t scLocked = 0;      // strategy cards nobody may choose in the next strategy phase ("Exhaust the ... strategy card")
+    bool mecArtifact = false;  // Ixthian Artifact (Against) is attached to Mecatol Rex: its controller holds 1 victory point from it
+    uint8_t absolIgnore = 0;   // bit 0 Articles of War (this tactical action), 1 Enforced Travel Ban, 2 Nexus Sovereignty (this turn)
+    int8_t emergency = 0;      // Emergency Sessions waiting: 1 more agenda each once the others are resolved
     std::vector<int16_t> stage1Rest, stage2Rest;     // objectives not used in this game (Incentive Program)
     uint8_t noVote = 0;            // players who can't vote for the rest of this agenda phase
     int16_t currentAgenda = -1;    // agenda being voted on (for the screens)
@@ -575,6 +639,7 @@ struct Game {
     int16_t dsBasePlanet = -1;         // Gledge Base (the Gledge's note): +2 resources
     int8_t dsDebt[8] = {};             // Fine Print (Vaden): each player's control tokens on the Vaden faction sheet
     int16_t dsWound = -1;              // Singularity Point (Nivyn): the system with the Wound token (a nebula and a gravity rift)
+    int8_t monLawsBlankFor = -1;       // (0.82.4) Verdant Halo (Gledge monument): this player treats all laws as blank this turn
     int16_t dsKomatSys = -1;           // Komat (Mortheus commander): one of this player's ships sustains damage in this combat
     int8_t dsKomatOwner = -1;
     // Discordant Stars batch 5 (0.41.0)

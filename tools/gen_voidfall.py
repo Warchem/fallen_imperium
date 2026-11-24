@@ -852,6 +852,9 @@ NAMED = {
     "valk": "rust",
     # 0.43.1: the Fracture and Thunder's Edge
     "cocytus": "ice", "styx": "styx", "lethe": "lethe", "phlegethon": "lava", "thunder'sedge": "storm", "thundersedge": "storm",
+    "magna": "steel",  # (0.83.0 Blue Reverie: the Atokera's living-metal homeworld)
+    "iterum": "ice",  # (0.84.0 Blue Reverie: the Belkosea's frozen fortress world; Conviction is their space station)
+    "phar": "desert",  # (0.85.0 Blue Reverie: the Pharad'n Order's tomb world)
 }
 BY_TRAIT = {1: ["ocean", "lush", "jungle", "lavender", "lush", "ocean"],
             2: ["lava", "ice", "toxic", "gas", "barren", "lava"],

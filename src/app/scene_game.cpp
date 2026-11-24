@@ -16,6 +16,7 @@
 #include "engine/query.h"
 #include "game/habits.h"
 #include "game/league_run.h"
+#include "game/leagues.h"
 #include "game/session.h"
 #include "gfx/font.h"
 #include "engine/deal.h"
@@ -38,6 +39,7 @@
 #include "ui/theme.h"
 #include "ui/transition.h"
 #include "ui/warsun_scene.h"
+#include "ui/monument_card.h"
 #include "ui/fracture_ripple.h"
 #include "ui/widgets.h"
 #include "ui/pcolors.h"
@@ -113,11 +115,17 @@ class GameScene : public Scene {
 public:
     explicit GameScene(std::unique_ptr<GameSession> s) : session_(std::move(s)) {
         ti::setCodexTexts(ti::codexOn(session_->game()), session_->game().fixes >= 4);  // 0.31.0: the Omega wording
-        if (!session_->league().empty()) leagueNames_ = leaguerun::seatNames(session_->league());
+        // (0.80.11) the rival commanders at the table: a Career game's rivals, or the ones you seated in a Casual Game
+        for (const std::string& id : session_->engine().setup().commanders) {
+            const league::RivalDef* r = id.empty() ? nullptr : league::rival(id);
+            leagueNames_.push_back(r ? r->name : "");
+        }
+        if (leagueNames_.empty() && !session_->league().empty()) leagueNames_ = leaguerun::seatNames(session_->league());  // (0.80.0 saves)
         ti::setThundersEdgeTexts(ti::teXxchaHero(session_->game()), ti::teNaalu(session_->game()));  // 0.57.1: TE's Xxekir Grom; Z'eu
         ti::setWormholeGeneratorOriginal(!ti::codexOn(session_->game()) && session_->game().fixes >= 13);
         ti::setMagmusReactorOriginal(ti::magmusOriginal(session_->game()));
-        ti::setStrategyTexts((session_->game().modules & ti::kModThundersEdge) != 0);  // 0.43.3: TE's Construction / Warfare
+        ti::setStrategyTexts((session_->game().modules & ti::kModThundersEdge) != 0, (session_->game().modules & ti::kModMonuments) != 0);  // 0.43.3: TE's Construction / Warfare
+        ti::setMonumentsTexts((session_->game().modules & ti::kModMonuments) != 0);  // (0.82.0) Monuments to the Ages Omega (monoliths)
         intro_ = transition::pending;  // 0.28.0: the game-start transition continues here
         transition::pending = false;
         layoutMap();
@@ -495,6 +503,19 @@ public:
         if (const float cr = crimsonOf(now); cr > 0.f) ripple::crimson(c, cr, now - mapFx_.start);  // (0.73.8) behind the map
         map_.setActiveSystem(g.activeSystem);
         map_.setViewer(session_->seat());
+        {  // Caled's line (0.84.0): while the human picks a system to activate, or is asked to use a superweapon in a combat
+            int from = -1, to = -1;
+            const int me = session_->seat();
+            if (me >= 0 && session_->humanToAnswer() && !peek_ && swCardReady(g, me, kSwCaled)) {
+                const Decision& d = session_->engine().decision();
+                if (d.player == me && d.tag == Tag::Activate) from = superweaponSystem(g, kSwCaled);
+                if (d.player == me && d.tag == Tag::Faction && d.ability == int(Ab::BrSuperweapon) && g.activeSystem >= 0) {
+                    from = superweaponSystem(g, kSwCaled);
+                    to = g.activeSystem;
+                }
+            }
+            map_.setCaled(from, to);
+        }
         map_.draw(c, g, now);
         if (mapFx_.on(now) && now - mapFx_.start >= mapFx_.rippleAt) {  // (0.73.5) the map bends as the ripple goes out over it
             if (!mapFx_.tore) {  // (its sound comes with it: the Obsidian's after the screams)
@@ -528,6 +549,9 @@ public:
             else if (agendaPanel && tab_ == 0 && !peek_) drawAgendaPanel(c, g);
             else if (ui_ && !peek_ && ui_->decision().tag == Tag::StrategyPick) drawStrategyPreview(c, g, ui_->highlightedValue());
             else if (ui_ && !peek_ && leaderInPrompt(ui_->decision()) >= 0) drawLeaderPreview(c, g, leaderInPrompt(ui_->decision()));
+            else if (ui_ && !peek_ && ui_->decision().tag == Tag::MonumentAbility && ui_->decision().ability >= 0 &&
+                     ui_->decision().ability < kMonumentCount)
+                drawMonumentPreview(c, ui_->decision().ability, now);  // (0.82.0) the monument card whose ability is asked about
             else if (tab_ == 0) drawSystemPanel(c, g);
             else drawPlayersPanel(c, g);
         }
@@ -562,6 +586,7 @@ public:
         if (!warSunShown && wsOn_) warSunEnd();  // (skipped or over: its sounds stop, the music comes back)
         if (warSunShown) drawWarSun(c, g, now, holding);
         else if (card_.kind == 20 && (holding || int32_t(now - card_.until) < 0)) drawPlanetfall(c, g, now, holding);
+        else if (card_.kind == 30 && (holding || int32_t(now - card_.until) < 0)) drawMonumentCard(c, now, holding);
         else if (card_.kind == 10 && (holding || int32_t(now - card_.until) < 0)) {
             CentredView v(c);  // (widescreen: laid out for 640, centred; the dimming covers the width)
             drawReveal(c, g, now, holding);
@@ -1102,6 +1127,15 @@ private:
             case EventKind::ObjectiveRevealed:  // 0.29.0: a new public objective, large
                 if (session_->holding() && e.count >= 0) cardBanner(18, e.count, -1, kObjectives[e.count].name, "Revealed", now, fx);
                 break;
+            case EventKind::MonumentPlaced:  // (0.82.0 Monuments+) the monument's card, large (held per the "Cards" setting)
+                {
+                std::string line = e.label;  // (your own: "You placed your monument on ...")
+                const size_t k = line.find(" placed their monument");
+                if (e.player == me && k != std::string::npos) line = "You placed your monument" + line.substr(k + 22);
+                cardBanner(30, e.count, e.player, playerName(g, e.player), line, now, std::max<uint32_t>(fx, 2600));
+            }
+                audio::play(audio::Sfx::Thud, 0.8f);
+                break;
             case EventKind::RelicUsed:
                 cardBanner(session_->holding() ? 13 : 5, e.card, e.player, kRelics[e.card].name,
                            (e.player == me ? std::string("You ") : playerName(g, e.player) + " ") + e.label + " it", now,
@@ -1357,6 +1391,15 @@ private:
                     audio::play(audio::Sfx::GalaxyScreams, 1.f);
                     break;
                 }
+                // (0.82.0, owner M18) a monument's bonus you get without a question: its card, large ("A: Continue")
+                if (e.unit == int8_t(UnitType::Monument) && e.count > 0 && e.card >= 0 && e.card < kMonumentCount && e.player == me) {
+                    const std::string what = e.count == 1 ? "you gain " + std::to_string(e.hits) + (e.hits == 1 ? " trade good" : " trade goods")
+                                                          : "you cast " + std::to_string(e.hits) + (e.hits == 1 ? " more vote" : " more votes");
+                    cardBanner(30, e.card, e.player, playerName(g, e.player), e.label + ": " + what, now, std::max<uint32_t>(fx, 2600));
+                    if (e.system >= 0) map_.flash(e.system, pc, now, fx);
+                    audio::play(audio::Sfx::Toggle, 0.6f);
+                    break;
+                }
                 cardBanner(7, -1, e.player, e.label, e.player == me ? std::string("You use it") : playerName(g, e.player) + " uses it", now,
                            std::max<uint32_t>(fx, 1400));
                 card_.text = e.text;
@@ -1546,7 +1589,7 @@ private:
         // (0.60.0) the cards shown large until A (12-18: a scored objective, a relic used, a ruling, a component action, a leader, a
         // drawn card, a revealed objective) have no small banner - once A let them go, the leftover time showed a ruling as a
         // "TECHNOLOGY" card with the agenda's name
-        if (card_.kind >= 12 && card_.kind <= 18) return;
+        if ((card_.kind >= 12 && card_.kind <= 18) || card_.kind == 30) return;
         int a = fadeAlpha(now, card_.start, card_.until, 120, 300);
         if (a <= 0) return;
         int age = int(now - card_.start);
@@ -2150,6 +2193,27 @@ private:
 
     // The key and "Continue" inside a held card's button - the key named for the controls in use
     // (0.29.0: it always said "A", also with keyboard & mouse); a click on it presses A.
+    // (0.82.0 Monuments+) a monument placed: its card over the dimmed map, the line above it says who placed it where
+    void drawMonumentCard(Canvas& c, uint32_t now, bool holding) {
+        const int age = int(now - card_.start);
+        const int a = std::min(255, 40 + age * 215 / 220);
+        c.fillRect(0, 0, c.width(), 480, rgb(2, 4, 10), std::min(240, a));  // (the whole width, the top bar too: nothing shows through)
+        CentredView view(c);
+        drawTextAligned(c, FONT_MDB, 0, 24, 640, Align::Center, card_.sub + ".", theme::text, a);
+        const int slide = age < 220 ? (220 - age) * 40 / 220 : 0;
+        monumentcard::draw(c, card_.card, Rect{33, 48 + slide, 574, 372}, now);
+        if (holding) {
+            const int bw = 140, bx = (640 - bw) / 2, by = 428;
+            const uint32_t fr = card_.card >= 0 && card_.card < kMonumentCount
+                                    ? rgb(int(kMonuments[card_.card].frame >> 16) & 255, int(kMonuments[card_.card].frame >> 8) & 255, int(kMonuments[card_.card].frame) & 255)
+                                    : theme::border;
+            const int pulse = 170 + int(85 * (0.5f + 0.5f * std::sin(float(age) / 260.f)));
+            c.fillRoundRect(bx, by, bw, 24, 8, shade(fr, 0.45f), a);
+            c.frameRoundRect(bx, by, bw, 24, 8, shade(fr, 1.3f), 1, std::min(a, pulse));
+            continueKey(c, bx, by, bw, a);
+        }
+    }
+
     static void continueKey(Canvas& c, int bx, int by, int bw, int a) {
         const std::string key = keyLabel("A");
         const int kw = std::max(18, textWidth(FONT_SMB, key) + 8);
@@ -2184,26 +2248,48 @@ private:
                                                : kDeckCol[int(kExploreCards[card_.card].type)];
         const int age = int(now - card_.start) - (revealed(kind) ? kExploreReveal : 0);
         const int a = std::min(255, 60 + age * 195 / 200);
-        const int w = agenda || ruling || comp ? 380 : 360;
+        int w = agenda || ruling || comp ? 380 : 360;
         std::vector<std::string> textLines;
+        // (0.81.0: Absol's Agendas carry long texts - a wider card and a smaller font when the text wouldn't fit)
+        const FontData* tf = &FONT_MD;
+        auto wrapAll = [&]() {
+        textLines.clear();
         if (ruling || comp) {
-            textLines = wrapText(FONT_MD, card_.text, w - 36);
+            textLines = wrapText(*tf, card_.text, w - 36);
         } else if (action) {
-            textLines = wrapText(FONT_MD, actionCardText(card_.card), w - 36);
+            textLines = wrapText(*tf, actionCardText(card_.card), w - 36);
         } else if (secret) {
-            textLines = wrapText(FONT_MD, objectiveSummary(card_.card), w - 36);
+            textLines = wrapText(*tf, objectiveSummary(card_.card), w - 36);
         } else if (leader) {
-            textLines = wrapText(FONT_MD, leaderText(card_.card), w - 36);
+            textLines = wrapText(*tf, leaderText(card_.card), w - 36);
         } else if (agenda) {
             const bool fa = kAgendas[card_.card].elect == Elect::ForAgainst;
-            textLines = wrapText(FONT_MD, std::string(fa ? "For: " : "") + agendaText(card_.card, false), w - 36);
+            textLines = wrapText(*tf, std::string(fa ? "For: " : "") + agendaText(card_.card, false), w - 36);
             if (fa) {
                 textLines.push_back("");
-                for (const std::string& l : wrapText(FONT_MD, std::string("Against: ") + agendaText(card_.card, true), w - 36))
+                for (const std::string& l : wrapText(*tf, std::string("Against: ") + agendaText(card_.card, true), w - 36))
                     textLines.push_back(l);
             }
         } else {
-            textLines = wrapText(FONT_MD, relic ? relicText(card_.card) : exploreText(card_.card), w - 36);
+            textLines = wrapText(*tf, relic ? relicText(card_.card) : exploreText(card_.card), w - 36);
+        }
+        };
+        wrapAll();
+        if (agenda || ruling) {  // the text's room: the screen minus the card's frame, title, notes and button
+            const int budget = 480 - kTopH - 28 - 16 - 175 - (card_.title.size() > 28 ? 26 : 0);
+            auto fits = [&]() { return int(textLines.size()) * (tf->lineHeight + 2) <= budget; };
+            if (!fits()) {
+                w = std::max(w, std::min(470, mapW() - 16));
+                wrapAll();
+            }
+            if (!fits()) {
+                tf = &FONT_SM;
+                wrapAll();
+            }
+            if (!fits()) {
+                tf = &FONT_XS;
+                wrapAll();
+            }
         }
         auto titleLines = wrapText(FONT_LG, card_.title, w - 32);
         auto subLines = wrapText(FONT_SMB, card_.sub, w - 32);
@@ -2241,7 +2327,7 @@ private:
             kindLine = keyText("Relic - kept in the play area (MENU > Your cards > Relics).");
         }
         auto kindLines = wrapText(FONT_XS, kindLine, w - 32);
-        int h = 12 + 30 + 10 + int(titleLines.size()) * 26 + 8 + int(textLines.size()) * (FONT_MD.lineHeight + 2) + 10 +
+        int h = 12 + 30 + 10 + int(titleLines.size()) * 26 + 8 + int(textLines.size()) * (tf->lineHeight + 2) + 10 +
                 int(kindLines.size()) * 14 + 8 + int(subLines.size()) * 17 + 34;
         Rect r{(mapW() - w) / 2, kTopH + std::max(8, (360 - h) / 2), w, h};
         c.fillRect(0, kTopH, mapW(), 480 - kTopH - 28, rgb(0, 0, 0), a * 110 / 255);
@@ -2272,8 +2358,8 @@ private:
         }
         y += 8;
         for (const std::string& l : textLines) {
-            drawTextAligned(c, FONT_MD, r.x, y, r.w, Align::Center, l, rgb(232, 226, 210), a);
-            y += FONT_MD.lineHeight + 2;
+            drawTextAligned(c, *tf, r.x, y, r.w, Align::Center, l, rgb(232, 226, 210), a);
+            y += tf->lineHeight + 2;
         }
         y += 10;
         for (const std::string& l : kindLines) {
@@ -2384,7 +2470,8 @@ private:
         // the screen buttons (0.67.0): in the free middle, right of the agenda's "Waiting for you" tag; Galactic Events the last
         const int waitW = waiting ? textWidth(FONT_XS, waitText()) + 26 : 0;
         strip_ = Strip{};
-        if (mouseSeen_ || pop_.on) layoutStrip(leftEnd + 12 + waitW, rightStart - 12, kBarBtns + (g.events ? 1 : 0));
+        // (0.82.0) Monuments+ games: a Monuments button (kMonBtn) after the nine, Galactic Events still the last
+        if (mouseSeen_ || pop_.on) layoutStrip(leftEnd + 12 + waitW, rightStart - 12, kBarBtns + (monBtn() ? 1 : 0) + (g.events ? 1 : 0));
         // Galactic Events (0.46.2, owner): a button in the free part of the bar while events are in play
         eventsBtn_ = Rect{};
         if (strip_.on && g.events) eventsBtn_ = strip_.btn(strip_.n - 1);
@@ -2427,6 +2514,15 @@ private:
     float barX_ = -1.f, barY_ = -1.f, barGX_ = 0.f, barGY_ = 0.f;
     bool barDrag_ = false, barMin_ = false, barLoaded_ = false, barShown_ = false, mouseSeen_ = false;
     std::unique_ptr<Canvas> popCanvas_;
+    // (0.82.0) the game menu's items in row order: 0..17 (cases in updateOverlay), 18 = Monuments after Laws in Monuments+ games
+    std::vector<int> menuIds() const {
+        std::vector<int> v;
+        for (int i = 0; i < 18; ++i) {
+            v.push_back(i);
+            if (i == 3 && session_ && (session_->game().modules & kModMonuments)) v.push_back(18);
+        }
+        return v;
+    }
     static const char* barName(int i) {
         static const char* const kNames[kBarBtns] = {"Objectives", "Laws",    "Your cards", "Faction sheet", "Units",
                                                      "Technology", "Planets", "Players",    "Game log"};
@@ -2448,7 +2544,10 @@ private:
     int stripHover_ = -1;
     uint32_t stripHoverSince_ = 0;
     static constexpr uint32_t kStripTipMs = 1000;  // the name after 1 s pointing at a button
-    static const char* stripName(int i) { return i < kBarBtns ? barName(i) : "Galactic Events"; }
+    static constexpr int kMonBtn = 9;  // (0.82.0) the Monuments button / pop-up (Monuments+ games), right after the nine
+    bool monBtn() const { return session_ && (session_->game().modules & kModMonuments) != 0; }
+    bool eventsSlot(int i) const { return session_ && session_->game().events && i == strip_.n - 1; }
+    const char* stripName(int i) const { return eventsSlot(i) ? "Galactic Events" : i < kBarBtns ? barName(i) : "Monuments"; }
     bool hotRect(const Rect& b) const {
         return hoverX_ >= float(b.x) && hoverX_ < float(b.x + b.w) && hoverY_ >= float(b.y) && hoverY_ < float(b.y + b.h);
     }
@@ -2492,6 +2591,7 @@ private:
             case 8:                                                                          // Game log: lines of text
                 for (int k = 0; k < 3; ++k) c.fillRect(cx - h + 2, cy - h + 3 + k * (s - 5) / 2, s - 4 - (k == 2 ? s / 3 : 0), 2, col);
                 break;
+            case kMonBtn: monumentcard::temple(c, float(cx), float(cy) - 0.5f, float(s) * 0.62f, col); break;  // (0.82.0) Monuments: the temple
             default: {                                                                       // Galactic Events: a burst
                 float xs[8], ys[8];
                 for (int k = 0; k < 8; ++k) {
@@ -2509,12 +2609,12 @@ private:
         int hover = -1;
         for (int i = 0; i < strip_.n; ++i) {
             const Rect b = strip_.btn(i);
-            const bool events = i >= kBarBtns;
+            const bool events = eventsSlot(i);
             const bool hot = hotRect(b), open = events ? eventsOpen_ : pop_.on && pop_.which == i;
             if (hot) hover = i;
             drawPanel(c, b, open ? rgb(60, 48, 20) : hot ? rgb(34, 46, 80) : rgb(20, 26, 46),
                       open || hot ? theme::gold : events ? rgb(150, 110, 210) : theme::border, 4, 240);
-            drawScreenIcon(c, i, b.x + b.w / 2, b.y + b.h / 2, b.h - 5, open || hot ? theme::gold : theme::text);
+            drawScreenIcon(c, events ? -1 : i, b.x + b.w / 2, b.y + b.h / 2, b.h - 5, open || hot ? theme::gold : theme::text);
             if (!events) hits::addAction(b, [this, i] { togglePop(i); });  // (Galactic Events: drawEvents, eventsBtn_)
         }
         if (hover != stripHover_) {
@@ -2621,6 +2721,7 @@ private:
             case 5: info_ = makeTechScreen(g, h); break;
             case 6: info_ = makePlanetScreen(g, h); break;
             case 7: overlay_ = Overlay::Players; break;
+            case kMonBtn: info_ = makeMonumentScreen(g, h); break;  // (0.82.0)
             default:
                 overlay_ = Overlay::Log;
                 logScroll_ = 0;
@@ -2785,7 +2886,7 @@ private:
         drawPanel(c, Rect{r.x - 2, r.y - 2, r.w + 4, r.h + 4}, rgb(14, 18, 32), rgb(150, 120, 60), 5, 255);
         c.fillRect(r.x, r.y, r.w, kPopBar, pop_.drag ? rgb(50, 60, 100) : rgb(32, 40, 72), 255);
         for (int k = 0; k < 3; ++k) c.fillRect(r.x + 6 + k * 4, r.y + 5, 2, 6, theme::dim);
-        drawText(c, FONT_SMB, r.x + 22, r.y + 1, fitText(FONT_SMB, pop_.which >= 0 ? barName(pop_.which) : "", r.w - 64), theme::gold);
+        drawText(c, FONT_SMB, r.x + 22, r.y + 1, fitText(FONT_SMB, pop_.which >= 0 ? (pop_.which < kBarBtns ? barName(pop_.which) : "Monuments") : "", r.w - 64), theme::gold);
         hits::addBlock(r);
         popButtons(c, r);
     }
@@ -2798,7 +2899,7 @@ private:
         drawPanel(c, Rect{r.x - 2, r.y - 2, r.w + 4, r.h + 4}, rgb(14, 18, 32), rgb(150, 120, 60), 6, 255);
         c.fillRect(r.x, r.y, r.w, kPopBar, pop_.drag ? rgb(50, 60, 100) : rgb(32, 40, 72), 255);
         for (int k = 0; k < 3; ++k) c.fillRect(r.x + 6 + k * 4, r.y + 5, 2, 6, theme::dim);
-        drawText(c, FONT_SMB, r.x + 22, r.y + 1, pop_.which >= 0 ? barName(pop_.which) : "", theme::gold);
+        drawText(c, FONT_SMB, r.x + 22, r.y + 1, pop_.which >= 0 ? (pop_.which < kBarBtns ? barName(pop_.which) : "Monuments") : "", theme::gold);
         drawTextAligned(c, FONT_XS, r.x, r.y + 3, r.w - 44, Align::Right, "drag to move", theme::faint);
         hits::addBlock(Rect{r.x, r.y, r.w, r.h});
         popButtons(c, r);
@@ -2968,6 +3069,44 @@ private:
             if (y > r.y + r.h - 20) break;
             drawText(c, FONT_MD, r.x + 8, y, l, theme::text);
             y += 16;
+        }
+        drawTextAligned(c, FONT_XS, r.x, r.y + r.h - 16, r.w, Align::Center, "Read it, then answer on the left.", theme::faint);
+    }
+    // (0.82.0 Monuments+) a monument ability's question: its card in the side panel - the moving picture, the name, the text
+    void drawMonumentPreview(Canvas& c, int card, uint32_t now) {
+        const Rect r{mapW() + 6, kTopH + 4, W() - mapW() - 10, kHintY - kTopH - 8};
+        drawPanel(c, r, theme::panel, theme::border, 8, kSideAlpha + 40);
+        const MonumentDef& m = kMonuments[card];
+        const int aw = r.w - 8, ah = std::min(150, aw * 3 / 4);
+        monumentcard::art(c, card, Rect{r.x + 4, r.y + 4, aw, ah}, now, true, 0.45f);
+        int y = r.y + 12 + ah;
+        const int u = unitByKey(m.unit);
+        for (const std::string& l : wrapText(FONT_LG, u >= 0 ? kUnits[u].name : m.subtitle, r.w - 16)) {
+            drawText(c, FONT_LG, r.x + 8, y, l, theme::gold);
+            y += 20;
+        }
+        drawText(c, FONT_XS, r.x + 8, y + 2, m.subtitle, theme::dim);
+        y += 18;
+        if (*m.stats) {
+            for (const std::string& l : wrapText(FONT_SMB, m.stats, r.w - 16)) {
+                drawText(c, FONT_SMB, r.x + 8, y, l, theme::cyan);
+                y += 14;
+            }
+            y += 2;
+        }
+        std::string text = m.text;
+        size_t from = 0;
+        while (from <= text.size()) {
+            const size_t nl = text.find('\n', from);
+            const std::string para = text.substr(from, nl == std::string::npos ? std::string::npos : nl - from);
+            for (const std::string& l : wrapText(FONT_SM, para, r.w - 16)) {
+                if (y > r.y + r.h - 32) break;
+                drawText(c, FONT_SM, r.x + 8, y, l, theme::text);
+                y += 14;
+            }
+            y += 4;
+            if (nl == std::string::npos) break;
+            from = nl + 1;
         }
         drawTextAligned(c, FONT_XS, r.x, r.y + r.h - 16, r.w, Align::Center, "Read it, then answer on the left.", theme::faint);
     }
@@ -3236,7 +3375,13 @@ private:
             const int is = icons::available() ? 15 : 0;
             if (is) drawFactionIcon(c, pl.faction, x + 7, y, is, pl.passed ? 140 : 255);
             std::string name = playerName(g, q) + (q == session_->human() ? " (you)" : "") + (q == g.speaker ? " \xE2\x98\x85" : "");
-            drawText(c, FONT_SMB, x + 8 + (is ? is + 3 : 0), y, fitText(FONT_SMB, name, w - 50 - (is ? is + 3 : 0)), pl.passed ? theme::dim : pcolours::readable(pcolor(g, q)));
+            const int nx = x + 8 + (is ? is + 3 : 0);
+            const std::string shownName = fitText(FONT_SMB, name, w - 50 - (is ? is + 3 : 0));
+            drawText(c, FONT_SMB, nx, y, shownName, pl.passed ? theme::dim : pcolours::readable(pcolor(g, q)));
+            if (q < int(leagueNames_.size()) && !leagueNames_[size_t(q)].empty()) {  // (0.80.11) the rival commander in that seat
+                const int cx = nx + textWidth(FONT_SMB, shownName) + 6, room = x + w - 50 - cx;
+                if (room > 30) drawText(c, FONT_XS, cx, y + 3, fitText(FONT_XS, leagueNames_[size_t(q)], room), theme::dim);
+            }
             drawTextAligned(c, FONT_SMB, x, y, w, Align::Right, std::to_string(pl.vp) + " VP", theme::gold);
             std::string cards;
             for (int8_t cd : pl.cards) {
@@ -3360,28 +3505,12 @@ private:
         }
         drawText(c, FONT_XS, x, y, kAgendas[shown].law ? "Law" : "Directive", theme::dim);
         y += 15;
-        auto para = [&](const std::string& head, const std::string& text, uint32_t col) {
-            int n = 0;
-            for (const std::string& l : wrapText(FONT_XS, head + text, w)) {
-                if (n++ >= 5) break;
-                drawText(c, FONT_XS, x, y, l, col);
-                y += 12;
-            }
-            y += 3;
-        };
-        if (hidden) {
-            para("", "Covert Legislation: only the speaker knows what is being voted on.", theme::gold);
-        } else {
-            bool fa = kAgendas[shown].elect == Elect::ForAgainst;
-            para(fa ? "For: " : "", agendaText(shown, false), rgb(200, 210, 230));
-            if (fa) para("Against: ", agendaText(shown, true), rgb(200, 210, 230));
-        }
-        c.hline(x, x + w, y, rgb(60, 80, 130));
-        y += 5;
-        // votes so far
+        // votes so far (counted first: the card text may use the room the vote list doesn't need)
         std::vector<std::pair<int, int>> tally;  // outcome, votes
+        int voters = 0;
         for (int q = 0; q < g.numPlayers && q < int(g.votedFor.size()); ++q) {
             if (g.votedFor[q] == kNoVote) continue;
+            ++voters;
             bool found = false;
             for (auto& t : tally)
                 if (t.first == g.votedFor[q]) {
@@ -3390,6 +3519,42 @@ private:
                 }
             if (!found) tally.push_back({g.votedFor[q], g.voteCount[q]});
         }
+        auto para = [&](const std::string& head, const std::string& text, uint32_t col, int maxLines) {
+            std::vector<std::string> ls = wrapText(FONT_XS, head + text, w);
+            if (int(ls.size()) > maxLines) {  // cut: say so with an ellipsis on the last line shown
+                ls.resize(std::max(1, maxLines));
+                std::string& last = ls.back();
+                while (!last.empty() && textWidth(FONT_XS, last + "\xE2\x80\xA6") > w) last.pop_back();
+                while (!last.empty() && last.back() == ' ') last.pop_back();
+                last += "\xE2\x80\xA6";
+            }
+            for (const std::string& l : ls) {
+                drawText(c, FONT_XS, x, y, l, col);
+                y += 12;
+            }
+            y += 3;
+        };
+        if (hidden) {
+            para("", "Covert Legislation: only the speaker knows what is being voted on.", theme::gold, 5);
+        } else {
+            bool fa = kAgendas[shown].elect == Elect::ForAgainst;
+            std::string forText = std::string(fa ? "For: " : "") + agendaText(shown, false);
+            std::string againstText = fa ? std::string("Against: ") + agendaText(shown, true) : std::string();
+            int nf = int(wrapText(FONT_XS, forText, w).size());
+            int na = fa ? int(wrapText(FONT_XS, againstText, w).size()) : 0;
+            int reserve = 5 + 16 + 15 * std::max<int>(1, int(tally.size())) + 4 + 12 * voters + 6 +
+                          (agendaResult_.empty() ? 0 : 50);
+            int room = std::max(10, (p.y + p.h - y - reserve - (fa ? 6 : 3)) / 12);  // lines for both parts
+            int la = na, lf = nf;
+            if (nf + na > room) {
+                la = fa ? std::min(na, std::max(3, room / 3)) : 0;
+                lf = std::max(5, room - la);
+            }
+            para("", forText, rgb(200, 210, 230), lf);
+            if (fa) para("", againstText, rgb(200, 210, 230), la);
+        }
+        c.hline(x, x + w, y, rgb(60, 80, 130));
+        y += 5;
         drawText(c, FONT_SMB, x, y, "Votes", theme::gold);
         y += 16;
         if (tally.empty()) {
@@ -3403,7 +3568,9 @@ private:
                 case Elect::ForAgainst: return o == 0 ? "For" : "Against";
                 case Elect::Player: return playerName(g, o);
                 case Elect::Planet:
+                case Elect::NonHome:
                 case Elect::NonHomePlanet: return kPlanets[g.planets[o].def].name;
+                case Elect::UnitUpgrade: return o >= 0 && o < kTechCount ? kTechs[o].name : std::to_string(o);
                 case Elect::Law: return kAgendas[o].name;
                 case Elect::ScoredSecret: return kObjectives[o].name;
                 case Elect::StrategyCard: return strategyName(o);
@@ -3466,18 +3633,22 @@ private:
                     updateMenuWeb(in);
                     break;
                 }
-                const int n = 18;
+                // (0.82.0) the rows -> the items (menuIds: "Monuments" after "Laws" in Monuments+ games)
+                const std::vector<int> ids = menuIds();
+                const int n = int(ids.size());
+                if (menuSel_ >= n) menuSel_ = 0;
                 if (in.pressed(Btn::Up)) menuSel_ = (menuSel_ + n - 1) % n;
                 if (in.pressed(Btn::Down)) menuSel_ = (menuSel_ + 1) % n;
+                const int mid = ids[size_t(menuSel_)];
                 if (in.pressed(Btn::B) || in.pressed(Btn::Menu)) overlay_ = Overlay::None;
-                if (menuSel_ == 11 && (in.pressed(Btn::Left) || in.pressed(Btn::Right) || in.pressed(Btn::A))) {
+                if (mid == 11 && (in.pressed(Btn::Left) || in.pressed(Btn::Right) || in.pressed(Btn::A))) {
                     int sp = (speed_ + (in.pressed(Btn::Left) ? 3 : 1)) % 4;
                     app.settings().setInt("ai_speed", sp);
                     app.settings().save();
                     speed_ = sp;
                     return;
                 }
-                if (menuSel_ == 12 && (in.pressed(Btn::Left) || in.pressed(Btn::Right) || in.pressed(Btn::A))) {
+                if (mid == 12 && (in.pressed(Btn::Left) || in.pressed(Btn::Right) || in.pressed(Btn::A))) {
                     int m = (cardPause_ + (in.pressed(Btn::Left) ? 2 : 1)) % 3;
                     app.settings().setInt("card_pause", m);
                     app.settings().save();
@@ -3485,22 +3656,22 @@ private:
                     session_->setCardPause(m);
                     return;
                 }
-                if (menuSel_ == 13 && (in.pressed(Btn::Left) || in.pressed(Btn::Right) || in.pressed(Btn::A))) {
+                if (mid == 13 && (in.pressed(Btn::Left) || in.pressed(Btn::Right) || in.pressed(Btn::A))) {
                     const bool on = !map_.borders();
                     app.settings().setInt("map_borders", on ? 1 : 0);
                     app.settings().save();
                     map_.setBorders(on);
                     return;
                 }
-                if (menuSel_ == 14 && (in.pressed(Btn::Left) || in.pressed(Btn::Right) || in.pressed(Btn::A))) {
+                if (mid == 14 && (in.pressed(Btn::Left) || in.pressed(Btn::Right) || in.pressed(Btn::A))) {
                     const bool on = app.settings().getInt("info_tiles", 1) == 0;
                     app.settings().setInt("info_tiles", on ? 1 : 0);
                     app.settings().save();
                     map_.setInfoTiles(on);
                     return;
                 }
-                if ((menuSel_ == 15 || menuSel_ == 16) && (in.pressed(Btn::Left) || in.pressed(Btn::Right) || in.pressed(Btn::A))) {
-                    const bool music = menuSel_ == 15;
+                if ((mid == 15 || mid == 16) && (in.pressed(Btn::Left) || in.pressed(Btn::Right) || in.pressed(Btn::A))) {
+                    const bool music = mid == 15;
                     int v = music ? audio::musicVolume() : audio::soundVolume();
                     v = in.pressed(Btn::Left) ? std::max(0, v - 1) : in.pressed(Btn::Right) ? std::min(10, v + 1) : (v + 1) % 11;
                     if (music) audio::setMusicVolume(v);
@@ -3512,8 +3683,8 @@ private:
                 }
                 if (in.pressed(Btn::A)) {
                     int h = session_->seat();
-                    fromMenu_ = menuSel_ >= 2 && menuSel_ <= 10;  // the screens opened from here come back here
-                    switch (menuSel_) {
+                    fromMenu_ = (mid >= 2 && mid <= 10) || mid == 18;  // the screens opened from here come back here
+                    switch (mid) {
                         case 0: overlay_ = Overlay::None; break;
                         case 1:
                             menuWeb_ = true;
@@ -3548,6 +3719,10 @@ private:
                         case 10:
                             overlay_ = Overlay::Log;
                             logScroll_ = 0;
+                            break;
+                        case 18:  // (0.82.0) Monuments+
+                            overlay_ = Overlay::None;
+                            info_ = makeMonumentScreen(g, h);
                             break;
                         case 17:
                             session_->save();
@@ -3761,14 +3936,23 @@ private:
                                        // 0.27.0: sound
                                        {volumeLabel("Music", audio::musicVolume()), "\xE2\x97\x80 \xE2\x96\xB6 music volume (0 = off)"},
                                        {volumeLabel("Sounds", audio::soundVolume()), "\xE2\x97\x80 \xE2\x96\xB6 sound effects volume (0 = off)"},
-                                       {"Save and quit", "Continue later from the title screen"}};
+                                       {"Save and quit", "Continue later from the title screen"},
+                                       // (0.82.0) id 18, shown after Laws in Monuments+ games (menuIds)
+                                       {"Monuments", "Every player's monument: where it stands, and its card"}};
+        {  // the rows in menuIds order
+            std::vector<MenuItem> rows;
+            for (int id : menuIds()) rows.push_back(items[size_t(id)]);
+            items = rows;
+        }
+        if (menuSel_ >= int(items.size())) menuSel_ = 0;
+        const int pitch = items.size() > 18 ? 19 : 20;  // (19 rows fit at 19 units)
         int y = right.y + 28;
         for (size_t i = 0; i < items.size(); ++i) {
             bool sel = int(i) == menuSel_;
-            hits::add(Rect{right.x + 6, y - 2, right.w - 12, 19}, [this, i]() { menuSel_ = int(i); });  // the mouse (0.27.0)
-            if (sel) c.fillRoundRect(right.x + 6, y - 2, right.w - 12, 19, 6, theme::panelHi);
+            hits::add(Rect{right.x + 6, y - 2, right.w - 12, pitch - 1}, [this, i]() { menuSel_ = int(i); });  // the mouse (0.27.0)
+            if (sel) c.fillRoundRect(right.x + 6, y - 2, right.w - 12, pitch - 1, 6, theme::panelHi);
             drawText(c, FONT_SMB, right.x + 14, y, fitText(FONT_SMB, items[i].label, right.w - 24), sel ? theme::text : theme::dim);
-            y += 20;
+            y += pitch;
         }
         auto lines = wrapText(FONT_XS, items[size_t(menuSel_)].detail, right.w - 16);
         int yy = right.y + right.h - 30;
@@ -3802,7 +3986,10 @@ private:
             drawText(c, FONT_SMB, cols[0] + fx, y, fitText(FONT_SMB, name, 150 - fx), pcolours::readable(pcolor(g, q)));
             std::string sub = kFactions[pl.faction].name;
             if (archetypesRevealed(g) && isBot(g, q)) sub = archName(g, q) + " \xC2\xB7 " + sub;  // after round 3
-            drawText(c, FONT_XS, cols[0] + fx, y + 16, fitText(FONT_XS, sub, 150 - fx), archetypesRevealed(g) && isBot(g, q) ? rgb(230, 190, 120) : theme::faint);
+            const bool cmd = q < int(leagueNames_.size()) && !leagueNames_[size_t(q)].empty();
+            if (cmd) sub = leagueNames_[size_t(q)];  // (0.80.11) the rival commander in that seat
+            drawText(c, FONT_XS, cols[0] + fx, y + 16, fitText(FONT_XS, sub, 150 - fx),
+                     cmd ? theme::gold : archetypesRevealed(g) && isBot(g, q) ? rgb(230, 190, 120) : theme::faint);
             drawText(c, FONT_SMB, cols[1], y + 6, std::to_string(pl.vp), theme::gold);
             std::string cards;
             for (int8_t cd : pl.cards) cards += std::string(cards.empty() ? "" : ",") + std::to_string(cd + 1);
@@ -4113,6 +4300,10 @@ private:
             drawText(c, FONT_XS, r.x + 14, y, fitText(FONT_XS, l, r.w - 28), col);
             y += lineH;
         }
+        const int total = int(g.log.size());  // (0.81.1, owner) a slim scroll bar
+        drawScrollBar(c, Rect{r.x + r.w - 9, r.y + 42, 4, maxLines * lineH - 2}, start, maxLines, total, [this, total, maxLines](int dir) {
+            logScroll_ = std::max(0, std::min(std::max(0, total - maxLines), logScroll_ - dir * maxLines));
+        });
         drawHintBar(c, {{"\xE2\x86\x91\xE2\x86\x93", "Scroll"}, {"L1/R1", "Page"}, {"B", "Back"}});
     }
 
@@ -4143,7 +4334,7 @@ private:
     // ------------------------------------------------------------- state
     int objCol_ = 0, objRow_ = 0;  // objectives board cursor
     bool leagueRecorded_ = false;  // (0.80.0) this league game's result is in the league
-    std::vector<std::string> leagueNames_;  // ...and the rival commanders at its seats
+    std::vector<std::string> leagueNames_;  // the rival commanders at the seats (Career games; 0.80.11: Casual games too)
     bool othersView_ = false;      // 0.43.0: the secrets block shows the others' scored secrets (Y)
     int objPage_ = 0;
     struct Banner {

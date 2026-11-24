@@ -48,4 +48,7 @@ void drawUnit(Canvas& c, ti::UnitType t, float cx, float cy, float size, uint32_
 // long: Retrowave (pixelBlock >= 2) pixel art like the expanded tile's, otherwise the picture with a dark rim.
 void drawMapUnit(Canvas& c, ti::UnitType t, float cx, float cy, float size, uint32_t col, bool damaged, uint32_t now, int pixelBlock);
 
+// (Monuments+ drafts, the 0.82.0 plan) monuments drawn on planets for the draft pictures: (planet index, player). Empty = none.
+void setDraftMonuments(const std::vector<std::pair<int, int>>& m);
+
 }  // namespace tileview

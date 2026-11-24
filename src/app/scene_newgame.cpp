@@ -29,6 +29,8 @@
 #include "ui/widgets.h"
 #include "ui/pcolors.h"
 #include "game/profile.h"
+#include "game/league_run.h"
+#include "game/leagues.h"
 
 using namespace ti;
 
@@ -87,6 +89,10 @@ const SoonFaction kDiscordant[] = {
     {"rohdhna", "Roh'Dhna Mechatronics"},    {"tnelis", "The Tnelis Syndicate"},     {"vaden", "The Vaden Banking Clans"},
     {"vaylerian", "The Vaylerian Scourge"},  {"veldyr", "The Veldyr Sovereignty"},   {"rhodun", "The Zealots of Rhodun"},
     {"zelian", "The Zelian Purifier"}};
+// Blue Reverie (0.83.0, TacticBlue): its factions in this game, playable one by one (owner 2026-11-23 20:58: only these five)
+const SoonFaction kBlueReverie[] = {{"atokera", "The Atokera Legacy"}, {"belkosea", "The Belkosea Allied States"},
+                                    {"pharadn", "The Pharad'n Order"}, {"qhet", "The Qhet Republic"},
+                                    {"uydai", "The Uydai Conclave"}};
 
 struct SeatSetup {
     bool human = false;
@@ -95,6 +101,7 @@ struct SeatSetup {
     int color = -1;    // -1 = the next free colour
     int level = 3;     // computer difficulty (Competitive by default - owner)
     int arch = -1;     // computer personality, -1 = random
+    std::string commander;  // (0.80.11) a rival commander you have beaten in the Career, sitting here ("" none)
 };
 
 class NewGameScene : public Scene {
@@ -102,8 +109,9 @@ public:
     NewGameScene() {
         std::vector<int> fs;
         for (int f = 0; f < kFactionCount; ++f)
-            if (kFactions[f].source != Source::ThundersEdge && kFactions[f].source != Source::Discordant)
-                fs.push_back(f);  // (Thunder's Edge, Discordant Stars: their own groups)
+            if (kFactions[f].source != Source::ThundersEdge && kFactions[f].source != Source::Discordant &&
+                kFactions[f].source != Source::BlueReverie)
+                fs.push_back(f);  // (Thunder's Edge, Discordant Stars, Blue Reverie: their own groups)
         std::sort(fs.begin(), fs.end(), [](int a, int b) { return std::strcmp(factionShortName(a), factionShortName(b)) < 0; });
         // the Council Keleres (0.21.0): random home, or the Mentak / Xxcha / Argent home
         const int keleres = findFaction("keleres");
@@ -147,6 +155,11 @@ public:
     }
 
     // ---------------------------------------------------------------- the faction menu
+    bool factionOffered(int f) const {  // (in the faction list for the modules ticked)
+        for (const auto& e : factions_)
+            if (e.first == f) return true;
+        return false;
+    }
     bool factionFree(int f, int except, int tribunii = -1) const {
         for (int i = 0; i < players_; ++i) {
             if (i == except) continue;
@@ -205,6 +218,7 @@ public:
             case kPers:
                 if (!s.human && s.level < kAiLevelAI) {  // (the A.I. has no personality)
                     const int m = int(Arch::Count) + 1;  // Random + the archetypes
+                    if (!s.commander.empty()) s.commander.clear(), s.arch = step > 0 ? -2 : int(Arch::Count);  // (back to the archetypes)
                     s.arch = ((s.arch + 1 + (step > 0 ? 1 : -1)) % m + m) % m - 1;
                 }
                 break;
@@ -246,7 +260,7 @@ public:
             SeatSetup& s = seats_[size_t(seatSel_)];
             if (colSel_ == kFaction) s.faction = s.tribunii = -1;
             else if (colSel_ == kColour) s.color = -1;
-            else if (colSel_ == kPers) s.arch = -1;
+            else if (colSel_ == kPers) s.arch = -1, s.commander.clear();
             else if (colSel_ == kLevel) s.level = 3;
         }
         if (in.pressed(Btn::B) || in.pressed(Btn::Start) || in.pressed(Btn::Menu)) menuOpen_ = false;
@@ -256,6 +270,9 @@ public:
         teOn_ = (app.settings().getInt("modules", ti::kModCodex) & ti::kModThundersEdge) != 0;
         modules_ = app.settings().getInt("modules", ti::kModCodex);
         dsOn_ = (app.settings().getInt("modules", ti::kModCodex) & ti::kModDiscordant) != 0;
+        // (0.85.3, owner: no Blue Reverie box - its factions are secret unlockables earned in the Career) on when any is unlocked
+        brMask_ = profile::brUnlockedMask();
+        brOn_ = brMask_ != 0;
         if (pending_) {  // the transition plays; then the game
             if (!startAt_) {
                 startAt_ = now;
@@ -318,7 +335,7 @@ public:
                 case kPlayers: openPop(kPopPlayers); return;
                 case kGalaxy: openPop(kPopGalaxy); return;
                 case kOptions: openPop(kPopOptions); return;
-                case kVP: vp_ = vp_ == 10 ? 14 : 10; break;
+                case kVP: vp_ = nextVp(vp_, 1); break;  // (0.82.6, owner: 12 points as in the leagues)
                 default: break;
             }
         }
@@ -326,7 +343,7 @@ public:
         if (step) {
             switch (sel_) {
                 case kPlayers: setPlayers(players_ + step); break;
-                case kVP: vp_ = vp_ == 10 ? 14 : 10; break;
+                case kVP: vp_ = nextVp(vp_, step); break;
                 case kGalaxy: galaxy_ = (galaxy_ + (step > 0 ? 1 : 2)) % 3; break;  // Random, Draft, Seeded (0.43.0)
                 default: break;
             }
@@ -371,6 +388,8 @@ public:
         s.unbalanced = galaxy_ != 2 && !fair_ ? 1 : 0;  // (0.63.0) "Fair slices" unticked: the first deal as it falls
         s.layout = layout();                        // the printed board without hyperlanes (0.58.0)
         s.modules = app.settings().getInt("modules", ti::kModCodex);  // the Modules screen (0.31.0)
+        s.modules = (s.modules & ~ti::kModBlueReverie) | (brOn_ ? ti::kModBlueReverie : 0);  // (0.85.3: by the unlocks, not a box)
+        s.brMask = brMask_;
         if (s.modules & ti::kModThundersEdge) {  // galactic events (0.36.0): only the playable ones
             const int ev = app.settings().getInt("events", 0);
             for (int k = 0; k < ti::kEventCount; ++k)
@@ -391,7 +410,9 @@ public:
         int levelCount[kLevelCount] = {};
         for (int i = 0; i < players_; ++i) {
             const SeatSetup& st = seats_[size_t(i)];
-            s.factions[size_t(i)] = st.faction;
+            // (0.85.3: a Blue Reverie faction not unlocked - picked in an older version - is Random)
+            s.factions[size_t(i)] = st.faction >= 0 && kFactions[st.faction].source == Source::BlueReverie && !brInPool(st.faction, kBrLevel, brMask_)
+                                        ? -1 : st.faction;
             s.tribunii[size_t(i)] = st.tribunii;
             s.colors[size_t(i)] = st.color;
             if (st.human && i != s.human) s.humans |= 1 << i;
@@ -402,6 +423,23 @@ public:
             }
         }
         s.aiLevel = int(std::max_element(levelCount, levelCount + kLevelCount) - levelCount);  // the most common one
+        // (0.80.11) rival commanders you have beaten: their personality, their name, their grudge from your Career games - and their
+        // own faction when the seat's is Random and it's free
+        for (int i = 0; i < players_; ++i) {
+            const SeatSetup& st = seats_[size_t(i)];
+            const league::RivalDef* r = st.commander.empty() ? nullptr : league::rival(st.commander);
+            if (!r || st.human || st.level >= kAiLevelAI) continue;
+            if (s.commanders.empty()) s.commanders.assign(players_, std::string()), s.grudges.assign(players_, 0);
+            s.commanders[size_t(i)] = r->id;
+            s.archetypes[size_t(i)] = r->arch;
+            s.grudges[size_t(i)] = leaguerun::grudgeOf(r->id);
+            const int sig = r->faction && *r->faction ? findFaction(r->faction) : -1;
+            if (st.faction < 0 && sig >= 0 && factionOffered(sig) && factionFree(sig, i)) {
+                bool taken = false;
+                for (int j = 0; j < players_; ++j) taken |= j != i && s.factions[size_t(j)] == sig;
+                if (!taken) s.factions[size_t(i)] = sig;
+            }
+        }
         std::unique_ptr<GameSession> session(new GameSession());
         if (!session->startNew(s)) {
             LOG("newgame: engine failed to start: %s", session->engine().crashMessage().c_str());
@@ -910,6 +948,7 @@ public:
         std::string name;
         int group = 0;                     // 0 playable, 1 Thunder's Edge, 2 Discordant Stars
         int real = -1;                     // 0.43.0: the faction behind a greyed one (its module is off)
+        const char* secret = nullptr;      // (0.85.3) a Blue Reverie faction not unlocked yet: its key (shown as "?")
     };
     std::vector<PickEntry> picks_;
     std::vector<int> pickX_, pickY_;  // layout, in content units (y grows down; headers take space)
@@ -917,6 +956,8 @@ public:
     bool pickerOpen_ = false;
     bool teOn_ = false;  // Thunder's Edge ticked on the Modules screen
     bool dsOn_ = false;  // Discordant Stars too
+    bool brOn_ = false;  // ... and Blue Reverie (0.83.0; 0.85.3: any of its factions unlocked)
+    uint32_t brMask_ = 0;  // (0.85.3) the Blue Reverie factions unlocked (Setup::brMask)
     int pickSel_ = 0, pickScroll_ = 0, pickSeat_ = 0;  // pickSeat_: the seat the picker was opened for
     float pickScrollF_ = 0.f;  // the wheel's scroll (smooth), and whether the view follows the chosen one
     bool pickFree_ = false;
@@ -941,6 +982,19 @@ public:
                                       : !std::strcmp(k, "rhodun") ? "zealots" : k);
             if (f >= 0 && dsOn_ && factionImplemented(f)) picks_.push_back({f, -1, nullptr, kFactions[f].name, 2});
             else picks_.push_back({-1, -1, sf.key, sf.name, 2, f});
+        }
+        // Blue Reverie (0.83.0): the same way, with its module (the ones in this version's level)
+        // (0.85.3, owner: "secret unlockables") the ones not earned yet are a "?" - nobody plays them, the bots neither
+        for (const SoonFaction& sf : kBlueReverie) {
+            const int f = findFaction(sf.key);
+            if (f >= 0 && brInPool(f, kBrLevel, brMask_)) picks_.push_back({f, -1, nullptr, kFactions[f].name, 3});
+            else {
+                PickEntry e;
+                e.name = "Secret faction";
+                e.group = 3;
+                e.secret = sf.key;
+                picks_.push_back(e);
+            }
         }
         int col = 0, y = kHeadH, group = 0;
         for (const PickEntry& e : picks_) {
@@ -972,7 +1026,16 @@ public:
         for (size_t i = 0; i < picks_.size(); ++i)
             if (picks_[i].group == 0 && picks_[i].faction == s.faction && picks_[i].tribunii == s.tribunii) pickSel_ = int(i);
     }
-    bool pickable(const PickEntry& e) const { return !e.soonKey && (e.faction < 0 || factionFree(e.faction, pickSeat_, e.tribunii)); }
+    bool pickable(const PickEntry& e) const {
+        return !e.soonKey && !e.secret && (e.faction < 0 || factionFree(e.faction, pickSeat_, e.tribunii));
+    }
+    // (0.85.3) a secret Blue Reverie faction: how it is earned (its name stays hidden)
+    static std::string secretWhy(const char* key) {
+        const int f = findFaction(key);
+        if (f < 0 || brBatch(f) <= 0 || !brInPool(f, kBrLevel)) return "A secret Blue Reverie faction - it comes in a later version.";
+        const league::LeagueDef* by = league::find(profile::factionLeague(key));
+        return std::string("A secret Blue Reverie faction. Finish the ") + (by ? by->name : "its league") + " in the Career to unlock it.";
+    }
     void movePick(int dx, int dy) {
         const int n = int(picks_.size());
         if (dx) pickSel_ = std::max(0, std::min(n - 1, pickSel_ + dx));
@@ -1012,10 +1075,14 @@ public:
         if (in.pressed(Btn::A) || in.pressed(Btn::Start)) {
             const PickEntry& e = picks_[size_t(pickSel_)];
             if (e.soonKey) {
-                pickMsg_ = e.group == 2 ? (dsOn_ ? "This Discordant Stars faction is coming soon."
+                pickMsg_ = e.group == 3 ? (brOn_ ? "This Blue Reverie faction is coming soon."
+                                                 : "Tick Blue Reverie on the Modules screen (title screen) to play its factions.")
+                           : e.group == 2 ? (dsOn_ ? "This Discordant Stars faction is coming soon."
                                                  : "Tick Discordant Stars on the Modules screen (title screen) to play its factions.")
                            : teOn_      ? "This Thunder's Edge faction is coming soon."
                                         : "Tick Thunder's Edge on the Modules screen (title screen) to play its factions.";
+            } else if (e.secret) {
+                pickMsg_ = secretWhy(e.secret);
             } else if (!pickable(e)) {
                 pickMsg_ = "Another seat already has that faction (or its home).";
             } else {
@@ -1039,9 +1106,10 @@ public:
         if (!pickFree_ && sy - kHeadH < pickScroll_) pickScroll_ = std::max(0, sy - kHeadH);
         if (!pickFree_ && sy + kCellH > pickScroll_ + area.h) pickScroll_ = sy + kCellH - area.h;
         c.setClip(area);
-        const char* kGroup[3] = {"Prophecy of Kings and the Council Keleres",
+        const char* kGroup[4] = {"Prophecy of Kings and the Council Keleres",
                                  teOn_ ? "Thunder's Edge" : "Thunder's Edge - tick it on the Modules screen",
-                                 dsOn_ ? "Discordant Stars (fan-made)" : "Discordant Stars (fan-made) - tick it on the Modules screen"};
+                                 dsOn_ ? "Discordant Stars (fan-made)" : "Discordant Stars (fan-made) - tick it on the Modules screen",
+                                 brOn_ ? "Blue Reverie (fan-made) - more are unlocked in the Career" : "Blue Reverie (fan-made) - secret factions, unlocked in the Career"};
         int lastGroup = -1;
         for (size_t i = 0; i < picks_.size(); ++i) {
             const PickEntry& e = picks_[i];
@@ -1051,7 +1119,8 @@ public:
                 const int hy = y - kHeadH + 2;
                 if (hy > area.y - kHeadH && hy < area.y + area.h)
                     drawText(c, FONT_SMB, area.x, hy, kGroup[e.group],
-                             e.group == 0 || (e.group == 1 && teOn_) || (e.group == 2 && dsOn_) ? theme::gold : rgb(150, 150, 170));
+                             e.group == 0 || (e.group == 1 && teOn_) || (e.group == 2 && dsOn_) || (e.group == 3 && brOn_) ? theme::gold
+                                                                                                                         : rgb(150, 150, 170));
             }
             if (y + kCellH < area.y || y > area.y + area.h) continue;
             const bool sel = int(i) == pickSel_, ok = pickable(e);
@@ -1066,7 +1135,7 @@ public:
             const int a = e.soonKey ? 110 : ok ? 255 : 90;
             if (e.soonKey) icons::draw(c, std::string("faction/") + e.soonKey, ix, iy, is, a);
             else if (e.faction >= 0) drawFactionIcon(c, e.faction, ix, iy, is, a);
-            else drawTextAligned(c, FONT_LG, cr.x, iy + 6, cr.w, Align::Center, "?", theme::dim);
+            else drawTextAligned(c, FONT_LG, cr.x, iy + 6, cr.w, Align::Center, "?", e.secret ? rgb(150, 120, 220) : theme::dim);
             std::string nm = e.name;
             if (nm.compare(0, 4, "The ") == 0) nm = nm.substr(4);
             if (!e.soonKey && e.faction >= 0 && e.tribunii < 0) nm = factionShortName(e.faction);
@@ -1077,6 +1146,13 @@ public:
                                 e.soonKey ? rgb(110, 112, 128) : ok ? theme::text : theme::faint);
         }
         c.resetClip();
+        // (0.81.1, owner) a slim scroll bar beside the grid
+        drawScrollBar(c, Rect{area.x + area.w + 3, area.y, 4, area.h}, pickScroll_, area.h, pickH_, [this](int dir) {
+            if (!pickFree_) pickScrollF_ = float(pickScroll_);
+            pickFree_ = true;
+            pickScrollF_ = std::max(0.f, std::min(float(std::max(0, pickH_ - kPickAreaH)), pickScrollF_ + float(dir * (kPickAreaH - 40))));
+            pickScroll_ = int(pickScrollF_ + 0.5f);
+        });
         if (pickScroll_ > 0) drawTextAligned(c, FONT_XS, r.x, area.y - 12, r.w - 20, Align::Right, "\xE2\x96\xB2 more", theme::dim);
         if (pickScroll_ + area.h < pickH_)
             drawTextAligned(c, FONT_XS, r.x, area.y + area.h + 1, r.w - 20, Align::Right, "\xE2\x96\xBC more", theme::dim);
@@ -1086,7 +1162,18 @@ public:
         c.fillRoundRect(r.x + 12, dy, r.w - 24, 70, 8, rgb(18, 24, 40));
         if (e.soonKey) icons::draw(c, std::string("faction/") + e.soonKey, r.x + 20, dy + 7, 56, 170);
         else if (e.faction >= 0) drawFactionIcon(c, e.faction, r.x + 20, dy + 7, 56);
+        else if (e.secret) drawTextAligned(c, FONT_XL, r.x + 20, dy + 16, 56, Align::Center, "?", rgb(150, 120, 220));
         const int tx = r.x + 86;
+        if (e.secret) {  // (0.85.3) a secret Blue Reverie faction: no name, how to earn it
+            drawText(c, FONT_MDB, tx, dy + 6, "Secret faction", rgb(170, 150, 230));
+            int sy = dy + 26;
+            for (const std::string& l : wrapText(FONT_SM, pickMsg_.empty() ? secretWhy(e.secret) : pickMsg_, r.w - 110)) {
+                drawText(c, FONT_SM, tx, sy, l, theme::dim);
+                sy += 15;
+            }
+            drawHintBar(c, {{"D-PAD", "Choose"}, {"A", "Take it"}, {"L1/R1", "Page"}, {"B", "Back"}});
+            return;
+        }
         drawText(c, FONT_MDB, tx, dy + 6, !e.soonKey ? choiceName(e.faction, e.tribunii) : e.name, !e.soonKey ? theme::gold : rgb(170, 170, 190));
         const int shown = e.soonKey ? e.real : e.faction;  // a greyed faction: still its summary (0.43.0)
         if (const GuideBlurb* gb = pickMsg_.empty() ? guideBlurbOf(shown) : nullptr) {
@@ -1184,6 +1271,7 @@ public:
             } else {
                 cell(kLevel, kLevels[s.level], levelColour(s.level));
                 if (s.level >= kAiLevelAI) cell(kPers, "None", theme::faint);
+                else if (const league::RivalDef* r = s.commander.empty() ? nullptr : league::rival(s.commander)) cell(kPers, r->name, theme::gold);
                 else cell(kPers, s.arch < 0 ? "Random" : kArchetypes[s.arch].name, s.arch < 0 ? theme::dim : theme::text);
             }
             y += rowH;
@@ -1222,6 +1310,7 @@ public:
             case kPers:
                 info = s.human ? "Personalities are for computer players."
                        : s.level >= kAiLevelAI ? "The A.I. has no personality: no archetype, grudges or betrayals. Every move is chosen to win."
+                       : !s.commander.empty() && league::rival(s.commander) ? commanderInfo(*league::rival(s.commander))
                                : s.arch < 0 ? (s.level == 3 ? "Random: any archetype but Rusher and Chaotic (Competitive bots). Hidden until the end of round 3."
                                                             : "Random: any of the ten archetypes, Chaotic included. Hidden until the end of round 3.")
                                             : std::string(kArchetypes[s.arch].blurb) + ".";
@@ -1243,6 +1332,15 @@ public:
     // Owner's document: "When a color, difficulty, or personality is to be chosen, have a small window open over the respective field
     // to allow the player to choose from a menu of their options." A on the cell (or a click) opens it under the cell; the D-pad / the
     // mouse point, A (a click) takes one, B (or a click beside it) closes it. Taken colours are greyed with the seat that has them.
+    // (0.80.11) a rival commander, in a line or two
+    static std::string commanderInfo(const league::RivalDef& r) {
+        const int f = r.faction && *r.faction ? findFaction(r.faction) : -1;
+        const int g = leaguerun::grudgeOf(r.id);
+        std::string s = std::string(r.name) + ": " + (r.arch >= 0 ? kArchetypes[r.arch].name : "a hidden personality") +
+                        (f >= 0 ? std::string(", plays ") + factionShortName(f) : std::string()) + ".";
+        s += g > 0 ? " Remembers your Career games - and holds a grudge." : " Remembers your Career games.";
+        return s;
+    }
     struct Opt {
         int value = 0;
         std::string label, sub;
@@ -1280,8 +1378,23 @@ public:
         } else {
             opts_.push_back({-1, "Random", s.level == 3 ? "Any but Rusher and Chaotic (Competitive bots)" : "Any of the ten", true, -1});
             for (int a = 0; a < int(Arch::Count); ++a) opts_.push_back({a, kArchetypes[a].name, kArchetypes[a].blurb, true, -1});
+            // (0.80.11) the rival commanders you have beaten in the Career - none listed until you have (a hidden unlock)
+            commanders_ = leaguerun::commanders();
+            if (!commanders_.empty()) {
+                Opt head{kCommanderHead, "Rival commanders", "", false, -1};
+                opts_.push_back(head);
+                for (size_t k = 0; k < commanders_.size(); ++k) {
+                    const league::RivalDef& r = *commanders_[k];
+                    Opt o{kCommanderBase + int(k), r.name, commanderInfo(r), true, -1};
+                    for (int i = 0; i < players_; ++i)
+                        if (i != seatSel_ && seats_[size_t(i)].commander == r.id) o.enabled = false, o.detail = "seat " + std::to_string(i + 1);
+                    opts_.push_back(o);
+                }
+            }
             for (size_t k = 0; k < opts_.size(); ++k)
-                if (opts_[k].value == s.arch) cur = int(k);
+                if (s.commander.empty() ? opts_[k].value == s.arch
+                                        : opts_[k].value >= kCommanderBase && commanders_[size_t(opts_[k].value - kCommanderBase)]->id == s.commander)
+                    cur = int(k);
         }
         optSel_ = cur;
         optSeat_ = seatSel_;
@@ -1295,7 +1408,8 @@ public:
         SeatSetup& s = seats_[size_t(optSeat_)];
         if (optCol_ == kColour) s.color = o.value;
         else if (optCol_ == kLevel) s.level = o.value;
-        else s.arch = o.value;
+        else if (o.value >= kCommanderBase) s.commander = commanders_[size_t(o.value - kCommanderBase)]->id, s.arch = commanders_[size_t(o.value - kCommanderBase)]->arch;
+        else s.arch = o.value, s.commander.clear();
         optOpen_ = false;
         audio::play(audio::Sfx::Confirm);
     }
@@ -1348,7 +1462,8 @@ public:
         const int rowH = colour ? 22 : pers ? 22 : 36;
         const int w = colour ? 466 : pers ? 236 : 292;  // (0.75.0: three columns of colours)
         const int detailH = pers ? 46 : colour ? 32 : 0;
-        const int h = colour ? 28 + 24 + 14 + rowH * pcolours::kClassic + detailH + 6 : 30 + rowH * int(opts_.size()) + detailH + 8;
+        const int shown = pers ? std::min(int(opts_.size()), kPersRows) : int(opts_.size());  // (0.80.11: commanders scroll)
+        const int h = colour ? 28 + 24 + 14 + rowH * pcolours::kClassic + detailH + 6 : 30 + rowH * shown + detailH + 8;
         const int rowsTop = 56, rowsH = players_ > 6 ? 34 : 40;
         const int cellY = 8 + rowsTop + optSeat_ * rowsH;
         int x = std::min(640 - w - 6, std::max(6, kX[optCol_] - (w - (kX[optCol_ + 1] - kX[optCol_])) / 2));
@@ -1423,10 +1538,25 @@ public:
             drawHintBar(c, {{"D-PAD", "Choose"}, {"A", "Take it"}, {"B", "Back"}});
             return;
         }
-        for (size_t k = 0; k < opts_.size(); ++k) {
+        const int first = shown < int(opts_.size()) ? std::max(0, std::min(int(opts_.size()) - shown, optSel_ - shown / 2)) : 0;
+        if (first > 0) drawTextAligned(c, FONT_XS, x, y + 9, w - 12, Align::Right, "\xE2\x96\xB2 more", theme::faint);
+        // (0.81.1, owner) a slim scroll bar when some choices are hidden
+        drawScrollBar(c, Rect{x + w - 5, ry, 3, rowH * shown - 2}, first, shown, int(opts_.size()), [this, shown](int dir) {
+            const int n = int(opts_.size());
+            optSel_ = std::max(0, std::min(n - 1, optSel_ + dir * std::max(1, shown - 1)));
+            for (int k = 0; k < n && (!opts_[size_t(optSel_)].enabled || opts_[size_t(optSel_)].value == kCommanderHead); ++k)
+                optSel_ = std::max(0, std::min(n - 1, optSel_ + (dir > 0 ? 1 : -1)));
+        });
+        for (size_t k = size_t(first); k < opts_.size() && int(k) < first + shown; ++k) {
             const Opt& o = opts_[k];
             const bool sel = int(k) == optSel_;
             const Rect rr{x + 6, ry, w - 12, rowH - 2};
+            if (pers && o.value == kCommanderHead) {  // (0.80.11) the commanders' heading
+                c.hline(x + 10, x + w - 10, ry + 4, theme::border);
+                drawText(c, FONT_XS, rr.x + 8, ry + 7, o.label, theme::gold);
+                ry += rowH;
+                continue;
+            }
             if (o.enabled) hits::add(rr, [this, k] { optSel_ = int(k); });
             if (sel) {
                 const float pulse = 0.5f + 0.5f * std::sin(float(now % 1500) / 1500.f * 6.2831853f);
@@ -1445,7 +1575,10 @@ public:
                 if (!o.sub.empty())
                     drawTextAligned(c, FONT_XS, rr.x, rr.y + 6, rr.w - 8, Align::Right, o.enabled && o.swatch < 0 ? "" : o.sub, theme::faint);
             } else if (pers) {
-                drawText(c, FONT_SMB, tx, rr.y + 2, o.label, tc);
+                const bool cmd = o.value >= kCommanderBase;
+                drawText(c, FONT_SMB, tx, rr.y + 2, fitText(FONT_SMB, o.label, rr.w - 16 - (o.detail.empty() ? 0 : 50)),
+                         cmd && o.enabled ? (sel ? theme::gold : theme::goldDim) : tc);
+                if (!o.detail.empty()) drawTextAligned(c, FONT_XS, rr.x, rr.y + 5, rr.w - 8, Align::Right, o.detail, theme::faint);
             } else {
                 drawText(c, FONT_SMB, tx, rr.y + 2, o.label, o.value == 3 && o.enabled ? (sel ? theme::gold : theme::goldDim) : tc);
                 drawText(c, FONT_XS, tx, rr.y + 19, fitText(FONT_XS, o.sub, rr.w - 16), sel ? theme::dim : theme::faint);
@@ -1465,6 +1598,9 @@ public:
         drawHintBar(c, {{"\xE2\x96\xB2\xE2\x96\xBC", "Choose"}, {"A", "Take it"}, {"B", "Back"}});
     }
     std::vector<Opt> opts_;
+    // (0.80.11) the personality picker's rival commanders: rows kCommanderBase + k, under a heading row; 14 rows show at once
+    static constexpr int kCommanderHead = -100, kCommanderBase = 1000, kPersRows = 14;
+    std::vector<const league::RivalDef*> commanders_;
     bool optOpen_ = false;
     int optSel_ = 0, optSeat_ = 0, optCol_ = 0, optLastCol_ = 0;
 
@@ -1477,6 +1613,14 @@ private:
     uint32_t mapSeed_ = 1;
     bool fair_ = true;  // (0.63.0) Galaxy: "Fair slices" - off = Setup::unbalanced
     int modules_ = 1;
+    // the victory point goals offered: 10, 12 (0.82.6, owner 2026-11-23: "we have 12 point options for league; can we add 12 points as
+    // an option for casual games too?") and 14
+    static int nextVp(int vp, int step) {
+        static const int kGoals[] = {10, 12, 14};
+        int i = 0;
+        while (i < 3 && kGoals[i] != vp) ++i;
+        return kGoals[((i < 3 ? i : 0) + (step > 0 ? 1 : 2)) % 3];
+    }
     int sel_ = kStart, players_ = 6, vp_ = 10, speed_ = 1, myColor_ = 0;
     bool first_ = true;
     bool menuOpen_ = false;

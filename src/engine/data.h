@@ -11,8 +11,9 @@ enum class Trait : uint8_t { None, Cultural, Hazardous, Industrial };
 enum class TechColor : int8_t { None = -1, Blue = 0, Green = 1, Red = 2, Yellow = 3 };
 enum class Back : uint8_t { Blue, Red, Home, Special, Hyperlane };
 // Uncharted: the Uncharted Space module (0.33.0); ThundersEdge: the Thunder's Edge module (0.34.0)
+constexpr int kBrLevel = 3;  // Blue Reverie factions in this version (0.83.0: 1 = the Atokera Legacy; 0.84.0: 2 + the Belkosea); saved as "brlevel"
 constexpr int kDsLevel = 6;  // Discordant Stars faction batches in this version (0.37.0: 1, 0.38.0: 2, 0.39.0: 3, 0.40.0: 4, 0.41.0: 5, 0.42.0: 6)
-enum class Source : uint8_t { Base, PoK, Uncharted, ThundersEdge, Discordant };
+enum class Source : uint8_t { Base, PoK, Uncharted, ThundersEdge, Discordant, Absol, Monuments, BlueReverie };  // Absol: Absol's Agendas (0.81.0); Monuments: Monuments+ (0.82.0); BlueReverie (0.83.0)
 enum class ObjPhase : uint8_t { Status, Action, Agenda };
 
 enum class UnitType : uint8_t {
@@ -21,6 +22,9 @@ enum class UnitType : uint8_t {
     // 0.52.0 (owner D117): a second flagship of its own type - the Ghemina's Lady (their Flagship is the Lord). Last, so
     // the numbers saved games use stay the same; a ship like the ones before Infantry (isShip, kShipTypes).
     Flagship2,
+    // 0.82.0 Monuments+: each faction's monument, a structure (one per player, only with the module; its card's stats). Last,
+    // so the numbers saved games use stay the same.
+    Monument,
     Count
 };
 constexpr int kUnitTypes = int(UnitType::Count);
@@ -149,7 +153,9 @@ struct ActionCardDef {
 };
 
 // What an agenda is voted on.
-enum class Elect : uint8_t { ForAgainst, Player, Planet, NonHomePlanet, Law, ScoredSecret, StrategyCard, Covert };
+// NonHomePlanet: not a home planet nor Mecatol Rex. (0.81.0, Absol's Agendas) NonHome: not a home planet (Mecatol Rex too);
+// UnitUpgrade: an owned non-faction unit upgrade technology; None: not voted on (Emergency Session).
+enum class Elect : uint8_t { ForAgainst, Player, Planet, NonHomePlanet, Law, ScoredSecret, StrategyCard, Covert, NonHome, UnitUpgrade, None };
 
 struct AgendaDef {
     const char* key;
@@ -239,6 +245,32 @@ int genericUnit(UnitType t);  // index of the basic (unupgraded) generic unit
 
 const char* unitTypeName(UnitType t, bool plural = false);
 int unitByKey(const char* key);  // kUnits index, -1 = none (0.52.0)
+
+// ---------------------------------------------------------------- 0.82.0 Monuments+ (Cacotopos / Blarknob)
+// Where a monument may stand: the planet kinds on its card (tools/gen_monuments.py from AsyncTI4's eligible / ineligible types).
+constexpr uint16_t kMonCultural = 1, kMonHazardous = 2, kMonIndustrial = 4, kMonLegendary = 8, kMonTechSpecialty = 16,
+                   kMonMecatol = 32, kMonEmpty = 64 /* the space area of a system without planets */, kMonHome = 128,
+                   kMonFracture = 256, kMonSupernova = 512,
+                   kMonStation = 1024 /* (0.82.1) the Seraph Data Center: a space station in the space area of a system with your
+                                         ships and exactly 1 non-legendary planet */;
+struct MonumentDef {
+    const char* key;       // its picture (assets/monuments/<key>.png, tools/gen_monument_anim.py)
+    const char* faction;   // kFactions key
+    const char* unit;      // kUnits key (UnitType::Monument; the name is the card's)
+    const char* subtitle;  // "Creuss Monument"
+    const char* text;      // the card's wording, '\n' between paragraphs
+    const char* flavour;   // "" none
+    const char* stats;     // "SPACE CANNON 8 (x2)\nPRODUCTION 1" ("" none)
+    uint16_t places, notPlaces;  // kMon* bits
+    const char* where;     // the placement in words (shown under the picture)
+    uint32_t frame, sub;   // the card's colours (0xRRGGBB)
+    const char* set;       // "Base", "PoK", "Keleres", ...
+};
+constexpr int kMonumentMax = 69;  // (the size of kMonuments - checked in data.cpp)
+extern const MonumentDef kMonuments[];
+extern const int kMonumentCount;
+int monumentForUnit(int unit);         // kMonuments index of a kUnits monument, -1 none
+int monumentForFaction(int faction);   // kMonuments index of a faction's monument, -1 none
 const char* unitTypeShort(UnitType t);  // two-letter code for compact displays
 const char* traitName(Trait t);
 const char* colorName(TechColor c);
@@ -267,6 +299,9 @@ const char* exploreTypeName(ExploreType t);
 bool factionImplemented(int faction);         // its abilities work (Stage 5 batches)
 int dsBatch(int faction);                     // Discordant Stars: the batch (version) it arrived in, 0 = not yet
 bool factionInPool(int faction, int dsLevel); // may be dealt / drawn at random in a game with that Setup::dsLevel
+int brBatch(int faction);                     // (0.83.0) Blue Reverie: the version step its faction came in (0 = not one / not in yet)
+int brBatch(int faction);                       // (0.85.3) its place in the batch order, 1.. (0 = not Blue Reverie)
+bool brInPool(int faction, int brLevel, uint32_t brMask = 0xFFFFFFFFu);      // ... may be dealt / drawn at random in a game with that Setup::brLevel
 const char* abilityText(int faction, int i);  // i-th ability in kFactionInfo
 const char* leaderText(int leader);
 const char* leaderUnlock(int leader);         // what unlocks a commander / hero
@@ -298,6 +333,9 @@ struct GalacticEventDef {
     bool done;
 };
 const GalacticEventDef& galacticEvent(int ev);
+// (0.82.0) Monuments+: Monuments to the Ages Omega's wording - its monuments are "monoliths" (set while a Monuments+ game is open)
+void setMonumentsTexts(bool on);
+bool monumentsTexts();
 const char* factionNoteText(int faction, int type);
 
 // Generic promissory notes every player owns (faction notes come with the
@@ -309,14 +347,14 @@ const char* noteText(int type);
 
 constexpr int kStrategyCards = 8;
 const char* strategyName(int card);  // card 0..7 = initiative 1..8
-void setStrategyTexts(bool thundersEdge);  // 0.43.3: Thunder's Edge's Construction / Warfare wording
+void setStrategyTexts(bool thundersEdge, bool monuments = false);  // + (0.82.0) Monuments+'s Construction  // 0.43.3: Thunder's Edge's Construction / Warfare wording
 const char* strategyPrimary(int card);
 const char* strategySecondary(int card);
 
 inline bool isShip(UnitType t) { return t <= UnitType::WarSun || t == UnitType::Flagship2; }
 inline bool isFlagship(UnitType t) { return t == UnitType::Flagship || t == UnitType::Flagship2; }  // (0.52.0)
 inline bool isGroundForce(UnitType t) { return t == UnitType::Infantry || t == UnitType::Mech; }
-inline bool isStructure(UnitType t) { return t == UnitType::PDS || t == UnitType::SpaceDock; }
+inline bool isStructure(UnitType t) { return t == UnitType::PDS || t == UnitType::SpaceDock || t == UnitType::Monument; }
 inline bool isTransported(UnitType t) { return t == UnitType::Fighter || isGroundForce(t); }
 
 }  // namespace ti

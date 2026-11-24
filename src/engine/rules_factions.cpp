@@ -340,6 +340,12 @@ void Rules::checkUnlocks() {
                         others += q != p && has ? 1 : 0;
                     }
                     ok = others >= 2;
+                } else if (is("atokeracommander")) {  // (0.83.0 Blue Reverie) Ordagka: "Cast more votes for an outcome than any other player."
+                    ok = pl.brMostVotes;
+                } else if (is("belkoseacommander")) {  // (0.84.0) Ciphus Gault: "Have 1 superweapon in your play area."
+                    ok = pl.swCards != 0;
+                } else if (is("pharadncommander")) {  // (0.85.0) Avhkan: "ACTION: Destroy 2 of your infantry on each of 5 planets." (pharAction)
+                    ok = pl.pharUnlock;
                 } else if (is("lizhocommander")) {
                     int n = 0;
                     for (int16_t t : G.dsTrap) n += t >= 0 ? 1 : 0;
@@ -1395,6 +1401,9 @@ RollMods Rules::combatMods(int p, int opp, int sys, int planet, bool space) {
         if (const int a = assail(p, opp)) m.all(a);                                       // Assail (the Obsidian's plot)
         if (G.systems[size_t(sys)].fracture && commanderUsable(G, p, "obsidian")) m.all(1);  // Aroz Hollow
     }
+    // (0.82.4) Vault of New Phrad / Reliquat Unleashed (the Rhodun's monument): +1 / +2 in and next to its system
+    if (monumentsOn())
+        if (const int rb = rhodunBonus(G, p, opp, sys)) m.all(rb);
     // Arcane Citadel (Uncharted Space): +1 to its controller's combat rolls on the planet
     if (!space && planet >= 0 && G.planets[planet].owner == p && hasAttachment(G, planet, "arcanecitadel")) m.all(1);
     // Thunder's Edge breakthroughs: Imperator (Winnu), Gravleash Maneuvers (Letnev: +X to one ship - the one with the most dice)

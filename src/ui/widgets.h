@@ -1,5 +1,6 @@
 // Reusable screen pieces: backgrounds, panels, menus and the button-hint bar.
 #pragma once
+#include <functional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -30,7 +31,12 @@ void drawPanel(Canvas& c, Rect r, uint32_t fill, uint32_t border, int radius = 8
 // (0.72.0, owner: "every button / row lights up under the pointer the same way") the light the app draws over the button
 // or action under the pointer: a gold edge and a faint warm wash, round or boxed
 void drawHoverLight(Canvas& c, Rect r, bool round);
+// A slim scroll bar (0.81.1, owner: players missed the "more" arrows - the mech card, a technology to research): drawn only when
+// part of a list is hidden. `track` is the column it runs down (its x = the bar's left edge, w = its width); first / visible /
+// total are in rows (or pixels). With `page`, a click above / below the handle calls page(-1) / page(+1).
+void drawScrollBar(Canvas& c, Rect track, int first, int visible, int total, const std::function<void(int)>& page = nullptr);
 // Small rounded badge with a button label inside ("A", "L1", ...). Returns width.
+int buttonBadgeWidth(const std::string& label);  // (the badge drawButtonBadge draws: its width)
 int drawButtonBadge(Canvas& c, int x, int y, const std::string& label, bool lit = false);
 // Bottom bar of {button, action} hints.
 void drawHintBar(Canvas& c, const std::vector<std::pair<std::string, std::string>>& hints);

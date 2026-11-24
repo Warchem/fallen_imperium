@@ -490,7 +490,7 @@ void Rules::dsRetreatExtra(int p, int sys, std::vector<int>& out) const {
         if (a == sys || std::find(out.begin(), out.end(), a) != out.end()) continue;
         const SystemState& s = G.systems[size_t(a)];
         if (s.isHyperlane() || otherShipsIn(G, p, a)) continue;
-        const uint8_t an = tileAnomalies(G, a);  // (fixes 29: the Zelian home too)
+        const uint8_t an = tileAnomaliesMove(G, a);  // (fixes 29: the Zelian home too; 0.82.3: not the Debris Field)
         if ((an & kSupernova) && !owns(p, "mr")) continue;
         if ((an & kAsteroid) && !owns(p, "amd")) continue;
         bool mine = hasUnits(G, p, a);
@@ -671,6 +671,7 @@ void Rules::omen28(int p, RollKind kind, RollResult& r, const char* what) {
                 break;
             }
         ds5Event(E, my, "Divination", pn(my) + " spends an Omen die: a " + std::to_string(v) + ".");
+        monOmenUsed();  // (0.82.3) Gravelord's Keep (Myko-Mentori monument)
     }
     // Lactarius Indigo
     const int sys = combatSys_ >= 0 ? combatSys_ : G.activeSystem;
@@ -714,6 +715,7 @@ void Rules::omen28(int p, RollKind kind, RollResult& r, const char* what) {
         r.dice[i] = int8_t(v);
         fixed[i] = true;
         ds5Event(E, o, "Lactarius Indigo", pn(o) + " calls an omen over " + pn(p) + "'s roll: a " + std::to_string(v) + ".", sys);
+        monOmenUsed();  // (0.82.3) Gravelord's Keep (Myko-Mentori monument)
         return;
     }
 }

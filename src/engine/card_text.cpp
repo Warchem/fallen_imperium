@@ -196,6 +196,11 @@ const CardText kAcText[] = {
     {"war_machine", "When 1 or more of your units use PRODUCTION", "Apply +4 to the total PRODUCTION value of your units and reduce the combined cost of the produced units by 1.", true},
     {"war_rider", "After an agenda is revealed", "You cannot vote on this agenda. Predict aloud an outcome of this agenda. If your prediction is correct, place 1 dreadnought from your reinforcements in a system that contains 1 or more of your ships.", true},
     {"waylay", "Before you roll dice for ANTI-FIGHTER BARRAGE", "Hits from this roll are produced against all ships (not just fighters).", true},
+    // ---- Monuments+ (0.82.0, only with its module): the cards' own wording (the owner's v3.1 card files)
+    {"festival", "Action", "Ready a non-home planet that contains 1 of your structures. If that planet contains your monument, place 4 "
+                           "infantry or 1 mech on it.", true},
+    {"rebelbombing", "Action", "Spend 2 trade goods to destroy 1 of your neighbor's structures in a non-home system.", true},
+    {"renovation", "Action", "Replace 1 of your structures with 1 structure from your reinforcements.", true},
 };
 
 struct AgendaText {
@@ -256,6 +261,14 @@ const AgendaText kAgText[] = {  // (0.60.0, the agenda pass: the cards' wording 
     {"warrant", "The elected player gains this card and draws 2 secret objectives. The owner of this card plays with their secret objectives revealed.", "", true},
     {"wormhole_recon", "All systems that contain either an alpha or beta wormhole are adjacent to each other.", "Each player places a command token from their reinforcements in each system that contains a wormhole and 1 or more of their ships.", true},
     {"wormhole_research", "Each player who has 1 or more ships in a system that contains a wormhole may research 1 technology. Then, destroy all ships in systems that contain an alpha or beta wormhole.", "Each player that voted \"Against\" removes 1 command token from their command sheet and returns it to their reinforcements.", true},
+    // (0.82.0) Monuments+ - the cards' own wording (the owner's v3.1 card files)
+    {"cathedralofixth", "Attach this card to the elected planet. The owner of this planet gains 1 VP if their monument is on this planet.\n"
+                        "When a player places their monument on this planet, they gain 1 VP. When a player's monument on this planet is "
+                        "removed, they lose 1 VP.", "", true},
+    {"ministerofculture", "As long as the owner of this card controls their monument their commodity value is increased by 2.\n"
+                          "The elected player gains this card and replenishes their commodities.", "", true},
+// (0.81.0) Absol's Agendas - the cards' own wording (tools/gen_absol_text.py)
+#include "engine/gen/absol_text.inc"
 };
 }  // namespace
 
@@ -437,6 +450,7 @@ const KeyText2 kLegendText[] = {  // (0.61.0, the legendary planet pass: the car
                      "of your turn to perform another action."},
     {"avernus", "ACTION: Exhaust this card to use the Embers of Muaat's STAR FORGE faction ability without spending a command token."},
     {"ordinian", "You may exhaust this card when you pass to draw 1 action card and gain 1 command token."},
+    {"conviction", "At any time, you may exhaust this card to gain 2 commodities. When you exhaust a superweapon card, ready this card."},  // (0.84.0 Belkosea)
 };
 const char* lookup(const KeyText2* t, int n, const char* key) {
     for (int i = 0; i < n; ++i)
@@ -479,6 +493,7 @@ const char* legendaryName(int planetDef) {
     if (!std::strcmp(k, "thundersedge")) return "Jupiter Brain";
     if (!std::strcmp(k, "avernus")) return "The Nucleus";
     if (!std::strcmp(k, "ordinian")) return "4X41D \"Hyperion\" VI";
+    if (!std::strcmp(k, "conviction")) return "S.O.L.G. Industries Group";  // (0.84.0 Blue Reverie: the Belkosea home station)
     return "";
 }
 const char* exploreTypeName(ExploreType t) {

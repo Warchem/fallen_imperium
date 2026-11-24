@@ -55,6 +55,11 @@ struct Career {
     int games = 0, youAbove = 0, theyAbove = 0, broken = 0;
 };
 Career career(const std::string& rival);
+// (0.80.11) the rival commanders you have beaten - finished above in a league game - who can sit in a Casual Game (hidden until
+// then; "Unlock everything (testing)" opens them all), and the grudge each brings from your league games
+bool beaten(const std::string& rival);
+std::vector<const league::RivalDef*> commanders();
+int grudgeOf(const std::string& rival);
 
 // The next game
 struct SeatPlan {
@@ -99,6 +104,8 @@ struct Outcome {
     std::string winner;  // the league's winner when it ended
     int points = 0, games = 0;  // your points / games played when it ended
     std::vector<std::pair<std::string, int>> finalTable;  // (member id, points) when it ended
+    std::vector<std::string> newCommanders;  // (0.80.11) rivals beaten for the first time: now in Casual Game
+    bool firstWin = false;                   // the league won for the first time (its emblem and colour are new)
 };
 // the names of the commanders at the table of the game in progress, by seat ("" for the other bots and for you)
 std::vector<std::string> seatNames(const std::string& id);

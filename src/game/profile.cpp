@@ -7,6 +7,7 @@
 #include <sstream>
 
 #include "core/log.h"
+#include "engine/data.h"
 #include "game/leagues.h"
 #include "ui/pcolors.h"
 
@@ -54,6 +55,25 @@ bool save() {
 }
 
 bool unlockAll() { return getInt("unlock_all") != 0; }
+
+std::string factionLeague(const std::string& key) {
+    for (const league::LeagueDef* d : league::all())
+        if (d->unlockFaction && key == d->unlockFaction) return d->id;
+    return "";
+}
+uint32_t brUnlockedMask() {
+    uint32_t m = 0;
+    for (int f = 0; f < ti::kFactionCount; ++f) {
+        const int b = ti::brBatch(f);
+        if (b > 0 && b <= 32 && ti::brInPool(f, ti::kBrLevel) && factionUnlocked(ti::kFactions[f].key)) m |= 1u << (b - 1);
+    }
+    return m;
+}
+bool factionUnlocked(const std::string& key) {
+    if (unlockAll()) return true;
+    const std::string lg = factionLeague(key);
+    return lg.empty() || finished(lg);
+}
 void setUnlockAll(bool on) { setInt("unlock_all", on ? 1 : 0); }
 
 std::vector<std::string> finishedLeagues() { return split(get("finished")); }

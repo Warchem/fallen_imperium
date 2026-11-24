@@ -71,6 +71,8 @@ void Rules::setupEvents() {
         for (int f = 0; f < kFactionCount; ++f) {
             if (!factionImplemented(f) || !std::strcmp(kFactions[f].key, "obsidian")) continue;
             if (kFactions[f].source == Source::Discordant && (!(G.modules & kModDiscordant) || !factionInPool(f, G.dsLevel))) continue;
+        if (kFactions[f].source == Source::BlueReverie && (!(G.modules & kModBlueReverie) || !brInPool(f, G.brLevel, G.brMask))) continue;
+            if (kFactions[f].source == Source::BlueReverie && (!(G.modules & kModBlueReverie) || !brInPool(f, G.brLevel, G.brMask))) continue;
             bool inPlay = false;
             for (const Player& pl : G.players) inPlay = inPlay || pl.faction == f;
             if (!inPlay && findLeader((std::string(kFactions[f].key) + "commander").c_str()) >= 0) {
@@ -227,6 +229,7 @@ void Rules::minorFactions() {
         int homeSys = sp.sys;  // (where the planets are: the spot, or beside the board behind a gate)
         SystemState& sy = G.systems[size_t(sp.sys)];
         for (int16_t x : sy.planets) {  // the old system's planets leave the game
+            if (G.planets[size_t(x)].superweapon >= 0) brSuperweaponLost(x, "lost with its planet");  // (0.84.0) Arrogance
             G.planets[size_t(x)].destroyed = true;
             G.planets[size_t(x)].owner = -1;
         }
@@ -522,10 +525,12 @@ void Rules::eventControl(int planet, int p, int old) {
         }
     }
     if (eventOn(G, kEvMonuments) && ps.monument >= 0 && old != p) {
-        if (fyes(p, Ab::EvMonument, "Monuments to the Ages: destroy the monument on " + planetName(planet) + "?",
+        // (0.82.0) with Monuments+ the card is Monuments to the Ages Omega: its monuments are "monoliths"
+        const std::string mono = monumentsOn() ? "monolith" : "monument", ev = monumentsOn() ? "Monuments to the Ages \xCE\xA9" : "Monuments to the Ages";
+        if (fyes(p, Ab::EvMonument, ev + ": destroy the " + mono + " on " + planetName(planet) + "?",
                  std::to_string(ps.monument) + " commodities under it (a victory point per 3, for whoever holds the planet).")) {
             ps.monument = -1;
-            say(p, pn(p) + " tears down the monument on " + planetName(planet) + ".", ps.system);
+            say(p, pn(p) + " tears down the " + mono + " on " + planetName(planet) + ".", ps.system);
         }
         monumentPoints();
     }
@@ -624,12 +629,13 @@ bool Rules::monumentInstead(int p, int planet) {
         return false;
     int built = 0;
     for (const PlanetState& ps : G.planets) built += ps.monument >= 0;
-    if (built >= 3 || !fyes(p, Ab::EvMonument, "Monuments to the Ages: pay 5 trade goods for a monument on " + planetName(planet) + " instead?",
+    const std::string mono = monumentsOn() ? "monolith" : "monument", ev = monumentsOn() ? "Monuments to the Ages \xCE\xA9" : "Monuments to the Ages";
+    if (built >= 3 || !fyes(p, Ab::EvMonument, ev + ": pay 5 trade goods for a " + mono + " on " + planetName(planet) + " instead?",
                             "Each status phase puts 1 commodity under it; every 3 is a victory point for whoever holds the planet."))
         return false;
     G.players[size_t(p)].tradeGoods = int8_t(G.players[size_t(p)].tradeGoods - 5);
     G.planets[size_t(planet)].monument = 0;
-    eventLog(E, p, "Monuments to the Ages", pn(p) + " raises a monument on " + planetName(planet) + ".", G.planets[size_t(planet)].system);
+    eventLog(E, p, ev, pn(p) + " raises a " + mono + " on " + planetName(planet) + ".", G.planets[size_t(planet)].system);
     return true;
 }
 
@@ -645,11 +651,11 @@ void Rules::monumentPoints() {
         if (want > pl.monumentVP) {
             const int d = want - pl.monumentVP;
             pl.monumentVP = int8_t(want);
-            gainVP(p, d, "Monuments to the Ages");
+            gainVP(p, d, monumentsOn() ? "Monuments to the Ages \xCE\xA9" : "Monuments to the Ages");
         } else if (want < pl.monumentVP) {
             const int d = pl.monumentVP - want;
             pl.monumentVP = int8_t(want);
-            loseVP(p, d, "Monuments to the Ages");
+            loseVP(p, d, monumentsOn() ? "Monuments to the Ages \xCE\xA9" : "Monuments to the Ages");
         }
     }
 }

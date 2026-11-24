@@ -14,6 +14,7 @@
 #                    (Python + numpy, ~1 + ~5 min)
 #   make voidfall    paint the Voidfall tileset -> assets/voidfall-pc.dat / -miyoo.dat (numpy + scipy, ~1 min)
 #   make art         campaign backdrops -> assets/art/ (Python + numpy + Pillow; in git)
+#   make monuments   Monuments+ monument pictures -> assets/monuments/ (Python + numpy + scipy + Pillow; in git)
 #   make portraits   faction codec portraits -> assets/art/portraits-pc.png (tools/portraits; in git)
 #   make lines       negotiation lines tools/lines/*.txt -> src/ui/gen/lines.inc (in git)
 #   make music       re-encode the owner's music tracks -> assets/music/ (ffmpeg; not in git; *_SRC=...)
@@ -45,7 +46,7 @@ APPDIR    := TwilightImperium
 PKGROOT   := build/package
 ZIP       := dist/TI4-Miyoo-$(VERSION).zip
 
-.PHONY: art portraits lines all host miyoo package windows windows-package windows-toolchain test font icons retro voidfall music linux linux-package toolchain clean
+.PHONY: art monuments portraits lines all host miyoo package windows windows-package windows-toolchain test font icons retro voidfall music linux linux-package toolchain clean
 
 all: host
 
@@ -72,7 +73,7 @@ package: build/miyoo/ti4
 	cp build/miyoo/ti4 package/launch.sh package/config.json package/icon.png $(PKGROOT)/App/$(APPDIR)/
 	cp package/README.txt package/RULES-CHECK.txt assets/icons.dat assets/retro.dat assets/voidfall-miyoo.dat $(PKGROOT)/App/$(APPDIR)/
 	@$(call COPY_MUSIC,miyoo,$(PKGROOT)/App/$(APPDIR))
-	mkdir -p $(PKGROOT)/App/$(APPDIR)/art && cp assets/art/eve_of_the_fall-miyoo.jpg assets/art/fated_expedition-miyoo.jpg assets/art/trade_wars-miyoo.jpg assets/art/twilights_fall-miyoo.jpg assets/art/action_back-miyoo.png assets/art/codec_space-miyoo.jpg assets/art/codec_alert-miyoo.jpg $(PKGROOT)/App/$(APPDIR)/art/
+	mkdir -p $(PKGROOT)/App/$(APPDIR)/art && cp assets/art/eve_of_the_fall-miyoo.jpg assets/art/fated_expedition-miyoo.jpg assets/art/trade_wars-miyoo.jpg assets/art/twilights_fall-miyoo.jpg assets/art/action_back-miyoo.png assets/art/codec_space-miyoo.jpg assets/art/codec_alert-miyoo.jpg assets/art/superweapon_fortress.png assets/art/superweapon_spheres.png $(PKGROOT)/App/$(APPDIR)/art/
 	python3 tools/portraits/split_strips.py assets/art/portraits-pc.png src/ui/gen/portrait_keys.inc $(PKGROOT)/App/$(APPDIR)/art/portraits  # (0.58.0: one strip per faction)
 	chmod +x $(PKGROOT)/App/$(APPDIR)/ti4 $(PKGROOT)/App/$(APPDIR)/launch.sh
 	rm -f $(ZIP) && cd $(PKGROOT) && python3 -c "import shutil; shutil.make_archive('../../dist/TI4-Miyoo-$(VERSION)', 'zip', '.')"
@@ -97,7 +98,8 @@ linux-package: build/linux/ti4
 	rm -rf build/linuxpkg && mkdir -p build/linuxpkg/TwilightImperium dist
 	cp build/linux/ti4 assets/icons.dat assets/retro.dat assets/retro-pc.dat assets/voidfall-pc.dat package/linux/TwilightImperium.sh build/linuxpkg/TwilightImperium/
 	@$(call COPY_MUSIC,pc,build/linuxpkg/TwilightImperium)
-	mkdir -p build/linuxpkg/TwilightImperium/art && cp assets/art/eve_of_the_fall-pc.jpg assets/art/fated_expedition-pc.jpg assets/art/trade_wars-pc.jpg assets/art/twilights_fall-pc.jpg assets/art/action_back-pc.png assets/art/portraits-pc.png assets/art/codec_space-pc.jpg assets/art/codec_alert-pc.jpg build/linuxpkg/TwilightImperium/art/
+	mkdir -p build/linuxpkg/TwilightImperium/art && cp assets/art/eve_of_the_fall-pc.jpg assets/art/fated_expedition-pc.jpg assets/art/trade_wars-pc.jpg assets/art/twilights_fall-pc.jpg assets/art/action_back-pc.png assets/art/portraits-pc.png assets/art/codec_space-pc.jpg assets/art/codec_alert-pc.jpg assets/art/superweapon_fortress.png assets/art/superweapon_spheres.png build/linuxpkg/TwilightImperium/art/
+	mkdir -p build/linuxpkg/TwilightImperium/monuments && cp assets/monuments/*.png build/linuxpkg/TwilightImperium/monuments/
 	mkdir -p "build/linuxpkg/TwilightImperium/My Music" && cp "package/My Music/Put your MP3 files here.txt" "build/linuxpkg/TwilightImperium/My Music/"  # (0.68.0: the music player)
 	cp package/linux/README-SteamDeck.txt build/linuxpkg/TwilightImperium/README.txt
 	cp package/README.txt build/linuxpkg/TwilightImperium/GUIDE.txt
@@ -126,7 +128,8 @@ windows-package: build/win/TwilightImperium.exe
 	rm -rf build/winpkg && mkdir -p build/winpkg/TwilightImperium dist
 	cp build/win/TwilightImperium.exe assets/icons.dat assets/retro.dat assets/retro-pc.dat assets/voidfall-pc.dat build/winpkg/TwilightImperium/
 	@$(call COPY_MUSIC,pc,build/winpkg/TwilightImperium)
-	mkdir -p build/winpkg/TwilightImperium/art && cp assets/art/eve_of_the_fall-pc.jpg assets/art/fated_expedition-pc.jpg assets/art/trade_wars-pc.jpg assets/art/twilights_fall-pc.jpg assets/art/action_back-pc.png assets/art/portraits-pc.png assets/art/codec_space-pc.jpg assets/art/codec_alert-pc.jpg build/winpkg/TwilightImperium/art/
+	mkdir -p build/winpkg/TwilightImperium/art && cp assets/art/eve_of_the_fall-pc.jpg assets/art/fated_expedition-pc.jpg assets/art/trade_wars-pc.jpg assets/art/twilights_fall-pc.jpg assets/art/action_back-pc.png assets/art/portraits-pc.png assets/art/codec_space-pc.jpg assets/art/codec_alert-pc.jpg assets/art/superweapon_fortress.png assets/art/superweapon_spheres.png build/winpkg/TwilightImperium/art/
+	mkdir -p build/winpkg/TwilightImperium/monuments && cp assets/monuments/*.png build/winpkg/TwilightImperium/monuments/
 	mkdir -p "build/winpkg/TwilightImperium/My Music" && cp "package/My Music/Put your MP3 files here.txt" "build/winpkg/TwilightImperium/My Music/"  # (0.68.0: the music player)
 	cp package/windows/README-Windows.txt build/winpkg/TwilightImperium/README.txt
 	cp package/README.txt build/winpkg/TwilightImperium/GUIDE.txt
@@ -185,6 +188,11 @@ icons:
 art:
 	python3 tools/gen_campaign_art.py docs/owner assets/art
 	python3 tools/gen_card_backs.py docs/owner assets/art
+
+# Monuments+ (0.82.0): the animated monument pictures (Caco's card art -> 64-frame pixel loops) -> assets/monuments (in git)
+monuments:
+	python3 tools/gen_monument_anim.py docs/owner/monuments/art_src build/monanim
+	python3 tools/pack_monuments.py build/monanim assets/monuments
 
 # the faction codec portraits (0.57.0): every animated portrait -> one atlas + the key list
 portraits:

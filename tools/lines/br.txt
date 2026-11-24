@@ -1,0 +1,153 @@
+# Blue Reverie (0.83.0): each faction's lines as it comes into the game - negotiation, greetings and combat in one section
+# (gen_lines merges the categories by key). Voices written here for the owner to review (BRIEF.md: "factions the owner was
+# unsure about").
+
+[atokera]
+name: Atokera
+voice: An ancient legacy of living metal - resonant and patient, speaks of shaping, forging and resonance, and treats every Council vote as an outcome it has already foreseen.
+offer: The metal hums in agreement, {them}. These terms are already shaped - you need only accept their form.
+offer: Every world is ore to be shaped. Let us shape this one together, {them}, and both of us grow stronger.
+offer: We have foreseen this exchange, {them}. The alloy holds when both sides bear the weight.
+friendly: You resonate with us, {them}. Take this freely - the Legacy remembers those who stood beside it.
+threat: Withdraw, {them}. Living metal does not break; it flows around you and closes. Leave while there is a gap.
+vote: The Council's outcome is already cast, {them}. Lend us your votes and stand on the side we have foreseen.
+accept: Accepted. The shape is true, and the metal settles.
+accept: Yes. This joins cleanly, {them}. The Legacy approves.
+decline: No. That form would crack under its own weight.
+decline: The metal rejects it. Bring us a truer shape.
+counter: Not in that form. We have reforged your terms - this alloy will hold.
+betray: Forgive us, {them}. The Legacy outlives every pact. This one has finished its purpose, and so we melt it down.
+betrayed: You cracked the bond, {them}. Living metal remembers every fracture - and closes around the one who made it.
+yield: Take it. The metal bends today, {them}. Metal that bends is metal that endures.
+yield: We yield this, {them}. The Legacy measures time in ages, and ages are long.
+hello: The metal stirs at your signal, {them}. Speak - we have listened for longer than your worlds have burned.
+hello: A new resonance on the line, {them}. Go on. The Legacy is listening.
+neighbour: Your worlds lie close to ours, {them}. Neighbours share a seam - let it stay smooth.
+neighbour: So near, {them}. The Legacy prefers a quiet border. Keep it quiet.
+partner: Our last exchange held true, {them}. The alloy is strong. Another?
+partner: We have shaped good things together, {them}. The metal remembers.
+kept: Your word held, {them}. True metal. The Legacy trusts you.
+kept: A promise kept, like a weld that never fails. Well done, {them}.
+broken: You broke your word, {them}. There is a flaw in you now, and flaws spread.
+broken: A cracked promise, {them}. We will test every word of yours from now on.
+clash: You struck the Legacy, {them}. The wound has already closed. Speak carefully.
+clash: Your guns scored our hulls, {them}. Living metal heals. Grudges do not.
+leader: You stand tallest, {them}. The Council has a way of melting the tallest down.
+leader: You lead the galaxy for now, {them}. We have foreseen many leaders. Few lasted.
+warm: {them}! The metal sings when you call. Speak, friend.
+warm: A trusted resonance. Welcome, {them}.
+wary: Speak, {them}. We are still testing the strength of your word.
+wary: The metal is cool toward you, {them}. Choose your terms with care.
+hostile: You are a flaw in our design, {them}. Speak quickly.
+hostile: The Legacy hears you, {them}. It does not welcome you. Talk.
+attack: The Legacy flows toward you, {them}. Living metal finds every gap.
+attack: We have foreseen this battle, {them}. Its outcome is already cast.
+defend: You strike at living metal, {them}? Every blow you land, we reshape.
+defend: Our worlds are shielded and our hulls remember their form. Try harder, {them}.
+invade: Every world is a forge, {them}. We have come to reforge yours.
+invade: The Legacy descends, {them}. Your world will be shaped anew.
+hold: This world is part of us now, {them}. It hums with the Legacy. It will not yield.
+hold: The Obelisks stand and the planet answers, {them}. You will not take it.
+rematch: You again, {them}. The metal remembers the shape of your fleet.
+mecatol: Mecatol Rex is where the Council sits, {them}. The Legacy will sit there too.
+home: You come to Magna itself, {them}? Then the whole world rises to meet you.
+
+[belkosea]
+name: Belkosea
+voice: An allied military state - regal, cold and certain, speaks of command, discipline and superweapons, and treats every other power as an asset or a target.
+offer: The Allied States extend terms, {them}. Accept them while they are still terms.
+offer: A practical arrangement, {them}. Our guns stay pointed elsewhere, and your stores grow.
+offer: Consider it an alliance of convenience, {them}. The Belkosea reward convenience.
+friendly: You have earned the Allied States' favour, {them}. Take this - with our compliments.
+threat: Withdraw, {them}. Our superweapons have already been aimed. Do not make us confirm the coordinates.
+vote: The Council will see reason, {them}. Lend us your votes and stand on the side of strength.
+accept: Agreed. Command approves.
+accept: Accepted, {them}. The Allied States honour their contracts.
+decline: Denied. That offer insults the Allied States.
+decline: No. Our engineers have better uses for those resources.
+counter: Not as written. Here are our terms - they are generous, by our standards.
+betray: The arrangement is concluded, {them}. Classified Developments required a new target.
+betrayed: You turned on the Allied States, {them}. Every superweapon we own now knows your name.
+yield: Take it, {them}. A tactical withdrawal. We will return with heavier guns.
+yield: We concede the point, {them}. Concession is not defeat.
+hello: Belkosea Command, {them}. State your business - briefly.
+hello: You have the Allied States' attention, {them}. Use it well.
+neighbour: Our borders touch, {them}. Keep them quiet, and our guns stay cold.
+neighbour: So close, {them}. Within range of everything we have built.
+partner: Our last arrangement held, {them}. The Allied States remember reliable partners.
+partner: You have been useful, {them}. Another contract?
+kept: Your word held, {them}. The Allied States take note.
+kept: Promise delivered, {them}. Command is satisfied.
+broken: You broke your word, {them}. It has been filed - with the targeting data.
+broken: An unreliable asset, {them}. We will plan accordingly.
+clash: Your fleet fired on the Allied States, {them}. Our wing commanders took it personally.
+clash: You tested our guns, {them}. They passed.
+leader: You lead the galaxy, {them}. Leaders make the clearest targets.
+leader: Enjoy the summit, {them}. Our superweapons have excellent range.
+warm: {them}. The Allied States welcome a trusted ally.
+warm: A friend of the Belkosea, {them}. Speak freely.
+wary: Speak, {them}. The Allied States are listening - and assessing.
+wary: Your record is incomplete, {them}. Choose your words with care.
+hostile: You are on the target list, {them}. Make this quick.
+hostile: Command has no patience for you, {them}. Talk.
+attack: Wyverns, launch. The Allied States are coming for you, {them}.
+attack: Weapons free. Spike leads the first wave, {them} - pray he is merciful.
+defend: You strike at the Allied States, {them}? Every gun on the planet is turning toward you.
+defend: Shields up, batteries hot. You picked the wrong system, {them}.
+invade: Ground teams down, Wyverns in support. This world belongs to the Allied States, {them}.
+invade: The Wardogs are loose, {them}. Surrender the planet or lose it.
+hold: The Allied States do not give ground, {them}. Not here.
+hold: This world is fortified, {them}. Our superweapon stands here - and it stays.
+rematch: You again, {them}. We kept your coordinates.
+mecatol: Mecatol Rex needs discipline, {them}. The Allied States will provide it.
+home: You have reached Iterum, {them}. Conviction has been expecting you.
+
+[pharadn]
+name: Pharad'n
+voice: An undying empire woken from its tombs - patient, solemn and certain of outlasting everyone, speaks of eternity, the dead and binding oaths, and counts every soldier lost as one more for its legions.
+offer: The Order offers terms, {them}. We have waited ages; we can wait for your answer.
+offer: An exchange, {them}. Your goods for our patience - we have more of it than anyone.
+offer: Bind yourself to this bargain, {them}. The Pharad'n keep their bargains for eternity.
+friendly: Take this, {them}. The Order remembers those who did not disturb its tombs.
+threat: Leave, {them}. Our dead outnumber your living, and they do not tire.
+vote: The Council is young, {them}. Lend us your votes, and the Order will guide it as it once guided empires.
+accept: It is bound. The Order accepts.
+accept: Agreed, {them}. Let it be written on the tomb walls.
+decline: No. The Order has outlived better offers.
+decline: Refused. We will wait for a wiser one.
+counter: Not as offered. These are the Order's terms - as old as the stars they were written under.
+betray: Our bargain has ended, {them}. Nothing binds the Pharad'n longer than the dead.
+betrayed: You broke faith with the Order, {them}. We have eternity to repay it.
+yield: Take it, {them}. We will be here long after you are dust.
+yield: The Order withdraws, {them}. For now - and now is very short.
+hello: The Pharad'n Order hears you, {them}. Speak; the dead are listening too.
+hello: You stand before an ancient throne, {them}. Be brief - or be patient.
+neighbour: Your borders lie upon our tombs, {them}. Tread lightly.
+neighbour: Close, {them}. Close enough to hear our legions waking.
+partner: Our last bargain held, {them}. The Order honours those who keep faith.
+partner: You kept your oath, {them}. Shall we bind another?
+kept: Your word held, {them}. It will be remembered for an age.
+kept: Oath fulfilled, {them}. The Order is satisfied.
+broken: You broke your word, {them}. It is carved into the tomb walls now.
+broken: An oathbreaker, {them}. The Pharad'n have long memories - and longer lives.
+clash: You struck the Order, {them}. Every soldier you felled will rise again.
+clash: You spilled our soldiers, {them}. We will gather every one of them back.
+leader: You lead the galaxy, {them}. Every empire ends - we have watched them all.
+leader: Enjoy your crown, {them}. The Order has buried many who wore one.
+warm: {them}. The Order welcomes a trusted friend.
+warm: A friend of the Pharad'n, {them}. Your name is safe in our tombs.
+wary: Speak, {them}. The Order weighs every word.
+wary: Your faith is untested, {them}. Choose your words with care.
+hostile: You are marked for the tombs, {them}. Make this quick.
+hostile: The Order has no patience for you, {them}. And we are very patient.
+attack: Legions, wake. The Order marches on you, {them}.
+attack: Rise and advance. What falls today returns tomorrow, {them}.
+defend: You march on the Order, {them}? Our dead are already rising to meet you.
+defend: The tombs are guarded, {them}. They always were.
+invade: Our legions descend, {them}. Yield the world - or join the dead who hold it.
+invade: The Immortals are landing, {them}. They do not stay fallen.
+hold: The Order does not give up its ground, {them}. Not while a single tomb stands.
+hold: This world is sealed to you, {them}. Every soldier lost here only returns.
+rematch: You again, {them}. Our dead remember your face.
+mecatol: Mecatol Rex was young when our tombs were sealed, {them}. The Order will claim its throne.
+home: You have reached Phar, {them}. Few who walk its tombs ever leave.

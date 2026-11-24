@@ -277,6 +277,8 @@ void peekCheck(const Game& g, const Decision& d, const Answer& real, const Rng& 
 }
 
 }  // namespace
+// (0.81.0) the invariants for other test drivers (sim/absol_test.cpp)
+std::string simInvariants(const Game& g) { return checkInvariants(g); }
 
 int runSimulation(int games, int players, uint32_t seed, bool verbose) {
     int failures = 0, finishedGames = 0, totalRounds = 0, totalAnswers = 0, rejected = 0;
@@ -490,8 +492,27 @@ int runSimulation(int games, int players, uint32_t seed, bool verbose) {
         Answer last;
         bool haveLast = false;
         int lastRound = 0;
+        static std::FILE* evalDump = std::getenv("TI4_EVALDUMP") ? std::fopen(std::getenv("TI4_EVALDUMP"), "a") : nullptr;
+        int evalDumped = 0;  // the last round written
+        // (0.86.0, self-play training) TI4_EVALDUMP: each player's position at the end of a round's status phase - where
+        // the A.I.'s copies stop and are judged (the agenda phase begins, or the next round when there is none); "W" lines
+        // below say who won (tools/train_eval.py)
+        auto dumpEval = [&](int round) {
+            if (!evalDump || round < 1 || round <= evalDumped) return;
+            evalDumped = round;
+            const Game& gg = e.game();
+            for (int q = 0; q < gg.numPlayers; ++q) {
+                float f[32];
+                const int nf = aiEvalFeatures(gg, q, f);
+                std::fprintf(evalDump, "F %u %d %d %d", s.seed, round, q, gg.vpGoal);
+                for (int k = 0; k < nf; ++k) std::fprintf(evalDump, " %g", f[k]);
+                std::fprintf(evalDump, "\n");
+            }
+        };
         while (e.waiting() && steps < 60000) {
+            if (evalDump && e.game().phase == Phase::Agenda) dumpEval(e.game().round);
             if (e.game().round != lastRound) {  // a new round: note the VP standings
+                dumpEval(e.game().round - 1);
                 lastRound = e.game().round;
                 if (lastRound >= 2 && lastRound - 1 < 12) {
                     int hi = 0, sum = 0;
@@ -953,6 +974,13 @@ int runSimulation(int games, int players, uint32_t seed, bool verbose) {
                     for (const char* lg : {"Imperial Arms Vault", "The Atrament", "Mirage Flight Academy", "Exterrix Headquarters"})
                         if (line.find(lg) != std::string::npos) ++stats[std::string("legend  ") + lg];
                 }
+                // (0.82.1) Monuments+: each monument raised, and each line its ability wrote (its name in it)
+                if (g.modules & kModMonuments)
+                    for (int m = 0; m < kMonumentCount; ++m) {
+                        const int u = unitByKey(kMonuments[m].unit);
+                        if (u < 0 || line.find(kUnits[u].name) == std::string::npos) continue;
+                        ++stats[std::string(line.find("raises their monument") != std::string::npos ? "monument placed " : "monument line   ") + kUnits[u].name];
+                    }
                 // Discordant Stars (0.37.0): the ability's name is in its line
                 for (const char* k : {"Zealous", "Ruthless", "Magistrate", "Tempest Drive", "Deliverance Engine", "Blessing of the Queens",
                                       "Queen Lucreia", "Queen Lorena", "Cargo Raiders", "(Scour)", "(Raze)", "Lost Cause", "Scavenger Exos",
@@ -1017,6 +1045,21 @@ int runSimulation(int games, int players, uint32_t seed, bool verbose) {
                                       "Dhor's Hammer", "(Nexus)", "blockaded and destroyed", "Spawning Grounds", "Parallel Production",
                                       "Ghoti Relay", "(Becece)", "Transcendence", "(Tioleombp)", "Networked Command"})
                     if (line.find(k) != std::string::npos) ++stats[std::string("ds      ") + k];
+                // Blue Reverie (0.83.0): the Atokera Legacy
+                for (const char* k : {"(Living Metals)", "(Modular Designs)", "(Ordagka)", "prediction was right: 1 command token",
+                                      "(Mirrorshard II)", "(Magruda)", "(Kapoko Vui)", "return to space (Kapoko Vui)", "(Tri-Weave Shielding)",
+                                      "(Obelisk)", "cast more votes than any other player",
+                                      // the Belkosea Allied States (0.84.0)
+                                      "(Classified Developments)", "(Arrogance)", "(Availyn)", "(Caled)", "(Glatison)", "(Grom)", "(Mors)",
+                                      "(S.O.L.G. Industries Group)", "readies S.O.L.G.", "(Synchrony Matrix)", "(Trinity Stockpile)",
+                                      "(Razalka Gris)", "(Ciphus Gault)", "(Spike)", "(Ascendancy)", "(Uzean Wardog)", "(Mercenary Sortie)",
+                                      "return to space (Wyvern)", "(Ace)", "puts a control token on",
+                                      // the Pharad'n Order (0.85.0)
+                                      "tomb tokens (Ancient Empire)", "captures 2 infantry (Ancient Empire)", "(Immortal)", "(Immortal: removed)",
+                                      "(Dark Purpose)", "(Sacrotitan)", "(Immortal II)", "(Nokash)", "(Avhkan)", "to unlock Avhkan",
+                                      "(Pharad'n the Immortal)", "(Death Binding)", "(Hidden Vaults)", "(Reality-Field Impactor)",
+                                      "(Mark of Pharad'n)", "raises their monument, Black Pyramid"})
+                    if (line.find(k) != std::string::npos) ++stats[std::string("br      ") + k];
                 // Stage 5: faction abilities, leaders, notes
                 for (const char* k : {"unlocks their commander", "unlocks their hero", "exhausts their agent"}) {
                     size_t at = line.find(k);
@@ -1109,6 +1152,12 @@ int runSimulation(int games, int players, uint32_t seed, bool verbose) {
                 for (const std::string& line : g.log) std::fprintf(f, "%s\n", line.c_str());
                 std::fclose(f);
             }
+        }
+        if (evalDump) {
+            std::fprintf(evalDump, "W %u %d %d", s.seed, g.winner, g.round);
+            for (const Player& pl : g.players) std::fprintf(evalDump, " %d", int(pl.vp));
+            std::fprintf(evalDump, "\n");
+            std::fflush(evalDump);
         }
         if (g.winner >= 0 && g.players[g.winner].vp >= g.vpGoal) {
             ++vpWins;

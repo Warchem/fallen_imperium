@@ -23,6 +23,8 @@ const Key kKeys[] = {
     {"bolt", "Lightning Bolt emblem", -1},   {"sun", "Retro Sun emblem", -1},      {"pearl", "Pearl Seal emblem", 1},
     {"circuit", "Circuit emblem", -1},       {"compass", "Drafting Compass emblem", -1}, {"shard", "Crystal Shard emblem", 1},
     {"ember", "Ember emblem", -1},
+    // (0.85.2) the Blue Reverie leagues
+    {"forge", "Living Forge emblem", -1},    {"superweapon", "Superweapon emblem", -1}, {"pyramid", "Black Pyramid emblem", 2},
 };
 const Key* keyOf(const std::string& k) {
     for (const Key& e : kKeys)
@@ -238,6 +240,39 @@ void symbol(const Pen& p, const std::string& k, uint32_t sym, uint32_t field, ui
             const float ph = float(now % 1800) / 1800.f;
             p.circle(0.18f + std::sin(ph * 7.f) * 0.04f, -0.2f - ph * 0.3f, 0.03f, rgb(255, 200, 110), int(230.f * (1.f - ph)));
         }
+    } else if (k == "forge") {  // (0.85.2 Living Forge Synod - the Atokera) an anvil, a drop of living metal falling onto it
+        p.poly({-0.4f, -0.08f, 0.26f, -0.08f, 0.42f, -0.2f, 0.42f, -0.04f, 0.2f, 0.06f, -0.4f, 0.06f}, sym);  // the face and horn
+        p.poly({-0.2f, 0.06f, 0.12f, 0.06f, 0.08f, 0.2f, -0.16f, 0.2f}, sym);                                   // the waist
+        p.poly({-0.32f, 0.2f, 0.24f, 0.2f, 0.3f, 0.36f, -0.38f, 0.36f}, sym);                                   // the foot
+        p.line(-0.38f, -0.08f, 0.24f, -0.08f, 0.025f, field, 140);
+        const uint32_t metal = mix(rgb(90, 220, 150), colour, 80);
+        const float drop = now ? float(now % 2000) / 2000.f : 0.35f;  // the drop falls and lands
+        const float dy = -0.46f + drop * 0.3f;
+        p.circle(-0.02f, dy, 0.075f, metal);
+        p.poly({-0.06f, dy - 0.03f, 0.02f, dy - 0.03f, -0.02f, dy - 0.15f}, metal);
+        if (now && drop > 0.85f) p.circle(-0.02f, -0.1f, 0.12f * (drop - 0.85f) / 0.15f + 0.04f, rgb(200, 255, 220), int(200.f * (1.f - drop) / 0.15f));
+    } else if (k == "superweapon") {  // (0.85.2 Arsenal Directive - the Belkosea) the sphere with its slit iris, in the crosshairs
+        p.ring(0.f, 0.f, 0.42f, 0.035f, sym);
+        for (int i = 0; i < 4; ++i) {
+            const float a = float(i) * kPi / 2.f;
+            p.line(std::cos(a) * 0.3f, std::sin(a) * 0.3f, std::cos(a) * 0.52f, std::sin(a) * 0.52f, 0.04f, sym);
+        }
+        p.circle(0.f, 0.f, 0.24f, rgb(70, 74, 82));
+        p.circle(-0.05f, -0.05f, 0.18f, rgb(128, 132, 140));
+        p.circle(0.04f, 0.01f, 0.1f, rgb(30, 32, 38));
+        const float breathe = now ? 0.6f + 0.4f * std::sin(float(now % 2400) / 2400.f * 2.f * kPi) : 0.8f;
+        p.line(0.04f, -0.07f, 0.04f, 0.09f, 0.035f, rgb(255, 90, 60), int(255.f * breathe));
+    } else if (k == "pyramid") {  // (0.85.2 Necropolis Eternal - the Pharad'n) a stepped pyramid, its doorway glowing
+        const uint32_t dark = mix(field, rgb(20, 16, 6), 120);
+        for (int st = 0; st < 3; ++st) {
+            const float y0 = 0.36f - float(st) * 0.22f, y1 = y0 - 0.22f, hw = 0.46f - float(st) * 0.13f;
+            p.poly({-hw, y0, hw, y0, hw - 0.04f, y1, -hw + 0.04f, y1}, st == 2 ? mix(sym, rgb(255, 255, 255), 60) : sym);
+            p.poly({0.f, y0, hw, y0, hw - 0.04f, y1, 0.f, y1}, dark, 90);  // the shaded face
+        }
+        p.poly({-0.1f, -0.3f, 0.1f, -0.3f, 0.f, -0.45f}, mix(sym, rgb(255, 255, 255), 90));  // the capstone
+        const float g = now ? 0.55f + 0.45f * std::sin(float(now % 2800) / 2800.f * 2.f * kPi) : 0.8f;
+        p.circle(0.f, 0.29f, 0.13f, rgb(255, 145, 4), int(90.f * g));
+        p.poly({-0.05f, 0.36f, 0.05f, 0.36f, 0.05f, 0.22f, -0.05f, 0.22f}, rgb(255, 160, 30), int(150.f + 100.f * g));
     }
 }
 

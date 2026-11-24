@@ -357,7 +357,7 @@ const WireArt* techWire(int t) {
 }  // namespace
 
 void unitWireframe(Canvas& c, UnitType type, Rect r, uint32_t col, int alpha) {
-    if (int(type) >= kUnitTypes) return;
+    if (int(type) >= kUnitTypes || !kUnitWire[int(type)]) return;  // (0.82.0: no wireframe for monuments)
     if (const WireArt* a = findWire(kUnitWire[int(type)])) drawWire(c, *a, r, col, alpha);
 }
 

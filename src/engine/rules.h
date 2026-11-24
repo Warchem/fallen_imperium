@@ -96,6 +96,7 @@ struct Played {
 };
 bool usCard(int card);  // an Uncharted Space action card (0.33.0)
 bool teCard(int card);  // a Thunder's Edge action card (0.34.0)
+bool monCard(int card);  // a Monuments+ action card (0.82.0)
 bool teRelicReady(int r);  // a relic that goes into the deck (Thunder's Edge ones wait for their parts)
 
 // Combat roll adjustments from faction abilities, leaders and notes.
@@ -104,6 +105,7 @@ struct RollMods {
     int extraDice[kUnitTypes] = {};  // extra dice for one unit of that type (agents)
     int oneType = -1, oneBonus = 0;  // Gravleash Maneuvers (Letnev breakthrough): +X to one ship's dice
     bool flagshipBonus = false;      // J.N.S. Hylarim: its natural 9s and 10s make 2 extra hits
+    int useAfb = 0;                  // (0.84.0) Ciphus Gault: these unit types roll their ANTI-FIGHTER BARRAGE instead of combat
     bool valor = false;              // Valor (Kjalengard, Discordant Stars): each natural 10 makes 1 extra hit
     void all(int v) {
         for (int& x : perType) x += v;
@@ -117,7 +119,8 @@ struct CannonGuns {
     int ul = 0;        // Ul the Progenitor's dice (Space Cannon 5)
     int starfall = 0;  // Starfall Gunnery's dice (Space Cannon 8)
     int dhonraz = 0;   // Dhonraz Installations' dice (Space Cannon 5)
-    bool empty() const { return guns.empty() && !ul && !starfall && !dhonraz; }
+    std::vector<std::pair<int, int>> br;  // (0.83.0) Kohi / Modular Designs (Atokera): (dice, value)
+    bool empty() const { return guns.empty() && !ul && !starfall && !dhonraz && br.empty(); }
 };
 
 struct LandSpec {
@@ -200,6 +203,19 @@ private:
     bool optionalResearch_ = false;  // (fixes 30) "may research" (Wormhole Research, Ixthian Artifact): Don't research is offered
     bool piUsed_[kMaxPlayers] = {};  // Predictive Intelligence votes this agenda
     bool freeSecondary_ = false; // Galactic Crisis Pact
+    // ---- (0.81.0) Absol's Agendas (rules_absol.cpp) ----
+    int absolTopOverride_ = -1;  // Committee Formation (Absol): its owner "cast the most votes" for the outcome it chose
+    int absolMiscount_ = -1;     // Miscount Disclosed (Absol): this player casts 1 more vote per player on the law voted again
+    bool absolSkip_ = false;     // Pax Magnifica, Bellum Gloriosum (Against): straight to the Ready Planets step
+    // Absol rulebook 8.14b / 8.16a: a player who could not vote or had no votes did not abstain and is not a voting player.
+    // absolAble_: bit per player who was asked to vote in the last voting step; absolAbleCur_: the one for the outcome being resolved.
+    uint16_t absolAble_ = 0, absolAbleCur_ = 0;
+    bool absolCrisisReinf_ = false;  // Galactic Crisis Pact (Absol): tokens the secondary places come from the reinforcements
+    uint8_t absolNoPolitics_ = 0;    // Representative Government (Against): these players can't choose Politics this strategy phase
+    bool absolNoFaction_ = false;    // researchStep: non-faction technologies only (Research Grant Reallocation)
+    int maxPrereqs_ = -1;            // researchStep: at most this many prerequisites (Wormhole Research)
+    std::vector<int16_t> emergencyCards_;  // Emergency Sessions in the common play area this agenda phase
+    bool tgOnly_ = false;            // pay(): trade goods only (Discretionary Spending)
     std::vector<int> retreatedFrom_;  // players who retreated out of the current combat
 
     struct RollResult {
@@ -730,6 +746,77 @@ private:
     void ds7Produced(int p, int sys, const Force& made);
     int ds7ProductionBonus(int p, int sys);
     void ds7TurnStart(int p);
+    // Blue Reverie (rules_br.cpp, 0.83.0): the Atokera Legacy
+    bool brOn() const { return (G.modules & kModBlueReverie) != 0; }
+    int livingMetals_ = 0;        // Living Metals: 1 while an agenda outcome resolves, 2 while an action card's ACTION does
+    int livingMetalsSaid_ = -1;   // (the log size when it was last said - one line per effect)
+    int brGuess_[kMaxPlayers] = {-1, -1, -1, -1, -1, -1, -1, -1};  // Ordagka predictions on the current agenda
+    bool livingMetalsBlocks(int p, const char* what);
+    void brAfterMovement(int p, int sys);  // Modular Designs
+    std::vector<std::pair<int, int>> brExtraDice(int p, int sys, int planet, RollKind kind) const;  // Kohi / Modular Designs
+    void brAgendaRevealed(int a);           // Ordagka
+    void brAfterVoting(const std::vector<int>& votedFor, const std::vector<int>& votes);  // Ordagka's unlock
+    void brOutcomeResolved(int a, int outcome, const std::vector<int>& votedFor, const std::vector<int>* guessed);  // Mirrorshard II, Ordagka
+    int brMagruda(int p, const std::vector<int>& spent);  // Magruda: votes it adds
+    void brInvasionStart(int p, int sys);   // Kapoko Vui, Tri-Weave Shielding
+    bool kapokoShips(int p, int sys) const; // Kapoko Vui: p's ships commit / fight as ground forces this action
+    void brEndTactical(int p, int sys);     // Kapoko Vui's ships back to space
+    bool panoplyOn(int p) const;            // Panoply Animus (breakthrough)
+    void brGroundRoundEnd(int att, int def, int planet);  // Obelisk's repair
+    // Blue Reverie (rules_br2.cpp, 0.84.0): the Belkosea Allied States
+    uint16_t brSpike_ = 0;   // Spike: these players' fighters' barrage hits any ship this combat
+    uint16_t brNoAsk_ = 0;   // "Not during this combat" (the superweapon question)
+    int brSortie_ = -1;      // Mercenary Sortie: the holder who played it in this combat (back after the first round)
+    void brSuperweaponLost(int planet, const char* why);  // Arrogance: purged with its card
+    void brExhaustSw(int p, int k);                       // (S.O.L.G. Industries Group readies)
+    std::vector<int> brClassifiedPlanets(int p) const;
+    void brActionOptions(int p, std::vector<Option>& o);  // Classified Developments
+    bool brAction(int p, Ab ab);
+    bool brSwUsable(int p, int k, int att, int def, int sys, bool mon = false) const;
+    bool brUseSw(int p, int k, int att, int def, int sys, bool mon = false);
+    std::vector<Option> brSynchronyTargets(int p) const;
+    bool brSynchrony(int p);
+    std::vector<int> brTrinityPlanets(int p) const;
+    bool brTrinityReady(int p) const;
+    bool brTrinity(int p, int onlyPlanet);
+    void brFreeOptions(int p, std::vector<Option>& o);    // their turn: options 660-668 (no action used)
+    bool brFreeAction(int p, int id);
+    void brAnyTime(int side, int att, int def, int sys, int planet);
+    void brCombatStart(int att, int def, int sys, int planet);  // Spike, Mercenary Sortie
+    void brSortieBack();
+    void brCombatRoundStart(int att, int def, int sys, int planet, int round, RollMods* mods);  // "at any time", Ascendancy, Ciphus Gault
+    int brAfbOnlyHits(int shooter, const RollResult& r, const RollMods& m) const;
+    int brSpikeHits(int side, const RollResult& r) const;
+    bool brSpikeOn(int side) const;
+    void brCombatEnd(int att, int def, int sys, int planet);   // Spike readies after a loss
+    void brWardog(int p, const RollResult& r, int sys);
+    bool wyvernsLand(int p, int sys) const;
+    void brActivated(int p, int sys);                         // Razalka Gris
+    bool brArmageddonHas(int p, int k, int* home) const;      // Armageddon Project (Monuments+)
+    void brArmageddonLost(int k);
+    void brArmageddonOptions(int p, std::vector<Option>& o);
+    void brArmageddonCombatOptions(int p, int att, int def, int sys, std::vector<Option>& o);
+    bool brArmageddonUse(int p, int att, int def, int sys);
+    void brArmageddonStrategyEnd();
+    // Blue Reverie (rules_br3.cpp, 0.85.0): the Pharad'n Order
+    void pharSetupTombs();                                 // Ancient Empire (setup)
+    void pharControl(int planet, int p);                   // ... a tomb opened (setControl)
+    void pharInfantryLost(int p, int k, int sys, int planet);  // Immortal: captured (destroyUnits); Sacrotitan
+    void pharRemoved(int p, int k);                        // Immortal: taken off the board without destroyUnits
+    int pharPlace(int p, int k);                           // Mark of Pharad'n (addUnits): captured infantry returned for those placed
+    void pharScored(int p);                                // Dark Purpose
+    void pharTurnStart(int p);                             // Immortal II DEPLOY
+    void pharPassed(int p);                                // Death Binding
+    void pharFreeOptions(int p, std::vector<Option>& o);   // their turn: Nokash 670, Hidden Vaults 671 (no action used)
+    std::vector<Option> pharNokashTargets() const;
+    bool pharFreeAction(int p, int id);
+    void pharExplored(int p, int planet);                  // Hidden Vaults: produce 1 infantry
+    std::vector<int> pharAvhkanPlanets(int p) const;
+    void pharActionOptions(int p, std::vector<Option>& o); // Avhkan's unlocking ACTION
+    bool pharAction(int p, Ab ab);
+    void pharGroundStart(int att, int def, int planet);    // Avhkan
+    void pharActivated(int p, int sys);                    // Reality-Field Impactor
+    void pharLanded(int p, int sys, std::vector<int>& landed);  // Black Pyramid DEPLOY, Pharad'n the Immortal
     void ds7StatusStart();
     void ds7Researched(int p, int t);
     int ds7VoteBonus(int p, const std::vector<int>& spent);
@@ -1038,7 +1125,7 @@ private:
     void spendNomadAgent(int who, int nth);
     void readyAgent(int p, int index);              // ready an exhausted agent (Artuno pays out)
     void capture(int by, int owner, UnitType t, int k, const char* why);
-    bool returnCaptured(int p, UnitType t);         // give back 1 captured unit of that type
+    bool returnCaptured(int p, UnitType t, bool preferOwn = false);  // give back 1 captured unit of that type (fixes 35: own first)
     void capturedBlockade();                        // LRR 17.2c: blockaded docks give captured units back
     bool cannotCaptureFrom(int by, int owner) const;  // LRR 17.6
     int abilityDice(int p, int sys, bool plasma = true);  // extra unit-ability dice: Plasma Scoring, Trrakan Aun Zulok, Ambuscade
@@ -1095,6 +1182,7 @@ private:
     bool inAsn_ = false;              // ... and its extra production is running
     int execVoter_ = -1;              // Executive Order: the Keleres vote as speaker (trade goods and resources count)
     int odlynn_ = -1, odlynnGuess_ = -1;  // Odlynn Myrr used on the current agenda: by whom, and the prediction
+    int odlynnUser_ = -1;  // (0.82.0) who predicted with Odlynn Myrr on this agenda (odlynn_ is cleared after the votes)
     int riderGuess_[kMaxPlayers] = {-1, -1, -1, -1, -1, -1, -1, -1};  // Keleres Rider predictions on the current agenda
     int16_t lawsOrderQuiet_[kMaxPlayers] = {};  // Law's Order: a human said "don't ask again" this round
     int16_t xanderQuiet_[kMaxPlayers] = {};     // Xander when not needed (fixes 27): the same
@@ -1257,6 +1345,61 @@ private:
     int persShips_[2] = {0, 0};  // non-fighter ships at the start of the current space combat (Scavenger)
     int persCombatKey_ = -1;     // the last attack counted (one grudge per attack)
 
+    // ---- Absol's Agendas (rules_absol.cpp, 0.81.0) ----
+    bool absolOn() const { return (G.modules & kModAbsol) != 0; }
+    bool sciencesMinister(int p) const {  // Minister of Sciences (PoK or Absol's): no resources for the Technology card's research
+        if (lawOwner(G, "minister_sciences") == p) return true;
+        const Law* l = absolLaw(G, "absol_minssci");
+        return l && l->owner == p;
+    }
+    // the player who cast the most votes for outcome o (ties: the speaker decides; exclude = "the other player"), -1 none
+    int absolTop(int a, int o, const std::vector<int>& votedFor, const std::vector<int>& votes, int exclude = -1);
+    // the players who voted for o, most votes first (ties: voting order)
+    std::vector<int> absolVotersByMost(int o, const std::vector<int>& votedFor, const std::vector<int>& votes) const;
+    bool absolAbstained(int q, const std::vector<int>& votedFor, const std::vector<int>& votes) const;
+    bool absolVoting(int q, const std::vector<int>& votedFor) const;
+    void absolEmergencyDone();  // an Emergency Session's extra agenda is over: discard that copy
+    bool absolPoliticalSecretUsable(int p) const;              // holds another player's Political Secret whose owner has a ready planet
+    int absolPoliticalSecret(int p, bool exec, bool absolGov);  // plays them while casting votes: the votes gained  // a voting player (8.16a): could vote, or voted
+    // p gives 1 promissory note from their hand (their choice) to `to` / to one of `to` (their choice); false if they can't
+    bool absolGiveNote(int p, int to, const std::string& why);
+    bool absolGiveNoteToOneOf(int p, const std::vector<int>& to, const std::string& why);
+    void absolLockCard(int card, const std::string& why);  // "Exhaust the <card> strategy card": nobody may choose it next round
+    void absolResolve(int a, int o, const std::vector<int>& votedFor, const std::vector<int>& votes);
+    void absolLawOutcome(int a, int o, const std::vector<int>& votedFor, const std::vector<int>& votes);
+    void absolDirectiveOutcome(int a, int o, const std::vector<int>& votedFor, const std::vector<int>& votes);
+    void absolLawLeaves(const Law& l, bool discarded);  // a law discarded (or taken out of play by Miscount Disclosed)
+    bool absolRevealSkip(int a);             // an Emergency Session revealed: set aside, another agenda is revealed
+    int absolRevealFromBottom();             // reveal from the bottom of the deck until a law (the others are shuffled back)
+    void absolAgendaPhaseStart();            // Judicial Abolishment (For)
+    void absolAgendaPhaseEnd();              // Emergency Sessions are discarded
+    void absolPending(const PendingEffect& pe, int q);  // effects at the start of the next strategy phase
+    bool absolCardLocked(int p, int card) const;        // the strategy card can't be chosen by p now
+    bool absolChecksKeep(int p, int card);              // Checks and Balances (For): a token holder keeps the card
+    void absolStrategyEnd();                 // Imperial Arbiter, Affirmation of Divine Right
+    bool absolMinisterFree(int p, int card) const;      // the Ministers: a secondary without a command token
+    bool absolActivated(int p, int sys);     // Articles of War / Minister of Peace (Absol); true = the turn ends
+    void absolTurnStart(int p);              // Enforced Travel Ban / Nexus Sovereignty: ignore them this turn?
+    void absolTurnEnd(int p);
+    void absolAfterTactical(int p, int sys); // Minister of Exploration (Absol)
+    void absolOptions(int p, std::vector<Option>& opts);  // Minister of War (Absol): component action 3020
+    bool absolMinisterWar(int p);
+    void absolProduced(int p, int sys, const int counts[kUnitTypes]);  // Prophecy of Ixth (Absol)
+    void absolPdsPlaced(int p, int planet);  // Homeland Defense Act (For): one more PDS
+    bool absolExplorePay(int p, int planet); // Preservation of Historical Sites (For): influence to explore; false = no exploring
+    void absolSpeakerTaken(int q);           // Term Limits: a token for the new speaker
+    bool absolCanBeSpeaker(int q) const;     // Political Censure / Term Limits
+    void absolSetSpeaker(int q, const std::string& why);  // the speaker token goes to q (if q may take it)
+    bool absolScoreInstead(int p, int obj);  // Minister of Antiquities (Absol): a relic instead of the public objective
+    void absolStatusDraws(std::vector<int>& draws);       // Minister of Policy (Absol): the draw step
+    void absolSecretDiscarded(int p, int obj);            // Search Warrant (Absol): a token holder may take it
+    void absolControlChanged(int planet, int oldOwner, int newOwner);  // Ixthian Artifact (Against)
+    void absolStatusEnd();                   // Minister of War readies
+    void absolMovedThrough(int p);                         // Wormhole Reconstruction (For): a commodity for the token holders
+    bool absolViaWormhole_ = false;                        // (this movement: a ship came through a wormhole)
+    void absolSpending(int p);                             // Discretionary Spending (For): one player's purchases
+    void ixthianFails();                                   // Ixthian Artifact rolled low (PoK and Absol)
+
     // ---- promissory notes (rules_notes.cpp) ----
     void giveNote(int from, int to, int note);
     void returnNote(int holder, int note);
@@ -1356,6 +1499,7 @@ private:
     void reportRoll(int p, int sys, const std::string& what, const RollResult& r);
     void neutralHits(int sys, int planet, int hits, int mask, const std::string& why, int attacker);  // Thunder's Edge
     void assignHits(int victim, int sys, int planet, int hits, int mask, const std::string& why, int attacker);
+    void assignHitsCore(int victim, int sys, int planet, int hits, int mask, const std::string& why, int attacker);
     void spaceCombat(int attacker, int defender, int sys);   // (fixes 31: the LRR 61.7 bookkeeping round the two below)
     void groundCombat(int attacker, int defender, int planet);
     void spaceCombatRun(int attacker, int defender, int sys);
@@ -1374,6 +1518,7 @@ private:
     void primaryAbility(int p, int card);
     void secondaryAbility(int p, int card);
     void leadership(int p, bool primary);
+    void leadershipCore(int p, bool primary);
     void diplomacy(int p, bool primary);
     void politics(int p, bool primary);
     void construction(int p, bool primary);
@@ -1391,7 +1536,128 @@ private:
     bool inCustodia_ = false;
     bool inOcean_ = false;                            // pay(): The Triad already offered                             // researchStep: only this colour (Specialist Compounds)
     void readyPlanets(int p, int n);
-    void placeStructure(int p, int sys, bool allowDock, bool allowPds, bool optional, const std::string& prompt = "");
+    // allowMonument (0.82.0): Monuments+'s Construction primary - the player's monument is one of the structures
+    void placeStructure(int p, int sys, bool allowDock, bool allowPds, bool optional, const std::string& prompt = "", bool allowMonument = false);
+
+    // ---- Monuments+ (rules_monuments.cpp, 0.82.0) ----
+    bool monumentsOn() const { return (G.modules & kModMonuments) != 0; }
+    // coexistence (Thunder's Edge; 0.82.0: Monuments+ brings it too - Flaah Orbitals, Nefishh Projector)
+    bool coexistOn() const { return (G.modules & (kModThundersEdge | kModMonuments)) != 0; }
+    void giveMonument(int p);                                                      // their monument unit (setup / refreshUnits)
+    std::vector<Option> monumentSpots(int p, bool reinforcementsOnly, int onlySys = -1);  // where it may go now (option ids)
+    void placeMonument(int p, int id);                                             // at a monumentSpots() option
+    void monumentLine(int p);                                                      // Construction: "If your monument is not on the board, you may place it."
+    // the monuments' abilities (rules_monuments2.cpp). Questions: Tag::MonumentAbility, Decision::ability = the card (kMonuments
+    // index), Decision::value = MonAsk (below)
+    int mpick(int p, int card, int ask, const std::string& prompt, std::vector<Option> opts, const std::string& context = "",
+              bool onMap = false, bool onPlanets = false);
+    std::vector<int> mpickMany(int p, int card, int ask, const std::string& prompt, std::vector<Option> opts, int minPick, int maxPick,
+                               const std::string& context = "", bool onMap = false);
+    bool myes(int p, int card, int ask, const std::string& prompt, const std::string& context = "");
+    void monEvent(int p, int card, const std::string& text, int sys = -1, int notice = 0, int amount = 0);  // the ability's banner and feed line
+    std::string monName(int card) const;                                     // the monument unit's name ("Flaah Orbitals")
+    void monExhaust(int p, int card);                                        // exhaust the monument card
+    std::vector<Option> monActionOptions(int p);  // component actions on monument cards: 3100 + card (Argent, Titans, Yin)
+    bool monAction(int p, int card);
+    void monTurnStart(int p);        // L1Z1X, Nomad, Saar (their turn); Mentak (anyone's)
+    void monTurnEnd(int p);          // N'orr: another structure instead; the Panopticon
+    void monPassed(int p);           // Arborec: an infantry on a planet in or next to the system
+    void monActivated(int p, int sys);  // Creuss: hits in the systems with wormholes next to it
+    void monStatusStart();           // Mahact: a command token from the system into the fleet pool
+    void monAgendaStart();           // Winnu: the vault
+    void monAgendaResolved(int outcome, const std::vector<int>& voted, const std::vector<int>& counts, const std::vector<int>* guessed);  // Jol-Nar, Xxcha
+    // every outcome each player predicted on the agenda being resolved: riders, Keleres / Kyro / Edyn Riders, Council Black Site
+    // (Tarrock), Galactic Threat, Odlynn Myrr, Radiance, Unity Algorithm (0.82.0, owner: "check if other cards allow predictions")
+    void allPredictions(std::vector<int> out[kMaxPlayers], const std::vector<int>* preds) const;
+    std::string monVoteHint(int p) const;  // Palatine Obelisk / Glory Furnace: what exhausting the monument's planet adds to a vote
+    // (0.82.0) Monuments+'s cards (rules_monuments3.cpp): Festival, Rebel Bombing, Renovation; Cathedral of Ixth, Minister of Culture
+    std::vector<Option> festivalPlanets(int p) const;
+    std::vector<Option> rebelTargets(int p) const;
+    std::vector<int> renovationTypes(int p, int planet, int sys, UnitType out) const;
+    std::vector<Option> renovationChoices(int p) const;
+    bool monComponentUsable(int p, int card) const;
+    bool monResolve(int p, int card, const WinCtx* c);
+    void monLawResolve(int a, int o);
+    void cathedralCheck();  // the Cathedral of Ixth's points follow the monuments on its planet (before every question)
+    void monLawEntered();            // Keleres: a command token onto the card
+    int monVotes(int p, const std::vector<int>& spent);  // Letnev, Muaat: votes added when the monument's planet votes
+    void monActionCardPlayed(int p);  // Yssaril
+    int monInfantryPlaced(int p, int planet, int k);  // Sol: how many of them go to the Cenotaph's planet instead (placed there)
+    bool monDeploy(int p, int planet);  // Vuil'raith: DEPLOY when p gains control of a planet with structures
+    void monStructureDestroyed(int byPlayer, int owner);  // Nekro: "M" / "Z" onto the owner's monument card
+    void monPlaced(int p);           // N'orr: "When you place your monument" - 3 infantry / fighters
+    void panopticonCheck();          // Empyrean: a blockaded Panopticon is destroyed
+    bool monCommandToken(int p, int sys, bool activation);  // Keleres: the token from the card instead (true = used)
+    bool monCoexist(int p, int q, int planet);  // Naalu: the committed infantry coexist instead (true = no combat)
+    int monSolCommit(int p, int planet);  // Sol: committed infantry to the Cenotaph's planet instead (how many)
+    void freeportTrade(int from, int to, const std::vector<int>& units);  // Hacan: units given in a deal (system * 16 + type)
+    bool monCaptureStructures_ = false;  // (She Consumes Worlds: structures captured "as if it were a non-fighter ship")
+    int monSolBusy_ = 0;                  // (the Cenotaph's own placement doesn't ask again)
+    int curPlanet_ = -1;                  // (0.82.0) a planet the question is about, copied into Decision::planet (for the AI)
+    // (0.82.1) Thunder's Edge's monuments (rules_monuments4.cpp)
+    void monStationPlace(int p, int sys);             // Seraph Data Center: its station card into the system it stands in
+    void monStationRemove(int p);                     // ... out of play
+    void monStationLost(int planet, int old, int by); // "When you lose control of this station, destroy it and produce 2 hits"
+    void monSync();                                   // stations follow their monuments; a Pelagion that left its planet is noted
+    void monCheckpoint();                             // monSync, then the Pelagion's space combats (safe points only)
+    bool pelagionBlocks(int p, int sys) const;        // The Pelagion: p's ships don't trigger space combat there
+    void pelagionCombats(int sys, int owner);
+    void monBreachActive(int by, int sys);            // Veils of Lost Creuss: a breach became active
+    void monActivatedTE(int p, int sys);              // Epiphany (control tokens), Epiphany Hollow (puppets' infantry)
+    bool epiphanySkip(int p);                         // research: a token off the Epiphany skips a prerequisite
+    void epiphanyPlot(int p);                         // ... or a non-Firmament token onto a plot card
+    std::vector<int> linkhubDestinations(int s) const;
+    void monTacticalEnd(int p, int sys);              // Sor Tek Linkhub: move a structure in a space area
+    std::vector<std::pair<int, int>> pelagionPending_;  // (system, the Pelagion's owner) - removed, combats to resolve
+    bool pelagionNoCombat_ = false;                   // (this tactical action's space combat didn't happen: the Pelagion)
+    // (0.82.2) Discordant Stars' monuments, batch 1 (rules_monuments5.cpp)
+    int monProductionDiscount(int p, int sys) const;  // Zha'Ren Foundry: 2 cheaper in its system
+    void monProduced(int p, int sys, const Force& made);  // Anvil of Atlas: 1 trade good for non-fighter ships produced there
+    void monActivatedDS(int p, int sys);              // Jatta's Palace, Nightfall Fortress
+    void monAfterDiplomacy(int p);                    // Diplomatic Enclave: its planet readied
+    bool adoCitadel(int side, int other, int sys, int round) const;  // Ado Citadel: side doesn't roll in round 1 there
+    int perditionHits(int q, int sys, const RollResult& r) const;    // Perdition Array: space cannon hits that can't be canceled
+    bool twilightThroneReady(int p, int* planet = nullptr) const;
+    void twilightThrone(int p);                       // Twilight Throne: a mech on its planet, free (option 647)
+    void monGroundCombatStart(int att, int def, int planet);  // ... offered at the start of a ground combat there
+    void monUnitsDestroyed(int p, UnitType t, int k, int sys);  // Queen's Rest: a roll owed for each unit lost there
+    void queenResolve();
+    struct QueenRoll {
+        int p, sys, t;
+    };
+    std::vector<QueenRoll> queenPending_;
+    bool queenBusy_ = false;
+    // (0.82.3) Discordant Stars' monuments, batch 2 (rules_monuments6.cpp)
+    void monPendingResolve();                         // Queen's Rest rolls, Gravelord's Keep fighters (safe points)
+    void monOmenUsed();                               // Gravelord's Keep: an omen die was used - a free fighter owed
+    void keepResolve();
+    void monActivatedDS2(int p, int sys);             // Flotilla Cyclotron: +1 move to the ships in its system
+    void monReplenished(int p);                       // Bounty Brokerage: 1 of their commodities
+    void coveTake(int p, int sys, int k, int overBefore);  // Corsairs' Cove: k fighters just produced onto the card instead
+    void monTurnStartDS(int p);                       // Corsairs' Cove (fighters off the card), Dawnstar HQ (a coexisting unit)
+    bool mirrorforgeAction(int p, int card, int sys);  // Mirrorforge: pull ships next to it into its system, then a space combat
+    bool conclaveExplore(int p, int planet);          // AI Conclave: this planet explored instead (true = done)
+    void dawnstar(int loser, int winner, int planet);  // Dawnstar HQ: lost the ground combat there - destroy every unit there
+    void hoardMark();                                 // Aylor Raider Hoard: trade goods spent during a space combat
+    void hoardCheck(int sys);
+    void monAfterLeadership(int p);                   // Independence Tower: promissory notes revealed for command tokens
+    void relayCommit(int p, int sys);                 // Hyperlane Relay: ground forces from its planet to dock planets here
+    int keepPending_ = 0;
+    int hoardTg_[kMaxPlayers] = {}, hoardGain_[kMaxPlayers] = {};
+    int tgGained_[kMaxPlayers] = {};                  // trade goods gained so far (gainTG) - the Hoard's bookkeeping
+    // (0.82.4) Discordant Stars' monuments, batch 3 (rules_monuments7.cpp)
+    void monAfterMovement(int active, int sys);       // Shades' Den: captured units from the sheet into its system
+    void monExploredDS(int p, int planet);            // Tucc Academy: DEPLOY into coexistence on a planet another player explored
+    void monCombatWon(int winner, int loser, int sys);  // Krotas Bannerhall: a command token each
+    void libraryUse(int p, int missing[4]);           // Forbidden Library: 1 prerequisite of a colour near it
+    void kyroResolve();                               // Kyro Reliquary: destroyed - onto a planet of theirs near it, a relic
+    std::vector<std::pair<int, int>> kyroPending_;    // (player, system it was destroyed in)
+    void monPassedDS(int p);                          // Wonell's Bastion: a chain of space cannon systems, then a shot
+    void monTurnStartDS3(int p);                      // Verdant Halo: laws blank for 1 player this turn
+    void rhodunFlip(int p);                           // the Rhodun's card: Vault of New Phrad <-> Reliquat Unleashed
+    bool rhodunCanFlipBack(int p) const;              // ... "Flip this card at any time" (free option 648)
+    void monActivatedDS3(int p, int sys);             // ... the Vault flips when its system is activated
+    void rhodunCombatStart(int a, int b, int sys);    // ... back to the Vault at a combat it helps in
 
     // ---- objectives (rules_objectives.cpp) ----
     void scoringStep();

@@ -75,6 +75,8 @@ int Rules::drawExplore(int type) {
 void Rules::explorePlanet(int p, int planet) {
     const PlanetState& ps = G.planets[planet];
     if (ps.destroyed) return;
+    if (monumentsOn() && conclaveExplore(p, planet)) return;  // (0.82.3) AI Conclave (Augurs monument): its planet instead
+    if (!absolExplorePay(p, planet)) return;  // (0.81.0) Absol's Preservation of Historical Sites: influence first
     int type = traitDeck(kPlanets[ps.def].trait);
     if (ps.terraform) {  // Terraform: all three traits - the explorer picks the deck
         std::vector<Option> decks;
@@ -140,11 +142,13 @@ void Rules::explorePlanet(int p, int planet) {
     }
     explored4(p, planet);  // Terragenesis, Pre-Fab Arcologies
     if (G.modules & kModDiscordant) dsExplored(p, planet);  // ATS Armaments, Master Halbert
+    if (monumentsOn()) monExploredDS(p, planet);  // (0.82.4) Tucc Academy (Bentor monument): DEPLOY
+    if (brOn()) pharExplored(p, planet);          // (0.85.0) Hidden Vaults (Pharad'n breakthrough)
 }
 
 void Rules::exploreFrontier(int p, int sys) {
     SystemState& s = G.systems[sys];
-    if (!s.frontier) return;
+    if (!s.frontier && !anchorpointFrontier(G, p, sys)) return;  // (0.82.4: the Ghoti Anchorpoint's frontier token stays - it is the card's)
     s.frontier = false;  // LRR 35.6
     int c = drawExplore(int(ExploreType::Frontier));
     if (c < 0) {
@@ -183,6 +187,7 @@ void Rules::resolveExplore(int p, int c, int sys, int planet) {
             return false;
         f.remove(UnitType::Infantry, 1, false);
         say(p, pn(p) + " removes 1 infantry from " + planetName(planet) + ".", sys);
+        if (brOn()) pharRemoved(p, 1);  // (0.85.0) Immortal (Pharad'n)
         return true;
     };
 
@@ -204,7 +209,7 @@ void Rules::resolveExplore(int p, int c, int sys, int planet) {
                 // structures go back to reinforcements, ground forces to the space area
                 for (int q = 0; q < G.numPlayers; ++q) {
                     Force& f = ps.units[q];
-                    for (UnitType t : {UnitType::PDS, UnitType::SpaceDock}) f.remove(t, f.count(t), false);
+                    for (UnitType t : {UnitType::PDS, UnitType::SpaceDock, UnitType::Monument}) f.remove(t, f.count(t), false);  // (0.82.0: monuments)
                     for (UnitType t : {UnitType::Infantry, UnitType::Mech}) {
                         int k = f.count(t);
                         if (!k) continue;
@@ -671,6 +676,7 @@ void Rules::destroyPlanet(int x, int by, const char* how) {
     if (G.fixes >= 30)  // ((fixes 30, the relic pass) Thunder's Edge neutral units on it go with it)
         for (int t = 0; t < kUnitTypes; ++t)
             if (ps.units[kNeutral].n[t]) destroyUnits(kNeutral, UnitType(t), ps.units[kNeutral].n[t], sys, x, by, how);
+    if (ps.superweapon >= 0) brSuperweaponLost(x, "destroyed with its planet");  // (0.84.0) Arrogance (Belkosea)
     int old = ps.owner;
     ps.owner = -1;
     ps.attachments.clear();
@@ -827,7 +833,7 @@ void Rules::scanlink(int p, int sys) {
 void Rules::afterTactical(int p, int sys) {
     if (G.players[p].eliminated) return;
     // Dark Energy Tap: explore the frontier token where your ships are.
-    if (G.systems[sys].frontier && owns(p, "det") && hasShips(G, p, sys)) exploreFrontier(p, sys);
+    if ((G.systems[sys].frontier || anchorpointFrontier(G, p, sys)) && owns(p, "det") && hasShips(G, p, sys)) exploreFrontier(p, sys);  // (0.82.4: Anchorpoint)
     // Crown of Emphidia: explore one of your planets.
     if (relicReady(p, "emphidia")) {
         std::vector<Option> opts;

@@ -45,7 +45,7 @@ bool Rules::redistributeOne(int p, Tag tag, const std::string& why) {
         for (int b = 0; b < 3; ++b) {
             if (a == b || *pool[a] <= 0) continue;
             if (a == 1 && pl.fleet - 1 < maxShips) continue;  // the fleet pool must keep covering the ships
-            if (b == 1 && lawInPlay(G, "regulations") && pl.fleet >= 4) continue;
+            if (b == 1 && pl.fleet >= fleetPoolCap(G, p)) continue;  // (Fleet Regulations; 0.81.0: Absol's too)
             opts.push_back({a * 3 + b, std::string("Move 1 token: ") + tokenPool(a) + " to " + tokenPool(b),
                             std::to_string(pl.tactic) + " tactic / " + std::to_string(pl.fleet) + " fleet / " + std::to_string(pl.strategy) +
                                 " strategy now"});
@@ -73,6 +73,7 @@ bool Rules::usExplore(int p, int c, int sys, int planet) {
         if (!yesNo(p, Tag::ExploreChoice, name + ": remove 1 infantry from " + planetName(planet) + "?", reward)) return false;
         f.remove(UnitType::Infantry, 1, false);
         say(p, pn(p) + " removes 1 infantry from " + planetName(planet) + ".", sys);
+        if (brOn()) pharRemoved(p, 1);  // (0.85.0) Immortal (Pharad'n)
         return true;
     };
     if (exIs(c, "warforgeruins")) {  // War Forge Ruins (0.43.0, U1): a mech there, or an infantry given up - 1 mech or 2 infantry
@@ -445,7 +446,7 @@ void Rules::eyeOfVogul(int p, int sys) {
     if (!(G.modules & kModUncharted) || !holdsRelic(p, "eye_of_vogul")) return;
     std::vector<Option> ships;
     for (size_t s = 0; s < G.systems.size(); ++s) {
-        if (int(s) == sys || (G.systems[s].hasToken(p) && !G.fx.dominusOrb)) continue;
+        if (int(s) == sys || (G.systems[s].hasToken(p) && !G.fx.dominusOrb && !freeholdAt(G, p, int(s)))) continue;  // (0.82.2 Freehold)
         const Force& f = G.systems[s].space[p];
         for (int t = 0; t < kUnitTypes; ++t) {
             if (!f.n[t] || !isShip(UnitType(t)) || moveValue(G, p, int(s), UnitType(t)) <= 0) continue;

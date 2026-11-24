@@ -14,6 +14,7 @@
 #include "ui/dice.h"
 #include "ui/icons.h"
 #include "ui/pcolors.h"
+#include "ui/superweapon_ui.h"
 #include "ui/theme.h"
 
 using namespace ti;
@@ -69,6 +70,21 @@ std::vector<Item> of(const Game& g, int p, int viewer) {
         it.detail = it.dim ? std::string("Relic (exhausted)") : std::string("Relic");
         it.kindLine = it.dim ? "Relic - exhausted" : "Relic - ready";
         it.text = relicText(r);
+        out.push_back(it);
+    }
+    // (0.84.0) the Belkosea's superweapon cards (exhausted ones dimmed)
+    for (int k = 0; k < kSuperweaponCount; ++k) {
+        if (!((pl.swCards >> k) & 1)) continue;
+        Item it;
+        it.kind = Kind::Superweapon;
+        it.name = kSuperweapons[k].name;
+        it.value = k;
+        it.col = superweapon::colour(k);
+        it.dim = (pl.swExhausted >> k) & 1;
+        const int x = superweaponPlanet(g, k);
+        it.detail = std::string("Superweapon") + (x >= 0 ? std::string(" on ") + kPlanets[g.planets[size_t(x)].def].name : std::string()) + (it.dim ? " (exhausted)" : "");
+        it.kindLine = it.dim ? "Superweapon card - exhausted" : "Superweapon card - ready";
+        it.text = kSuperweapons[k].text;
         out.push_back(it);
     }
     // laws this player was elected to (Minister of War, Political Censure...)
@@ -266,6 +282,9 @@ void drawCard(Canvas& c, const Item& it, int x, int y, int w, int h, int alpha, 
             c.fillCircle(gx, gy, r * 0.55f, rgb(255, 225, 140), a);
             break;
         }
+        case Kind::Superweapon:  // (0.84.0) the sphere with its iris
+            superweapon::drawPiece(c, it.value, float(cx), float(y) + float(h) * (h >= 30 ? 0.42f : 0.5f), float(big) * 0.45f, now, it.dim, alpha);
+            break;
         case Kind::Law: {  // the agenda icon, tinted blue
             if (!icons::draw(c, "agenda", cx - big / 2, y + (h - big) / 2 - (h >= 30 ? h / 10 : 0), big, a, rgb(150, 190, 255)))
                 c.fillCircle(float(cx), float(y + h / 2), float(big) / 3.f, rgb(110, 170, 255), a);

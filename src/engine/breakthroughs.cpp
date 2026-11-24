@@ -204,6 +204,16 @@ const BreakthroughDef kBt[] = {
     {"zelian", "Awakened Planetoids", G_, R, "Your planets in the active system participate in space combat if that system contains 1 or more "
                                             "of your ships, and ground combat on themselves if they contain 1 or more of your ground forces. Your "
                                             "planets cannot be assigned hits and have a combat value equal to 10 minus their resource value, minimum 1.", true},
+    // Blue Reverie (0.83.0): the card's wording (rules_br.cpp panoplyOn; query_br.cpp brSustains)
+    {"atokera", "Panoply Animus", Y, R, "Your structures gain SUSTAIN DAMAGE and participate in ground combat as if they were ground forces "
+                                        "with a combat value of 7", true},
+    // (0.84.0) rules_br2.cpp brTrinity
+    {"belkosea", "Trinity Stockpile", B, R, "At any time, you may exhaust this card and purge 1 command token from your strategy pool; destroy all "
+                                          "units on a planet that contains a superweapon or is adjacent to your home system. Then, exhaust that "
+                                          "planet, if able.", true},
+    // (0.85.0) rules_br3.cpp pharExplored / pharFreeAction 671 (synergy: green and yellow - BIOTIC, CYBERNETIC)
+    {"pharadn", "Hidden Vaults", G_, Y, "When you explore a planet, you may produce 1 infantry on that planet. At any time, you may exhaust this "
+                                        "card to destroy any number of your units on the game board.", true},
 };
 }  // namespace
 

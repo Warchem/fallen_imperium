@@ -32,6 +32,7 @@
 #include "app/bug_report.h"
 #include "audio/audio.h"
 #include "core/log.h"
+#include "core/paths.h"
 #include "core/settings.h"
 #include "ai/ai.h"
 #include "engine/engine.h"
@@ -226,11 +227,11 @@ int main(int argc, char** argv) {
                                 e2.finished() ? "finished" : ("waiting: \"" + e2.decision().prompt + "\" (player " + std::to_string(e2.decision().player) + ")").c_str());
                 }
                 // board state (0.30.0 debugging): units per system, then each player's goods
-                static const char* kU[] = {"Fi", "De", "Cr", "Ca", "Dr", "Fl", "WS", "In", "Me", "PDS", "SD", "Fl2"};
+                static const char* kU[] = {"Fi", "De", "Cr", "Ca", "Dr", "Fl", "WS", "In", "Me", "PDS", "SD", "Fl2", "Mon"};
                 const ti::Game& g = e.game();
                 auto force = [&](const ti::Force& f) {
                     std::string s;
-                    for (int u = 0; u < ti::kUnitTypes && u < 12; ++u)
+                    for (int u = 0; u < ti::kUnitTypes && u < 13; ++u)
                         if (f.n[u]) s += " " + std::to_string(f.n[u]) + kU[u] + (f.dmg[u] ? "(" + std::to_string(f.dmg[u]) + "d)" : "");
                     return s;
                 };
@@ -282,13 +283,15 @@ int main(int argc, char** argv) {
 #ifdef _WIN32
     g_prevFilter = SetUnhandledExceptionFilter(winCrashFilter);  // 0.43.3: the stack of a crash into ti4.log
 #endif
+    // 0.85.1 (owner: progress lost with every update): the profile, settings and autosave in a folder every version finds
+    if (backend != "headless") paths::init();
+    GameSession::savePath() = backend == "headless" ? outDir + "/savegame.ti4" : paths::user("savegame.ti4");
     // 0.43.3 (owner): after a crash the next start makes a bug report by itself (the title screen says where)
     if (backend != "headless" || std::getenv("TI4_CRASHCHECK")) bugreport::afterCrash();  // (TI4_CRASHCHECK: tests)
 
-    if (backend == "headless") GameSession::savePath() = outDir + "/savegame.ti4";
     Settings settings;
-    settings.load(backend == "headless" ? outDir + "/settings.cfg" : "settings.cfg");
-    profile::load(backend == "headless" ? outDir + "/profile.cfg" : "profile.cfg");  // 0.80.0: leagues finished, unlocks
+    settings.load(backend == "headless" ? outDir + "/settings.cfg" : paths::user("settings.cfg"));
+    profile::load(backend == "headless" ? outDir + "/profile.cfg" : paths::user("profile.cfg"));  // 0.80.0: leagues finished, unlocks
 #ifdef _WIN32
     if (backend.empty()) backend = "win32";
 #elif defined(TI4_SDL2)

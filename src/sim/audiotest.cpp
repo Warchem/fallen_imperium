@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "audio/audio.h"
+#include "engine/data.h"
 
 namespace ti {
 namespace {
@@ -39,6 +40,23 @@ void writeWav(const std::string& path, const int16_t* d, size_t samples, int ch,
 }  // namespace
 
 int runAudioTest(const char* dir, const char* music) {
+    // (0.86.0) every faction's movement sound and voice was made for the faction at its place in kFactions (the voice drafts
+    // named a few factions their own way)
+    auto same = [](const std::string& key, const std::string& made) {
+        static const char* const kAlias[][2] = {{"ghost", "creuss"}, {"cabal", "vuilraith"}, {"naaz", "naazrokha"},
+                                                {"augers", "ilyxum"}, {"mykomentori", "myko"}, {"zealots", "rhodun"}};
+        if (made.empty() || key == made) return true;
+        for (const auto& a : kAlias)
+            if (key == a[0] && made == a[1]) return true;
+        return false;
+    };
+    int wrong = 0;
+    for (int f = 0; f < audio::kVoiceSounds; ++f) {
+        const std::string key = kFactions[f].key, v = audio::voiceSoundKey(f), m = f < audio::kMoveSounds ? audio::moveSoundKey(f) : "";
+        if (!same(key, v)) std::printf("FAIL voice %d is %s's, kFactions has %s\n", f, v.c_str(), key.c_str()), ++wrong;
+        if (!same(key, m)) std::printf("FAIL movement sound %d is %s's, kFactions has %s\n", f, m.c_str(), key.c_str()), ++wrong;
+    }
+    std::printf("faction sounds: %s\n", wrong ? "WRONG PLACES" : "every voice and movement sound in its faction's place");
     for (int i = 0; i < int(audio::Sfx::Count); ++i) {
         const std::vector<int16_t>& s = audio::samples(audio::Sfx(i));
         int peak = 0;

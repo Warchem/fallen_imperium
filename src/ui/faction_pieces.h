@@ -16,7 +16,7 @@
 
 namespace pieces {
 
-enum class Kind : uint8_t { Control, Plot, Unit, Die, Wormhole, Zero, Assim, Sleeper, Galvanize, Breach, Glory, Branch, Sigil, Tether };
+enum class Kind : uint8_t { Control, Plot, Unit, Die, Wormhole, Zero, Assim, Sleeper, Galvanize, Breach, Glory, Branch, Sigil, Tether, Superweapon, Tomb };
 
 struct Piece {
     Kind kind = Kind::Control;

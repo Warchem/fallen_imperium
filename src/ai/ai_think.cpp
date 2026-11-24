@@ -87,6 +87,49 @@ void determinize(Game& g, int viewer, Rng& r) {
     for (auto& d : g.exploreDeck) shuffleCanon(d, r);
 }
 
+}  // namespace
+
+// (0.86.0, self-play training - owner 2026-11-24 "sounds great") the position as numbers: what the learned evaluation weighs, and
+// what the simulator writes with TI4_EVALDUMP for the training (tools/train_eval.py)
+int aiEvalFeatures(const Game& g, int p, float* f) {
+    const Player& me = g.players[size_t(p)];
+    int n = 0;
+    float ri = 0.f, gf = 0.f, st = 0.f;
+    bool mec = false;
+    for (size_t x = 0; x < g.planets.size(); ++x) {
+        const PlanetState& ps = g.planets[x];
+        if (ps.owner == p) {
+            ri += float(planetResources(g, int(x)) + planetInfluence(g, int(x)));
+            if (ps.system == g.mecatol()) mec = true;
+        }
+        gf += float(ps.units[size_t(p)].groundForces());
+        st += float(ps.units[size_t(p)].structures());
+    }
+    float fleet = 0.f;
+    for (const SystemState& s : g.systems)
+        for (int t = 0; t < kUnitTypes; ++t)
+            if (s.space[size_t(p)].n[size_t(t)] > 0) fleet += float(s.space[size_t(p)].n[size_t(t)]) * float(unitCost2(g, p, UnitType(t))) * 0.5f;
+    int unscored = 0;
+    for (int16_t o : me.secrets)
+        if (!hasScored(g, p, o)) ++unscored;
+    f[n++] = float(me.vp);
+    f[n++] = aiObjectiveScore(g, p);
+    f[n++] = ri;
+    f[n++] = fleet;
+    f[n++] = gf;
+    f[n++] = st;
+    f[n++] = float(me.techs.size());
+    f[n++] = float(me.tactic + me.fleet + me.strategy);
+    f[n++] = float(unscored);
+    f[n++] = float(me.actionCards.size());
+    f[n++] = float(me.tradeGoods + me.commodities);
+    f[n++] = mec ? 1.f : 0.f;
+    f[n++] = float(me.relics.size());
+    return n;  // kEvalFeatures
+}
+
+namespace {
+
 // How well placed player p is: victory points first, then what is close to scoring, the planets and the fleet - and
 // how far ahead of the strongest rival.
 float worth(const Game& g, int p) {
@@ -107,9 +150,51 @@ float worth(const Game& g, int p) {
     if (const float tok = aiTune("thinktok", 0.f); tok > 0.f) v += tok * float(me.tactic + me.fleet + me.strategy);
     return v;
 }
+// (0.86.0, self-play training) the learned judgement: p's chance to win the game from this position (the end of a round's
+// status phase), from weights fitted on thousands of positions of Competitive games (tools/train_eval.py; the weights, the
+// features and how well each judgement predicted the winners are in ai/gen/eval_weights.inc).
+// TESTED, OFF (knob thinklearn): it predicts the winner better than worth() (held-out log-loss 1.45 -> 1.34 from round 6)
+// but plays no better - one A.I. seat vs five Competitive, the same 120 games (seeds 40000): worth() 44 wins / 7.98 VP,
+// learned 37 / 7.97, learned from round 6 only (thinklearnfrom 6) 43 / 7.92. It learns what winners have (techs,
+// structures, secrets in hand) more than what one more of them is worth - correlation, not cause.
+#include "ai/gen/eval_weights.inc"
+static_assert(kEvalNames == kEvalFeatures + 2, "eval_weights.inc doesn't match aiEvalFeatures - run tools/train_eval.py again");
+float learnedChance(const Game& g, int p) {
+    int b = 0;
+    for (int i = 0; i < kEvalBuckets; ++i)
+        if (g.round >= kEvalBucketFrom[i]) b = i;
+    const float* w = kEvalWeights[b];
+    const int n = std::min(g.numPlayers, 8);
+    float raw[8][32], sc[8];
+    for (int q = 0; q < n; ++q) aiEvalFeatures(g, q, raw[q]);
+    float top = -1e30f;
+    for (int q = 0; q < n; ++q) {
+        float other = 0.f;
+        for (int r = 0; r < n; ++r)
+            if (r != q) other = std::max(other, raw[r][0]);
+        const float vp = raw[q][0];
+        float s = 0.f;
+        for (int k = 0; k < kEvalFeatures; ++k) s += w[k] * raw[q][k];
+        s += w[kEvalFeatures] * vp * vp / float(std::max<int>(1, g.vpGoal));
+        s += w[kEvalFeatures + 1] * (vp - other);
+        sc[q] = s;
+        if (!g.players[size_t(q)].eliminated) top = std::max(top, s);
+    }
+    float sum = 0.f, mine = 0.f;
+    for (int q = 0; q < n; ++q) {
+        if (g.players[size_t(q)].eliminated) continue;
+        const float e = float(std::exp(double(sc[q] - top)));  // (double: expf needs a newer glibc than the Miyoo has)
+        sum += e;
+        if (q == p) mine = e;
+    }
+    return sum > 0.f ? mine / sum : 0.f;
+}
+
 float evaluate(const Game& g, int p) {
     for (int q = 0; q < g.numPlayers; ++q)  // somebody won in the copy
         if (!g.players[size_t(q)].eliminated && g.players[size_t(q)].vp >= g.vpGoal) return q == p ? 1000.f : -1000.f;
+    if (aiTune("thinklearn", 0.f) > 0.f && float(g.round) >= aiTune("thinklearnfrom", 1.f))  // (from that round on)
+        return aiTune("thinklscale", 100.f) * learnedChance(g, p);                         // (in % points)
     float rival = 0.f;
     for (int q = 0; q < g.numPlayers; ++q)
         if (q != p) rival = std::max(rival, worth(g, q));
@@ -140,6 +225,7 @@ Answer fallback(const Game& g, const Decision& d) {
 }  // namespace
 
 void aiSetEngine(const Engine* e) { g_engine = e; }
+bool aiInLookAhead() { return g_depth > 0; }
 
 // ------------------------------------------------------------------ the thinking, a little at a time
 struct AiThinkJob::Impl {

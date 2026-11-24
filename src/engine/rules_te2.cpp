@@ -88,9 +88,12 @@ void Rules::coexistStructures() {
             for (int o = 0; o < G.numPlayers; ++o)
                 if (o != q && !ps.units[size_t(o)].empty()) others = true;
             if (!others) continue;
-            for (UnitType t : {UnitType::PDS, UnitType::SpaceDock})
+            for (UnitType t : {UnitType::PDS, UnitType::SpaceDock, UnitType::Monument}) {  // (0.82.0: monuments are structures)
+                // (0.82.4) the Tucc Academy (Bentor) is DEPLOYed "into coexistence" without ground forces - it stays
+                if (t == UnitType::Monument && monCardHas(G, q, "bentor") && ((ps.coexist >> q) & 1)) continue;
                 if (const int k = ps.units[size_t(q)].count(t))
                     destroyUnits(q, t, k, ps.system, int(x), ps.owner, "none of their ground forces left there");
+            }
             if (ps.units[size_t(q)].empty()) ps.coexist = uint16_t(ps.coexist & ~(1u << q));
         }
     }

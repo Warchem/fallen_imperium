@@ -6,6 +6,7 @@ namespace ti {
 
 #include "engine/gen/gamedata.inc"
 #include "engine/gen/std_layouts.inc"  // (0.58.0)
+#include "engine/gen/monuments.inc"    // (0.82.0 Monuments+)
 
 const int kPlanetCount = int(sizeof(kPlanets) / sizeof(kPlanets[0]));
 const int kSystemCount = int(sizeof(kSystems) / sizeof(kSystems[0]));
@@ -105,16 +106,16 @@ int unitByKey(const char* key) {
 
 const char* unitTypeName(UnitType t, bool plural) {
     static const char* one[] = {"Carrier", "Cruiser", "Destroyer", "Dreadnought", "Fighter", "Flagship",
-                                "War Sun", "Infantry", "Mech", "PDS", "Space Dock", "Second flagship"};
+                                "War Sun", "Infantry", "Mech", "PDS", "Space Dock", "Second flagship", "Monument"};
     static const char* many[] = {"Carriers", "Cruisers", "Destroyers", "Dreadnoughts", "Fighters", "Flagships",
-                                 "War Suns", "Infantry", "Mechs", "PDS", "Space Docks", "Second flagships"};
+                                 "War Suns", "Infantry", "Mechs", "PDS", "Space Docks", "Second flagships", "Monuments"};
     int i = int(t);
     if (i < 0 || i >= kUnitTypes) return "?";
     return plural ? many[i] : one[i];
 }
 
 const char* unitTypeShort(UnitType t) {
-    static const char* s[] = {"CV", "CA", "DD", "DN", "FF", "FS", "WS", "IN", "MC", "PD", "SD", "FS2"};
+    static const char* s[] = {"CV", "CA", "DD", "DN", "FF", "FS", "WS", "IN", "MC", "PD", "SD", "FS2", "MN"};
     int i = int(t);
     return (i >= 0 && i < kUnitTypes) ? s[i] : "?";
 }
@@ -149,7 +150,8 @@ const char* factionShortName(int f) {
                  {"yssaril", "Yssaril"}, {"argent", "Argent"},  {"cabal", "Vuil'raith"},  {"empyrean", "Empyrean"},
                  {"mahact", "Mahact"},   {"nomad", "Nomad"},    {"naaz", "Naaz-Rokha"},   {"titans", "Titans of Ul"},
                  {"keleres", "Keleres"}, {"bastion", "Last Bastion"}, {"ralnel", "Ral Nel"}, {"crimson", "Crimson"},
-                 {"deepwrought", "Deepwrought"}, {"firmament", "Firmament"}, {"obsidian", "Obsidian"}};
+                 {"deepwrought", "Deepwrought"}, {"firmament", "Firmament"}, {"obsidian", "Obsidian"},
+                 {"atokera", "Atokera"}, {"belkosea", "Belkosea"}, {"pharadn", "Pharad'n"}};  // (0.85.2: Blue Reverie)
     if (f < 0 || f >= kFactionCount) return "?";
     for (const auto& n : names)
         if (!std::strcmp(n.key, kFactions[f].key)) return n.name;
@@ -345,6 +347,10 @@ const KeyText kTechText[] = {
                 "commits a unit to land on a planet you control, you may exhaust this card to destroy that unit.", true},
     {"dsghotg", "Up to 3 ships in your home system do not count against your fleet pool. When you cast 1 or more votes, you may exhaust this card to cast an additional number of votes equal to the number of command tokens in your fleet pool.", true},
     {"dsghoty", "When you produce 1 or more units, you may produce 1 additional unit in each of 2 systems that contain 1 or more of your ships and 1 of your command tokens.", true},
+    // Blue Reverie (0.83.0, the card's wording): the Atokera Legacy
+    {"dsatoky", "Once during each of your actions, choose 1 of your units and 1 unit ability. That unit gains that unit ability with a value of 3, if applicable, until the end of that action.", true},
+    {"dsbelky", "At any time, you may exhaust this card to ready 1 non-technology component other than a strategy card in your play area.", true},  // (0.84.0)
+    {"dspharb", "After you activate a system, you may choose 1 anomaly on the game board; that anomaly has no effect until the end of this tactical action.", true},  // (0.85.0)
 };
 }  // namespace
 
@@ -564,6 +570,9 @@ const KeyText kObjText[] = {
     {"sai", "Control a legendary planet.", true},
     {"syc", "Control a planet in a system that contains a planet controlled by another player.", true},
     {"sb", "Have another player's promissory note in your play area.", true},
+    // (0.82.0) Monuments+ - the cards' own wording (the owner's v3.1 card files)
+    {"dagw", "Have a monument on the game board and at least 3 ground forces on its planet or in its space area.", true},
+    {"tam", "Destroy another player's monument during a tactical action.", true},
 };
 }  // namespace
 
@@ -597,10 +606,18 @@ const char* strategyName(int c) {
 
 // 0.43.3 (tester): with Thunder's Edge, its revised Construction and Warfare (set when a game starts or opens)
 bool g_teStrategy = false;
-void setStrategyTexts(bool thundersEdge) { g_teStrategy = thundersEdge; }
+bool g_monStrategy = false;  // (0.82.0) Monuments+'s Construction card
+void setStrategyTexts(bool thundersEdge, bool monuments) {
+    g_teStrategy = thundersEdge;
+    g_monStrategy = monuments;
+}
 
 // (0.61.0, the strategy card pass: the cards' wording - AsyncTI4 strategy_cards/pok.json and te.json)
 const char* strategyPrimary(int c) {
+    // (0.82.0) Monuments+'s Construction replaces the others (owner 2026-11-21) - the card's wording
+    if (g_monStrategy && c == 3)
+        return "Either place 1 structure on a planet you control or use the PRODUCTION ability of 1 of your space docks. Place 1 "
+               "structure on a planet you control. If your monument is not on the board, you may place it.";
     if (g_teStrategy && c == 3)
         return "Either place 1 structure on a planet you control, or use the PRODUCTION ability of 1 of your space docks. Place 1 "
                "structure on a planet you control.";
@@ -627,6 +644,7 @@ const char* strategyPrimary(int c) {
 }
 
 const char* strategySecondary(int c) {
+    if (g_monStrategy && c == 3) return "Spend 1 token from your strategy pool to place 1 non-monument structure on a planet you control.";
     if (g_teStrategy && c == 3) return "Spend 1 token from your strategy pool to place 1 structure on a planet you control.";
     if (g_teStrategy && c == 5)
         return "Spend 1 token from your strategy pool to use the PRODUCTION abilities of the units in your home system (this token is "
@@ -647,7 +665,22 @@ const char* strategySecondary(int c) {
 }
 
 // Thunder's Edge galactic events (0.36.0), in our own words; done = playable (ticked on the Modules screen)
+bool g_monumentsTexts = false;
+void setMonumentsTexts(bool on) { g_monumentsTexts = on; }
+bool monumentsTexts() { return g_monumentsTexts; }
+
 const GalacticEventDef& galacticEvent(int ev) {
+    // (0.82.0) Monuments+'s Monuments to the Ages Omega - the card's own wording (the owner's v3.1 card file): "monoliths", and
+    // the points go to the player that controls its planet (as the game already scored them)
+    static const GalacticEventDef kOmega{
+        "monuments", "Monuments to the Ages \xCE\xA9",
+        "When you would place a structure on a non-home planet, you may spend 5 trade goods to place a neutral space dock instead; this "
+        "is a monolith, and is not considered to be a unit of any type. There can be only 3 monoliths in play at once. At the start of "
+        "the status phase, place 1 commodity beneath each monolith; each monolith is worth 1 victory point to the player that controls "
+        "its planet for every 3 commodities beneath it. When a player gains control of a planet that contains a monolith, they may "
+        "destroy that monolith.",
+        true};
+    if (ev == kEvMonuments && g_monumentsTexts) return kOmega;
     // (0.61.0, the galactic event pass: the cards' wording - AsyncTI4 galactic_events/te_galactic_events.json; their bullets as
     // sentences)
     static const GalacticEventDef k[kEventCount] = {
@@ -755,6 +788,25 @@ const GalacticEventDef& galacticEvent(int ev) {
     };
     static const GalacticEventDef none{"", "", "", false};
     return ev >= 0 && ev < kEventCount ? k[ev] : none;
+}
+
+// ---------------------------------------------------------------------------
+// 0.82.0 Monuments+
+const int kMonumentCount = int(sizeof(kMonuments) / sizeof(kMonuments[0]));
+static_assert(sizeof(kMonuments) / sizeof(kMonuments[0]) <= size_t(kMonumentMax), "kMonumentMax (data.h) is too small");
+
+int monumentForUnit(int unit) {
+    if (unit < 0 || unit >= kUnitCount || kUnits[unit].type != UnitType::Monument) return -1;
+    for (int i = 0; i < kMonumentCount; ++i)
+        if (!std::strcmp(kMonuments[i].unit, kUnits[unit].key)) return i;
+    return -1;
+}
+
+int monumentForFaction(int faction) {
+    if (faction < 0 || faction >= kFactionCount) return -1;
+    for (int i = 0; i < kMonumentCount; ++i)
+        if (!std::strcmp(kMonuments[i].faction, kFactions[faction].key)) return i;
+    return -1;
 }
 
 }  // namespace ti

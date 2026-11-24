@@ -25,9 +25,17 @@ wait 2
 press START
 wait 2
 shot q_before
-click 200 240
+# (0.80.1: the first question is the secret objective cards - the clicks land beside them, on the dimmed map)
+click 40 240
 wait 12
-click 150 300
+click 610 300
 wait 12
 shot q_after_clicks
+# (0.80.1, GitHub issue #1) one click on a card only picks it out; the second click keeps it
+click 455 250
+wait 12
+shot q_card_picked
+click 455 250
+wait 20
+shot q_card_kept
 quit

@@ -18,6 +18,7 @@
 #include "audio/library.h"
 #include "ui/backdrops.h"
 #include "gfx/picture.h"
+#include "core/paths.h"
 #include "core/keymap.h"
 #include "core/log.h"
 #include "platform/platform.h"
@@ -343,10 +344,27 @@ public:
                 ey += 16;
             }
         }
-        {
+        // 0.85.1: the first start of this version brought the profile in from an older copy - said for the first minute, in place
+        // of the version lines
+        static uint32_t importShownFrom = 0;
+        if (!importShownFrom) importShownFrom = now ? now : 1;
+        const bool importNote = bugreport::crashFolder().empty() && paths::importedCount() > 0 && now - importShownFrom < 60000;
+        if (importNote) {
+            std::unique_ptr<TextHalo> halo(artTitle() ? new TextHalo(170) : nullptr);
+            const std::string msg = "Your profile, settings and saved game were brought over from " + paths::importedFrom() +
+                                    ". They now live in " + paths::shownDir() + " - every new version finds them there.";
+            int ey = 446 - 2 * 13;
+            for (const std::string& l : wrapText(FONT_XS, msg, c.width() - 80)) {
+                drawTextAligned(c, FONT_XS, 0, ey, c.width(), Align::Center, l, theme::gold);
+                ey += 13;
+            }
+        } else {
             std::unique_ptr<TextHalo> halo(artTitle() ? new TextHalo(170) : nullptr);  // (0.59.70: over the planet's clouds)
-            drawTextAligned(c, FONT_XS, 0, 432, c.width(), Align::Center,
+            drawTextAligned(c, FONT_XS, 0, 423, c.width(), Align::Center,
                             "Version " TI4_VERSION " \xC2\xB7 Unofficial Fan Project of Twilight Imperium", artTitle() ? rgb(150, 140, 180) : theme::faint);
+            // 0.81.0 (owner, from Asmodee on the phone 2026-11-21): say the game isn't affiliated with them
+            drawTextAligned(c, FONT_XS, 0, 436, c.width(), Align::Center,
+                            "Not affiliated with or endorsed by Asmodee or Fantasy Flight Games", artTitle() ? rgb(120, 112, 150) : theme::faint);
         }
         if (!bugreport::crashFolder().empty()) {  // 0.43.3: the last run crashed - a report was made by itself
             const std::string msg = "The game closed unexpectedly last time. A crash report was saved in the folder " +
@@ -517,7 +535,7 @@ private:
         // 0.80.0 (the owner's League Designer page: "Campaign", "Tournament", "Casual Game"); Device tests moved into Options
         items_.push_back({"Campaigns", "Eve of the Fall, Fated Expedition, Trade Wars \xC2\xB7 coming soon"});
         ids_.push_back("campaigns");
-        items_.push_back({"Tournament", "A ladder of leagues against named rival commanders"});
+        items_.push_back({"Career", "Leagues against rival commanders who remember you"});
         ids_.push_back("tournament");
         items_.push_back({"Casual game", "3 to 8 players against the computer"});
         ids_.push_back("new");
@@ -607,14 +625,27 @@ private:
                                        {"Asmodee & Fantasy Flight Games", "IP and copyright holders of the official TI4 content"},
                                        {"Mobiusuchronic", "Playtester"},
                                        {"Warchem", "Designer"},
-                                       {"Michael Keane", "Music: The Council Keleres, Infiltration (Embers of the Imperium), Action (Twilight Symposium)"}};
-        int y = 140;
+                                       {"Michael Keane", "Music: The Council Keleres, Infiltration (Embers of the Imperium), Action (Twilight Symposium)"},
+                                       {"Absol197", "Absol's Agendas (the optional agenda deck)"},  // 0.81.0
+                                       // 0.82.0 (owner 2026-11-21, Q7: credits Cacotopos + Blarknob); 0.82.4: the roles as the
+                                       // Monuments+ rulebook gives them ("Design: Tom Dullemond (Cacotopos)", "Blarknob for the original
+                                       // Monuments expansion")
+                                       {"Cacotopos & Blarknob", "Monuments+ (the optional module): by Cacotopos, after Blarknob's original Monuments"},
+                                       // 0.83.0: Blue Reverie (its faction portraits are Cacotopos's, made into our pixel art)
+                                       {"TacticBlue", "Blue Reverie (the optional module): its factions - portraits by Cacotopos"}};
+        const int n = int(sizeof who / sizeof who[0]), step = n > 7 ? 36 : n > 6 ? 40 : 46;  // (0.83.0: eight names)
+        int y = 124;
         for (const auto& w : who) {
             drawTextAligned(c, FONT_LG, 0, y, 640, Align::Center, w[0], theme::text);
-            drawTextAligned(c, FONT_SM, 0, y + 24, 640, Align::Center, w[1], theme::dim);
-            y += 56;
+            drawTextAligned(c, FONT_SM, 0, y + 22, 640, Align::Center, w[1], theme::dim);
+            y += step;
         }
-        drawTextAligned(c, FONT_XS, 0, 432, 640, Align::Center, "Click or press any button to close", theme::faint);
+        // 0.81.0 (owner, from Asmodee 2026-11-21)
+        drawTextAligned(c, FONT_XS, 0, y + 6, 640, Align::Center,
+                        "Fallen Imperium is an unofficial fan project. It is not affiliated with, endorsed or sponsored by", theme::dim);
+        drawTextAligned(c, FONT_XS, 0, y + 19, 640, Align::Center,
+                        "Asmodee or Fantasy Flight Games. Twilight Imperium is a trademark of Fantasy Flight Games.", theme::dim);
+        drawTextAligned(c, FONT_XS, 0, 446, 640, Align::Center, "Click or press any button to close", theme::faint);
     }
 
     int sel_ = 0, checkTimer_ = 0;
@@ -664,6 +695,10 @@ public:
         }
         if (id == "tests") {
             if (dir == 2) app.push(makeTestsMenuScene());
+            return;
+        }
+        if (id == "profilefolder") {  // 0.85.1: open it (Windows)
+            if (dir == 2) paths::openFolder();
             return;
         }
         if (id == "report") {  // 0.28.0 (owner): the log, save and settings copied into one folder to send
@@ -781,8 +816,15 @@ private:
         {  // 0.80.0 (owner's plan: "an unlock-everything switch for testing")
             const bool on = profile::unlockAll();
             add("unlock", std::string("Unlock everything (testing): ") + (on ? "On" : "Off"),
-                on ? "Every league and faction colour is open without earning it" : "Leagues and faction colours are earned in the Tournament");
+                on ? "Every league and faction colour is open without earning it" : "Leagues and faction colours are earned in the Career");
         }
+        if (!paths::userDir().empty())  // 0.85.1 (owner): leagues, unlocks, settings and the save - kept between versions (PC only)
+            add("profilefolder", "Your profile folder",
+#ifdef _WIN32
+                paths::shownDir() + " - A opens it");
+#else
+                paths::shownDir());
+#endif
         add("tests", "Device tests", "Buttons, screen and speed checks");  // (0.80.0: moved here from the title menu)
         add("report", "Make a bug report", report_.empty() ? "Copies ti4.log, your save and settings into one folder to send"
                                                            : report_);
@@ -1094,6 +1136,9 @@ public:
         }
         if (scroll_ > 0) drawTextAligned(c, FONT_XS, r.x, top - 11, r.w - 16, Align::Right, "\xE2\x96\xB2 more", dim);
         if (scroll_ + vis < n) drawTextAligned(c, FONT_XS, r.x, top + vis * rowH, r.w - 16, Align::Right, "\xE2\x96\xBC more", dim);
+        drawScrollBar(c, Rect{r.x + r.w - 8, top, 4, vis * rowH - 2}, scroll_, vis, n, [this, vis, n](int dir) {  // (0.81.1, owner)
+            sel_ = std::max(0, std::min(n - 1, sel_ + dir * std::max(1, vis - 1)));
+        });
         // the folder
         const int fy = r.y + r.h - 44;
         c.fillRect(r.x + 10, fy - 4, r.w - 20, 1, neon ? pal.frame : theme::border);
@@ -1461,7 +1506,18 @@ public:
                  {ti::kModDiscordant, "Discordant Stars",
                   "Fan-made: 34 more factions, coming in batches (the playable ones join the faction list). Faction "
                   "breakthroughs are off with it.", true},
+                 {ti::kModAbsol, "Absol's Agendas",
+                  "Fan-made (by Absol197): a 60-card agenda deck that replaces the normal one - reworked agendas, "
+                  "new ones and Emergency Sessions. The top voter is often rewarded.", true},
                  {-1, "Galactic events (Thunder's Edge)", "", true}};  // (0.36.0) opens the list
+        // (0.82.0) Monuments+: the base game's, Prophecy of Kings' and the Keleres' 25 monuments; Thunder's Edge's in 0.82.1,
+        // Discordant Stars' 35 in 0.82.2 - 0.82.4 (all 66 cards)
+        mods_.insert(mods_.end() - 1, Mod{ti::kModMonuments, "Monuments+",
+                                          "Fan-made (Cacotopos, after Blarknob's Monuments): a monument for each faction, placed with Construction, "
+                                          "each with its own ability; 3 action cards, 2 agendas, 2 secrets.",
+                                          true});
+        // (0.83.0) Blue Reverie: its factions one by one - (0.85.3, owner 2026-11-24 13:08: "get rid of the blue reverie box ... we'll
+        // keep these as unlockables through the leagues") no box: a game has the module when any of its factions is unlocked
     }
     void update(App& app, const Input& in, uint32_t) override {
         if (!read_) {
@@ -1496,11 +1552,14 @@ public:
     bool animating() const override { return artTitle(); }  // (0.59.70: the Retrowave / Voidfall backdrop moves)
     void draw(App&, Canvas& c, uint32_t now) override {
         titleBackdrop(c, now);
-        drawTextAligned(c, FONT_XL, 0, 30, c.width(), Align::Center, "Modules", theme::gold);
-        drawTextAligned(c, FONT_SM, 0, 74, c.width(), Align::Center, "Expansions and add-ons for your next new game", theme::dim);
         const int n = int(mods_.size());
-        const int rowH = 51;
-        const Rect panel{60, 96, 520, n * rowH + 12};
+        // (0.82.0: eight rows with Monuments+ - the title moves up so each row keeps room for two lines of description)
+        const int top = n > 8 ? -22 : n > 7 ? -18 : 0;  // (0.83.0: nine with Blue Reverie)
+        drawTextAligned(c, FONT_XL, 0, 30 + top, c.width(), Align::Center, "Modules", theme::gold);
+        if (n <= 8)  // (0.83.0: with nine rows the panel takes its place)
+            drawTextAligned(c, FONT_SM, 0, 74 + top, c.width(), Align::Center, "Expansions and add-ons for your next new game", theme::dim);
+        const int rowH = n > 8 ? 42 : n > 7 ? 44 : n > 6 ? 45 : 51;  // (0.81.0: seven rows with Absol's Agendas; eight: Monuments+)
+        const Rect panel{60, n > 8 ? 48 : n > 7 ? 72 : 96, 520, n * rowH + 12};
         titlePanel(c, panel, 12);
         for (int i = 0; i < n; ++i) {
             Mod m = mods_[size_t(i)];
@@ -1530,26 +1589,32 @@ public:
             }
             const bool ticked = m.bit == 0 || (m.bit > 0 && (on_ & m.bit));
             const uint32_t box = !m.ready ? rgb(70, 76, 92) : m.bit == 0 ? theme::dim : theme::text;
-            if (m.bit >= 0) c.frameRoundRect(r.x + 12, r.y + 10, 18, 18, 4, box, 2);
-            if (ticked && (m.ready || m.bit == 0)) c.fillRoundRect(r.x + 16, r.y + 14, 10, 10, 2, m.bit == 0 ? theme::dim : theme::gold);
-            drawText(c, FONT_MDB, r.x + 42, r.y + 6, m.name, !m.ready ? rgb(100, 106, 122) : sel ? theme::text : rgb(200, 206, 220));
+            const int dy = rowH < 45 ? -5 : rowH < 51 ? -3 : 0;  // (0.81.0: tighter rows)
+            // (0.82.0) eight rows of 44: the name and the two description lines kept inside the row's 41 (lines 10 apart)
+            const bool tight = rowH <= 44;  // (0.83.0: and nine of 42)
+            const int k = rowH < 44 ? 1 : 0;  // (0.83.0: rows of 42 - one unit higher)
+            const int nameY = tight ? r.y + 1 - k / 2 : r.y + 6 + dy, l1 = tight ? r.y + 18 - k : r.y + 26 + dy - (dy ? 1 : 0),
+                      l2 = tight ? r.y + 28 - k : r.y + 38 + dy - (dy ? 2 : 0), one = tight ? r.y + 21 - k : r.y + 28 + dy;
+            if (m.bit >= 0) c.frameRoundRect(r.x + 12, nameY + 4, 18, 18, 4, box, 2);
+            if (ticked && (m.ready || m.bit == 0)) c.fillRoundRect(r.x + 16, nameY + 8, 10, 10, 2, m.bit == 0 ? theme::dim : theme::gold);
+            drawText(c, FONT_MDB, r.x + 42, nameY, m.name, !m.ready ? rgb(100, 106, 122) : sel ? theme::text : rgb(200, 206, 220));
             // (0.59.70: a long description in two lines - not drawn over a one-line one, the neon panels are see-through)
             const std::vector<std::string> lines =
                 std::string(m.about).size() > 70 ? wrapText(FONT_XS, m.about, r.w - 52) : std::vector<std::string>();
             if (lines.size() <= 1)
-                drawText(c, FONT_XS, r.x + 42, r.y + 28, fitText(FONT_XS, m.about, r.w - 52), !m.ready ? rgb(80, 86, 100) : theme::dim);
+                drawText(c, FONT_XS, r.x + 42, one, fitText(FONT_XS, m.about, r.w - 52), !m.ready ? rgb(80, 86, 100) : theme::dim);
             {
                 if (lines.size() > 1) {
-                    drawText(c, FONT_XS, r.x + 42, r.y + 26, lines[0], !m.ready ? rgb(80, 86, 100) : theme::dim);
-                    drawText(c, FONT_XS, r.x + 42, r.y + 38, fitText(FONT_XS, lines[1], r.w - 52), !m.ready ? rgb(80, 86, 100) : theme::dim);
+                    drawText(c, FONT_XS, r.x + 42, l1, lines[0], !m.ready ? rgb(80, 86, 100) : theme::dim);
+                    drawText(c, FONT_XS, r.x + 42, l2, fitText(FONT_XS, lines[1], r.w - 52), !m.ready ? rgb(80, 86, 100) : theme::dim);
                 }
             }
         }
-        if (!note_.empty()) drawTextAligned(c, FONT_SMB, 0, panel.y + panel.h + 6, c.width(), Align::Center, note_, theme::gold);
-        {
+        if (!note_.empty()) drawTextAligned(c, FONT_SMB, 0, panel.y + panel.h + 4, c.width(), Align::Center, note_, theme::gold);
+        else {  // (the note, when there is one, takes the footnote's place)
             std::unique_ptr<TextHalo> halo(artTitle() ? new TextHalo(170) : nullptr);  // (0.59.70: over the backdrop)
-            drawTextAligned(c, FONT_XS, 0, 434, c.width(), Align::Center, "Games already started keep the modules they began with.",
-                        theme::faint);
+            drawTextAligned(c, FONT_XS, 0, std::max(434, panel.y + panel.h + 2), c.width(), Align::Center,
+                            "Games already started keep the modules they began with.", theme::faint);
         }
         drawHintBar(c, {{"A", "Tick / untick"}, {"\xE2\x86\x91\xE2\x86\x93", "Choose"}, {"B", "Back"}});
     }
@@ -1613,6 +1678,9 @@ public:
         }
         if (top_ > 0) drawTextAligned(c, FONT_XS, panel.x, panel.y - 2, panel.w - 10, Align::Right, "\xE2\x96\xB2 more", theme::faint);
         if (top_ + rows < n) drawTextAligned(c, FONT_XS, panel.x, panel.y + panel.h - 12, panel.w - 10, Align::Right, "\xE2\x96\xBC more", theme::faint);
+        drawScrollBar(c, Rect{panel.x + panel.w - 6, panel.y + 6, 3, rows * rowH - 2}, top_, rows, n, [this, rows, n](int dir) {  // (0.81.1, owner)
+            sel_ = std::max(0, std::min(n - 1, sel_ + dir * std::max(1, rows - 1)));
+        });
         // the text of the selected event
         const ti::GalacticEventDef& e = ti::galacticEvent(sel_);
         const Rect box{60, panel.y + panel.h + 8, 520, 196};

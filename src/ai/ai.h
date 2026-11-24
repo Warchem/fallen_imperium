@@ -17,6 +17,8 @@ Answer aiAnswer(const Game& g, const Decision& d, Rng& rng);
 // (0.74.0) The engine of the game being played, so the A.I. difficulty can play its options out on copies of it
 // (src/ai/ai_think.cpp). Set before asking the AI; null = no look-ahead (every other level ignores it).
 void aiSetEngine(const Engine* e);
+constexpr int kEvalFeatures = 13;
+int aiEvalFeatures(const Game& g, int p, float* f);  // (0.86.0) the position as numbers (self-play training of the A.I. level)
 
 // (0.74.0) The A.I. difficulty's look-ahead as a job run a little at a time, so the game screen keeps moving while it
 // thinks (the simulator runs it in one go inside aiAnswer). begin(): false = no thinking for this question - answer it

@@ -111,6 +111,7 @@ bool Rules::scoreObjective(int p, int obj) {
     if (scoredAsSecret(G, p, obj)) orthodoxyCheck(p);  // Zealous Orthodoxy (galactic event)
     if (scoredAsSecret(G, p, obj) && (G.modules & kModDiscordant) && G.players[size_t(p)].dsPubSecret != -2) dsSecretScored(p, obj);  // Turra Sveyar
     if (kObjectives[obj].kind != 3 && (G.modules & kModThundersEdge)) yinAscendant(p);  // Yin Ascendant (Yin breakthrough)
+    if (brOn()) pharScored(p);  // (0.85.0) Dark Purpose (Pharad'n)
     return true;
 }
 
@@ -143,6 +144,7 @@ void Rules::scoringStep() {
             int o = -1;
             for (int again = 0; again < 8; ++again) {  // 0.43.0 (fixes 2): backing out of the payment asks again
                 o = pick(p, Tag::ScorePublic, "Score a public objective?", opts, "You may score 1 public objective this round.");
+                if (o >= 0 && absolScoreInstead(p, o)) break;  // (0.81.0) Absol's Minister of Antiquities: a relic instead
                 if (o < 0 || scoreObjective(p, o) || G.fixes < 2) break;
             }
             // Civilized Society (galactic event): any number of them
@@ -156,6 +158,9 @@ void Rules::scoringStep() {
                 if (o >= 0) scoreObjective(p, o);
             }
         }
+        // (0.81.0) Absol's Minister of Antiquities: "Whenever the owner of this card may score a public objective" - the FAQ: even
+        // when they meet no objective's requirements (or none is left)
+        if (pub.empty()) absolScoreInstead(p, -1);
         // Psychographics (Augurs, Discordant Stars): a second public objective in place of the secret
         const bool psy = (G.modules & kModDiscordant) && dsPsychographics(p);
         std::vector<int> sec = psy ? std::vector<int>() : scorableSecrets(p, ObjPhase::Status);
@@ -238,6 +243,7 @@ void Rules::drawSecret(int p) {
         int drop = pick(p, Tag::DiscardSecret, "You may hold only " + std::to_string(limit) + " secret objectives: discard one", opts);
         pl.secrets.erase(std::find(pl.secrets.begin(), pl.secrets.end(), drop));
         G.secretDeck.insert(G.secretDeck.begin(), int16_t(drop));
+        absolSecretDiscarded(p, drop);  // (0.81.0) Absol's Search Warrant: its token holder may take it
     }
 }
 

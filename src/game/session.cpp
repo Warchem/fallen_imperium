@@ -41,6 +41,8 @@ void GameSession::rebuildFeed() {
     for (size_t i = log.size() > 40 ? log.size() - 40 : 0; i < log.size(); ++i) {
         FeedLine f;
         f.text = log[i];
+        for (char& ch : f.text)
+            if (ch == '\n') ch = ' ';  // (0.81.0: Absol's card texts have line breaks - one feed line)
         feed_.push_back(f);
     }
 }
@@ -170,6 +172,7 @@ uint32_t GameSession::durationOf(const ti::Event& e) const {
         case EventKind::TilePlaced: ms = 900; break;
         case EventKind::ObjectiveScored: ms = e.count >= 0 && ti::kObjectives[e.count].kind == 3 ? 2400 : 0; break;
         case EventKind::RelicUsed: ms = 2200; break;
+        case EventKind::MonumentPlaced: ms = 3200; break;  // (0.82.0 Monuments+: its card)
         case EventKind::ComponentUsed: ms = 2200; break;
         case EventKind::Planetfall: ms = 6500; break;
         case EventKind::WarSunAge: ms = 17500; break;  // 0.73.0: the War Sun scene (timed: the whole of it)
@@ -239,7 +242,11 @@ std::vector<ti::Event> GameSession::step(uint32_t now, bool hurry) {
             const bool secret = e.kind == ti::EventKind::ObjectiveScored && e.count >= 0;
             const bool card = e.kind == ti::EventKind::Explore || e.kind == ti::EventKind::Relic || e.kind == ti::EventKind::AgendaPeek ||
                               e.kind == ti::EventKind::ActionCard || e.kind == ti::EventKind::RelicUsed ||
+                              e.kind == ti::EventKind::MonumentPlaced ||  // (0.82.0: owner - bots' ones follow the "Cards" setting too)
                               e.kind == ti::EventKind::ComponentUsed || secret ||
+                              // (0.82.0, owner 2026-11-22 M18) a monument's bonus a person gets without a question (Sector KVD-14's
+                              // trade goods, Palatine Obelisk's votes): its card, large, for that person
+                              (e.kind == ti::EventKind::Ability && e.unit == int8_t(ti::UnitType::Monument) && e.count > 0 && isHumanSeat(e.player)) ||
                               // 0.28.0 (owner): leaders shown large when used, to read them
                               (e.kind == ti::EventKind::Leader && e.card >= 0 && e.label.find("unlocked") == std::string::npos);
             // 0.29.0 (owner): your own new action cards (only the drawing player sees them), new public objectives
@@ -263,6 +270,8 @@ std::vector<ti::Event> GameSession::step(uint32_t now, bool hurry) {
             if (!e.text.empty()) {
                 FeedLine f;
                 f.text = e.text;
+                for (char& ch : f.text)
+                    if (ch == '\n') ch = ' ';  // (0.81.0: Absol's card texts have line breaks - one feed line)
                 f.player = e.player;
                 f.kind = e.kind;
                 f.time = now;

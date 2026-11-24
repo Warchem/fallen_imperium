@@ -362,6 +362,7 @@ bool Rules::cardPlayable(int p, int card, const WinCtx& c) const {
     if (G.phase == Phase::Agenda && eventOn(G, kEvAtomics) && p >= 0 && p < G.numPlayers && !G.players[size_t(p)].atomics) return false;
     if (usCard(card)) return usCardPlayable(p, card, c);  // Uncharted Space (0.33.0)
     if (teCard(card)) return teCardPlayable(p, card, c);  // Thunder's Edge (0.34.0)
+    if (monCard(card)) return false;  // (0.82.0) Monuments+'s cards are all ACTION: (componentCardUsable)
     const char* k = kActionCards[card].key;
     const Player& pl = G.players[p];
     auto is = [&](const char* x) { return !std::strcmp(k, x); };
@@ -471,8 +472,9 @@ bool Rules::cardPlayable(int p, int card, const WinCtx& c) const {
             if (is("s_retreat")) {
                 if (!c.space) return false;
                 if (G.fixes >= 26 && noRetreat_) return false;  // (fixes 26, the Mahact review: Airo Shir Aur's combat - no ability moves ships)
+                if (mawBlocks(G, p, c.sys)) return false;  // (0.82.3) The Maw (Nivyn monument)
                 for (int16_t a : G.systems[c.sys].adj) {
-                    uint8_t an = tileAnomalies(G, a);  // (fixes 29: the Zelian home too)
+                    uint8_t an = tileAnomaliesMove(G, a);  // (fixes 29: the Zelian home too; 0.82.3: not the Debris Field)
                     if (G.fixes >= 12) {  // (0.44.8: Magmus Reactor allows a supernova)
                         if (!canEndMoveIn(G, p, a)) continue;
                     } else if ((an & kSupernova) || G.systems[a].isHyperlane()) continue;
@@ -613,6 +615,7 @@ bool Rules::playActionCard(int p, int card, const WinCtx* c) {
         e.text = pn(p) + " plays " + kActionCards[card].name + ".";
         E.emit(e);
     }
+    if (monumentsOn()) monActionCardPlayed(p);  // (0.82.0) Sector KVD-14 (Yssaril): "When another player plays an action card"
     // Sabotage (LRR: "when another player plays an action card other than Sabotage")
     // (Black Market Dealings can't be cancelled; Nip and Tuck, the Last Bastion's commander: none of their cards)
     if (!isKey(card, "sabo") && !isKey(card, "blackmarketdealing") && !commanderUsable(G, p, "bastion")) {
@@ -671,6 +674,7 @@ void Rules::resolveCard(int p, int card, const WinCtx* c) {
     const int sys = c ? c->sys : -1;
     if (usResolve(p, card, c)) return;  // Uncharted Space (0.33.0)
     if (teResolve(p, card, c)) return;  // Thunder's Edge (0.34.0)
+    if (monResolve(p, card, c)) return;  // Monuments+ (0.82.0)
 
     // ---------- effects handled by the code that opened the window
     if (is("sabo") || is("reverse_engineer") || is("disgrace") || is("coup") || is("master_plan") || is("mjets") ||
@@ -901,7 +905,7 @@ void Rules::resolveCard(int p, int card, const WinCtx* c) {
     if (is("s_retreat")) {
         std::vector<Option> opts;
         for (int16_t a : G.systems[sys].adj) {
-            uint8_t an = tileAnomalies(G, a);  // (fixes 29: the Zelian home too)
+            uint8_t an = tileAnomaliesMove(G, a);  // (fixes 29: the Zelian home too; 0.82.3: not the Debris Field)
             if (G.fixes >= 12) {  // (0.44.8: Magmus Reactor allows a supernova)
                 if (!canEndMoveIn(G, p, a)) continue;
             } else if ((an & kSupernova) || G.systems[a].isHyperlane()) continue;
@@ -1016,7 +1020,7 @@ void Rules::resolveCard(int p, int card, const WinCtx* c) {
     if (is("reparations")) {
         std::vector<Option> theirs, mine;
         for (int x : controlledPlanets(G, c->a))
-            if (!G.planets[x].exhausted) theirs.push_back({x, planetName(x), ""});
+            if (!G.planets[x].exhausted && !obeliskGuards(G, x, p)) theirs.push_back({x, planetName(x), ""});  // ((0.83.0) Obelisk)
         for (int x : controlledPlanets(G, p))
             if (G.planets[x].exhausted) mine.push_back({x, planetName(x), ""});
         if (!theirs.empty()) {
@@ -1042,7 +1046,7 @@ void Rules::resolveCard(int p, int card, const WinCtx* c) {
             }
         int q = pick(p, Tag::CardTarget, "Ancient Burial Sites: exhaust whose cultural planets?", opts);
         for (int x : controlledPlanets(G, q))
-            if (hasTraitOf(G, x, Trait::Cultural)) G.planets[x].exhausted = true;
+            if (hasTraitOf(G, x, Trait::Cultural) && !obeliskGuards(G, x, p)) G.planets[x].exhausted = true;  // ((0.83.0) Obelisk)
         say(p, pn(q) + "'s cultural planets are exhausted.");
         return;
     }
@@ -1416,6 +1420,7 @@ void Rules::resolveCard(int p, int card, const WinCtx* c) {
             Force& f = x >= np ? G.systems[x - np].space[p] : G.planets[x].units[p];
             f.remove(UnitType::Infantry, 1, false);
             f.add(UnitType::Mech, 1);
+            if (brOn()) pharRemoved(p, 1);  // (0.85.0) Immortal (Pharad'n): the infantry replaced is removed
         }
         say(p, pn(p) + " refits " + std::to_string(picks.size()) + " infantry into mechs.");
         return;
@@ -1477,7 +1482,7 @@ void Rules::resolveCard(int p, int card, const WinCtx* c) {
         }
         int s = pick(p, Tag::CardTarget, "Tactical Bombardment: which system?", opts, "", true);
         for (int16_t x : G.systems[s].planets)
-            if (G.planets[x].owner >= 0 && G.planets[x].owner != p) G.planets[x].exhausted = true;
+            if (G.planets[x].owner >= 0 && G.planets[x].owner != p && !obeliskGuards(G, x, p)) G.planets[x].exhausted = true;  // ((0.83.0) Obelisk)
         say(p, pn(p) + " exhausts the enemy planets in " + sysName(s) + ".", s);
         return;
     }
@@ -1500,7 +1505,7 @@ void Rules::resolveCard(int p, int card, const WinCtx* c) {
                 opts.push_back({int(x), planetName(int(x)), std::to_string(inf) + " enemy infantry"});
             }
         int x = pick(p, Tag::CardTarget, "Unstable Planet: which hazardous planet?", opts, "", false, true);
-        G.planets[x].exhausted = true;
+        if (!obeliskGuards(G, x, p)) G.planets[x].exhausted = true;  // ((0.83.0) Obelisk: other players can't exhaust it)
         // "Up to 3 infantry": the player playing it never destroys their own (0.21.1 audit).
         int left = 3;
         for (int q : clockwiseFrom(G, (p + 1) % G.numPlayers)) {
@@ -1516,6 +1521,7 @@ void Rules::resolveCard(int p, int card, const WinCtx* c) {
         for (size_t x = 0; x < G.planets.size(); ++x) {
             int q = G.planets[x].owner;
             if (q < 0 || q == p || G.planets[x].exhausted || G.systems[G.planets[x].system].home >= 0) continue;
+            if (obeliskGuards(G, int(x), p)) continue;  // (0.83.0) Obelisk
             opts.push_back({int(x), planetName(int(x)) + " (" + pn(q) + ")", std::to_string(planetResources(G, int(x))) + " resources"});
         }
         int x = pick(p, Tag::CardTarget, "Uprising: exhaust which planet?", opts, "", false, true);
@@ -1544,6 +1550,7 @@ bool Rules::componentCardUsable(int p, int card) const {
     if (!actionCardImplemented(card) || !actionCardIsComponent(card)) return false;
     if (usCard(card)) return usComponentUsable(p, card);  // Uncharted Space (0.33.0)
     if (teCard(card)) return teComponentUsable(p, card);  // Thunder's Edge (0.34.0)
+    if (monCard(card)) return monComponentUsable(p, card);  // Monuments+ (0.82.0)
     if (is("arch_expedition")) {
         for (int x : controlledPlanets(G, p))
             for (int deck = 0; deck < 3; ++deck)
@@ -1699,8 +1706,10 @@ bool Rules::componentCardUsable(int p, int card) const {
         return false;
     }
     if (is("uprising")) {
-        for (const PlanetState& x : G.planets)
-            if (x.owner >= 0 && x.owner != p && !x.exhausted && G.systems[x.system].home < 0) return true;
+        for (size_t i = 0; i < G.planets.size(); ++i) {
+            const PlanetState& x = G.planets[i];
+            if (x.owner >= 0 && x.owner != p && !x.exhausted && G.systems[x.system].home < 0 && !obeliskGuards(G, int(i), p)) return true;  // ((0.83.0) Obelisk)
+        }
         return false;
     }
     if (is("war_effort")) {
@@ -1772,6 +1781,8 @@ std::vector<Option> Rules::componentActionOptions(int p) {
     }
     teRelicOptions(p, opts);  // Thunder's Edge relics (0.34.0)
     btOptions(p, opts);       // Thunder's Edge breakthroughs (0.34.0)
+    absolOptions(p, opts);    // (0.81.0) Absol's Minister of War
+    for (const Option& o : monActionOptions(p)) opts.push_back(o);  // (0.82.0) Monuments+: ACTION on a monument card (3100 + card)
     // Star Charts (Uncharted Space): purge 2 for a new system at the edge of the board
     if (starChartCount(G, p) >= 2 && !blueTilesLeft(G).empty() && !boardEdgeSpots(G).empty())
         opts.push_back({3010, "Star Charts: purge 2", "Draw a random blue-backed system tile and place it at the edge of the board."});
@@ -1788,6 +1799,8 @@ bool Rules::componentAction(int p, int option) {
     if (option >= 5000) return enigmaticAction(p);
     if (option >= 4000) return relicAction(p, option - 4000);
     if (option == 3010) return starChartAction(p);
+    if (option == 3020) return absolMinisterWar(p);  // (0.81.0) Absol's Minister of War
+    if (option >= 3100 && option < 3100 + kMonumentCount) return monAction(p, option - 3100);  // (0.82.0) Monuments+
     if (option >= 3000) return fragmentAction(p, option - 3000);
     if (option >= 2000) {
         int t = option - 2000;
@@ -1795,6 +1808,13 @@ bool Rules::componentAction(int p, int option) {
         return false;
     }
     int card = option - 1000;
+    // (0.83.0) Living Metals (Atokera): an action card's ACTION can't destroy / remove their units or put another player's on their planets
+    struct LivingMetals {
+        int& v;
+        int was;
+        ~LivingMetals() { v = was; }
+    } livingMetals{livingMetals_, livingMetals_};
+    if (brOn()) livingMetals_ = 2;
     if (!playActionCard(p, card, nullptr)) {
         // LRR 22.4: a cancelled component action doesn't use the action.
         return false;

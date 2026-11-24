@@ -1,4 +1,5 @@
 #include "ui/decision_ui.h"
+#include "ui/monument_card.h"
 #include "ui/hits.h"
 
 #include "ui/cards.h"
@@ -221,8 +222,10 @@ public:
             ++scroll_;
         }
         int y = y0;
+        int shown = 0;
         for (int i = scroll_; i < int(heights.size()); ++i) {
             if (y + heights[i] > y0 + avail) break;
+            ++shown;
             bool sel = i == cursor_;
             hits::add(Rect{r.x + 8, y - 2, r.w - 16, heights[i]}, [this, i]() { cursor_ = i; });  // the mouse (0.27.0)
             if (i >= n) {  // (0.61.2) the Confirm row of a choose-several list
@@ -257,6 +260,12 @@ public:
             y += heights[i];
         }
         if (scroll_ > 0) drawText(c, FONT_SM, r.x + r.w - 24, y0 - 4, "\xE2\x96\xB2", theme::dim);
+        {  // (0.81.1, owner) a slim scroll bar when some choices are hidden
+            const int nAll = int(heights.size());
+            drawScrollBar(c, Rect{r.x + r.w - 7, y0 - 2, 4, avail}, scroll_, std::max(1, shown), nAll, [this, shown, nAll](int dir) {
+                cursor_ = std::max(0, std::min(nAll - 1, cursor_ + dir * std::max(1, shown - 1)));
+            });
+        }
         drawError(c, error_, bottom);
         if (confirmPass_) {
             const Rect b{r.x + 20, r.y + r.h / 2 - 40, r.w - 40, 80};
@@ -851,6 +860,12 @@ public:
         if (cursor_ >= scroll_ + visible) scroll_ = cursor_ - visible + 1;
         int y = y0;
         if (rows_.empty()) drawText(c, FONT_SM, r.x + 16, y, emptyText(), theme::dim);
+        // (0.81.1, owner) a slim scroll bar when some rows are hidden
+        drawScrollBar(c, Rect{r.x + r.w - 7, y0, 4, visible * rowH - 2}, scroll_, visible, int(rows_.size()), [this, visible](int dir) {
+            const int n = int(rows_.size());
+            cursor_ = std::max(0, std::min(n - 1, cursor_ + dir * std::max(1, visible - 1)));
+            for (int k = 0; k < n && rows_[size_t(cursor_)].header; ++k) cursor_ = std::max(0, std::min(n - 1, cursor_ + (dir > 0 ? 1 : -1)));
+        });
         for (int i = scroll_; i < int(rows_.size()) && i < scroll_ + visible; ++i) {
             const Row& row = rows_[i];
             if (row.header && row.info) {
@@ -995,6 +1010,10 @@ public:
             Row r;
             r.label = kPlanets[g.planets[x].def].name;
             r.sub = std::to_string(planetResources(g, x)) + " res / " + std::to_string(planetInfluence(g, x)) + " inf";
+            if (d_.tag == Tag::VotePlanets) {  // (0.82.5, a tester's report) the votes it really casts - e.g. Elder Qanoj's +1
+                const int v = votesOf(x);
+                r.sub += " - " + std::to_string(v) + (v == 1 ? " vote" : " votes");
+            }
             r.res = planetResources(g, x);
             r.inf = planetInfluence(g, x);
             r.choices = {"-", "Use"};
@@ -1017,6 +1036,14 @@ public:
     }
 
 protected:
+    // (0.82.5) a planet's votes as the engine counts them (rules_agenda.cpp: Executive Order - resources or votes, the higher;
+    // Absol's Representative Government - 1, Mecatol Rex 2; else voteValue: influence + Elder Qanoj, Council Preserve, ...)
+    int votesOf(int x) const {
+        if (d_.mixed) return std::max(voteValue(g_, d_.player, x), planetResources(g_, x));
+        if (absolLaw(g_, "absol_government"))
+            return 1 + (g_.planets[size_t(x)].system == g_.mecatol() && !std::strcmp(kPlanets[g_.planets[size_t(x)].def].key, "mr") ? 1 : 0);
+        return voteValue(g_, d_.player, x);
+    }
     void buildAnswer() override {
         answer_ = Answer();
         for (const Row& r : rows_) {
@@ -1027,8 +1054,9 @@ protected:
     std::vector<std::string> summary() override {
         int total = 0;
         for (const Row& r : rows_) {
-            if (r.a >= 0 && r.value == 1) total += planetPayValue(g_, r.a, d_.influence, d_.mixed);
-            if (r.a == -1) total += r.value * (d_.allowTradeGoods ? tgWorth(g_, d_.player) : 1);
+            if (r.a >= 0 && r.value == 1)
+                total += d_.tag == Tag::VotePlanets ? votesOf(r.a) : planetPayValue(g_, r.a, d_.influence, d_.mixed);
+            if (r.a == -1) total += r.value * (d_.allowTradeGoods && d_.tag != Tag::VotePlanets ? tgWorth(g_, d_.player) : 1);
         }
         if (d_.tag == Tag::VotePlanets) return {"Votes: " + std::to_string(total)};
         return {"Paying " + std::to_string(total) + " of " + std::to_string(d_.amount) +
@@ -1120,11 +1148,12 @@ public:
         for (int t = 0; t < kUnitTypes; ++t) {
             if (!f.n[t] || (d.hitMask && !((d.hitMask >> t) & 1))) continue;
             UnitType ut = UnitType(t);
-            if (!remove && unitSustainsAt(g, d.player, ut, d.system, d.planet) && f.n[t] - f.dmg[t] > 0) {
+            const int modular = remove ? 0 : modularSustainLeft(g, d.player, ut, d.system, d.planet);  // (0.83.0) Modular Designs
+            if (!remove && (unitSustainsAt(g, d.player, ut, d.system, d.planet) || modular > 0) && f.n[t] - f.dmg[t] > 0) {
                 Row r;
                 r.label = std::string("Sustain: ") + unitLabel(g, d.player, ut);
-                r.sub = std::to_string(f.n[t] - f.dmg[t]) + " undamaged";
-                r.max = f.n[t] - f.dmg[t];
+                r.sub = modular > 0 ? std::string("1 (Modular Designs)") : std::to_string(f.n[t] - f.dmg[t]) + " undamaged";
+                r.max = modular > 0 ? 1 : f.n[t] - f.dmg[t];
                 r.a = t;
                 r.b = 1;
                 rows_.push_back(r);
@@ -1192,6 +1221,7 @@ public:
             if (!bombard_ && isDMZ(g, pl)) continue;  // Demilitarized Zone: nothing can land
             Row h;
             h.header = true;
+            h.a = pl;  // (0.82.0: the planet, for the Nefishh Projector hint / warning)
             int owner = g.planets[pl].owner;
             h.label = std::string(kPlanets[g.planets[pl].def].name) +
                       (owner >= 0 ? " (" + (owner == d.player ? std::string("yours") : playerName(g, owner)) + ")" : " (unclaimed)");
@@ -1247,7 +1277,36 @@ protected:
                     unitLabel(g_, d_.player, UnitType(t), true);
             any = true;
         }
-        return {line};
+        std::vector<std::string> out{line};
+        // (0.82.0, owner M7) Nefishh Projector: say which planets infantry alone may coexist on
+        if (!bombard_) {
+            std::string names;
+            for (const Row& r : rows_)
+                if (r.header && r.a >= 0 && nefishhCovers(g_, d_.player, r.a))
+                    names += (names.empty() ? "" : ", ") + std::string(kPlanets[g_.planets[size_t(r.a)].def].name);
+            if (!names.empty())
+                for (const std::string& l : wrapText(FONT_SM, "Nefishh Projector: infantry landing ALONE on " + names + " may coexist. With a mech, they fight.",
+                                                     decisionPanelRect().w - 28))
+                    out.push_back(l);
+        }
+        return out;
+    }
+    // (0.82.0, owner 2026-11-22 M7: "make sure the player is aware of the implication for invasion if they try to commit infantry
+    // and mechs") a mech sent to a planet where infantry alone could coexist (Nefishh Projector) - asked once more before landing
+    std::string confirmWarning() const override {
+        if (bombard_) return "";
+        std::string names;
+        for (const Row& h : rows_) {
+            if (!h.header || h.a < 0 || !nefishhCovers(g_, d_.player, h.a)) continue;
+            bool mech = false;
+            for (const Row& r : rows_)
+                if (!r.header && r.a == h.a && r.b == int(UnitType::Mech) && r.value > 0) mech = true;
+            if (mech) names += (names.empty() ? "" : ", ") + std::string(kPlanets[g_.planets[size_t(h.a)].def].name);
+        }
+        if (names.empty()) return "";
+        return "Nefishh Projector: you are sending a mech to " + names +
+               ". Only infantry committed on their own may coexist - with a mech there, your ground forces fight the units there "
+               "(ground combat). Land only infantry to be offered coexistence.";
     }
     int clampValue(int row, int proposed) override {
         int others = 0;
@@ -1286,7 +1345,7 @@ public:
             if (enemyShips && isShip(ut)) continue;  // blockaded: ground forces only
             if (d.hitMask && !((d.hitMask >> t) & 1)) continue;  // ships only / Umbat
             // (0.61.1, fixes 32: past the reinforcements by the units that could come back off the board - LRR 23.4a)
-            const int have = d.reclaim ? unitsPlaceable(g, p, ut) : unitsAvailable(g, p, ut);
+            const int have = (d.reclaim ? unitsPlaceable(g, p, ut) : unitsAvailable(g, p, ut)) + amalgamationOwn(g, p, ut);  // (fixes 35)
             int avail = std::min(have, d.amount);
             // 0.44.4: Bellum Gloriosum (Sol breakthrough) - ground forces and fighters for the new ships' capacity don't
             // count against the production limit, so the row isn't capped by it (the rules check the total)
@@ -1346,7 +1405,8 @@ protected:
                                         " (you can spend " + std::to_string(spendable(g_, d_.player, false)) + ")"};
         if (d_.reclaim) {  // (0.61.1: LRR 23.4a - said before the confirmation asks)
             int back = 0;
-            for (int t = 0; t < kUnitTypes; ++t) back += std::max(0, counts[t] - unitsAvailable(g_, d_.player, UnitType(t)));
+            for (int t = 0; t < kUnitTypes; ++t)
+                back += std::max(0, counts[t] - unitsAvailable(g_, d_.player, UnitType(t)) - amalgamationOwn(g_, d_.player, UnitType(t)));
             if (back) out.push_back(std::to_string(back) + (back > 1 ? " units come" : " unit comes") + " off the board (none left in reinforcements)");
         }
         return out;
@@ -1368,7 +1428,7 @@ protected:
         std::string list;
         int n = 0;
         for (int t = 0; t < kUnitTypes; ++t) {
-            const int k = answer_.data[size_t(t)] - unitsAvailable(g_, d_.player, UnitType(t));
+            const int k = answer_.data[size_t(t)] - unitsAvailable(g_, d_.player, UnitType(t)) - amalgamationOwn(g_, d_.player, UnitType(t));
             if (k <= 0) continue;
             list += std::string(list.empty() ? "" : ", ") + std::to_string(k) + " " + unitTypeName(UnitType(t), k > 1);
             n += k;
@@ -1457,7 +1517,8 @@ public:
             if (it.row >= 0) {
                 const int c2 = unitCost2(g, p, ut);
                 it.why = c2 == 1 ? "1 res for 2" : std::to_string((c2 + 1) / 2) + " res";
-                if (d.reclaim && unitsAvailable(g, p, ut) <= 0) it.why += ", take back";  // (0.61.1: none left - LRR 23.4a)
+                if (unitsAvailable(g, p, ut) <= 0 && amalgamationOwn(g, p, ut) > 0) it.why += ", captured";  // (fixes 35: Amalgamation)
+                else if (d.reclaim && unitsAvailable(g, p, ut) <= 0) it.why += ", take back";  // (0.61.1: none left - LRR 23.4a)
             } else if (d.hitMask && !((d.hitMask >> t) & 1)) it.why = "not here";
             else if (enemyShips && isShip(ut)) it.why = "blockaded";
             else if (ut == UnitType::WarSun && !ownsWarSunTech(g, p)) it.why = "needs the tech";
@@ -1713,7 +1774,8 @@ public:
         std::vector<Carrier> carriers;
         std::vector<int> shipSystems;
         for (size_t s = 0; s < g.systems.size(); ++s) {
-            if (int(s) == act || (g.systems[s].hasToken(p) && !g.fx.dominusOrb && !(heroActive(g, p, "nomad") && flagshipIn(g, p, int(s)))) ||
+            if (int(s) == act ||
+                (g.systems[s].hasToken(p) && !g.fx.dominusOrb && !(heroActive(g, p, "nomad") && flagshipIn(g, p, int(s))) && !freeholdAt(g, p, int(s))) ||
                 g.systems[s].isHyperlane())
                 continue;
             const Force& f = g.systems[s].space[p];
@@ -1738,7 +1800,8 @@ public:
         shipSystems_ = shipSystems;
         // Systems a moving carrier passes through: fighters and ground forces can be picked up there.
         for (size_t s = 0; s < g.systems.size(); ++s) {
-            if (int(s) == act || (g.systems[s].hasToken(p) && !g.fx.dominusOrb && !(heroActive(g, p, "nomad") && flagshipIn(g, p, int(s)))) ||
+            if (int(s) == act ||
+                (g.systems[s].hasToken(p) && !g.fx.dominusOrb && !(heroActive(g, p, "nomad") && flagshipIn(g, p, int(s))) && !freeholdAt(g, p, int(s))) ||
                 g.systems[s].isHyperlane())
                 continue;
             if (std::find(shipSystems.begin(), shipSystems.end(), int(s)) != shipSystems.end()) continue;
@@ -2078,7 +2141,8 @@ protected:
             for (int t : kShipIdx) {
                 if (!f.n[t] || t == int(UnitType::Fighter)) continue;
                 const UnitType ut = UnitType(t);
-                const bool token = g.systems[size_t(sys)].hasToken(p) && !g.fx.dominusOrb && !(heroActive(g, p, "nomad") && flagshipIn(g, p, sys));
+                const bool token = g.systems[size_t(sys)].hasToken(p) && !g.fx.dominusOrb && !(heroActive(g, p, "nomad") && flagshipIn(g, p, sys)) &&
+                                   !freeholdAt(g, p, sys);
                 if (!token && shipReach(g, p, sys, act, ut, moveBonusMax(g, p)).ok) continue;
                 const int mv = moveValue(g, p, sys, ut), away = plain[size_t(sys)];
                 if (mv <= 0 || away > mv + (gd ? 1 : 0) + 1) continue;  // (only the near ones)
@@ -2513,6 +2577,233 @@ private:
     int sel_ = -1;
 };
 
+// 0.80.1 (GitHub issue #1 "Add confirmation on binding actions"; owner 2026-11-20 21:47: "Draw secret objective cards, similar to
+// how the exploration and relic cards were drawn, but keep it in a portrait mode when showing the text. Do that for two secret
+// objective cards and have them be side-to-side. Then do the click again recommendation. Let's keep the focus of this bug only on
+// secret objectives"): the secret objectives to choose from as cards side by side. The D-pad turns to a card and A keeps it; with
+// the mouse the first click on a card picks it out and a second click on it keeps it (a stray click can't keep the wrong one).
+class SecretPickUI : public DecisionUI {
+public:
+    SecretPickUI(const Game& g, const Decision& d) : DecisionUI(g, d) {
+        for (size_t i = 0; i < d.options.size(); ++i)
+            if (d.options[i].enabled) {
+                sel_ = int(i);
+                break;
+            }
+    }
+    bool update(const Input& in, uint32_t now) override {
+        now_ = now;
+        const int n = int(d_.options.size());
+        auto step = [&](int dir) {
+            for (int i = 1; i <= n; ++i) {
+                const int k = ((sel_ + dir * i) % n + n) % n;
+                if (d_.options[size_t(k)].enabled) {
+                    if (k != sel_) sel_ = k, armed_ = -1, turnedAt_ = now;
+                    return;
+                }
+            }
+        };
+        if (in.pressed(Btn::Right) || in.pressed(Btn::Down)) step(1);
+        if (in.pressed(Btn::Left) || in.pressed(Btn::Up)) step(-1);
+        if (keep_ >= 0) {  // (the mouse: the second click on the picked card)
+            const int k = keep_;
+            keep_ = -1;
+            return keepIt(k);
+        }
+        if (in.pressed(Btn::A) && sel_ >= 0) return keepIt(sel_);  // (the keyboard / a controller: A on the card turned to)
+        return false;
+    }
+    void draw(Canvas& c, uint32_t now) override {
+        now_ = now;
+        const int W = c.width(), n = int(d_.options.size());
+        c.fillRect(0, 24, W, 480 - 24 - 28, rgb(2, 4, 10), 218);
+        hits::addBlock(Rect{0, 24, W, 480 - 24 - 28});
+        drawTextAligned(c, FONT_XL, 0, 30, W, Align::Center, d_.prompt, theme::gold);
+        drawTextAligned(c, FONT_SM, 0, 72, W, Align::Center, d_.context, theme::dim);
+        const int cw = 232, ch = 300, gap = 34;
+        const int x0 = (W - (n * cw + (n - 1) * gap)) / 2;
+        for (int i = 0; i < n; ++i) {
+            const Option& o = d_.options[size_t(i)];
+            const bool on = i == sel_, armed = i == armed_;
+            const int lift = on ? 8 : 0;
+            const Rect r{x0 + i * (cw + gap), 102 - lift, cw, ch};
+            card(c, o.id, r, on, armed, o.enabled);
+            const int k = i;
+            if (o.enabled)
+                hits::addAction(r, [this, k]() {
+                    if (armed_ == k) keep_ = k;  // the second click on it: keep it
+                    else sel_ = k, armed_ = k, turnedAt_ = now_;
+                });
+        }
+        if (!error_.empty()) drawTextAligned(c, FONT_SM, 0, 424, W, Align::Center, error_, theme::red);
+    }
+    std::vector<std::pair<std::string, std::string>> hints() const override {
+        return {{"\xE2\x97\x80\xE2\x96\xB6", "Choose"}, {"A", "Keep this one"}};
+    }
+    int highlightedValue() const override { return sel_ >= 0 ? d_.options[size_t(sel_)].id : -1; }
+    bool bareClickConfirms() const override { return false; }
+    bool backAvailable() const override { return false; }
+    bool fullScreen() const override { return true; }
+    bool centred() const override { return false; }  // (laid out on the whole width: the dimmed map behind reaches the edges)
+    bool stepsWithKeys() const override { return true; }
+
+private:
+    bool keepIt(int i) {
+        if (i < 0 || i >= int(d_.options.size()) || !d_.options[size_t(i)].enabled) return false;
+        answer_ = Answer();
+        answer_.picks.push_back(d_.options[size_t(i)].id);
+        return true;
+    }
+    // One secret objective card, portrait: the coloured header with the secret objective's mark, its name, its text, when it is
+    // scored and its victory points; the card turned to stands out in gold, a card clicked once asks for the second click.
+    void card(Canvas& c, int obj, Rect r, bool on, bool armed, bool enabled) {
+        const uint32_t base = rgb(200, 60, 80);
+        const int a = enabled ? 255 : 110;
+        if (on) {  // a soft gold glow round the card turned to
+            const float pulse = 0.5f + 0.5f * std::sin(float(now_ % 1600) / 1600.f * 6.2831853f);
+            for (int k = 3; k >= 1; --k)
+                c.fillRoundRect(r.x - 2 * k - 2, r.y - 2 * k - 2, r.w + 4 * k + 4, r.h + 4 * k + 4, 16 + 2 * k, theme::gold,
+                                int((18.f + 20.f * pulse) / float(k)));
+        }
+        c.fillRoundRect(r.x - 4, r.y - 4, r.w + 8, r.h + 8, 14, rgb(0, 0, 0), 170);
+        c.fillRoundRect(r.x, r.y, r.w, r.h, 12, shade(base, on ? 0.27f : 0.2f), a);
+        c.frameRoundRect(r.x, r.y, r.w, r.h, 12, on ? theme::gold : shade(base, 1.3f), on ? 3 : 2, a);
+        // the mark, faint, behind the text
+        icons::draw(c, "secret", r.x + (r.w - 100) / 2, r.y + 128, 100, on ? 30 : 20);
+        // the header
+        c.fillRoundRect(r.x + 6, r.y + 6, r.w - 12, 28, 9, shade(base, 0.7f), a);
+        icons::draw(c, "secret", r.x + 11, r.y + 8, 22, a);
+        icons::draw(c, "secret", r.x + r.w - 33, r.y + 8, 22, a);
+        drawTextAligned(c, FONT_SMB, r.x, r.y + 12, r.w, Align::Center, "SECRET OBJECTIVE", theme::text, a);
+        if (obj < 0 || obj >= kObjectiveCount) return;
+        const ObjectiveDef& od = kObjectives[obj];
+        int y = r.y + 44;
+        for (const std::string& l : wrapText(FONT_LG, od.name, r.w - 24)) {
+            drawTextAligned(c, FONT_LG, r.x, y, r.w, Align::Center, l, on ? theme::gold : theme::text, a);
+            y += 24;
+        }
+        y += 4;
+        c.hline(r.x + 30, r.x + r.w - 30, y, shade(base, 1.2f), a);
+        y += 10;
+        for (const std::string& l : wrapText(FONT_MD, objectiveSummary(obj), r.w - 28)) {
+            if (y > r.y + r.h - 92) break;
+            drawTextAligned(c, FONT_MD, r.x, y, r.w, Align::Center, l, rgb(236, 230, 214), a);
+            y += FONT_MD.lineHeight + 2;
+        }
+        // when it is scored, and its points
+        const char* when = od.phase == ObjPhase::Action ? "Scored in the action phase"
+                           : od.phase == ObjPhase::Agenda ? "Scored in the agenda phase"
+                                                          : "Scored in the status phase";
+        drawTextAligned(c, FONT_XS, r.x, r.y + r.h - 82, r.w, Align::Center, when, shade(base, 1.6f), a);
+        const float vx = float(r.x + r.w / 2), vy = float(r.y + r.h - 54);
+        c.fillCircle(vx, vy, 15.f, shade(base, 0.55f), a);
+        c.ring(vx, vy, 15.f, 2.f, on ? theme::gold : shade(base, 1.4f), a);
+        drawTextAligned(c, FONT_LG, int(vx) - 15, int(vy) - 11, 30, Align::Center, std::to_string(int(od.points)), theme::text, a);
+        drawTextAligned(c, FONT_XS, r.x, int(vy) + 17, r.w, Align::Center, od.points == 1 ? "victory point" : "victory points", theme::dim, a);
+        // the card turned to: how to keep it
+        if (on) {
+            const Rect b{r.x + 18, r.y + r.h + 12, r.w - 36, 26};
+            const float pulse = 0.5f + 0.5f * std::sin(float(now_ - turnedAt_) / 260.f);
+            c.fillRoundRect(b.x, b.y, b.w, b.h, 9, armed ? mix(theme::panelHi, theme::gold, 60) : theme::panelHi, 240);
+            c.frameRoundRect(b.x, b.y, b.w, b.h, 9, theme::gold, armed ? 2 : 1, armed ? 140 + int(115.f * pulse) : 200);
+            drawTextAligned(c, FONT_SMB, b.x, b.y + 6, b.w, Align::Center, armed ? "Click again to keep it" : keyText("A: keep this one"),
+                            armed ? theme::gold : theme::text);
+            const int k = sel_;
+            hits::addAction(b, [this, k]() { keep_ = k; });  // (the button keeps it at once)
+        }
+    }
+    int sel_ = -1, armed_ = -1, keep_ = -1;
+    uint32_t now_ = 0, turnedAt_ = 0;
+};
+
+// (0.82.0 Monuments+, owner 2026-11-21: "whenever a player is placing a monument, can it show the monument card to the human
+// player with a confirm so they can read it?") Your monument: its card first (A: choose where, B: not now), then the pick on the map.
+class MonumentPlaceUI : public DecisionUI {
+public:
+    MonumentPlaceUI(const Game& g, const Decision& d, MapView& map) : DecisionUI(g, d), map_(map) {
+        mon_ = playerMonument(g, d.player);
+        for (const Option& o : d.options) notNow_ = notNow_ || o.id == -1;
+    }
+    bool update(const Input& in, uint32_t now) override {
+        now_ = now;
+        if (inner_) {
+            if (in.pressed(Btn::B) && !inner_->backAvailable()) {  // back to the card
+                inner_.reset();
+                return false;
+            }
+            if (inner_->update(in, now)) {
+                answer_ = inner_->answer();
+                return true;
+            }
+            return false;
+        }
+        if (in.pressed(Btn::A) || go_) {
+            go_ = false;
+            open();
+            return false;
+        }
+        if ((in.pressed(Btn::B) || skip_) && notNow_) {
+            skip_ = false;
+            answer_ = Answer();
+            answer_.picks.push_back(-1);
+            return true;
+        }
+        return false;
+    }
+    void draw(Canvas& c, uint32_t now) override {
+        now_ = now;
+        if (inner_) {
+            inner_->draw(c, now);
+            return;
+        }
+        const int W = c.width();
+        c.fillRect(0, 24, W, 480 - 24 - 28, rgb(2, 4, 10), 246);  // (the map and panel stay out of sight: only the card)
+        hits::addBlock(Rect{0, 24, W, 480 - 24 - 28});
+        CentredView v(c);
+        drawTextAligned(c, FONT_MDB, 0, 30, 640, Align::Center, d_.prompt, theme::text);
+        monumentcard::draw(c, mon_, Rect{33, 52, 574, 372}, now);
+        const int bw = 170, gap = 12, total = notNow_ ? bw * 2 + gap : bw, bx = (640 - total) / 2, by = 430;
+        auto button = [&](int x, const char* key, const char* label, bool primary, std::function<void()> act) {
+            c.fillRoundRect(x, by, bw, 24, 8, primary ? rgb(30, 70, 80) : rgb(26, 30, 44));
+            c.frameRoundRect(x, by, bw, 24, 8, primary ? theme::cyan : theme::border, 1);
+            const int kx = x + 10;
+            drawButtonBadge(c, kx, by + 4, key);
+            drawText(c, FONT_SMB, kx + 28, by + 4, label, theme::text);
+            hits::addAction(Rect{x, by, bw, 24}, std::move(act));
+        };
+        button(bx, "A", "Choose where", true, [this]() { go_ = true; });
+        if (notNow_) button(bx + bw + gap, "B", "Not now", false, [this]() { skip_ = true; });
+        if (!error_.empty()) drawTextAligned(c, FONT_SM, 0, 412, 640, Align::Center, error_, theme::red);
+    }
+    bool mapMode() const override { return inner_ && inner_->mapMode(); }
+    bool bareClickConfirms() const override { return inner_ && inner_->bareClickConfirms(); }
+    int highlightedValue() const override { return inner_ ? inner_->highlightedValue() : -1; }
+    std::vector<std::pair<std::string, std::string>> hints() const override {
+        if (inner_) {
+            auto h = inner_->hints();
+            if (!inner_->backAvailable()) h.push_back({"B", "The card"});
+            return h;
+        }
+        std::vector<std::pair<std::string, std::string>> h{{"A", "Choose where"}};
+        if (notNow_) h.push_back({"B", "Not now"});
+        return h;
+    }
+    bool backAvailable() const override { return inner_ != nullptr || notNow_; }
+    bool fullScreen() const override { return !inner_; }
+
+private:
+    void open() {
+        Decision d = d_;
+        if (planetsOnMap(g_, d)) inner_.reset(new PlanetMapPickUI(g_, d, map_));
+        else inner_.reset(new ListUI(g_, d));
+    }
+    MapView& map_;
+    std::unique_ptr<DecisionUI> inner_;
+    int mon_ = -1;
+    bool notNow_ = false, go_ = false, skip_ = false;
+    uint32_t now_ = 0;
+};
+
 std::unique_ptr<DecisionUI> makeDecisionUI(const Game& g, const Decision& d, MapView& map) {
     if (d.tag == Tag::StrategyPick && d.kind == DecisionKind::Pick && !d.options.empty())  // 0.58.4: the wheel
         return std::unique_ptr<DecisionUI>(new StrategyWheelUI(g, d));
@@ -2521,7 +2812,11 @@ std::unique_ptr<DecisionUI> makeDecisionUI(const Game& g, const Decision& d, Map
     if (d.tag == Tag::Faction && d.ability == int(Ab::Expedition) && d.kind == DecisionKind::Pick)  // 0.43.0: the winglet menu
         return std::unique_ptr<DecisionUI>(new ExpeditionUI(g, d));
     if (d.tag == Tag::GalaxyPlace) return makeGalaxyDraftUI(g, d, map);
+    if (d.tag == Tag::SetupSecret && d.kind == DecisionKind::Pick && !d.options.empty() && d.options.size() <= 3)  // 0.80.1: the cards
+        return std::unique_ptr<DecisionUI>(new SecretPickUI(g, d));
     if (d.tag == Tag::DealResponse) return makeDealResponseUI(g, d, map);
+    if (d.tag == Tag::MonumentPlace && d.kind == DecisionKind::Pick && playerMonument(g, d.player) >= 0)  // (0.82.0) the card first
+        return std::unique_ptr<DecisionUI>(new MonumentPlaceUI(g, d, map));
     if (d.tag == Tag::Negotiate) return makeNegotiateUI(g, d);
     switch (d.kind) {
         case DecisionKind::Deal: return makeDealUI(g, d, map);

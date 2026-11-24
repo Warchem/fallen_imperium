@@ -197,6 +197,18 @@ Career career(const std::string& rival) {
     return c;
 }
 
+bool beaten(const std::string& rival) { return profile::getInt(R(rival, "beaten")) == 1; }
+std::vector<const league::RivalDef*> commanders() {
+    std::vector<const league::RivalDef*> v;
+    for (const league::RivalDef* r : league::allRivals())
+        if (profile::unlockAll() || beaten(r->id)) v.push_back(r);
+    return v;
+}
+int grudgeOf(const std::string& rival) {
+    const Career c = career(rival);
+    return std::min(25, 5 * c.broken + c.youAbove);
+}
+
 // -------------------------------------------------------------------- table
 std::vector<int> factionPool(const LeagueDef* d) {
     std::vector<int> v;
@@ -205,6 +217,11 @@ std::vector<int> factionPool(const LeagueDef* d) {
         const ti::FactionDef& fd = ti::kFactions[f];
         if (fd.source == ti::Source::ThundersEdge && (!(d->modules & ti::kModThundersEdge) || !std::strcmp(fd.key, "obsidian"))) continue;
         if (fd.source == ti::Source::Discordant && (!(d->modules & ti::kModDiscordant) || !ti::factionInPool(f, ti::kDsLevel))) continue;
+        // (0.83.0: Blue Reverie factions come to the leagues as unlocks - 0.85.3, owner: "secret unlockables ... unavailable to the
+        // bots but available when unlocked": in the leagues with the module, only the ones unlocked, for everyone)
+        if (fd.source == ti::Source::BlueReverie &&
+            (!(d->modules & ti::kModBlueReverie) || !ti::brInPool(f, ti::kBrLevel, profile::brUnlockedMask())))
+            continue;
         if (league::listHas(d->banned, fd.key)) continue;
         v.push_back(f);
     }
@@ -330,6 +347,7 @@ ti::Setup makeSetup(const LeagueDef* d, const Table& t, int speaker, const Setti
     s.mapSeed = galaxy == league::kGalaxySeeded ? uint32_t(std::max(1, profile::getInt(K(d->id, "mapseed"), 7))) : 0u;
     s.layout = 0;
     s.modules = d->modules;
+    s.brMask = profile::brUnlockedMask();  // (0.85.3) only the Blue Reverie factions unlocked
     s.events = 0;
     s.extras = (d->kingslay ? 1 : 0) | 2 | 4 | 8 | 16 | 32 | 64 | (st.getInt("mecatol_contested", 1) ? 128 : 0);
     s.habits = habits::load(st);
@@ -341,6 +359,7 @@ ti::Setup makeSetup(const LeagueDef* d, const Table& t, int speaker, const Setti
     s.archetypes.assign(size_t(n), -1);
     s.tribunii.assign(size_t(n), -1);
     s.grudges.assign(size_t(n), 0);
+    s.commanders.assign(size_t(n), std::string());
     int count[8] = {};
     std::vector<std::string> who;
     for (int q = 0; q < n; ++q) {
@@ -356,8 +375,8 @@ ti::Setup makeSetup(const LeagueDef* d, const Table& t, int speaker, const Setti
         s.archetypes[size_t(q)] = p.arch;
         ++count[std::max(0, std::min(7, p.level))];
         if (!p.who.empty() && p.who.compare(0, 4, "prog") != 0) {  // a rival's grudge from the games before
-            const Career c = career(p.who);
-            s.grudges[size_t(q)] = std::min(25, 5 * c.broken + c.youAbove);
+            s.grudges[size_t(q)] = grudgeOf(p.who);
+            s.commanders[size_t(q)] = p.who;  // (0.80.11: their name on the game's screens)
         }
     }
     s.aiLevel = int(std::max_element(count, count + 8) - count);
@@ -503,7 +522,13 @@ bool recordGame(GameSession& gs) {
         for (const ti::Promise& p : g.promises)
             if (p.by == human && p.to == q && p.state == ti::kPromiseBroken) ++broke;
         profile::setInt(R(w, "games"), profile::getInt(R(w, "games")) + 1);
-        if (human >= 0 && place[size_t(human)] < place[size_t(q)]) profile::setInt(R(w, "above"), profile::getInt(R(w, "above")) + 1);
+        if (human >= 0 && place[size_t(human)] < place[size_t(q)]) {
+            profile::setInt(R(w, "above"), profile::getInt(R(w, "above")) + 1);
+            if (!beaten(w)) {  // (0.80.11) beaten - finished above - for the first time: a commander for Casual Game
+                profile::setInt(R(w, "beaten"), 1);
+                o.newCommanders.push_back(w);
+            }
+        }
         if (human >= 0 && place[size_t(q)] < place[size_t(human)]) profile::setInt(R(w, "below"), profile::getInt(R(w, "below")) + 1);
         if (broke) profile::setInt(R(w, "broken"), profile::getInt(R(w, "broken")) + broke);
         const int why = broke ? 3 : q == rivalSeat ? 2 : (human >= 0 && place[size_t(q)] < place[size_t(human)]) ? 1 : 0;
@@ -563,6 +588,7 @@ bool recordGame(GameSession& gs) {
     profile::erase(K(id, "rival"));
     profile::save();
     gs.deleteSave();
+    o.firstWin = o.ended == 1 && !profile::finished(id);
     if (o.ended) settle(o, g.seed ^ 0x5E771Eu);
     LOG("league: %s game %d recorded (you %d points, ended %d)", id.c_str(), games, points(id, "you"), o.ended);
     outcome_ = o;

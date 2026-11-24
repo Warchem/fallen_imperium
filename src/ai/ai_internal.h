@@ -13,6 +13,10 @@ namespace ti {
 bool aiCardsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out);
 // How much playing this component action (option id from the action menu) is worth now.
 float aiComponentValue(const Game& g, int p, int option);
+// (0.82.0) Monuments+'s cards (ai_monuments.cpp): an action card's value now, its choices, a law's outcome value
+float aiMonCardValue(const Game& g, int p, int card);
+bool aiMonCardTarget(const Game& g, const Decision& d, Answer& out);
+float aiMonOutcomeValue(const Game& g, int p, int a, int o);
 
 // Exploration, relics, legendary planets (ai_explore.cpp).
 bool aiExploreAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out);
@@ -27,6 +31,14 @@ bool aiTeComponentValue(const Game& g, int p, int ab, float& v);  // breakthroug
 bool aiCoupNow(const Game& g, int p);                              // the Firmament: take Puppets of the Blade now
 int aiHomeSpentValue(const Game& g, int p);                        // resources + influence of exhausted home planets
 bool aiDsAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out);  // Discordant Stars questions (ai_ds.cpp)
+bool aiBrAnswer(const Game& g, const Decision& d, Answer& out);           // (0.83.0) Blue Reverie questions (ai_br.cpp)
+bool aiBrComponentValue(const Game& g, int p, int ab, float& v);           // (0.84.0) Classified Developments
+float aiBrFreeValue(const Game& g, int p, int id);                         // ... the Belkosea's own-turn options 660-668
+float aiBrSwValue(const Game& g, int p, int k, int opp, int sys);          // ... superweapon card k now (a combat: opp / sys)
+bool aiPharAnswer(const Game& g, const Decision& d, Answer& out);         // (0.85.0) the Pharad'n's questions (ai_br3.cpp)
+float aiPharFreeValue(const Game& g, int p, int id);                       // ... Nokash 670 / Hidden Vaults 671 on their turn
+bool aiPharComponentValue(const Game& g, int p, int ab, float& v);         // ... Avhkan's unlocking action
+void aiPharFixMove(const Game& g, int p, int active, std::vector<int>& data);  // ... Sedtra moves only with ground forces aboard
 // (balance pass, 0.66.0) Roh'Dhna Industrious: a space dock placed now could become a war sun - a war sun and a dock left, a planet
 // outside home with no dock in a system without other players' ships, round 2+ (or knob rhind), and 6 to spend when 'money'
 bool aiRohdhnaFactory(const Game& g, int p, bool money);
@@ -57,6 +69,15 @@ std::vector<int> aiVotePlanets(const Game& g, int p, const std::vector<int>& pla
 
 // From ai_cards.cpp, for the faction AI.
 float aiOutcomeValue(const Game& g, int p, int agenda, int outcome);
+// (0.81.0) Absol's Agendas (ai_absol.cpp)
+float absolOutcomeValue(const Game& g, int p, int a, int o);
+float absolVoterReward(const Game& g, int p, int a, int winner, int myVote);  // myVote -100: abstained
+float absolTopReward(const Game& g, int p, int a, int winner);               // being the top voter for the winner
+float aiAbsolComponentValue(const Game& g, int p);                           // Minister of War (option 3020)
+bool aiAbsolAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out);
+// (0.82.0) Monuments+ (ai_monuments.cpp): Tag::MonumentPlace, and a monument spot's value (also for Construction's structures)
+bool aiMonumentAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out);
+float aiMonumentSpotValue(const Game& g, int p, int id);
 int aiPredictOutcome(const Game& g, int agenda, float* confidence);
 bool aiWantsCancel(const Game& g, int p, int card, int by = -1);  // would p cancel this action card (as with Sabotage)?
 float aiCardKeepValue(int card);                     // how much the AI likes holding an action card
@@ -64,6 +85,10 @@ float aiCardKeepValue(int card);                     // how much the AI likes ho
 // ai.cpp
 float aiTechWant(const Game& g, int p, int tech);
 float aiPlanetValue(const Game& g, int p, int pl);
+bool aiEnemyNear(const Game& g, int p, int sys, int steps);  // enemy ships within steps systems
+float aiMonumentSpotValue(const Game& g, int p, int id);      // ai_monuments.cpp (0.82.0 Monuments+)
+float aiMonumentCardBonus(const Game& g, int p);              // Construction's worth from its monument line
+float aiMonumentActionValue(const Game& g, int p, int card);  // a monument card's ACTION (component action 3100 + card)
 float aiStrategyCardValue(const Game& g, int p, int card);  // 0.34.0: what a strategy card is worth to p now
 
 // Galaxy setup draft (ai_galaxy.cpp): where to place a tile.
@@ -108,6 +133,7 @@ struct Goals {
     float fleetShip = 0;              // one more non-fighter ship in our biggest fleet
     int fleetTarget = 0;              // ... until it has this many
     float production = 0, groundStack = 0;
+    float topple = 0, guardMonument = 0;  // (0.82.0) Topple a Monument / Defend a Great Work (Monuments+ secrets)
     // technology
     float upgrade = 0, factionTech = 0, color[4] = {};
     // economy: keep this much unspent for the status phase
@@ -127,6 +153,7 @@ struct Goals {
 const Goals& aiGoals(const Game& g, int p);
 float aiLevelScale(const Game& g);  // 0 Easy, 0.6 Normal, 1 Hard (and Competitive)
 int aiLevelOf(const Game& g);       // 0-4: the difficulty of the computer player being answered for
+bool aiInLookAhead();               // (0.86.0) true while the A.I. plays a copy of the game out (ai_think.cpp)
 bool aiIsAI(const Game& g);         // (0.74.0) that player plays at the A.I. level (kAiLevelAI)
 bool aiIsAISeat(const Game& g, int p);  // the same, for player p
 // (0.74.0, ai_think.cpp) The A.I.'s look-ahead: for its big decisions it plays its best few options out on copies of the

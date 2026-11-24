@@ -37,13 +37,13 @@ WH = {"ALPHA": 1, "BETA": 2, "GAMMA": 4, "DELTA": 8, "EPSILON": 16}
 UNIT_TYPE = {"carrier": "Carrier", "cruiser": "Cruiser", "destroyer": "Destroyer",
              "dreadnought": "Dreadnought", "fighter": "Fighter", "flagship": "Flagship",
              "warsun": "WarSun", "infantry": "Infantry", "mech": "Mech", "pds": "PDS",
-             "spacedock": "SpaceDock", "lady": "Flagship2", "celagrom": "Flagship2"}
+             "spacedock": "SpaceDock", "lady": "Flagship2", "celagrom": "Flagship2", "monument": "Monument"}
 FLEET_CODE = {"cv": "Carrier", "ca": "Cruiser", "cr": "Cruiser", "dd": "Destroyer",
               "dn": "Dreadnought", "ff": "Fighter", "fs": "Flagship", "ws": "WarSun",
               "inf": "Infantry", "gf": "Infantry", "mech": "Mech", "mf": "Mech",
               "pds": "PDS", "pd": "PDS", "sd": "SpaceDock"}
 # The physical base game versions of cards that later got "Codex" reprints.
-TECH_ALIAS = {"md": "md_base", "x89": "x89_base"}
+TECH_ALIAS = {"md": "md_base", "x89": "x89_base", "x89c4": "x89_base"}  # x89c4: Xin (Blue Reverie) start - our X-89 is the Codex IV card with Codex on
 
 out = []
 emit = out.append
@@ -184,6 +184,10 @@ for sid in DS_IDS:
     name = (d.get("name") or "/".join(planets[i]["name"] for i in pidx)).split(" - ")[0]
     systems.append(dict(id=sid, name=name, back="Back::Home", wh=wh, an="0", planets=pidx, src="ds", lanes=[0] * 6))
 te_planet("ghoti", None)  # the Ghoti's home planet card: their home system has no planet
+# 0.82.1 Monuments+: the Last Bastion's monument station card, "Data Center" (1 / 1, a space station - the Seraph Data Center
+# puts it into the system it stands in; Rules::monStationPlace). Appended last so no index moves.
+_sdc = te_planet("seraphdatacenter", None)
+planets[_sdc]["name"] = "Data Center"  # (the station card's title; AsyncTI4 "Seraph Data Center" is the monument's name)
 # 0.43.0 (owner, RULES-CHECK D44): tiles that replace a system in play - the Muaat supernova (Nova Seed: Adjudicator
 # Ba'al) and the Zelian asteroid field (Zelian R: Cataclysm). Never dealt (Back::Special); appended last so every
 # older index stays the same.
@@ -191,8 +195,20 @@ for sid, src, nm in (("81", "pok", None), ("d36", "ds", "Zelian Asteroids")):
     d = load(f"systems/{sid}.json")
     systems.append(dict(id=sid, name=nm or d.get("name"), back="Back::Special", wh=0,
                         an="kSupernova" if d.get("isSupernova") else "kAsteroid", planets=[], src=src, lanes=[0] * 6))
+# Blue Reverie (0.83.0, a module - TacticBlue's homebrew): the factions in the game - owner 2026-11-23 20:58: "the only factions
+# that will be a part of the faction list are Atokera, Belkosea, Pharad'n, Qhet, Uydai" (not Kaltrim, Xin, Sarcosa, Toldar)
+BR_IN = ["uydai", "pharadn", "qhet", "atokera", "belkosea"]
+# ... their home systems and planets (br1-br4, br5b - the Belkosea's home; br5, their other home, isn't used), appended after
+# everything above so no index moves
+BR_IDS = ["br1", "br2", "br3", "br4", "br5b"]
+for sid in BR_IDS:
+    d = load(f"systems/{sid}.json")
+    pidx = [te_planet(pk, sid) for pk in (d.get("planets") or [])]
+    wh = sum(WH[w] for w in d.get("wormholes", []) or [])
+    name = (d.get("name") or "/".join(planets[i]["name"] for i in pidx)).split(" - ")[0]
+    systems.append(dict(id=sid, name=name, back="Back::Home", wh=wh, an="0", planets=pidx, src="blue_reverie", lanes=[0] * 6))
 SRC_ENUM = {"base": "Source::Base", "pok": "Source::PoK", "uncharted_space": "Source::Uncharted",
-            "thunders_edge": "Source::ThundersEdge", "ds": "Source::Discordant"}
+            "thunders_edge": "Source::ThundersEdge", "ds": "Source::Discordant", "blue_reverie": "Source::BlueReverie"}
 system_index = {s["id"]: i for i, s in enumerate(systems)}
 
 emit("// clang-format off")
@@ -268,6 +284,18 @@ for t in load("data/technologies/ds.json"):
     tech_index[t["alias"]] = len(techs)
     techs.append(dict(key=t["alias"], name=t["name"], color=COLOR.get(ttype, "TechColor::None"), upgrade=(ttype == "UNITUPGRADE"),
                       req=req, faction=t.get("faction"), src="ds", base=t.get("baseUpgrade")))
+# Blue Reverie (0.83.0): the factions' own technologies after Discordant Stars' (the module's generic technologies come later)
+BR_ALIASES = {f["alias"] for f in load("data/factions/blue_reverie.json") if f.get("source") == "blue_reverie" and f["alias"] in BR_IN}
+for t in load("data/technologies/blue_reverie.json"):
+    if t.get("source") != "blue_reverie" or t.get("faction") not in BR_ALIASES:
+        continue  # (the module's reworks of other factions' technologies are left out for now)
+    req = [0, 0, 0, 0]
+    for ch in ("" if t.get("requirements") in (None, "null") else t["requirements"]):
+        req[REQ_LETTER[ch]] += 1
+    ttype = (t.get("types") or ["NONE"])[0]
+    tech_index[t["alias"]] = len(techs)
+    techs.append(dict(key=t["alias"], name=t["name"], color=COLOR.get(ttype, "TechColor::None"), upgrade=(ttype == "UNITUPGRADE"),
+                      req=req, faction=t.get("faction"), src="blue_reverie", base=t.get("baseUpgrade")))
 for alias, real in TECH_ALIAS.items():
     tech_index[alias] = tech_index[real]
 
@@ -300,6 +328,13 @@ for f in load("data/factions/ds.json"):  # Discordant Stars (0.37.0): after Thun
             f = dict(f, factionName="Augurs of Ilyxum")
         factions.append(f)
         DS_FACTIONS.append(f["alias"])
+BR_FACTIONS = []
+for f in load("data/factions/blue_reverie.json"):  # Blue Reverie (0.83.0): after Discordant Stars'
+    if f.get("source") == "blue_reverie" and f["alias"] in BR_IN:
+        if f["alias"] == "pharadn":  # (0.85.0) the cards spell it "Pharad'n" (monument, note, hero)
+            f = dict(f, factionName="Pharad'n Order")
+        factions.append(f)
+        BR_FACTIONS.append(f["alias"])
 faction_index = {f["alias"]: i for i, f in enumerate(factions)}
 for alias in ("keleresm", "keleresx", "keleresa"):
     faction_index[alias] = faction_index["keleres"]
@@ -341,6 +376,24 @@ for uid in BT_UNITS:
 for u in load("data/units/ds.json"):
     if u["id"] in LATE_UNITS:
         units.append(u)
+# 0.82.0 Monuments+ (Cacotopos / Blarknob): every monument whose faction is in the game, appended last so no index moves, kept
+# out of the faction unit lists (a player gets theirs when the module is on - Rules::giveMonument). Names as printed on the
+# v3.1 cards (docs/owner/monuments/wording_check_2026-11-22.txt); the abilities' texts live in tools/gen_monuments.py.
+MONUMENT_NAME_FIX = {"Spire Of Ixth": "Spire of Ixth", "Scepter Of Ul": "Scepter of Ul", "Vault Of New Phrad": "Vault of New Phrad",
+                     "Valefar Assimilator M": "Valefar Assimilator \"M\"", "Veils Of Lost Creuss": "Veils of Lost Creuss"}
+for u in load("data/units/monuments.json"):
+    if u.get("faction") in faction_index and u.get("faction") not in BR_FACTIONS:  # (Blue Reverie's: below, last)
+        # (a monument placed in a space area - The Panopticon: "isPlanetOnly": false - stands there like a floating factory)
+        units.append(dict(u, name=MONUMENT_NAME_FIX.get(u["name"], u["name"]), cost=0, faction=u["faction"],
+                          isSpaceOnly=u.get("isPlanetOnly") is False))
+# Blue Reverie (0.83.0): the factions' units, then their monuments - appended last so no index moves
+for u in load("data/units/blue_reverie.json"):
+    if u.get("faction") in BR_FACTIONS and u.get("baseType") in UNIT_TYPE:
+        units.append(u)
+for u in load("data/units/monuments.json"):
+    if u.get("faction") in BR_FACTIONS:
+        units.append(dict(u, name=MONUMENT_NAME_FIX.get(u["name"], u["name"]), cost=0, faction=u["faction"],
+                          isSpaceOnly=u.get("isPlanetOnly") is False))
 unit_index = {u["id"]: i for i, u in enumerate(units)}
 
 
@@ -361,7 +414,7 @@ for u in units:
     upf = unit_index.get(u.get("upgradesFromUnitId"), -1) if u.get("upgradesFromUnitId") else -1
     cost2 = int(round(float(u.get("cost", 0)) * 2))
     emit("  {" + ", ".join([
-        cstr(u["id"]), cstr(u["name"]), f"UnitType::{UNIT_TYPE[u['baseType']]}", str(fac), str(tech), str(upf),
+        cstr(u["id"]), cstr(u["name"].strip() if u.get("source") == "blue_reverie" else u["name"]), f"UnitType::{UNIT_TYPE[u['baseType']]}", str(fac), str(tech), str(upf),
         str(cost2), str(u.get("moveValue", 0)), str(u.get("capacityValue", 0)),
         str(u.get("combatHitsOn", 0)), str(u.get("combatDieCount", 1 if u.get("combatHitsOn") else 0)),
         str(u.get("afbHitsOn", 0)), str(u.get("afbDieCount", 0)),
@@ -449,7 +502,7 @@ emit("};")
 emit("const StartChoiceDef kStartChoices[] = {")
 nchoice = 0
 for fi, f in enumerate(factions):
-    if f.get("source") != "ds" or not f.get("startingTechAmount"):
+    if f.get("source") not in ("ds", "blue_reverie") or not f.get("startingTechAmount"):
         continue
     opts = [tech_index[t] for t in (f.get("startingTechOptions") or []) if t in tech_index][:8]
     opts += [-1] * (8 - len(opts))
@@ -492,6 +545,13 @@ if "nivynhero" in leaders:  # owner (RULES-CHECK D96): the Nivyn hero is Krill D
 if "lizhocommander" in leaders:  # the Li-Zho review (2026-11-16): the owner's DS Reference names him Dume Tathu (the data set: Dhume)
     leaders["lizhocommander"] = dict(leaders["lizhocommander"], name="Dume Tathu")
 for n in load("data/promissory_notes/ds.json"):
+    notes[n["alias"]] = n["name"]
+# Blue Reverie (0.83.0)
+for a in load("data/abilities/blue_reverie.json"):
+    abil[a["id"]] = {"Mark Of Pharadn": "Mark of Pharad'n"}.get(a["name"], a["name"])  # (0.85.0: as the cards spell the faction)
+for l in load("data/leaders/blue_reverie.json"):
+    leaders[l["id"]] = dict(l, name=l["name"].strip())
+for n in load("data/promissory_notes/blue_reverie.json"):
     notes[n["alias"]] = n["name"]
 LTYPE = {"agent": 0, "commander": 1, "hero": 2}
 emit(f"const FactionInfo kFactionInfo[{len(factions)}] = {{")
@@ -539,11 +599,17 @@ for o in load("data/public_objectives/public_objectives.json"):
 for o in load("data/secret_objectives/secret_objectives.json"):
     if o.get("source") in SOURCES:
         objs.append((o["alias"], o["name"], 3, 1, o.get("phase"), o["source"]))
+# Monuments+ (0.82.0, a module): its 2 secret objectives, appended after the 80 so every older index stays; the names as
+# printed on the v3.1 cards (owner's files: "Defend a Great Work", "Topple a Monument")
+MON_NAMES = {"Defend A Great Work": "Defend a Great Work", "Topple A Monument": "Topple a Monument",
+             "Cathedral Of Ixth": "Cathedral of Ixth", "Minister Of Culture": "Minister of Culture"}
+for o in load("data/secret_objectives/monuments.json"):
+    objs.append((o["alias"], MON_NAMES.get(o["name"], o["name"]), 3, o.get("points", 1), o.get("phase"), "monuments"))
 PHASE = {"Status": "ObjPhase::Status", "Action": "ObjPhase::Action", "Agenda": "ObjPhase::Agenda"}
 emit(f"ObjectiveDef kObjectives[{len(objs)}] = {{")
 for key, name, kind, pts, ph, src in objs:
     emit(f"  {{{cstr(key)}, {cstr(name)}, {kind}, {pts}, {PHASE.get(ph, 'ObjPhase::Status')}, "
-         f"{'Source::Base' if src == 'base' else 'Source::PoK'}}},")
+         f"{'Source::Base' if src == 'base' else 'Source::Monuments' if src == 'monuments' else 'Source::PoK'}}},")
 emit("};")
 
 # ---------------------------------------------------------------- action cards & agendas
@@ -589,6 +655,12 @@ for cid in te_decks["action_cards_te"]["cardIDs"]:
         ac_count[a["name"]] = 0
         ac_first[a["name"]] = a
     ac_count[a["name"]] += 1
+# Monuments+ (0.82.0, a module): its 3 standard action cards, 1 of each, after Thunder's Edge's
+for a in load("data/action_cards/monuments.json"):
+    a = dict(a, source="monuments")
+    ac_order.append(a["name"])
+    ac_count[a["name"]] = 1
+    ac_first[a["name"]] = a
 emit("// Action cards: key, name, copies in the deck, source")
 emit(f"const ActionCardDef kActionCards[{len(ac_order)}] = {{")
 for n in ac_order:
@@ -596,7 +668,8 @@ for n in ac_order:
     key = a["alias"]
     if ac_count[n] > 1 and key.endswith("1"):
         key = key[:-1]
-    src = {"base": "Source::Base", "uncharted_space": "Source::Uncharted", "thunders_edge": "Source::ThundersEdge"}.get(a["source"], "Source::PoK")
+    src = {"base": "Source::Base", "uncharted_space": "Source::Uncharted", "thunders_edge": "Source::ThundersEdge",
+           "monuments": "Source::Monuments"}.get(a["source"], "Source::PoK")
     emit(f"  {{{cstr(key)}, {cstr(n)}, {ac_count[n]}, {src}}},")
 emit("};")
 
@@ -617,12 +690,48 @@ def elect_kind(a):
     raise SystemExit("unknown agenda target: " + a["alias"] + " " + t)
 emit("// Agendas: key, name, law?, what is voted on, source")
 agendas = decks["agendas_pok"]["cardIDs"]
-emit(f"const AgendaDef kAgendas[{len(agendas)}] = {{")
+absol_count = len([d for d in load("data/decks/absol.json") if d["alias"] == "agendas_absol"][0]["cardIDs"])
+mon_agendas = load("data/agendas/monuments.json")
+emit(f"const AgendaDef kAgendas[{len(agendas) + absol_count + len(mon_agendas)}] = {{")
 for aid in agendas:
     a = ag_all[aid]
     name = a["name"].replace(" (Base Game)", "")
     src = "Source::Base" if a["source"] == "base" else "Source::PoK"
     emit(f"  {{{cstr(aid)}, {cstr(name)}, {'true' if a['type'] == 'Law' else 'false'}, {elect_kind(a)}, {src}}},")
+# Absol's Agendas (0.81.0, owner 2026-11-21: a module that REPLACES the agenda deck): Absol197's 60 cards from
+# data/agendas/absol.json in the order of decks/absol.json "agendas_absol", appended after the 50 so every older index
+# stays; Source::Absol - only dealt with the module. Their texts are the cards' own (src/engine/gen/absol_text.inc,
+# tools/gen_absol_text.py).
+ABSOL_FIX = {"Affimation of Divine Right": "Affirmation of Divine Right",
+             "Research Grant Allocation": "Research Grant Reallocation"}  # (the printed Version 4 card's name)
+def absol_elect(a):
+    t = (a.get("target") or "").lower()
+    if a["alias"] == "absol_covert": return "Elect::Covert"
+    if a["type"] == "Agenda Phase": return "Elect::None"
+    if t.startswith("for/against"): return "Elect::ForAgainst"
+    if "non-home planet other than mecatol" in t: return "Elect::NonHomePlanet"
+    if "non-home planet" in t: return "Elect::NonHome"
+    if "scored secret" in t: return "Elect::ScoredSecret"
+    if "strategy card" in t: return "Elect::StrategyCard"
+    if "unit upgrade technology" in t: return "Elect::UnitUpgrade"
+    if "elect law" in t: return "Elect::Law"
+    if "elect player" in t: return "Elect::Player"
+    raise SystemExit("unknown Absol agenda target: " + a["alias"] + " " + t)
+absol_all = {a["alias"]: a for a in load("data/agendas/absol.json")}
+absol_ids = [d for d in load("data/decks/absol.json") if d["alias"] == "agendas_absol"][0]["cardIDs"]
+for aid in absol_ids:
+    a = absol_all[aid]
+    name = ABSOL_FIX.get(a["name"], a["name"])
+    emit(f"  {{{cstr(aid)}, {cstr(name)}, {'true' if a['type'] == 'Law' else 'false'}, {absol_elect(a)}, Source::Absol}},")
+agendas = agendas + absol_ids
+# Monuments+ (0.82.0, a module): its 2 laws, appended after Absol's (in whichever agenda deck is used); "Elect Non-Home
+# Planet" = any planet but a home planet (Mecatol Rex too: Elect::NonHome)
+for a in mon_agendas:
+    t = (a.get("target") or "").lower()
+    el = "Elect::NonHome" if "non-home planet" in t else "Elect::Player" if "elect player" in t else None
+    if not el: raise SystemExit("unknown Monuments+ agenda target: " + a["alias"] + " " + t)
+    emit(f"  {{{cstr(a['alias'])}, {cstr(MON_NAMES.get(a['name'], a['name']))}, {'true' if a['type'] == 'Law' else 'false'}, {el}, Source::Monuments}},")
+    agendas.append(a["alias"])
 emit("};")
 
 # ---------------------------------------------------------------- exploration & relics
@@ -739,6 +848,8 @@ for pc, s, n in starts:
 emit("};")
 
 os.makedirs(os.path.dirname(OUT), exist_ok=True)
+# the planet name the game has always shipped with (was a sed after each run)
+out = [l.replace('{"dorvok", "Dorvok",', '{"dorvok", "Dorvak",') for l in out]
 with open(OUT, "w") as f:
     f.write("\n".join(out) + "\n")
 print(f"wrote {OUT}: {len(planets)} planets, {len(systems)} systems, {len(units)} units, "

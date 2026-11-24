@@ -111,6 +111,21 @@ void drawHoverLight(Canvas& c, Rect r, bool round) {
     c.frameRoundRect(r.x, r.y, r.w, r.h, rad, theme::gold, 1, 215);
 }
 
+void drawScrollBar(Canvas& c, Rect track, int first, int visible, int total, const std::function<void(int)>& page) {
+    if (visible <= 0 || total <= visible || track.h < 16) return;
+    const int w = std::max(3, track.w);
+    c.fillRoundRect(track.x, track.y, w, track.h, w / 2 + 1, rgb(70, 82, 120), 140);  // the groove
+    const int range = total - visible;
+    const int th = std::max(16, track.h * visible / total);
+    const int ty = track.y + (track.h - th) * std::max(0, std::min(first, range)) / range;
+    c.fillRoundRect(track.x, ty, w, th, w / 2 + 1, rgb(196, 204, 228), 235);  // the handle
+    if (page) {
+        if (ty > track.y) hits::addAction(Rect{track.x - 5, track.y, w + 10, ty - track.y}, [page]() { page(-1); }, hits::Light::None);
+        if (ty + th < track.y + track.h)
+            hits::addAction(Rect{track.x - 5, ty + th, w + 10, track.y + track.h - ty - th}, [page]() { page(1); }, hits::Light::None);
+    }
+}
+
 void drawPanel(Canvas& c, Rect r, uint32_t fill, uint32_t border, int radius, int alpha) {
     hits::addPanel(r);  // (0.61.2: the map underneath a panel takes no pointing or clicks)
     c.fillRoundRect(r.x, r.y, r.w, r.h, radius, fill, alpha);

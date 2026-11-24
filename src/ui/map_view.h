@@ -113,6 +113,13 @@ public:
     };
     void setRoutes(const std::vector<RouteLine>& r) { routes_ = r; }
     void clearRoutes() { routes_.clear(); }
+    // Caled's line (0.84.0, owner: "when the Human player uses Caled, when they are picking their tile, have a line that is drawn
+    // from the tile where Caled to the tile the player is about to pick"): from = Caled's system (-1 = off), to = the system aimed
+    // at (-1 = the cursor's). Faint rays show how far Caled sees along each of the six straight lines.
+    void setCaled(int from, int to = -1) {
+        caledFrom_ = from;
+        caledTo_ = to;
+    }
 
     void draw(Canvas& c, const ti::Game& g, uint32_t now) const;
 
@@ -185,6 +192,8 @@ private:
     mutable std::vector<Flash> flashes_;
     mutable std::vector<Arrow> arrows_;
     std::vector<RouteLine> routes_;
+    int caledFrom_ = -1, caledTo_ = -1;
+    void drawCaled(Canvas& c, const ti::Game& g, float ox, float oy, float size, uint32_t now) const;
     bool borders_ = true;
     bool infoTiles_ = false;
     int viewer_ = -1;
@@ -205,3 +214,6 @@ private:
     static void drawWarp(Canvas& c, float cx, float cy, float size, uint32_t now, bool active);
     void drawBorders(Canvas& c, const ti::Game& g, int sys, float cx, float cy, float size) const;
 };
+
+// (Monuments+ drafts, the 0.82.0 plan) monuments marked on the map for the draft pictures: (planet index, player)
+void setMapDraftMonuments(const std::vector<std::pair<int, int>>& m);

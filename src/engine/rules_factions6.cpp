@@ -100,6 +100,7 @@ void Rules::liberate(int planet, int p) {
 // End of any combat: Phoenix Standard (the Last Bastion galvanize 1 unit that fought), Raise the Standard (a holder
 // of their note may do the same and return it). Other factions' end-of-combat abilities come here too.
 void Rules::combatEnded6(int att, int def, int sys, int planet) {
+    if (brOn()) brCombatEnd(att, def, sys, planet);  // (0.84.0) Spike readies after a loss, Mercenary Sortie goes back
     crimsonCombatEnd(att, def, sys);  // Exile destroyers, Ahk Siever
     reapingWon(att, def, sys, planet);  // The Reaping (Obsidian breakthrough)
     for (int p : {att, def}) {
@@ -269,12 +270,13 @@ void Rules::proximaTargeting(int att, int def, int planet) {
         // opponent's Planetary Shield there (LRR 65; a war sun of ours or a shield that is down lifts it) and Conventions
         // of War on a cultural planet)
         if (G.fixes >= 13) {
-            if (lawInPlay(G, "conventions") && hasTraitOf(G, planet, Trait::Cultural)) continue;
+            if (conventionsOfWar(G) && hasTraitOf(G, planet, Trait::Cultural)) continue;
             bool shield = false;
             if (o < kSides)
                 for (int t = 0; t < kUnitTypes; ++t)
                     if (G.planets[size_t(planet)].units[size_t(o)].n[t] && unitDef(G, o, UnitType(t)).shield) shield = true;
             if (G.fx.dsShieldPlanet == planet) shield = true;  // (Orbital Defense Grid)
+            if (o < G.numPlayers && brPlanetShield(G, o, planet)) shield = true;  // (0.83.0) Synthesis / Kohi
             if (o < kSides && shieldsDown(G, o, sys)) shield = false;
             for (int t : kShipIdx)
                 if (G.systems[size_t(sys)].space[size_t(p)].n[t] && unitDef(G, p, UnitType(t)).ignoresShield) shield = false;
@@ -1179,6 +1181,7 @@ void Rules::placeBreach(int p, int sys, bool active) {
         if (q != p && hasUnits(G, q, sys) && p >= 0 && p < G.numPlayers) G.players[size_t(p)].breachedOthers = true;
     say(p, std::string("A") + (active ? "n active" : "n inactive") + " breach opens in " + sysName(sys) + ".", sys);
     if (active) computeAdjacency(G);
+    if (active && monumentsOn()) monBreachActive(p, sys);  // (0.82.1) Veils of Lost Creuss
 }
 
 void Rules::flipBreach(int p, int sys) {
@@ -1187,6 +1190,7 @@ void Rules::flipBreach(int p, int sys) {
     sy.breach = int8_t(sy.breach == 2 ? 1 : 2);
     say(p, "The breach in " + sysName(sys) + (sy.breach == 2 ? " flares open." : " closes over."), sys);
     computeAdjacency(G);
+    if (sy.breach == 2 && monumentsOn()) monBreachActive(p, sys);  // (0.82.1) Veils of Lost Creuss
 }
 
 // Incursion: activating a system with a breach, the Crimson may flip it. Sundered is checked after the move.

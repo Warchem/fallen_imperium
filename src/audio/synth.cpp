@@ -852,6 +852,13 @@ std::vector<float> bigRocket() {  // the Titans' rockets: an ignition crack, the
 #ifndef TI4_SYNTH_NO_GRIM  // (the round 2-4 drafts define these themselves)
 #include "audio/grim.inc"
 #include "audio/grim2.inc"
+#ifndef TI4_SYNTH_NO_BRVOICES  // (the round 10-11 drafts, which brvoices.inc is made from, define these themselves)
+#include "audio/brvoices.inc"
+#else
+constexpr int kBrVoiceFirst = 65;
+std::vector<int16_t> brVoiceSound(int) { return {}; }
+const char* brVoiceKey(int) { return ""; }
+#endif
 #include "audio/warsun.inc"
 #include "audio/fracture.inc"
 
@@ -873,7 +880,10 @@ std::vector<int16_t> grimSound(Sfx s) {
         const MomentRecipe& m = kMomentRecipes[int(s) - int(Sfx::TurnYours)];
         return grim(m.make(), m.loud, m.hall);
     }
-    if (int(s) >= int(Sfx::VoiceFirst) && int(s) <= int(Sfx::VoiceLast)) return factionVoiceSound(int(s) - int(Sfx::VoiceFirst));
+    if (int(s) >= int(Sfx::VoiceFirst) && int(s) <= int(Sfx::VoiceLast)) {
+        const int f = int(s) - int(Sfx::VoiceFirst);
+        return f >= kBrVoiceFirst ? brVoiceSound(f) : factionVoiceSound(f);  // (0.86.0: the Blue Reverie's)
+    }
     const int f = int(s) - int(Sfx::MoveFirst);
     if (f < 0 || f >= kMoveSounds) return {};
     const MoveRecipe& m = kMoveRecipes[f];
@@ -1029,6 +1039,9 @@ std::vector<int16_t> synthesise(Sfx s) {
 
 #ifndef TI4_SYNTH_NO_GRIM
 const char* moveSoundKey(int f) { return f >= 0 && f < kMoveSounds ? kMoveRecipes[f].key : ""; }
+const char* voiceSoundKey(int f) { return f >= kBrVoiceFirst ? brVoiceKey(f) : f >= 0 ? kVoiceIds[f] : ""; }
+#else
+const char* voiceSoundKey(int) { return ""; }
 #endif
 
 }  // namespace audio

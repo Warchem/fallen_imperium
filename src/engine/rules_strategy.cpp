@@ -72,11 +72,17 @@ void Rules::secondaryAbility(int q, int card) {
         if (enervate(q, card)) return;  // Enervate (the Obsidian's plot): the primary instead
         const int before = G.players[size_t(q)].tactic + G.players[size_t(q)].fleet + G.players[size_t(q)].strategy;
         leadership(q, false);
+        // (0.81.0) Absol's Minister of Exploration: "gains 1 additional command token when resolving the secondary ability of the
+        // Leadership strategy card"
+        if (const Law* l = absolLaw(G, "absol_minsexp"))
+            if (l->owner == q) gainTokens(q, 1, false, "Minister of Exploration: 1 more command token.");
         if ((G.modules & kModDiscordant) && G.players[size_t(q)].tactic + G.players[size_t(q)].fleet + G.players[size_t(q)].strategy > before)
             dsSecondaryDone(q, card);  // Fine Print (Vaden)
         return;
     }
-    const bool ener = graceFree_ || enervateFree(q, card);  // Enervate (Grace, Discordant Stars): no command token
+    // (0.81.0) Absol's Ministers: "may resolve the secondary ability of the <X> strategy card without spending a command token"
+    const bool minister = absolMinisterFree(q, card);
+    const bool ener = graceFree_ || enervateFree(q, card) || minister;  // Enervate (Grace, Discordant Stars): no command token
     const bool freeTrade = card == 4 && fac(q, "hacan");  // Masters of Trade: no token needed
     // Acquiescence (Winnu's note): no token for the secondary of the Winnu player's strategic action
     const int w = strategicPlayer_;
@@ -125,7 +131,7 @@ void Rules::secondaryAbility(int q, int card) {
                     if (!G.planets[size_t(x)].exhausted && planetSkips(G, x)) compounds = true;
             // ((fixes 27, the Jol-Nar review - owner 2026-11-13) Brilliant: the primary it becomes costs nothing)
             const bool brilliant = G.fixes >= 27 && fac(q, "jolnar");
-            if (spendable(G, q, false) < 4 && lawOwner(G, "minister_sciences") != q && !compounds && !brilliant) return;
+            if (spendable(G, q, false) < 4 && !sciencesMinister(q) && !compounds && !brilliant) return;
             bool any = false;
             for (int t = 0; t < kTechCount && !any; ++t)
                 if (canResearchNow(G, q, t)) any = true;
@@ -138,7 +144,8 @@ void Rules::secondaryAbility(int q, int card) {
     }
     if (!forcedSecondary_ &&  // (Strategize, Thunder's Edge: already chosen)
         !yesNo(q, Tag::SecondaryUse, std::string("Use the secondary ability of ") + strategyName(card) + "?",
-               std::string(strategySecondary(card)) + (freeTrade ? " (Masters of Trade: no command token needed.)" : ener ? " (Enervate: no command token needed.)" : "")))
+               std::string(strategySecondary(card)) + (freeTrade ? " (Masters of Trade: no command token needed.)" : minister ? " (Your Minister: no command token needed.)"
+                                                                                      : ener ? " (Enervate: no command token needed.)" : "")))
         return;
     bool useAcq = false;
     if (acq && !freeTrade)
@@ -208,7 +215,7 @@ void Rules::secondaryAbility(int q, int card) {
                     if (breakthroughIs(G, q, "jolnar"))
                         for (int x : controlledPlanets(G, q))
                             if (!G.planets[size_t(x)].exhausted && planetSkips(G, x)) compounds = true;
-                    const bool canFollow = spendable(G, q, false) >= 4 || lawOwner(G, "minister_sciences") == q || compounds;
+                    const bool canFollow = spendable(G, q, false) >= 4 || sciencesMinister(q) || compounds;
                     brilliant = !canFollow || fyes(q, Ab::Brilliant, "Brilliant: resolve Technology's primary ability instead?",
                                                    std::string(abilityText(G.players[size_t(q)].faction, 1)));
                     if (brilliant) say(q, pn(q) + " resolves Technology's primary ability instead (Brilliant).");
@@ -228,7 +235,14 @@ void Rules::secondaryAbility(int q, int card) {
 }
 
 // ------------------------------------------------------------------ 1 Leadership
+// (0.82.3) Independence Tower (Free Systems monument): "After you resolve the primary or secondary ability of the "Leadership" strategy
+// card" - every way it is resolved (Enervate, Galactic Crisis Pact, ...)
 void Rules::leadership(int p, bool primary) {
+    leadershipCore(p, primary);
+    if (monumentsOn()) monAfterLeadership(p);
+}
+
+void Rules::leadershipCore(int p, bool primary) {
     if (primary && brikkOk(0)) gainTokens(p, 3, false, "Leadership: gain 3 command tokens.");
     if (primary && !brikkOk(1)) return;
     int reinforcements = reinforcementTokens(p);
@@ -281,6 +295,7 @@ void Rules::diplomacy(int p, bool primary) {
     // RULES-CHECK: both the primary and secondary ready up to 2 exhausted planets.
     if (!primary || brikkOk(1)) readyPlanets(p, 2);
     afterDiplomacy(p);  // Peace Accords
+    if (monumentsOn()) monAfterDiplomacy(p);  // (0.82.2) Diplomatic Enclave (Olradin monument)
 }
 
 // ------------------------------------------------------------------ 3 Politics
@@ -292,19 +307,20 @@ void Rules::politics(int p, bool primary) {
     // LRR 66.2: new speaker, draw 2 action cards, look at the top 2 agendas.
     std::vector<Option> opts;
     for (int q = 0; q < G.numPlayers; ++q)
-        if (q != G.speaker && !G.players[q].eliminated) opts.push_back({q, pn(q), ""});
-    if (brikkOk(0)) {
+        if (q != G.speaker && !G.players[q].eliminated && absolCanBeSpeaker(q)) opts.push_back({q, pn(q), ""});  // (0.81.0: Absol's laws)
+    if (brikkOk(0) && !opts.empty()) {
         int s = pick(p, Tag::PoliticsSpeaker, "Politics: choose the new speaker", opts,
                      "The speaker picks strategy cards first and breaks tied votes.");
         G.speaker = int8_t(s);
         say(p, pn(s) + " is now the speaker.");
+        absolSpeakerTaken(s);  // (0.81.0) Term Limits
     }
     if (brikkOk(1)) drawActionCards(p, 2, "Politics");
     if (brikkOk(2)) politicsPeek(p);
 }
 
 // ------------------------------------------------------------------ 4 Construction
-void Rules::placeStructure(int p, int sys, bool allowDock, bool allowPds, bool optional, const std::string& prompt) {
+void Rules::placeStructure(int p, int sys, bool allowDock, bool allowPds, bool optional, const std::string& prompt, bool allowMonument) {
     std::vector<Option> opts;
     // (0.61.1, fixes 32 - LRR 23.4a) with none left in the reinforcements, one of yours may come back off the board for it
     const bool dockBack = allowDock && unitsAvailable(G, p, UnitType::SpaceDock) <= 0 && unitsPlaceable(G, p, UnitType::SpaceDock) > 0;
@@ -340,16 +356,27 @@ void Rules::placeStructure(int p, int sys, bool allowDock, bool allowPds, bool o
             if (!dup) opts.push_back({-(s + 10), "Floating factory in " + sysName(s), "", true, s});
         }
     }
+    // (0.82.0) Monuments+'s Construction: the monument is one of the structures (its own spots; they say so when it moves)
+    const size_t plain = opts.size();
+    if (allowMonument && monumentsOn())
+        for (Option& o : monumentSpots(p, false, sys)) opts.push_back(o);
     if (opts.empty()) return;
     // (fixes 32) a choice that needs a piece off the board says so; "abilities cannot force" it - with nothing else to choose, "Nothing"
     auto needsBack = [&](const Option& o) { return o.id <= -10 || o.id % 2 ? dockBack : pdsBack; };
     bool allBack = true;
-    for (Option& o : opts)
-        if (needsBack(o)) o.detail += std::string(o.detail.empty() ? "" : " ") + "None left: one of yours comes off the board for it (LRR 23.4a).";
+    for (size_t i = 0; i < opts.size(); ++i) {
+        Option& o = opts[i];
+        if (i >= plain) allBack = allBack && unitsAvailable(G, p, UnitType::Monument) <= 0;
+        else if (needsBack(o)) o.detail += std::string(o.detail.empty() ? "" : " ") + "None left: one of yours comes off the board for it (LRR 23.4a).";
         else allBack = false;
+    }
     if (optional || allBack) opts.push_back({-1, "Nothing", ""});
     int c = pick(p, Tag::ConstructionWhere, prompt.empty() ? std::string("Place a structure") : prompt, opts, "", false, false);
     if (c == -1) return;
+    if (isMonumentOption(c)) {
+        placeMonument(p, c);
+        return;
+    }
     if (c <= -10) {
         int s = -c - 10;
         if (dockBack) reclaimUnit(p, UnitType::SpaceDock, s, false);
@@ -365,6 +392,7 @@ void Rules::placeStructure(int p, int sys, bool allowDock, bool allowPds, bool o
     if (t == UnitType::SpaceDock ? dockBack : pdsBack) reclaimUnit(p, t, G.planets[planet].system, false);  // (fixes 32, LRR 23.4a)
     addUnits(p, t, 1, G.planets[planet].system, planet);
     say(p, pn(p) + " builds a " + unitTypeName(t) + " on " + planetName(planet) + ".", G.planets[planet].system);
+    if (t == UnitType::PDS) absolPdsPlaced(p, planet);  // (0.81.0) Absol's Homeland Defense Act: one more
     if (t == UnitType::SpaceDock && (G.modules & kModDiscordant)) dsDockPlaced(p, planet);  // Industrious (Roh'Dhna)
     // Minister of Industry: a new space dock lets your units in that system produce.
     if (t == UnitType::SpaceDock && lawOwner(G, "minister_industry") == p)
@@ -374,9 +402,12 @@ void Rules::placeStructure(int p, int sys, bool allowDock, bool allowPds, bool o
 void Rules::construction(int p, bool primary) {
     // Thunder's Edge's revised card (0.34.0): primary - a structure OR one space dock's production, then a
     // structure; secondary - a strategy token for a structure (no token is placed on the board)
-    if (G.modules & kModThundersEdge) {
+    // (0.82.0) Monuments+'s card replaces it (owner 2026-11-21): the same, the monument is one of the structures, a third line
+    // places it, and the secondary places a non-monument structure (rules_monuments.cpp)
+    const bool mplus = monumentsOn();
+    if ((G.modules & kModThundersEdge) || mplus) {
         if (!primary) {
-            placeStructure(p, -1, true, true, false);
+            placeStructure(p, -1, true, true, false);  // ("non-monument")
             return;
         }
         std::vector<Option> docks;  // id: the planet with the dock, or 100000 + system for a floating factory
@@ -390,13 +421,15 @@ void Rules::construction(int p, bool primary) {
         }
         int c = 1;
         if (!brikkOk(0)) docks.clear(), c = 0;
+        const bool mon = mplus && playerMonument(G, p) >= 0;
+        const std::string of = mplus ? " of 3)" : " of 2)";
         if (!docks.empty())
             c = pick(p, Tag::ConstructionChoice, "Construction: place a structure, or produce at one of your space docks?",
-                     {{1, "Place 1 structure", "A PDS or a space dock on a planet you control."},
+                     {{1, "Place 1 structure", mon ? "A PDS, a space dock or your monument." : "A PDS or a space dock on a planet you control."},
                       {2, "Produce at 1 space dock", "Use its Production ability now (paid as usual)."}},
-                     "Then place 1 structure.");
+                     mon ? "Then place 1 structure. Then, if your monument is not on the board, you may place it." : "Then place 1 structure.");
         if (c == 1) {
-            placeStructure(p, -1, true, true, true, "Construction (1 of 2): place a structure");
+            placeStructure(p, -1, true, true, true, "Construction (1" + of + ": place a structure", mon);
         } else if (c == 2) {
             const int d = docks.size() == 1 ? docks[0].id : pick(p, Tag::ConstructionDock, "Construction: produce at which space dock?", docks);
             const UnitDef& dock = unitDef(G, p, UnitType::SpaceDock);
@@ -404,7 +437,8 @@ void Rules::construction(int p, bool primary) {
             const int cap = dock.production + (d < 100000 && dock.productionPlusResources ? planetResources(G, d) : 0);
             production(p, s, cap, false);
         }
-        if (brikkOk(1)) placeStructure(p, -1, true, true, true, "Construction (2 of 2): place 1 more structure");
+        if (brikkOk(1)) placeStructure(p, -1, true, true, true, "Construction (2" + of + ": place 1 more structure", mon);
+        if (mon && brikkOk(2)) monumentLine(p);  // "If your monument is not on the board, you may place it."
         return;
     }
     if (primary) {
@@ -453,7 +487,8 @@ void Rules::construction(int p, bool primary) {
         say(p, pn(p) + " places " + pn(jt) + "'s command token in " + sysName(s) + " (Jae Mir Kan).", s);
     }
     // no token was spent (Galactic Crisis Pact, Acquiescence): none is placed either
-    else if (!freeSecondary_ && !G.systems[s].hasToken(p)) {
+    // ((0.81.0) Absol's Galactic Crisis Pact: "command tokens placed by the ability are placed from a player's reinforcements, instead")
+    else if (absolCrisisReinf_ ? (!G.systems[s].hasToken(p) && reinforcementTokens(p) > 0) : (!freeSecondary_ && !G.systems[s].hasToken(p))) {
         G.systems[s].tokens |= uint16_t(1u << p);
         zeuTE(p, s);  // (fixes 27)
     }
@@ -577,7 +612,7 @@ void Rules::trade(int p, bool primary) {
 // After a player replenishes commodities: Minister of Commerce, Trade Agreement.
 void Rules::replenished(int p, int gained) {
     siphon(p, gained, false);  // Siphon (the Obsidian's plot; Military Industrial Complex comes last: dsReplenished)
-    if (lawOwner(G, "minister_commerce") == p) {
+    if (lawOwner(G, "minister_commerce") == p || (absolLaw(G, "absol_minscomm") && absolLaw(G, "absol_minscomm")->owner == p)) {
         int n = 0;
         for (int q = 0; q < G.numPlayers; ++q)
             if (q != p && !G.players[q].eliminated && areNeighbours(G, p, q)) ++n;
@@ -587,6 +622,7 @@ void Rules::replenished(int p, int gained) {
     tradeAgreement(p);
     replenished4(p);  // The Stillness of Stars
     if (G.modules & kModDiscordant) dsReplenished(p, true, gained);  // Military Industrial Complex (Axis)
+    if (monumentsOn()) monReplenished(p);  // (0.82.3) Bounty Brokerage (Vaden monument)
 }
 
 // ------------------------------------------------------------------ 6 Warfare
@@ -659,7 +695,13 @@ bool Rules::researchStep(int p, int resourceCost, const std::string& why, int ex
     auto shortBy = [&](int t) {  // prerequisites the planets can't cover, after Analytical
         int missing[4], extra = 0;
         missingPrereqs(G, p, t, missing);
-        for (int c = 0; c < 4; ++c) extra += std::max(0, missing[c] - int(skipPlanets(G, p, TechColor(c)).size()));
+        const int lib = monumentsOn() ? libraryColours(G, p) : 0;  // (0.82.4) Forbidden Library: 1 of a colour near it
+        bool libUsed = false;
+        for (int c = 0; c < 4; ++c) {
+            int sh = std::max(0, missing[c] - int(skipPlanets(G, p, TechColor(c)).size()));
+            if (sh > 0 && !libUsed && ((lib >> c) & 1)) --sh, libUsed = true;
+            extra += sh;
+        }
         return extra - analyticalWaiver(G, p, t);
     };
     auto aidaFits = [&](int t) {
@@ -700,19 +742,25 @@ bool Rules::researchStep(int p, int resourceCost, const std::string& why, int ex
     const int dwAgent = (G.modules & kModThundersEdge) ? playerOfFaction(G, "deepwrought") : -1;
     const bool carrinaOk = dwAgent >= 0 && dwAgent != p && canUseAgent(dwAgent, "deepwrought") && !carrinaNo_;
     auto carrinaFits = [&](int t) { return carrinaOk && techAvailableToResearch(G, p, t) && shortBy(t) == 1; };
+    // (0.82.1) Epiphany (Firmament monument, Monuments+): "remove a control token from this card to skip 1 prerequisite"
+    const bool epiphany = epiphanyTokens(G, p) > 0;
+    auto epiphanyFits = [&](int t) { return epiphany && techAvailableToResearch(G, p, t) && shortBy(t) == 1; };
     for (int t = 0; t < kTechCount; ++t) {
         if (t == exclude || !techAvailableToResearch(G, p, t)) continue;
         if (onlyGeneric_ && kTechs[t].faction >= 0) continue;  // Visionaria Select: a generic technology
         if (onlyGeneric_ && G.fixes >= 8 && kTechs[t].unitUpgrade) continue;  // (0.44.4: ... and not a unit upgrade)
+        if (absolNoFaction_ && kTechs[t].faction >= 0) continue;  // (0.81.0) Research Grant Reallocation: a non-faction technology
+        if (maxPrereqs_ >= 0 && kTechs[t].req[0] + kTechs[t].req[1] + kTechs[t].req[2] + kTechs[t].req[3] > maxPrereqs_) continue;  // (Wormhole Research)
         // (Thunder's Edge factions' own technologies; the Obsidian's can't be researched)
         const bool teOwn = (kTechs[t].source == Source::ThundersEdge && kTechs[t].faction >= 0 &&
                             std::strcmp(kFactions[kTechs[t].faction].key, "obsidian") != 0) ||
-                           (kTechs[t].source == Source::Discordant && kTechs[t].faction >= 0);  // (Discordant Stars factions' own)
+                           ((kTechs[t].source == Source::Discordant || kTechs[t].source == Source::BlueReverie) && kTechs[t].faction >= 0);  // (DS / BR factions' own)
         if (kTechs[t].source != Source::Base && kTechs[t].source != Source::PoK && !teOwn) continue;
         if (onlyColour_ >= 0 && (kTechs[t].unitUpgrade || int(kTechs[t].color) != onlyColour_)) continue;  // Specialist Compounds
         if (onlyUpgradeTypes_ && !(upgradeUnitType(t) >= 0 && ((onlyUpgradeTypes_ >> upgradeUnitType(t)) & 1))) continue;  // Glory (Kjalengard)
         if (onlyColours_ && !(kTechs[t].color != TechColor::None && ((onlyColours_ >> int(kTechs[t].color)) & 1))) continue;  // Logic Machina
-        bool ok = canResearchNow(G, p, t) || aidaFits(t) || tearsFits(t) || riftmeldFits(t) || omarFits(t) || fkFits(t) || carrinaFits(t);
+        bool ok = canResearchNow(G, p, t) || aidaFits(t) || tearsFits(t) || riftmeldFits(t) || omarFits(t) || fkFits(t) || carrinaFits(t) ||
+                  epiphanyFits(t);
         if (!ok && inherit && spendable(G, p, false) >= resourceCost + 2) {
             // Inheritance Systems: exhaust it and pay 2 resources to ignore every prerequisite
             inheritOnly.push_back(t);
@@ -741,7 +789,9 @@ bool Rules::researchStep(int p, int resourceCost, const std::string& why, int ex
         }
         if (!ok) continue;
         std::string col = kTechs[t].unitUpgrade ? "Unit upgrade" : colorName(kTechs[t].color);
-        if (!canResearchNow(G, p, t) && !aidaFits(t) && !tearsFits(t) && !riftmeldFits(t) && !omarFits(t) && !fkFits(t) && carrinaFits(t))
+        if (!canResearchNow(G, p, t) && !aidaFits(t) && !tearsFits(t) && !riftmeldFits(t) && epiphanyFits(t))
+            col += " (a control token off Epiphany)";
+        else if (!canResearchNow(G, p, t) && !aidaFits(t) && !tearsFits(t) && !riftmeldFits(t) && !omarFits(t) && !fkFits(t) && carrinaFits(t))
             col += " (asks the Deepwrought's Doctor Carrina)";
         else if (!canResearchNow(G, p, t) && !aidaFits(t) && !tearsFits(t) && !riftmeldFits(t) && !omarFits(t) && fkFits(t))
             col += " (plays Forbidden Knowledge)";
@@ -860,6 +910,18 @@ bool Rules::researchStep(int p, int resourceCost, const std::string& why, int ex
             }
         }
     }
+    // (0.82.1) Epiphany: a control token off the card for the prerequisite nothing else covers (before the one-shot waivers -
+    // Forbidden Knowledge, Brother Omar, Doctor Carrina); otherwise "or move a non-Firmament player's control token to a plot card"
+    bool usedEpiphany = false;
+    if (!usedRiftmeld && !canResearchNow(G, p, t) && !aidaFits(t) && !tearsFits(t) && epiphanyFits(t) && epiphanySkip(p)) {
+        for (int c = 0; c < 4; ++c)
+            if (missing[c] > int(skipPlanets(G, p, TechColor(c)).size())) {
+                --missing[c];
+                break;
+            }
+        usedRiftmeld = usedEpiphany = true;  // (nothing else needed)
+    }
+    if (!usedEpiphany && epiphany) epiphanyPlot(p);
     if (!usedRiftmeld && !canResearchNow(G, p, t) && !aidaFits(t) && !tearsFits(t) && !omarFits(t) && fkFits(t)) {
         // Forbidden Knowledge: play the card (Sabotage can still stop it - then nothing is researched)
         int card = -1;
@@ -985,6 +1047,7 @@ bool Rules::researchStep(int p, int resourceCost, const std::string& why, int ex
             say(p, pn(p) + " ignores a prerequisite with Doctor Carrina's help.");
         }
     }
+    if (monumentsOn()) libraryUse(p, missing);  // (0.82.4) Forbidden Library (Lanefir monument): 1 specialty near it
     TechColor synA, synB;
     const bool syn = synergyOf(G, p, synA, synB);  // Thunder's Edge: the pair's specialties stand in for each other
     for (int c = 0; c < 4; ++c) {
@@ -1086,7 +1149,7 @@ bool Rules::specialistCompounds(int p, int cost) {
 }
 
 void Rules::technology(int p, bool primary) {
-    const bool sciences = lawOwner(G, "minister_sciences") == p;  // Minister of Sciences: no resources needed
+    const bool sciences = sciencesMinister(p);  // Minister of Sciences: no resources needed
     if (!primary) {
         if (!sciences && specialistCompounds(p, 4)) return;
         researchStep(p, sciences ? 0 : 4, sciences ? "Minister of Sciences" : "secondary: 4 resources");
@@ -1126,8 +1189,11 @@ void Rules::imperial(int p, bool primary) {
         opts.push_back({-1, "Don't score now", ""});
         for (int again = 0; again < 8; ++again) {  // 0.43.0 (owner: Backspace in the payment cost the chance; fixes 2)
             int o = pick(p, Tag::ImperialScore, "Imperial: score a public objective now?", opts);
+            if (o >= 0 && absolScoreInstead(p, o)) break;  // (0.81.0) Absol's Minister of Antiquities: a relic instead
             if (o < 0 || scoreObjective(p, o) || G.fixes < 2) break;
         }
+    } else {
+        absolScoreInstead(p, -1);  // (0.81.0) Minister of Antiquities: the chance to score is enough (Absol's FAQ)
     }
     if (!brikkOk(1)) return;
     int mec = G.mecatol();
@@ -1135,7 +1201,13 @@ void Rules::imperial(int p, bool primary) {
     if (mec >= 0)
         for (int16_t x : G.systems[mec].planets)
             if (G.planets[x].owner == p) hasMecatol = true;
-    if (hasMecatol) {
+    // (0.81.0) Absol's Affirmation of Divine Right (Against), the custodians token on it: "players cannot gain victory points from the
+    // Imperial strategy card for controlling Mecatol Rex" - Absol's FAQ: they draw a secret objective instead
+    const Law* aff = absolLaw(G, "absol_affirmation");
+    if (hasMecatol && aff && aff->against) {
+        say(p, pn(p) + " gains no victory point for Mecatol Rex (Affirmation of Divine Right) and draws a secret objective instead.");
+        drawSecret(p);
+    } else if (hasMecatol) {
         gainVP(p, 1, "Imperial: controls Mecatol Rex");
         if (G.modules & kModThundersEdge) custodiaTokens(p);  // Custodian's Favour (Keleres breakthrough)
     }

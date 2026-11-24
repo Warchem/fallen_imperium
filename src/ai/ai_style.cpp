@@ -930,6 +930,22 @@ void factionQuirk(Style& st, const Game& g, int p) {
         st.aggression *= 1.05f;
     } else if (is("ghoti", 1)) {  // Deep Void (the Ghoti review, checkpoint 2: forced 12 / 6.78 - no clear effect, REVISIT)
         st.expansion *= 1.15f;
+    } else if (is("atokera", 0)) {  // (0.83.0) Living Foundries (Synthesis: each readied planet produces)
+        st.expansion *= 1.1f;
+        st.unit[int(UnitType::Cruiser)] = std::max(st.unit[int(UnitType::Cruiser)], 1.3f);
+    } else if (is("atokera", 1)) {  // (0.83.0) Voice of the Council (Ordagka, Magruda, Mirrorshard II)
+        st.card[2] += 0.6f;
+    } else if (is("belkosea", 0)) {  // (0.84.0) Arms Race (Classified Developments: superweapons first)
+        st.card[6] += 0.3f;
+        st.aggression *= 1.05f;
+    } else if (is("belkosea", 1)) {  // (0.84.0) Wyvern Wings
+        st.unit[int(UnitType::Fighter)] = std::max(st.unit[int(UnitType::Fighter)], 1.5f);
+        st.unit[int(UnitType::Carrier)] = std::max(st.unit[int(UnitType::Carrier)], 1.3f);
+    } else if (is("pharadn", 0)) {  // (0.85.0) Tomb Raiders (Ancient Empire: a tomb opened = 2 captured infantry)
+        st.expansion *= 1.15f;
+    } else if (is("pharadn", 1)) {  // (0.85.0) Endless Legion (Immortal: their fallen infantry are captured again)
+        st.unit[int(UnitType::Infantry)] = std::max(st.unit[int(UnitType::Infantry)], 1.4f);
+        st.aggression *= 1.05f;
     }
     // test switch dmnflag (the Dih-Mohn review, checkpoint 2: off) - the guide: "Get Maximus out early; it produces wherever your
     // fleet goes" (the flagship was built in 43% of games): the flagship a favourite unit (built first once affordable). 1.8

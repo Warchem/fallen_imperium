@@ -14,6 +14,8 @@
 #include "ui/theme.h"
 #include "ui/widgets.h"
 #include "ui/pcolors.h"
+#include "ui/pharadn_ui.h"
+#include "ui/superweapon_ui.h"
 
 using namespace ti;
 
@@ -496,6 +498,63 @@ std::vector<Group> of(const Game& g, int p, int viewer) {
         }
         out.push_back(gr);
     }
+    // ---- (0.84.0) the Belkosea: the superweapon cards in their play area (the tray opens the superweapons window)
+    if (brBelkosea(g, p) || pl.swCards || pl.swPurged) {
+        Group gr;
+        gr.title = "Superweapons";
+        gr.note = "Classified Developments: 5 resources or influence for each. Click to open the superweapons.";
+        gr.empty = "None built yet.";
+        for (int k = 0; k < kSuperweaponCount; ++k) {
+            if (!((pl.swCards >> k) & 1)) continue;
+            Piece pc;
+            pc.kind = Kind::Superweapon;
+            pc.value = k;
+            pc.col = superweapon::colour(k);
+            pc.dim = (pl.swExhausted >> k) & 1;
+            pc.label = kSuperweapons[k].name;
+            pc.name = kSuperweapons[k].name;
+            const int x = superweaponPlanet(g, k);
+            pc.detail = std::string(x >= 0 ? "On " + planetLabel(g, x) + ". " : std::string()) + (pc.dim ? "Exhausted. " : "Ready. ") + kSuperweapons[k].text;
+            gr.pieces.push_back(pc);
+        }
+        out.push_back(gr);
+    }
+    // ---- (0.85.0) the Pharad'n Order: captured infantry (Mark of Pharad'n pays for their infantry with these) and the tombs left
+    if (brPharadn(g, p)) {
+        Group gr;
+        gr.title = "Captured infantry and tombs";
+        gr.note = ability(f, "Mark of Pharad'n") + " Ancient Empire: " + ability(f, "Ancient Empire");
+        const int n = pharCaptured(g, p);
+        Piece inf;
+        inf.kind = Kind::Unit;
+        inf.value = int(UnitType::Infantry);
+        inf.count = std::max(1, n);
+        inf.dim = n == 0;
+        inf.col = pharadn::gold();
+        inf.label = "infantry";
+        inf.name = std::to_string(n) + " captured infantry";
+        inf.detail = n > 0 ? std::string("Each infantry you produce or place takes one of these back to your reinforcements first.")
+                           : std::string("None captured: the infantry you produce or place come to nothing until you capture more.");
+        gr.pieces.push_back(inf);
+        int tombs = 0;
+        std::string where;
+        for (size_t x = 0; x < g.planets.size(); ++x)
+            if (g.planets[x].tomb) {
+                ++tombs;
+                if (tombs <= 6) where += (where.empty() ? "" : ", ") + planetLabel(g, int(x));
+            }
+        if (tombs > 6) where += ", ...";
+        Piece tb;
+        tb.kind = Kind::Tomb;
+        tb.count = std::max(1, tombs);
+        tb.dim = tombs == 0;
+        tb.col = pharadn::gold();
+        tb.label = "tombs";
+        tb.name = std::to_string(tombs) + (tombs == 1 ? " tomb token" : " tomb tokens") + " on the board";
+        tb.detail = tombs > 0 ? "On " + where + ". Gain control of one to purge it and capture 2 infantry (another player's taking leaves it)." : std::string("Every tomb has been opened.");
+        gr.pieces.push_back(tb);
+        out.push_back(gr);
+    }
     return out;
 }
 
@@ -668,6 +727,12 @@ void drawPiece(Canvas& c, const Piece& pc, float cx, float cy, float s, uint32_t
             c.ring(cx + r * 0.3f, cy, r * 0.5f, std::max(1.2f, s / 12.f), tc, a);
             break;
         }
+        case Kind::Superweapon:  // (0.84.0) the sphere with its iris
+            superweapon::drawPiece(c, pc.value, cx, cy, r * 0.85f, now, pc.dim, alpha);
+            break;
+        case Kind::Tomb:  // (0.85.0) a Pharad'n tomb token
+            pharadn::drawTomb(c, cx, cy, r * 0.85f, now, a);
+            break;
     }
     if (pc.count > 1) {  // xN at the lower right
         const std::string t = "x" + std::to_string(pc.count);

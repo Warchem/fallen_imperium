@@ -227,7 +227,9 @@ float lawLikeValue(const Game& g, int p, int a);
 
 // How good outcome o of agenda a would be for player p (rough "victory point" scale).
 float outcomeValue(const Game& g, int p, int a, int o) {
-    if (agKey(a, "covert") && g.covertAgenda >= 0) a = g.covertAgenda;
+    if ((agKey(a, "covert") || agKey(a, "absol_covert")) && g.covertAgenda >= 0) a = g.covertAgenda;
+    if (a >= 0 && a < kAgendaCount && kAgendas[a].source == Source::Absol) return absolOutcomeValue(g, p, a, o);  // (0.81.0)
+    if (a >= 0 && a < kAgendaCount && kAgendas[a].source == Source::Monuments) return aiMonOutcomeValue(g, p, a, o);  // (0.82.0)
     const Player& me = g.players[p];
     const char* k = kAgendas[a].key;
     auto is = [&](const char* x) { return !std::strcmp(k, x); };
@@ -269,6 +271,9 @@ float outcomeValue(const Game& g, int p, int a, int o) {
         }
         case Elect::ForAgainst:
         case Elect::Covert: break;
+        case Elect::NonHome:
+        case Elect::UnitUpgrade:
+        case Elect::None: return 0.f;  // (0.81.0: Absol's Agendas only - absolOutcomeValue above)
     }
     const bool f = o == 0;
     if (is("mutiny")) return f ? 3.f : -3.f;  // the AI votes For, so For gains it a point
@@ -428,6 +433,9 @@ int predictOutcome(const Game& g, int a, float* confidence) {
             break;
         case Elect::Law:
             for (const Law& l : g.laws) outs.push_back({l.agenda, "", ""});
+            break;
+        case Elect::UnitUpgrade:  // (0.81.0, Absol's Publicize Weapon Schematics)
+            for (const auto& oc : voteOutcomes(g, real)) outs.push_back({oc.first, "", ""});
             break;
         default:
             for (size_t x = 0; x < g.planets.size(); ++x)
@@ -868,6 +876,12 @@ Answer cardTarget(const Game& g, const Decision& d) {
     }
     if (is("ghost_squad") && d.prompt.find("Ghost Squad: move to") == 0) return one(has(d, d.value) ? d.value : first(d));
     if (is("ghost_squad") && d.prompt.find("Ghost Squad: how many") == 0) return one(d.options.back().id);
+    // ---- Monuments+ (0.82.0)
+    if (monCard(c)) {
+        Answer a;
+        if (aiMonCardTarget(g, d, a)) return a;
+        return one(first(d));
+    }
     // ---- Thunder's Edge (0.34.0)
     if (teCard(c)) {
         if (isYesNoOptions(d)) {  // Exchange Program, asked of us: agree unless they're an enemy (or we've fleet to spare)
@@ -1096,6 +1110,7 @@ float aiComponentValue(const Game& g, int p, int option) {
     }
     int c = option - 1000;
     auto is = [&](const char* k) { return key(c, k); };
+    if (monCard(c)) return aiMonCardValue(g, p, c);  // Monuments+ (0.82.0)
     if (teCard(c)) {  // Thunder's Edge (0.34.0)
         if (is("overrule")) return 1.8f;
         if (is("strategize")) {

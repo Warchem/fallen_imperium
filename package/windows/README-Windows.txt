@@ -1,11 +1,95 @@
 FALLEN IMPERIUM - Windows version
 (an unofficial fan project of Twilight Imperium)
-Version 0.80.0 - Pre-Beta (what is new in each version: GUIDE.txt)
+Not affiliated with or endorsed by Asmodee or Fantasy Flight Games.
+Version 0.86.0 - Pre-Beta (what is new in each version: GUIDE.txt)
 
 The same game as the Miyoo Mini Plus version (Fourth Edition + Prophecy of
 Kings, Codex, Uncharted Space, Thunder's Edge and Discordant Stars, 3 to 8
 players against the computer, every faction), on your PC,
 played with the keyboard and mouse or a controller. Unofficial fan project.
+
+YOUR PROFILE FOLDER (new in 0.85.1) - progress kept between versions
+  Your Career progress (leagues finished, the league in progress, the
+  rivals' memory of you), unlocks, options, key bindings and the autosave
+  now live in one folder outside the game's folder:
+      C:\Users\<you>\Saved Games\Fallen Imperium
+  Every new version reads it, so unzipping an update anywhere keeps your
+  progress. Options > "Your profile folder" shows it (A opens it).
+  The first start of 0.85.1 or later brings your files over by itself from
+  an older version: the game's own folder, or the newest older copy in the
+  folders beside it (e.g. TI4-Windows-0.85.0 next to TI4-Windows-0.85.1).
+  If yours is somewhere else, copy profile.cfg, settings.cfg and
+  savegame.ti4 from the old game folder into the profile folder yourself.
+  Want everything to stay in the game's folder (a USB stick)? Put an empty
+  file named portable.txt next to TwilightImperium.exe.
+
+NEW IN 0.81.1 - Absol's Political Secret, scroll bars, the mouse wheel
+  - With Absol's Agendas ticked, Political Secret is Absol's version: "When
+    you cast votes: You may exhaust up to 3 of its owner's planets and cast
+    votes as if you controlled the exhausted planets. Then return this card
+    to its owner." You're asked while casting your votes (even with no ready
+    planets of your own). Games started in 0.81.0 keep the original card.
+  - Every list with more than fits on screen now has a slim scroll bar on
+    its right side (click above or below the handle to page through it).
+  - The Units screen shows all 11 units at once (the mech card was easy to
+    miss below the first two rows).
+  - The mouse wheel moves the list itself in the deal screen and the card
+    screens (Units, Technology, research ...): the highlight only moves
+    when it would leave the screen.
+
+NEW IN 0.81.0 - Absol's Agendas (a fan-made agenda deck by Absol197)
+  - Title screen > Modules > "Absol's Agendas": tick it and its 60 cards
+    replace the normal agenda deck in your next games (untick it for the
+    normal deck). A saved game keeps the deck it started with.
+  - The cards use their exact printed wording (checked against Absol's own
+    Version 4 cards), and the rules follow his rulebook and FAQ.
+  - New kinds of votes: elect a non-home planet (Mecatol Rex allowed) or a
+    unit upgrade technology. Emergency Session is not voted on: it adds one
+    more agenda at the end of the agenda phase.
+  - A tie for "the player who cast the most votes": the speaker decides.
+    "Exhaust the X strategy card": nobody can pick that card in the next
+    strategy phase.
+  - Many laws carry control tokens or go into play on their "Against" side:
+    Menu > Laws shows the tokens, the side in play and exhausted cards;
+    "All agendas" lists the deck in play.
+  - The bots know every card: how they vote, what they choose, when they
+    spend a law's tokens.
+  - Long cards fit: the agenda card shrinks its text when it must, and the
+    side panel shows the whole text during the vote.
+  - The game now says it is not affiliated with or endorsed by Asmodee or
+    Fantasy Flight Games (title screen and Credits).
+  - RULES-CHECK: what Absol's rulebook settled, two questions for you, and
+    my choices where the cards still leave room.
+
+NEW IN 0.80.11 - the Career, and rival commanders in Casual Game
+  - The Tournament is now called the Career (title screen > Career): the
+    same ladder of leagues against rival commanders who remember you.
+  - Beat a rival - finish above them in a league game - and they become
+    one of your commanders: a banner shows it the first time. Nothing
+    tells you about this before it happens.
+  - Casual Game > Factions & seats > Personality: once you have beaten a
+    rival, a "Rival commanders" list appears under the ten personalities.
+    Seat one and they play with their own personality, bring their own
+    faction when the seat's faction is Random, show their name on the
+    Players screen and at the end of the game - and they remember your
+    Career games with them: break promises to them in a league and they
+    come to your table holding a grudge.
+  - Winning a league for the first time shows its emblem and its faction
+    colour in the same banner.
+  - Their cards on a league's Rivals page say "In Casual Game" once beaten.
+  - Options > "Unlock everything (testing)" opens every commander too.
+
+NEW IN 0.80.1 - two players' reports from GitHub
+  - Keeping a secret objective (at the start of a game): the two secret
+    objectives now show as two cards side by side. With the mouse, the
+    first click on a card picks it out in gold and says "Click again to
+    keep it"; a second click keeps it - one stray click can't keep the
+    wrong one. With a controller or the keyboard: left / right, then A.
+  - The Vuil'raith can build with their own captured units again. When
+    The Terror Between captures their own ships, those ships no longer
+    block building that kind of ship: Amalgamation gives them back to build
+    it (they were refused with "none left"). Games started with 0.80.1 have
+    this; older saves play as before.
 
 NEW IN 0.80.0 - the Tournament (league mode)
   - Title screen > Tournament: a ladder of 17 leagues. Each league is a
@@ -1375,14 +1459,17 @@ CONTROLS - CONTROLLER (Options > Controls: Controller)
   the mouse still works.
 
 FILES
-  Everything stays in the game's folder:
+  In your profile folder (since 0.85.1: Saved Games\Fallen Imperium - see
+  YOUR PROFILE FOLDER at the top; with portable.txt, the game's folder):
     savegame.ti4   your game in progress ("Continue game" on the title)
     settings.cfg   your choices (AI speed, volumes, controls, picture...)
+    profile.cfg    your Career: leagues finished, unlocks, rivals' memory
+  In the game's folder:
     ti4.log        what happened - send it if something goes wrong
                    (Options > Make a bug report gathers it with your save)
   Saves have the same format as the Miyoo version, so you can copy
-  savegame.ti4 between this folder and App/TwilightImperium on the SD card
-  to carry a game over (both should be the same version).
+  savegame.ti4 between the profile folder and App/TwilightImperium on the
+  SD card to carry a game over (both should be the same version).
 
 THE GAME
   GUIDE.txt is the full guide: starting a game, watching the computer

@@ -170,6 +170,8 @@ bool Rules::executiveOrder(int p) {
             G.agendaDeck.erase(G.agendaDeck.begin());
         }
         E.revealed();
+        // (fixes 37) Absol's Emergency Session isn't an agenda: into the common play area for the agenda phase, draw again
+        if (G.fixes >= 37 && absolOn() && kAgendas[c].elect == Elect::None && absolRevealSkip(c)) continue;
         if (!agendaRevealable(c)) {
             say(-1, std::string(kAgendas[c].name) + " is drawn but can't be voted on now - it is discarded.");
             G.agendaDiscard.push_back(int16_t(c));
@@ -200,7 +202,7 @@ bool Rules::executiveOrder(int p) {
 // After an agenda is revealed: holders of the Keleres Rider may play it (no vote,
 // a prediction); the Keleres with Odlynn Myrr may use the hero.
 void Rules::keleresAgendaRevealed(int a) {
-    odlynn_ = odlynnGuess_ = -1;
+    odlynn_ = odlynnGuess_ = odlynnUser_ = -1;
     for (int& r : riderGuess_) r = -1;
     const std::vector<Option> outs = agendaOutcomes(a);
     if (outs.empty()) return;
@@ -234,6 +236,7 @@ void Rules::keleresAgendaRevealed(int a) {
         if (use) {
             odlynnGuess_ = fpick(k, Ab::KeleresOdlynn, "Odlynn Myrr: predict the outcome", outs);
             odlynn_ = k;
+            odlynnUser_ = k;
             purgeHero(k);
             heroEvent5(E, G, k, pn(k) + " sends Odlynn Myrr into the council: 6 more votes, and a prediction - " + outcomeName(a, odlynnGuess_) + ".");
         }

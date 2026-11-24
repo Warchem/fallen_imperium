@@ -25,6 +25,11 @@ std::vector<const RivalDef*> rivalsOf(const std::string& lg) {
         if (lg == r.league) v.push_back(&r);
     return v;
 }
+std::vector<const RivalDef*> allRivals() {
+    std::vector<const RivalDef*> v;
+    for (const RivalDef& r : kRivals) v.push_back(&r);
+    return v;
+}
 const RivalDef* rival(const std::string& id) {
     for (const RivalDef& r : kRivals)
         if (id == r.id) return &r;

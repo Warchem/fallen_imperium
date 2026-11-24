@@ -248,6 +248,21 @@ int decisionScreens(const std::string& outDir) {
                 savePpm(c, outDir + "/ui_" + name + ".ppm");
                 std::printf("uitest: %s (seed %u, step %d): %s\n", name.c_str(), seed, steps, d.prompt.c_str());
                 done.insert(name);
+                if (name == "deal") {  // (0.81.1, owner) three wheel notches up: the list moves, the highlight stays on screen
+                    for (int k = 0; k < 3; ++k) {
+                        Input in;
+                        in.beginFrame();
+                        in.mouseState().wheel = 1.f;
+                        in.handle(Btn::Up, true, 100);
+                        ui->update(in, 100);
+                    }
+                    Canvas c2(640, 480, testScale());
+                    drawSpaceBackground(c2, false);
+                    map.draw(c2, e.game(), 0);
+                    ui->draw(c2, 0);
+                    drawHintBar(c2, ui->hints());
+                    savePpm(c2, outDir + "/ui_deal_wheel.ppm");
+                }
             }
             }
             // 0.28.0: research from the technology cards (the grid, then a card opened)
@@ -625,6 +640,913 @@ int watchScreens(const std::string& outDir) {
     return captured;
 }
 
+// 0.82.0 Monuments+ (TI4_UITEST_ONLY=monuments): the human (the Nekro: their monument fits most planets) takes Construction
+// from round 2 - the card's "(1 of 3)" / "(2 of 3)" placements, then its third line: the monument card first (mon_card),
+// A - where it may go on the map (mon_pick), A A - placed, its card shown to everyone (mon_placed). A bot's monument card
+// (mon_bot).
+int monumentScreens(const std::string& outDir) {
+    std::unique_ptr<Platform> plat = makeHeadlessPlatform("", outDir);
+    Settings settings;
+    settings.setInt("ai_speed", 2);
+    App app(*plat, settings);
+    GameSession::savePath() = outDir + "/mon_save.ti4";
+    std::unique_ptr<GameSession> session(new GameSession());
+    ti::Setup s;
+    s.players = 4;
+    s.human = 0;
+    s.seed = 11;
+    s.modules = 1 | ti::kModMonuments;
+    s.factions = {ti::findFaction("nekro"), ti::findFaction("arborec"), ti::findFaction("hacan"), ti::findFaction("letnev")};
+    if (!session->startNew(s)) return 0;
+    GameSession* sp = session.get();
+    std::unique_ptr<Scene> scene = makeGameScene(std::move(session));
+    Input in;
+    Canvas c(testW(), 480, testScale());
+    ti::Rng rng(5);
+    std::set<std::string> done;
+    auto shot = [&](const std::string& name, uint32_t t) {
+        if (done.count(name)) return;
+        drawTop(*scene, app, c, t);
+        savePpm(c, outDir + "/" + name + ".ppm");
+        std::printf("uitest: %s at %.1f s (round %d)\n", name.c_str(), (t - 1000) / 1000.0, int(sp->game().round));
+        done.insert(name);
+    };
+    bool releaseA = false;
+    uint32_t holdSince = 0, monSince = 0;
+    int monStep = 0;
+    for (uint32_t t = 1000; t < 1000 + 60 * 60 * 1000 && !sp->over() && done.size() < 5; t += 33) {
+        in.beginFrame();
+        in.update(t);
+        if (std::getenv("TI4_MONDEBUG") && sp->holding() && sp->heldKind() == ti::EventKind::MonumentPlaced && !holdSince)
+            std::printf("uitest: monument card held at %.1f s (A down %d)\n", (t - 1000) / 1000.0, int(in.held(Btn::A)));
+        if (releaseA) {
+            in.handle(Btn::A, false, t);
+            releaseA = false;
+        } else if (sp->holding()) {
+            if (!holdSince) holdSince = t;
+            if (std::getenv("TI4_MONDEBUG") && t == holdSince) std::printf("uitest: held kind %d at %.1f s\n", int(sp->heldKind()), (t - 1000) / 1000.0);
+            if (monStep >= 3 && (monStep & 1)) in.handle(Btn::A, false, t), ++monStep;  // (let go of A after answering)
+            if (t - holdSince > 1400) {
+                if (sp->heldKind() == ti::EventKind::MonumentPlaced) {
+                    // whose card: the human's own after mon_pick, else a bot's
+                    shot(monStep >= 3 && !done.count("mon_placed") ? "mon_placed" : "mon_bot", t);
+                }
+                in.handle(Btn::A, true, t);
+                releaseA = true;
+                holdSince = 0;
+            }
+        } else if (sp->humanToAnswer()) {
+            const ti::Decision& d = sp->engine().decision();
+            if (monStep >= 3 && d.tag != ti::Tag::MonumentPlace && (monStep & 1)) in.handle(Btn::A, false, t), ++monStep;  // (let go of A)
+            if (d.tag == ti::Tag::MonumentPlace) {
+                // driven by the buttons, like a player: the card, A, the map pick, A on the highlighted planet (twice if needed)
+                if (!monSince) monSince = t, monStep = 0;
+                if (monStep == 0 && t - monSince > 900) shot("mon_card", t), in.handle(Btn::A, true, t), monStep = 1;
+                else if (monStep == 1) in.handle(Btn::A, false, t), monStep = 2, monSince = t;
+                else if (monStep == 2 && t - monSince > 700) shot("mon_pick", t), in.handle(Btn::A, true, t), monStep = 3, monSince = t;
+                else if (monStep >= 3 && t - monSince > 300) {
+                    in.handle(Btn::A, (monStep & 1) == 0, t);  // press / release until the answer goes in
+                    ++monStep, monSince = t;
+                    if (monStep > 12) {  // (fallback: the AI's choice)
+                        std::string err;
+                        sp->submit(ti::aiAnswer(sp->game(), d, rng), &err, t);
+                    }
+                }
+            } else {
+                monSince = 0;
+                ti::Answer a;
+                bool chosen = false;
+                const bool late = sp->game().round >= 2;
+                for (const ti::Option& o : d.options)
+                    if (late && ((d.tag == ti::Tag::StrategyPick && o.id == 3) || (d.tag == ti::Tag::ActionChoice && o.id == 13))) {
+                        a.picks = {o.id};
+                        chosen = true;
+                    }
+                if (!chosen) a = ti::aiAnswer(sp->game(), d, rng);
+                if (d.tag == ti::Tag::ConstructionWhere && d.prompt.find("(1 of 3)") != std::string::npos) shot("mon_construction1", t);
+                if (d.tag == ti::Tag::ConstructionChoice) shot("mon_construction_choice", t);
+                std::string err;
+                sp->submit(a, &err, t);
+            }
+        }
+        scene->update(app, in, t);
+        if ((t / 33) % 3 == 0) drawTop(*scene, app, c, t);  // (drawn as in the game: a held card counts as seen only once drawn)
+    }
+    {  // the monuments on the map up close (the spire next to the flag, the "M" badge) and in the tile view
+        const ti::Game& g = sp->game();
+        int sys = -1;
+        for (const ti::PlanetState& ps : g.planets)
+            if (ps.units[0].count(ti::UnitType::Monument)) sys = ps.system;
+        if (sys >= 0) {
+            MapView map;
+            map.setViewport(Rect{0, 22, 420, 430});
+            for (int z : {1, 2, 3}) {
+                map.setZoom(z);
+                map.setCursor(g, sys);
+                Canvas c2(640, 480, testScale());
+                drawSpaceBackground(c2, false);
+                map.draw(c2, g, 1000);
+                savePpm(c2, outDir + "/mon_map_zoom" + std::to_string(z) + ".ppm");
+            }
+            Canvas c3(640, 480, testScale());
+            drawSpaceBackground(c3, false);
+            tileview::draw(c3, g, sys, Rect{40, 30, 560, 420}, 1234);
+            savePpm(c3, outDir + "/mon_tile.ppm");
+        }
+    }
+    std::printf("uitest: monuments test ended in round %d (%s), monument step %d\n", int(sp->game().round), sp->over() ? "game over" : "time", monStep);
+    for (const ti::PlanetState& ps : sp->game().planets)
+        for (int q = 0; q < sp->game().numPlayers; ++q)
+            if (ps.units[size_t(q)].count(ti::UnitType::Monument)) std::printf("uitest: monument of seat %d on planet %d\n", q, int(&ps - &sp->game().planets[0]));
+    for (const auto& f : sp->feed())
+        if (f.text.find("monument") != std::string::npos) std::printf("uitest: feed: %s\n", f.text.c_str());
+    std::remove(GameSession::savePath().c_str());
+    std::printf("uitest: %zu monument screens\n", done.size());
+    return int(done.size());
+}
+
+// 0.82.0 Monuments+: a monument ability asked of the human - its card beside the question (TI4_UITEST_ONLY=monuments): the Mentak's
+// Erwan's Fist at the start of a turn, an enemy dreadnought next to it (mon_ability)
+int monumentAbilityScreen(const std::string& outDir) {
+    std::unique_ptr<Platform> plat = makeHeadlessPlatform("", outDir);
+    Settings settings;
+    settings.setInt("ai_speed", 2);
+    App app(*plat, settings);
+    GameSession::savePath() = outDir + "/mon2_save.ti4";
+    std::unique_ptr<GameSession> session(new GameSession());
+    ti::Setup s;
+    s.players = 4;
+    s.human = 0;
+    s.seed = 13;
+    s.modules = 1 | ti::kModMonuments;
+    s.factions = {ti::findFaction("mentak"), ti::findFaction("arborec"), ti::findFaction("hacan"), ti::findFaction("letnev")};
+    if (!session->startNew(s)) return 0;
+    GameSession* sp = session.get();
+    std::unique_ptr<Scene> scene = makeGameScene(std::move(session));
+    Input in;
+    Canvas c(testW(), 480, testScale());
+    ti::Rng rng(5);
+    bool set = false, shot = false;
+    uint32_t since = 0;
+    for (uint32_t t = 1000; t < 1000 + 40 * 60 * 1000 && !sp->over() && !shot; t += 33) {
+        in.beginFrame();
+        in.update(t);
+        if (sp->holding()) {
+            in.handle(Btn::A, true, t);
+            scene->update(app, in, t);
+            in.beginFrame();
+            in.update(t + 1);
+            in.handle(Btn::A, false, t + 1);
+        } else if (sp->humanToAnswer()) {
+            ti::Game& gm = sp->engine().g();
+            if (!set && gm.round == 2 && gm.phase == ti::Phase::Strategy) {
+                set = true;
+                for (size_t x = 0; x < gm.planets.size(); ++x)
+                    if (!gm.systems[size_t(gm.planets[x].system)].offBoard && gm.systems[size_t(gm.planets[x].system)].home < 0 &&
+                        ti::monumentFitsPlanet(gm, 0, int(x))) {
+                        ti::PlanetState& ps = gm.planets[x];
+                        for (auto& f : ps.units) f = ti::Force();
+                        ps.owner = 0;
+                        ps.units[0].add(ti::UnitType::Monument, 1);
+                        gm.systems[size_t(ps.system)].space[1].add(ti::UnitType::Dreadnought, 2);
+                        break;
+                    }
+            }
+            const ti::Decision& d = sp->engine().decision();
+            if (d.tag == ti::Tag::MonumentAbility) {
+                if (!since) since = t;
+                if (t - since > 900) {
+                    drawTop(*scene, app, c, t);
+                    savePpm(c, outDir + "/mon_ability.ppm");
+                    std::printf("uitest: mon_ability (%s)\n", d.prompt.c_str());
+                    shot = true;
+                }
+            } else {
+                std::string err;
+                sp->submit(ti::aiAnswer(sp->game(), d, rng), &err, t);
+            }
+        }
+        scene->update(app, in, t);
+        if ((t / 33) % 3 == 0) drawTop(*scene, app, c, t);
+    }
+    std::remove(GameSession::savePath().c_str());
+    return shot ? 1 : 0;
+}
+
+// (0.82.0, owner 2026-11-22) the monuments' new screens: Nefishh Projector's hint and warning on the landing screen
+// (mon_nefishh_land, mon_nefishh_warn), Mowshir Freeport's unit rows on the deal screen (mon_freeport_deal), and Sector KVD-14's
+// trade goods shown large to the person getting them (mon_notice). Returns how many were saved.
+namespace {
+// plays AI answers until seat 0's action in round 2 (or later); false if the game ends first
+bool toSeat0Action(ti::Engine& e, ti::Rng& rng) {
+    for (int steps = 0; e.waiting() && steps < 20000; ++steps) {
+        const ti::Decision& d = e.decision();
+        if (d.player == 0 && d.tag == ti::Tag::ActionChoice && e.game().round >= 2) return true;
+        e.answer(ti::aiAnswer(e.game(), d, rng));
+        e.takeEvents();
+    }
+    return false;
+}
+// a planet seat 0's monument fits (not a home or Mecatol Rex), with a neighbouring on-board system that has a planet
+bool monumentSpot(const ti::Game& g, int* x, int* ys) {
+    for (size_t pl = 0; pl < g.planets.size(); ++pl) {
+        const ti::SystemState& s = g.systems[size_t(g.planets[pl].system)];
+        if (s.offBoard || s.home >= 0 || int(g.planets[pl].system) == g.mecatol() || !ti::monumentFitsPlanet(g, 0, int(pl))) continue;
+        for (int16_t a : s.adj) {
+            const ti::SystemState& t = g.systems[size_t(a)];
+            if (t.offBoard || t.home >= 0 || t.planets.empty() || int(a) == g.mecatol()) continue;
+            *x = int(pl);
+            *ys = a;
+            return true;
+        }
+    }
+    return false;
+}
+void clearSystem(ti::Game& g, int sys) {
+    for (auto& f : g.systems[size_t(sys)].space) f = ti::Force();
+    for (int16_t pl : g.systems[size_t(sys)].planets)
+        for (auto& f : g.planets[size_t(pl)].units) f = ti::Force();
+}
+void pressKeys(DecisionUI& ui, const std::vector<Btn>& keys) {
+    for (Btn b : keys) {
+        Input in;
+        in.beginFrame();
+        in.handle(b, true, 100);
+        ui.update(in, 100);
+    }
+}
+void saveUi(const ti::Game& g, DecisionUI& ui, MapView& map, const std::string& path) {
+    Canvas c(640, 480, testScale());
+    drawSpaceBackground(c, false);
+    map.draw(c, g, 0);
+    ui.draw(c, 0);
+    drawHintBar(c, ui.hints());
+    savePpm(c, path);
+}
+}  // namespace
+
+int monumentNewScreens(const std::string& outDir) {
+    int saved = 0;
+    {  // Nefishh Projector (Naalu): infantry + a mech about to land next to it
+        ti::Engine e;
+        ti::Setup s;
+        s.players = 4;
+        s.human = -1;
+        s.seed = 21;
+        s.modules = 1 | ti::kModMonuments;
+        s.factions = {ti::findFaction("naalu"), ti::findFaction("letnev"), ti::findFaction("hacan"), ti::findFaction("sol")};
+        e.start(s);
+        ti::Rng rng(3);
+        int x = -1, y = -1;
+        if (toSeat0Action(e, rng) && monumentSpot(e.game(), &x, &y)) {
+            ti::Game& g = e.g();
+            const int xs = g.planets[size_t(x)].system;
+            clearSystem(g, xs);
+            clearSystem(g, y);
+            g.planets[size_t(x)].owner = 0;
+            g.planets[size_t(x)].units[0].add(ti::UnitType::Monument, 1);
+            const int target = g.systems[size_t(y)].planets[0];
+            g.planets[size_t(target)].owner = 1;
+            g.planets[size_t(target)].units[1].add(ti::UnitType::Infantry, 2);
+            g.systems[size_t(y)].space[0].add(ti::UnitType::Carrier, 1);
+            g.systems[size_t(y)].space[0].add(ti::UnitType::Infantry, 2);
+            g.systems[size_t(y)].space[0].add(ti::UnitType::Mech, 1);
+            ti::Decision d;
+            d.player = 0;
+            d.kind = ti::DecisionKind::Land;
+            d.tag = ti::Tag::LandForces;
+            d.system = y;
+            d.prompt = "Land ground forces in " + std::string(ti::kSystems[g.systems[size_t(y)].def].name) + "?";
+            d.context = "Choose how many infantry / mechs go to each planet. Landing nothing is allowed.";
+            MapView map;
+            map.setViewport(Rect{0, 22, 420, 430});
+            map.setCursor(g, y);
+            std::unique_ptr<DecisionUI> ui = makeDecisionUI(g, d, map);
+            // every ground force onto the first planet (the suggestion may leave some in space)
+            pressKeys(*ui, {Btn::B, Btn::Right, Btn::Right, Btn::Down, Btn::Right});
+            saveUi(g, *ui, map, outDir + "/mon_nefishh_land.ppm");
+            pressKeys(*ui, {Btn::Start});
+            saveUi(g, *ui, map, outDir + "/mon_nefishh_warn.ppm");
+            std::printf("uitest: mon_nefishh_land / mon_nefishh_warn (%s)\n", ti::kPlanets[g.planets[size_t(target)].def].name);
+            saved += 2;
+        }
+    }
+    {  // Mowshir Freeport (Hacan): the deal screen offers the units near it
+        ti::Engine e;
+        ti::Setup s;
+        s.players = 4;
+        s.human = -1;
+        s.seed = 22;
+        s.modules = 1 | ti::kModMonuments;
+        s.factions = {ti::findFaction("hacan"), ti::findFaction("letnev"), ti::findFaction("naalu"), ti::findFaction("sol")};
+        e.start(s);
+        ti::Rng rng(4);
+        int x = -1, y = -1;
+        if (toSeat0Action(e, rng) && monumentSpot(e.game(), &x, &y)) {
+            ti::Game& g = e.g();
+            const int xs = g.planets[size_t(x)].system;
+            clearSystem(g, xs);
+            clearSystem(g, y);
+            g.planets[size_t(x)].owner = 0;
+            g.planets[size_t(x)].units[0].add(ti::UnitType::Monument, 1);
+            g.systems[size_t(xs)].space[0].add(ti::UnitType::Destroyer, 2);
+            g.systems[size_t(xs)].space[0].add(ti::UnitType::Cruiser, 1);
+            g.systems[size_t(y)].space[1].add(ti::UnitType::Carrier, 1);
+            g.systems[size_t(y)].space[1].add(ti::UnitType::Destroyer, 1);
+            bool ok = false;
+            for (const ti::Option& o : e.decision().options)
+                if (o.id == 650 && o.enabled) ok = true;
+            if (ok) {
+                ti::Answer a;
+                a.picks = {650};
+                e.answer(a);
+                e.takeEvents();
+                for (int k = 0; k < 4 && e.waiting() && e.decision().player == 0 && e.decision().tag == ti::Tag::Negotiate; ++k) {
+                    ti::Answer b;
+                    for (const ti::Option& o : e.decision().options)
+                        if (o.id == 1 && o.enabled) b.picks = {1};
+                    if (b.picks.empty()) break;
+                    e.answer(b);
+                    e.takeEvents();
+                }
+                if (e.waiting() && e.decision().player == 0 && e.decision().kind == ti::DecisionKind::Deal) {
+                    const ti::Decision& d = e.decision();
+                    MapView map;
+                    map.setViewport(Rect{0, 22, 420, 430});
+                    map.setCursor(g, xs);
+                    std::unique_ptr<DecisionUI> ui = makeDecisionUI(e.game(), d, map);
+                    const char* rows = std::getenv("TI4_FREEPORT_DOWN");  // (test only: how far down the unit rows are)
+                    std::vector<Btn> keys(size_t(rows ? std::atoi(rows) : 6), Btn::Down);
+                    keys.push_back(Btn::Right);
+                    pressKeys(*ui, keys);
+                    saveUi(e.game(), *ui, map, outDir + "/mon_freeport_deal.ppm");
+                    std::printf("uitest: mon_freeport_deal (flags %d)\n", d.dealFlags);
+                    ++saved;
+                }
+            }
+        }
+    }
+    {  // Sector KVD-14 (Yssaril): another player plays an action card next to it - the trade goods, shown large to you
+        std::unique_ptr<Platform> plat = makeHeadlessPlatform("", outDir);
+        Settings settings;
+        settings.setInt("ai_speed", 2);
+        App app(*plat, settings);
+        GameSession::savePath() = outDir + "/mon3_save.ti4";
+        std::unique_ptr<GameSession> session(new GameSession());
+        ti::Setup s;
+        s.players = 4;
+        s.human = 0;
+        s.seed = 23;
+        s.modules = 1 | ti::kModMonuments;
+        s.factions = {ti::findFaction("yssaril"), ti::findFaction("letnev"), ti::findFaction("hacan"), ti::findFaction("sol")};
+        if (session->startNew(s)) {
+            GameSession* sp = session.get();
+            std::unique_ptr<Scene> scene = makeGameScene(std::move(session));
+            Input in;
+            Canvas c(testW(), 480, testScale());
+            ti::Rng rng(6);
+            bool set = false, shot = false;
+            for (uint32_t t = 1000; t < 1000 + 60 * 60 * 1000 && !sp->over() && !shot; t += 33) {
+                in.beginFrame();
+                in.update(t);
+                if (sp->holding()) {
+                    if (!sp->feed().empty() && sp->feed().back().text.find("(Sector KVD-14)") != std::string::npos) {
+                        for (int k = 0; k < 30; ++k) scene->update(app, in, t + uint32_t(k) * 33), drawTop(*scene, app, c, t + uint32_t(k) * 33);
+                        savePpm(c, outDir + "/mon_notice.ppm");
+                        std::printf("uitest: mon_notice (%s)\n", sp->feed().back().text.c_str());
+                        shot = true;
+                        ++saved;
+                        // the game menu: "Monuments" after "Laws" (Monuments+ games), and its screen
+                        uint32_t tt = t + 1000;
+                        auto press = [&](Btn b) {
+                            in.beginFrame();
+                            in.update(tt);
+                            in.handle(b, true, tt);
+                            scene->update(app, in, tt);
+                            in.beginFrame();
+                            in.update(tt + 1);
+                            in.handle(b, false, tt + 1);
+                            scene->update(app, in, tt + 1);
+                            tt += 120;
+                        };
+                        press(Btn::A);  // (the notice)
+                        for (int k = 0; k < 10; ++k) drawTop(*scene, app, c, tt + uint32_t(k) * 33);
+                        press(Btn::Menu);
+                        for (int k = 0; k < 4; ++k) press(Btn::Down);
+                        drawTop(*scene, app, c, tt);
+                        savePpm(c, outDir + "/mon_menu.ppm");
+                        press(Btn::A);
+                        for (int k = 0; k < 10; ++k) drawTop(*scene, app, c, tt + uint32_t(k) * 33);
+                        savePpm(c, outDir + "/mon_menu_screen.ppm");
+                        // the banner's screen buttons (a mouse in use; room for them at a widescreen width, TI4_SCREENW=853):
+                        // Monuments after the nine, its pop-up window
+                        press(Btn::B);
+                        press(Btn::B);
+                        in.beginFrame();
+                        in.update(tt);
+                        in.mouseState().active = true;
+                        in.mouseState().x = 300.f;
+                        in.mouseState().y = 200.f;
+                        scene->update(app, in, tt);
+                        for (int k = 0; k < 6; ++k) drawTop(*scene, app, c, tt + uint32_t(k) * 33);
+                        savePpm(c, outDir + "/mon_banner.ppm");
+                        std::printf("uitest: mon_menu / mon_menu_screen / mon_banner\n");
+                        ++saved;
+                        break;
+                    }
+                    in.handle(Btn::A, true, t);
+                    scene->update(app, in, t);
+                    in.beginFrame();
+                    in.update(t + 1);
+                    in.handle(Btn::A, false, t + 1);
+                } else if (sp->humanToAnswer()) {
+                    ti::Game& gm = sp->engine().g();
+                    if (!set && gm.round == 2 && gm.phase == ti::Phase::Strategy) {
+                        int x = -1, y = -1;
+                        if (monumentSpot(gm, &x, &y)) {
+                            set = true;
+                            const int xs = gm.planets[size_t(x)].system;
+                            clearSystem(gm, xs);
+                            gm.planets[size_t(x)].owner = 0;
+                            gm.planets[size_t(x)].units[0].add(ti::UnitType::Monument, 1);
+                            // the others' ships next to it: any action card they play counts
+                            int q = 1;
+                            for (int16_t a : gm.systems[size_t(xs)].adj) {
+                                if (q >= gm.numPlayers) break;
+                                if (gm.systems[size_t(a)].offBoard || gm.systems[size_t(a)].home >= 0) continue;
+                                for (int r = 0; r < gm.numPlayers; ++r) gm.systems[size_t(a)].space[size_t(r)] = ti::Force();
+                                gm.systems[size_t(a)].space[size_t(q++)].add(ti::UnitType::Destroyer, 1);
+                            }
+                        }
+                    }
+                    std::string err;
+                    sp->submit(ti::aiAnswer(sp->game(), sp->engine().decision(), rng), &err, t);
+                }
+                scene->update(app, in, t);
+                if ((t / 33) % 3 == 0) drawTop(*scene, app, c, t);
+            }
+            std::remove(GameSession::savePath().c_str());
+        }
+    }
+    return saved;
+}
+
+// (0.82.0) Monuments+'s cards on the reference screens: the 3 action cards in a hand (mon_cards_hand, one opened: mon_cards_festival),
+// the 2 laws in play (mon_cards_laws) and the 2 secret objectives on the faction sheet (mon_cards_secrets)
+int monumentCardScreens(const std::string& outDir) {
+    ti::Engine e;
+    ti::Setup s;
+    s.players = 4;
+    s.human = -1;
+    s.seed = 24;
+    s.modules = 1 | ti::kModMonuments;
+    s.factions = {ti::findFaction("letnev"), ti::findFaction("hacan"), ti::findFaction("naalu"), ti::findFaction("sol")};
+    e.start(s);
+    ti::Rng rng(8);
+    if (!toSeat0Action(e, rng)) return 0;
+    ti::Game& g = e.g();
+    ti::Player& me = g.players[0];
+    me.actionCards = {int16_t(ti::findActionCard("festival")), int16_t(ti::findActionCard("rebelbombing")), int16_t(ti::findActionCard("renovation"))};
+    me.secrets = {int16_t(ti::findObjective("dagw")), int16_t(ti::findObjective("tam"))};
+    int x = -1;
+    for (int y : ti::controlledPlanets(g, 0))
+        if (!ti::isHomePlanet(g, y)) x = y;
+    if (x < 0) x = ti::controlledPlanets(g, 0).front();
+    ti::Law cat;
+    cat.agenda = int16_t(ti::findAgenda("cathedralofixth"));
+    cat.target = int16_t(x);
+    ti::Law cul;
+    cul.agenda = int16_t(ti::findAgenda("ministerofculture"));
+    cul.owner = 0;
+    g.laws = {cat, cul};
+    drawInfo(*makeHandScreen(g, 0), outDir + "/mon_cards_hand.ppm", {});
+    drawInfo(*makeHandScreen(g, 0), outDir + "/mon_cards_festival.ppm", {Btn::A});
+    drawInfo(*makeLawScreen(g, 0), outDir + "/mon_cards_laws.ppm", {});
+    drawInfo(*makeLawScreen(g, 0), outDir + "/mon_cards_cathedral.ppm", {Btn::A});
+    drawInfo(*makeFactionSheet(g, 0, -1, true), outDir + "/mon_cards_secrets.ppm", {});
+    // the Monuments screen (game menu / banner button): the Letnev's monument on a planet of theirs, the Naalu's too
+    for (int q : {0, 2}) {
+        const std::vector<int> mine = ti::controlledPlanets(g, q);
+        int at = -1;
+        for (int y : mine)
+            if (ti::monumentFitsPlanet(g, q, y) && !ti::isHomePlanet(g, y)) at = y;
+        if (at < 0)
+            for (int y : mine)
+                if (!ti::isHomePlanet(g, y)) at = y;
+        if (at >= 0) g.planets[size_t(at)].units[size_t(q)].add(ti::UnitType::Monument, 1);
+    }
+    g.players[0].monExhausted = true;
+    drawInfo(*makeMonumentScreen(g, 0), outDir + "/mon_screen_all.ppm", {});
+    drawInfo(*makeMonumentScreen(g, 0), outDir + "/mon_screen_card.ppm", {Btn::A});
+    drawInfo(*makeMonumentScreen(g, 0), outDir + "/mon_screen_yours.ppm", {Btn::R1});
+    std::printf("uitest: mon_cards_hand / festival / laws / cathedral / secrets; mon_screen_all / card / yours\n");
+    return 8;
+}
+
+// 0.82.1 Monuments+: Thunder's Edge's monuments (TI4_UITEST_ONLY=monte): the Monuments screen with all six factions, the Seraph Data
+// Center's card (the space station mark), its station on the map in each tileset and in the tile view
+int monumentTEScreens(const std::string& outDir) {
+    ti::Engine e;
+    ti::Setup s;
+    s.players = 6;
+    s.human = -1;
+    s.seed = 31;
+    s.modules = 1 | ti::kModMonuments | ti::kModThundersEdge;
+    s.factions = {ti::findFaction("bastion"), ti::findFaction("crimson"), ti::findFaction("deepwrought"), ti::findFaction("firmament"),
+                  ti::findFaction("ralnel"), ti::findFaction("letnev")};
+    e.start(s);
+    ti::Rng rng(8);
+    if (!toSeat0Action(e, rng)) return 0;
+    ti::Game& g = e.g();
+    // the Seraph Data Center: a system next to the Bastion's home with 1 planet, their cruiser, the monument and its station card
+    int st = -1;
+    for (int16_t a : g.systems[size_t(g.players[0].homeSystem)].adj) {
+        const ti::SystemState& sy = g.systems[size_t(a)];
+        if (sy.home < 0 && !sy.offBoard && !sy.isHyperlane() && sy.planets.size() == 1 && !ti::isLegendaryPlanet(g, sy.planets[0]) && st < 0) st = a;
+    }
+    for (size_t k = 0; k < g.systems.size() && st < 0; ++k) {
+        const ti::SystemState& sy = g.systems[k];
+        if (sy.home < 0 && !sy.offBoard && !sy.isHyperlane() && sy.planets.size() == 1 && !ti::isLegendaryPlanet(g, sy.planets[0])) st = int(k);
+    }
+    if (st < 0) return 0;
+    g.systems[size_t(st)].space[0].add(ti::UnitType::Cruiser, 1);
+    g.systems[size_t(st)].space[0].add(ti::UnitType::Monument, 1);
+    {
+        ti::PlanetState ps;
+        ps.def = int16_t(ti::findPlanet("seraphdatacenter"));
+        ps.system = int16_t(st);
+        ps.owner = 0;
+        g.players[0].monStation = int16_t(g.planets.size());
+        g.systems[size_t(st)].planets.push_back(int16_t(g.planets.size()));
+        g.planets.push_back(ps);
+    }
+    // the others on a planet of theirs where their card allows (the Firmament's with 2 control tokens on it)
+    for (int q = 1; q < 5; ++q) {
+        int at = -1;
+        for (int y : ti::controlledPlanets(g, q))
+            if (ti::monumentFitsPlanet(g, q, y) && !ti::isHomePlanet(g, y)) at = y;
+        if (at < 0)
+            for (size_t y = 0; y < g.planets.size() && at < 0; ++y)
+                if (g.planets[y].owner < 0 && ti::monumentFitsPlanet(g, q, int(y)) && !ti::isDMZ(g, int(y)) &&
+                    g.systems[size_t(g.planets[y].system)].home < 0 && !g.systems[size_t(g.planets[y].system)].offBoard) {
+                    at = int(y);
+                    g.planets[y].owner = int8_t(q);
+                }
+        if (at >= 0) g.planets[size_t(at)].units[size_t(q)].add(ti::UnitType::Monument, 1);
+    }
+    g.players[3].epiphanyTok = uint16_t((1u << 0) | (1u << 5));
+    drawInfo(*makeMonumentScreen(g, 0), outDir + "/monte_screen_all.ppm", {});
+    drawInfo(*makeMonumentScreen(g, 0), outDir + "/monte_screen_seraph.ppm", {Btn::A});
+    drawInfo(*makeMonumentScreen(g, 0), outDir + "/monte_screen_more.ppm", {Btn::Down, Btn::Down});
+    drawInfo(*makeMonumentScreen(g, 0), outDir + "/monte_screen_epiphany.ppm", {Btn::Down, Btn::Right, Btn::A});
+    drawInfo(*makePlanetScreen(g, 0), outDir + "/monte_planets.ppm", {});
+    const int keep = retro::tileset();
+    for (int t : {0, 1, 2}) {
+        retro::setTileset(t);
+        MapView map;
+        map.setViewport(Rect{0, 22, 420, 430});
+        map.setZoom(3);
+        map.setCursor(g, st);
+        Canvas c2(640, 480, testScale());
+        drawSpaceBackground(c2, false);
+        map.draw(c2, g, 1000);
+        savePpm(c2, outDir + "/monte_station_map" + std::to_string(t) + ".ppm");
+    }
+    retro::setTileset(keep);
+    Canvas c3(640, 480, testScale());
+    drawSpaceBackground(c3, false);
+    tileview::draw(c3, g, st, Rect{40, 30, 560, 420}, 1234);
+    savePpm(c3, outDir + "/monte_station_tile.ppm");
+    std::printf("uitest: monte_screen_all / seraph / more / epiphany, monte_planets, monte_station_map0-2, monte_station_tile (%s)\n",
+                g.systems[size_t(st)].d().name);
+    return 9;
+}
+
+// (0.83.0, TI4_UITEST_ONLY=brsheet) the Blue Reverie factions' sheets and cards (Atokera): sheet, cards and two scrolls
+static int brSheetScreens(const std::string& outDir) {
+    using namespace ti;
+    int n = 0;
+    for (const char* key : {"atokera", "belkosea", "pharadn"}) {
+        Engine e;
+        Setup s;
+        s.players = 6;
+        s.factions = {-1, findFaction(key)};
+        s.human = -1;
+        s.seed = 4242;
+        s.modules = kModCodex | kModBlueReverie;
+        e.start(s);
+        Rng rng(9);
+        for (int steps = 0; e.waiting() && steps < 3000 && e.game().phase != Phase::Action; ++steps) {
+            Answer a = aiAnswer(e.game(), e.decision(), rng);
+            if (!e.answer(a)) break;
+            e.takeEvents();
+        }
+        const Game& g = e.game();
+        std::string base = outDir + "/info_fc_" + key;
+        drawInfo(*makeFactionSheet(g, 1), base + "_sheet.ppm", {});
+        drawInfo(*makeFactionSheet(g, 1), base + "_1.ppm", {Btn::A});
+        drawInfo(*makeFactionSheet(g, 1), base + "_2.ppm", {Btn::A, Btn::Down, Btn::Down, Btn::Down});
+        drawInfo(*makeFactionSheet(g, 1), base + "_3.ppm", {Btn::A, Btn::Down, Btn::Down, Btn::Down, Btn::Down, Btn::Down, Btn::Down});
+        drawInfo(*makeFactionSheet(g, 1), base + "_4.ppm",
+                 {Btn::A, Btn::Down, Btn::Down, Btn::Down, Btn::Down, Btn::Down, Btn::Down, Btn::Down, Btn::Down, Btn::Down});
+        n += 5;
+        if (!std::strcmp(key, "pharadn")) {  // (0.85.0) 5 captured infantry, the tombs on the board: the tray, a tomb's tile and the map
+            Game h = g;
+            for (int i = 0; i < 5; ++i) h.players[1].captured.push_back(int16_t(kCapturedToken * 16 + int(UnitType::Infantry)));
+            int tombSys = -1;
+            for (size_t x = 0; x < h.planets.size() && tombSys < 0; ++x)
+                if (h.planets[x].tomb && h.planets[x].system >= 0) tombSys = h.planets[x].system;
+            if (tombSys < 0)
+                for (size_t x = 0; x < h.planets.size() && tombSys < 0; ++x)
+                    if (h.planets[x].owner < 0 && h.planets[x].system >= 0 && !h.systems[size_t(h.planets[x].system)].offBoard)
+                        h.planets[x].tomb = true, tombSys = h.planets[x].system;
+            drawInfo(*makeFactionSheet(h, 1), base + "_tomb_sheet.ppm", {});
+            ++n;
+            {  // (owner 11:14, reading 10: "Player should be able to choose the tile with the anomaly") the Impactor's question on the map
+                Decision d;
+                d.player = 1;
+                d.kind = DecisionKind::Pick;
+                d.tag = Tag::Faction;
+                d.ability = int(Ab::PharImpactor);
+                d.onMap = true;
+                d.prompt = "Reality-Field Impactor: choose 1 anomaly that has no effect this tactical action?";
+                d.context = "Until the end of this tactical action - for every player.";
+                for (size_t s2 = 0; s2 < h.systems.size(); ++s2)
+                    if (!h.systems[s2].offBoard && isAnomaly(h, int(s2)))
+                        d.options.push_back({int(s2), std::string(h.systems[s2].d().name) + " (" + h.systems[s2].d().key + ")", "", true, int(s2)});
+                d.options.push_back({-1, "None", ""});
+                d.validate = [](const Answer&) { return std::string(); };
+                Canvas c(640, 480, testScale());
+                MapView map;
+                map.setViewport(Rect{0, 22, 420, 430});
+                map.setCursor(h, d.options[0].at);
+                drawSpaceBackground(c, false);
+                std::unique_ptr<DecisionUI> ui = makeDecisionUI(h, d, map);
+                map.draw(c, h, 0);
+                ui->draw(c, 0);
+                drawHintBar(c, ui->hints());
+                savePpm(c, base + "_impactor_pick.ppm");
+                ++n;
+            }
+            const int was = retro::tileset();
+            const char* tsName[3] = {"", "_retro", "_voidfall"};
+            for (int ts = 0; ts < 3 && tombSys >= 0; ++ts) {
+                retro::setTileset(ts);
+                Canvas c(640, 480, testScale());
+                drawSpaceBackground(c, false);
+                tileview::draw(c, h, tombSys, Rect{0, 22, 640, 430}, 400);
+                savePpm(c, base + "_tomb_tile" + tsName[ts] + ".ppm");
+                for (int z = 1; z <= 3; z += 2) {
+                    Canvas c2(640, 480, testScale());
+                    MapView map;
+                    map.setViewport(Rect{0, 22, 640, 430});
+                    map.setZoom(z);
+                    map.setCursor(h, tombSys);
+                    drawSpaceBackground(c2, false);
+                    map.draw(c2, h, 400);
+                    savePpm(c2, base + "_tomb_map_z" + std::to_string(z) + tsName[ts] + ".ppm");
+                }
+                n += 3;
+            }
+            retro::setTileset(was);
+        }
+        if (!std::strcmp(key, "belkosea")) {  // (0.84.0) three superweapons built, one exhausted, one purged: the tray and the window
+            Game h = g;
+            Player& pl = h.players[1];
+            int placed = 0;
+            for (int x : controlledPlanets(h, 1))
+                if (!isStation(h, x) && placed < 1) h.planets[size_t(x)].superweapon = int8_t(kSwMors), ++placed;
+            auto free = [&](size_t x) {
+                return h.planets[x].owner < 0 && !h.planets[x].destroyed && !isStation(h, int(x)) && h.planets[x].system >= 0 &&
+                       !h.systems[size_t(h.planets[x].system)].offBoard && h.planets[x].superweapon < 0;
+            };
+            for (size_t x = 0; x < h.planets.size() && placed < 2; ++x)
+                if (free(x)) {
+                    h.planets[x].owner = 1;
+                    h.planets[x].superweapon = int8_t(kSwAvailyn);
+                    ++placed;
+                }
+            {  // Caled where it sees far (for the line shots below)
+                int best = -1, bestReach = -1;
+                for (size_t x = 0; x < h.planets.size(); ++x) {
+                    if (!free(x) || isAnomaly(h, h.planets[x].system)) continue;
+                    const Hex hp = h.systems[size_t(h.planets[x].system)].pos;
+                    int reach = 0;
+                    for (int d = 0; d < 6; ++d)
+                        for (int i = 1; i < 8; ++i) {
+                            const int s2 = h.findSystemAt(Hex{hp.q + hexDir(d).q * i, hp.r + hexDir(d).r * i});
+                            if (s2 < 0 || isAnomaly(h, s2)) break;
+                            ++reach;
+                        }
+                    if (reach > bestReach) bestReach = reach, best = int(x);
+                }
+                if (best >= 0) h.planets[size_t(best)].owner = 1, h.planets[size_t(best)].superweapon = int8_t(kSwCaled), ++placed;
+            }
+            pl.swCards = (1 << kSwMors) | (1 << kSwAvailyn) | (1 << kSwCaled);
+            pl.swExhausted = 1 << kSwCaled;
+            pl.swPurged = 1 << kSwGrom;
+            drawInfo(*makeFactionSheet(h, 1), base + "_sw_sheet.ppm", {});
+            drawInfo(*makeFactionSheet(h, 1), base + "_sw_window.ppm", {Btn::Y});
+            n += 2;
+            // Caled's line on the map (owner): a target in line, one past an anomaly, one off the six lines
+            pl.swExhausted = 0;
+            int cal = superweaponSystem(h, kSwCaled);
+            if (cal >= 0) {
+                int inLine = -1, blocked = -1, off = -1;
+                const Hex hp = h.systems[size_t(cal)].pos;
+                for (int d = 0; d < 6; ++d)
+                    for (int i = 1; i < 6; ++i) {
+                        const int s2 = h.findSystemAt(Hex{hp.q + hexDir(d).q * i, hp.r + hexDir(d).r * i});
+                        if (s2 < 0) break;
+                        if (caledLine(h, cal, s2) && (inLine < 0 || i >= 2)) inLine = s2;
+                        if (!caledLine(h, cal, s2) && !isAnomaly(h, s2) && blocked < 0) blocked = s2;
+                    }
+                for (size_t s2 = 0; s2 < h.systems.size() && off < 0; ++s2)
+                    if (!h.systems[s2].offBoard && hexDistance(h.systems[s2].pos, hp) == 3 && int(s2) != inLine && int(s2) != blocked) {
+                        bool straight = false;
+                        for (int d = 0; d < 6; ++d)
+                            straight = straight || Hex{hp.q + hexDir(d).q * 3, hp.r + hexDir(d).r * 3} == h.systems[s2].pos;
+                        if (!straight) off = int(s2);
+                    }
+                const char* names[3] = {"_caled_ok", "_caled_blocked", "_caled_off"};
+                const int tgt[3] = {inLine, blocked, off};
+                for (int k = 0; k < 3; ++k) {
+                    if (tgt[k] < 0) {
+                        std::printf("uitest: belkosea%s - no target\n", names[k]);
+                        continue;
+                    }
+                    Canvas c(640, 480, testScale());
+                    MapView map;
+                    map.setViewport(Rect{0, 22, 420, 430});
+                    map.setCursor(h, tgt[k]);
+                    map.setCaled(cal);
+                    drawSpaceBackground(c, false);
+                    map.draw(c, h, 400);
+                    savePpm(c, base + names[k] + ".ppm");
+                    ++n;
+                }
+                {  // Caled's system expanded, and the map zoomed in on it - in each tileset, with units beside the superweapon
+                    const int cp = superweaponPlanet(h, kSwCaled);
+                    if (cp >= 0) {
+                        Force& gf = h.planets[size_t(cp)].units[1];
+                        gf.n[int(UnitType::Infantry)] += 2;
+                        gf.n[int(UnitType::SpaceDock)] += 1;
+                        Force& sf = h.systems[size_t(cal)].space[1];
+                        sf.n[int(UnitType::Dreadnought)] += 1;
+                        sf.n[int(UnitType::Carrier)] += 1;
+                        sf.n[int(UnitType::Fighter)] += 2;
+                    }
+                    const int was = retro::tileset();
+                    const char* tsName[3] = {"", "_retro", "_voidfall"};
+                    for (int ts = 0; ts < 3; ++ts) {
+                        retro::setTileset(ts);
+                        Canvas c(640, 480, testScale());
+                        drawSpaceBackground(c, false);
+                        tileview::draw(c, h, cal, Rect{0, 22, 640, 430}, 400);
+                        savePpm(c, base + "_sw_tile" + tsName[ts] + ".ppm");
+                        for (int z = 2; z <= 3; ++z) {
+                            Canvas c2(640, 480, testScale());
+                            MapView map;
+                            map.setViewport(Rect{0, 22, 640, 430});
+                            map.setZoom(z);
+                            map.setCursor(h, cal);
+                            drawSpaceBackground(c2, false);
+                            map.draw(c2, h, 400);
+                            savePpm(c2, base + (z == 3 ? "_sw_map" : "_sw_map_z2") + tsName[ts] + ".ppm");
+                        }
+                        n += 3;
+                    }
+                    retro::setTileset(was);
+                }
+            }
+        }
+    }
+    return n;
+}
+
+// 0.82.5 (a tester's report, TI4_UITEST_ONLY=qanojvote): the vote screen counts Elder Qanoj's +1 per planet - the Xxcha with
+// their commander, a planet with 0 influence chosen: "1 vote" on its row and "Votes: 1" (it showed 0 before)
+int qanojVoteScreen(const std::string& outDir) {
+    using namespace ti;
+    Engine e;
+    Setup s;
+    s.human = -1;
+    s.seed = 41;
+    s.players = 6;
+    s.factions = {findFaction("xxcha"), -1, -1, -1, -1, -1};
+    e.start(s);
+    Rng rng(5);
+    if (!toSeat0Action(e, rng)) return 0;
+    Game& g = e.g();
+    for (LeaderState& l : g.players[0].leaders)
+        if (l.leader >= 0 && kLeaders[l.leader].type == kCommander) l.status = kReady;
+    int zero = -1;
+    for (int x = 0; x < int(g.planets.size()) && zero < 0; ++x)
+        if (planetInfluence(g, x) == 0 && planetResources(g, x) > 0 && !isHomePlanet(g, x) && !isStation(g, x) &&
+            g.systems[size_t(g.planets[size_t(x)].system)].home < 0 && !g.systems[size_t(g.planets[size_t(x)].system)].offBoard)
+            zero = x;
+    if (zero < 0 || !commanderUsable(g, 0, "xxcha")) {
+        std::printf("uitest: qanoj_vote - no setup (planet %d, %zu leaders, faction %s)\n", zero, g.players[0].leaders.size(),
+                    kFactions[g.players[0].faction].key);
+        return 0;
+    }
+    for (int q = 0; q < g.numPlayers; ++q) g.planets[size_t(zero)].units[size_t(q)] = Force{};
+    g.planets[size_t(zero)].owner = 0;
+    g.planets[size_t(zero)].exhausted = false;
+    Decision d;
+    d.player = 0;
+    d.kind = DecisionKind::Pay;
+    d.tag = Tag::VotePlanets;
+    d.prompt = "Exhaust planets to cast votes for For";
+    d.context = "Each planet gives votes equal to its influence. They are readied at the end of the agenda phase. Elder Qanoj: each "
+                "planet gives 1 more vote.";  // (as rules_agenda.cpp words it)
+    d.planets = readyPlanets(g, 0);
+    d.influence = true;
+    d.maxPick = 1;
+    d.validate = [](const Answer&) { return std::string(); };
+    // the 0-influence planet on top, chosen (A on the first row)
+    std::stable_partition(d.planets.begin(), d.planets.end(), [zero](int x) { return x == zero; });
+    Canvas c(640, 480, testScale());
+    MapView map;
+    map.setViewport(Rect{0, 22, 420, 430});
+    map.setCursor(g, g.players[0].homeSystem);
+    drawSpaceBackground(c, false);
+    std::unique_ptr<DecisionUI> ui = makeDecisionUI(g, d, map);
+    for (Btn b : {Btn::B}) {  // clear the suggestion
+        Input in;
+        in.beginFrame();
+        in.handle(b, true, 100);
+        ui->update(in, 100);
+    }
+    {
+        Input in;
+        in.beginFrame();
+        in.handle(Btn::Right, true, 100);  // "Use" on the first row (the 0-influence planet)
+        ui->update(in, 100);
+    }
+    map.draw(c, g, 0);
+    ui->draw(c, 0);
+    drawHintBar(c, ui->hints());
+    savePpm(c, outDir + "/qanoj_vote.ppm");
+    std::printf("uitest: qanoj_vote (%s, %d res / %d inf)\n", kPlanets[g.planets[size_t(zero)].def].name, planetResources(g, zero),
+                planetInfluence(g, zero));
+    return 1;
+}
+
+// 0.82.3 Monuments+: Discordant Stars' monuments (TI4_UITEST_ONLY=monds): the Monuments screen with six of batch 2's factions, the long
+// Mirrorforge card, Corsairs' Cove with fighters on it, the Debris Field's reminder token on the map in each tileset
+int monumentDSScreens(const std::string& outDir) {
+    ti::Engine e;
+    ti::Setup s;
+    s.players = 6;
+    s.human = -1;
+    s.seed = 33;
+    s.modules = 1 | ti::kModMonuments | ti::kModDiscordant;
+    s.factions = {ti::findFaction("zelian"), ti::findFaction("mortheus"), ti::findFaction("florzen"), ti::findFaction("nivyn"),
+                  ti::findFaction("freesystems"), ti::findFaction("vaylerian")};
+    e.start(s);
+    ti::Rng rng(8);
+    if (!toSeat0Action(e, rng)) return 0;
+    ti::Game& g = e.g();
+    int debris = -1;
+    for (int q = 0; q < 6; ++q) {
+        int at = -1;
+        for (int y : ti::controlledPlanets(g, q))
+            if (ti::monumentFitsPlanet(g, q, y) && !ti::isHomePlanet(g, y)) at = y;
+        if (at < 0)
+            for (size_t y = 0; y < g.planets.size() && at < 0; ++y)
+                if (g.planets[y].owner < 0 && ti::monumentFitsPlanet(g, q, int(y)) && !ti::isDMZ(g, int(y)) &&
+                    g.systems[size_t(g.planets[y].system)].home < 0 && !g.systems[size_t(g.planets[y].system)].offBoard) {
+                    at = int(y);
+                    g.planets[y].owner = int8_t(q);
+                }
+        if (at >= 0) {
+            g.planets[size_t(at)].units[size_t(q)].add(ti::UnitType::Monument, 1);
+            if (q == 0) debris = g.planets[size_t(at)].system;
+        }
+    }
+    g.players[2].monCove = 3;
+    drawInfo(*makeMonumentScreen(g, 0), outDir + "/monds_screen_all.ppm", {});
+    drawInfo(*makeMonumentScreen(g, 0), outDir + "/monds_screen_mirrorforge.ppm", {Btn::Right, Btn::A});
+    drawInfo(*makeMonumentScreen(g, 0), outDir + "/monds_screen_cove.ppm", {Btn::Down});
+    if (debris < 0) return 3;
+    const int keep = retro::tileset();
+    for (int t : {0, 1, 2}) {
+        retro::setTileset(t);
+        MapView map;
+        map.setViewport(Rect{0, 22, 420, 430});
+        map.setZoom(3);
+        map.setCursor(g, debris);
+        Canvas c2(640, 480, testScale());
+        drawSpaceBackground(c2, false);
+        map.draw(c2, g, 1000);
+        savePpm(c2, outDir + "/monds_debris_map" + std::to_string(t) + ".ppm");
+    }
+    retro::setTileset(keep);
+    std::printf("uitest: monds_screen_all / mirrorforge / cove, monds_debris_map0-2 (%s, debris %d)\n", g.systems[size_t(debris)].d().name, int(ti::debrisField(g, debris)));
+    return 6;
+}
+
 // The human plays Politics: the two agenda cards it looks at are shown large (wait for A).
 int agendaPeekScreen(const std::string& outDir) {
     std::unique_ptr<Platform> plat = makeHeadlessPlatform("", outDir);
@@ -682,6 +1604,86 @@ int agendaPeekScreen(const std::string& outDir) {
     }
     std::remove(GameSession::savePath().c_str());
     return shots;
+}
+
+// (0.81.0) Absol's Agendas on the game screen: a 6-player game with the module, the custodians gone in round 1 so the agenda phase
+// comes at once, the longest cards on top of the deck - each agenda and its ruling shown large (absol_card_N / absol_ruling_N), then
+// the Laws screen (absol_laws, absol_laws_all, absol_law_card). TI4_UITEST_ONLY=absolscreens.
+int absolScreens(const std::string& outDir) {
+    std::unique_ptr<Platform> plat = makeHeadlessPlatform("", outDir);
+    Settings settings;
+    settings.setInt("ai_speed", 1);
+    settings.setInt("card_pause", 0);
+    App app(*plat, settings);
+    GameSession::savePath() = outDir + "/absol_save.ti4";
+    std::unique_ptr<GameSession> session(new GameSession());
+    ti::Setup s;
+    s.players = 6;
+    s.human = -1;
+    s.seed = 19;
+    s.modules = ti::kModCodex | ti::kModAbsol;
+    if (!session->startNew(s)) return 0;
+    GameSession* sp = session.get();
+    bool stacked = false;
+    auto stackDeck = [&]() {
+        ti::Game& gm = sp->engine().g();
+        gm.custodiansRemoved = true;
+        const char* stack[] = {"absol_affirmation", "absol_spending", "absol_minspolicy", "absol_travelban"};
+        for (const char* k : stack) {
+            const int16_t a = int16_t(ti::findAgenda(k));
+            gm.agendaDeck.erase(std::remove(gm.agendaDeck.begin(), gm.agendaDeck.end(), a), gm.agendaDeck.end());
+        }
+        for (int i = 3; i >= 0; --i) gm.agendaDeck.push_back(int16_t(ti::findAgenda(stack[i])));
+    };
+    std::unique_ptr<Scene> scene = makeGameScene(std::move(session));
+    Input in;
+    Canvas c(testW(), 480, testScale());
+    int cards = 0, rulings = 0;
+    bool releaseA = false;
+    uint32_t holdSince = 0;
+    for (uint32_t t = 1000; t < 1000 + 60 * 60 * 1000 && (cards < 2 || rulings < 2) && !sp->over(); t += 33) {
+        if (!stacked && sp->game().phase == ti::Phase::Strategy) {
+            stackDeck();
+            stacked = true;
+        }
+        in.beginFrame();
+        in.update(t);
+        if (releaseA) {
+            in.handle(Btn::A, false, t);
+            releaseA = false;
+        } else if (sp->holding()) {
+            if (!holdSince) holdSince = t;
+            if (t - holdSince > 1200) {
+                const ti::EventKind k = sp->heldKind();
+                if (k == ti::EventKind::Agenda && sp->game().phase == ti::Phase::Agenda) {
+                    drawTop(*scene, app, c, t);
+                    savePpm(c, outDir + "/absol_card_" + std::to_string(++cards) + ".ppm");
+                } else if (k == ti::EventKind::AgendaResult && sp->game().phase == ti::Phase::Agenda) {
+                    drawTop(*scene, app, c, t);
+                    savePpm(c, outDir + "/absol_ruling_" + std::to_string(++rulings) + ".ppm");
+                }
+                in.handle(Btn::A, true, t);
+                releaseA = true;
+                holdSince = 0;
+            }
+        }
+        scene->update(app, in, t);
+    }
+    // the Laws screen once the agenda phase is over
+    for (uint32_t t = 0; t < 400000 && sp->game().phase == ti::Phase::Agenda && !sp->over(); t += 33) {
+        in.beginFrame();
+        in.update(t);
+        if (sp->holding()) in.handle(Btn::A, (t / 33) % 2 == 0, t);
+        scene->update(app, in, 1000000 + t);
+    }
+    const ti::Game& g = sp->game();
+    drawInfo(*makeLawScreen(g, 1), outDir + "/absol_laws.ppm", {});
+    drawInfo(*makeLawScreen(g, 1), outDir + "/absol_law_card.ppm", {Btn::A});
+    drawInfo(*makeLawScreen(g, 1), outDir + "/absol_laws_all.ppm", {Btn::R1});
+    drawInfo(*makeLawScreen(g, 1), outDir + "/absol_laws_all_card.ppm", {Btn::R1, Btn::Down, Btn::Down, Btn::Right, Btn::A});
+    std::printf("uitest: absol screens - %d agenda cards, %d rulings, %zu laws in play\n", cards, rulings, g.laws.size());
+    std::remove(GameSession::savePath().c_str());
+    return cards + rulings;
 }
 
 // The deal screens driven by button presses, as a player would: everything
@@ -3233,6 +4235,11 @@ static double monotonicUs() {
 // 60 frames 80 ms apart = one seamless 4.8 s loop; colours_NN.ppm).
 int leagueDraftScreens(const std::string& outDir);  // sim/league_drafts.cpp
 int leagueRunTest(const std::string& outDir);       // sim/league_test.cpp (0.80.0)
+int issueTests(const std::string& outDir);          // sim/issue_tests.cpp (0.80.1: the players' GitHub reports)
+int absolTests(const std::string& outDir);          // sim/absol_test.cpp (0.81.0: Absol's Agendas, every card)
+int monumentTests(const std::string& outDir);       // sim/monument_test.cpp (0.82.0: Monuments+, every monument)
+int unlockDraftScreens(const std::string& outDir);  // sim/league_drafts.cpp (0.81.0 drafts: the unlock banner)
+int monumentDrafts(const std::string& outDir);      // sim/monument_drafts.cpp (Monuments+ drafts, the 0.82.0 plan)
 int colourSamples(const std::string& outDir) {
     const char* fe = std::getenv("TI4_COLOUR_FRAMES");
     const int frames = fe ? std::max(1, std::atoi(fe)) : 60;
@@ -3498,12 +4505,13 @@ int galaxyMixCheck() {
 // doesn't fit even in FONT_XS. TI4_UITEST_ONLY=talkfit (also part of the full run).
 int talkFitCheck() {
     using namespace ti;
+    // (0.83.0: the factions that can be in a game - Blue Reverie's others come with their lines)
     int listener = 0;
     for (int f = 0; f < kFactionCount; ++f)
-        if (speech::address(f).size() > speech::address(listener).size()) listener = f;
+        if (factionImplemented(f) && speech::address(f).size() > speech::address(listener).size()) listener = f;
     int lines = 0, md = 0, sm = 0, xs = 0, bad = 0;
     for (int f = 0; f < kFactionCount; ++f) {
-        if (f == listener) continue;
+        if (f == listener || !factionImplemented(f)) continue;
         for (int cat = int(speech::Cat::Hello); cat <= int(speech::Cat::Hostile); ++cat) {
             std::vector<std::string> seen;
             for (uint32_t s = 0; s < 48; ++s) {
@@ -56847,6 +57855,18 @@ int runUiTest(const std::string& outDir) {
         if (std::string(only) == "titlebg") return titleBgScreens(outDir) > 0 ? 0 : 1;
         if (std::string(only) == "leaguedrafts") return leagueDraftScreens(outDir) > 0 ? 0 : 1;  // (0.80.0, sim/league_drafts.cpp)
         if (std::string(only) == "leaguerun") return leagueRunTest(outDir) > 0 ? 0 : 1;          // (0.80.0, sim/league_test.cpp)
+        if (std::string(only) == "issues") return issueTests(outDir) > 0 ? 0 : 1;                // (0.80.1, sim/issue_tests.cpp)
+        if (std::string(only) == "absol") return absolTests(outDir) > 0 ? 0 : 1;                  // (0.81.0, sim/absol_test.cpp)
+        if (std::string(only) == "montests") return monumentTests(outDir) > 0 ? 0 : 1;            // (0.82.0, sim/monument_test.cpp)
+        if (std::string(only) == "absolscreens") return absolScreens(outDir) > 0 ? 0 : 1;         // (0.81.0)
+        if (std::string(only) == "unlockdrafts") return unlockDraftScreens(outDir) > 0 ? 0 : 1;  // (0.81.0 drafts)
+        if (std::string(only) == "monumentdrafts") return monumentDrafts(outDir) > 0 ? 0 : 1;  // (Monuments+ drafts, the 0.82.0 plan)
+        if (std::string(only) == "monuments") return monumentScreens(outDir) >= 4 && monumentAbilityScreen(outDir) && monumentNewScreens(outDir) >= 4 ? 0 : 1;  // (0.82.0 Monuments+)
+        if (std::string(only) == "monnew") return monumentNewScreens(outDir) >= 5 && monumentCardScreens(outDir) >= 8 ? 0 : 1;  // (0.82.0: Nefishh, Freeport, KVD-14, menu; the cards)
+        if (std::string(only) == "monte") return monumentTEScreens(outDir) >= 9 ? 0 : 1;  // (0.82.1: Thunder's Edge's monuments)
+        if (std::string(only) == "monds") return monumentDSScreens(outDir) >= 6 ? 0 : 1;  // (0.82.3: Discordant Stars' monuments)
+        if (std::string(only) == "qanojvote") return qanojVoteScreen(outDir) ? 0 : 1;
+        if (std::string(only) == "brsheet") return brSheetScreens(outDir) > 0 ? 0 : 1;  // (0.83.0: the Atokera's sheet and cards)  // (0.82.5: Elder Qanoj on the vote screen)
         if (std::string(only) == "colours") return colourSamples(outDir) > 0 ? 0 : 1;
         if (std::string(only) == "colourgame") return colourGameScreens(outDir) > 0 ? 0 : 1;
         if (std::string(only) == "negodraft") return negoDraftScreens(outDir) > 0 ? 0 : 1;
@@ -56869,6 +57889,12 @@ int runUiTest(const std::string& outDir) {
     int decisions = decisionScreens(outDir);
     int watched = watchScreens(outDir);
     if (!agendaPeekScreen(outDir)) std::printf("uitest: no agenda peek card came up\n");
+    if (monumentScreens(outDir) < 5) std::printf("uitest: a monument screen didn't come up\n");  // (0.82.0 Monuments+)
+    if (!monumentAbilityScreen(outDir)) std::printf("uitest: no monument ability question came up\n");
+    if (monumentNewScreens(outDir) < 5) std::printf("uitest: a new monument screen (Nefishh / Freeport / KVD-14 / menu) didn't come up\n");
+    if (monumentCardScreens(outDir) < 8) std::printf("uitest: the Monuments+ card screens didn't come up\n");
+    if (monumentTEScreens(outDir) < 9) std::printf("uitest: the Thunder's Edge monument screens didn't come up\n");
+    if (monumentDSScreens(outDir) < 6) std::printf("uitest: the Discordant Stars monument screens didn't come up\n");
     if (!menuOfferScreens(outDir)) std::printf("uitest: no offer from the menu came up\n");
     int dealRejects = dealDrive();
     bool floating = floatingFactoryCheck(outDir);

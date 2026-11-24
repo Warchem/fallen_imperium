@@ -616,6 +616,7 @@ void Rules::yinAscendant(int p) {
     for (int f = 0; f < kFactionCount; ++f) {
         if (!factionImplemented(f) || !std::strcmp(kFactions[f].key, "keleres") || !std::strcmp(kFactions[f].key, "yin")) continue;
         if (kFactions[f].source == Source::Discordant && !(G.modules & kModDiscordant)) continue;  // (Discordant Stars: with the module)
+        if (kFactions[f].source == Source::BlueReverie && (!(G.modules & kModBlueReverie) || !brInPool(f, G.brLevel, G.brMask))) continue;  // (0.83.0)
         if (one && f == obs) continue;
         const bool pair = one && f == firm;
         bool used = std::find(pl.yinAlliances.begin(), pl.yinAlliances.end(), int8_t(f)) != pl.yinAlliances.end() ||

@@ -650,6 +650,9 @@ NAMED = {
     "acheron": "cabal", "elysium": "lush", "naazir": "jungle", "rokha": "toxic", "ylir": "ice", "avar": "ocean",
     "valk": "rust",
     "thunder'sedge": "stormgiant",  # (0.45.0: the Thunder's Edge planet - owner)
+    "magna": "steel",  # (0.83.0 Blue Reverie: the Atokera's living-metal homeworld)
+    "iterum": "ice",  # (0.84.0 Blue Reverie: the Belkosea's frozen fortress world; Conviction is their space station)
+    "phar": "desert",  # (0.85.0 Blue Reverie: the Pharad'n Order's tomb world)
 }
 BY_TRAIT = {1: ["ocean", "lush", "jungle", "lavender", "lush", "ocean"],      # cultural
             2: ["lava", "ice", "toxic", "gas", "barren", "lava"],             # hazardous

@@ -56,13 +56,14 @@ std::vector<int> encodeDeal(const Deal& d) {
     // version 2 (Thunder's Edge) only when relics or secrets change hands, version 3 when technologies are shared
     // (Age of Commerce), version 4 when control tokens go on the Vaden's sheet (Discordant Stars): older deals encode
     // as before
-    const bool v7 = !d.give.laws.empty() || !d.get.laws.empty();  // version 7: agendas (Encrypted Trade Hub, fixes 28)
+    const bool v8 = !d.give.units.empty() || !d.get.units.empty();  // version 8: units (Mowshir Freeport, 0.82.0)
+    const bool v7 = v8 || !d.give.laws.empty() || !d.get.laws.empty();  // version 7: agendas (Encrypted Trade Hub, fixes 28)
     const bool v6 = v7 || d.give.hire || d.get.hire;                // version 6: Hired Guns (0.43.0)
     const bool v5 = v6 || !d.give.orders.empty() || !d.get.orders.empty();  // version 5: Axis Order cards (Discordant Stars)
     const bool v4 = v5 || d.give.debt || d.get.debt;
     const bool v3 = v4 || !d.give.techs.empty() || !d.get.techs.empty();
     const bool v2 = v3 || !d.give.relics.empty() || !d.give.secrets.empty() || !d.get.relics.empty() || !d.get.secrets.empty();
-    std::vector<int> v = {v7 ? 7 : v6 ? 6 : v5 ? 5 : v4 ? 4 : v3 ? 3 : v2 ? 2 : 1, d.from, d.to, d.threat};
+    std::vector<int> v = {v8 ? 8 : v7 ? 7 : v6 ? 6 : v5 ? 5 : v4 ? 4 : v3 ? 3 : v2 ? 2 : 1, d.from, d.to, d.threat};
     putSide(v, d.give);
     putSide(v, d.get);
     if (v2) {
@@ -86,6 +87,11 @@ std::vector<int> encodeDeal(const Deal& d) {
             v.push_back(int(s->laws.size()));
             v.insert(v.end(), s->laws.begin(), s->laws.end());
         }
+    if (v8)
+        for (const DealSide* s : {&d.give, &d.get}) {
+            v.push_back(int(s->units.size()));
+            v.insert(v.end(), s->units.begin(), s->units.end());
+        }
     v.push_back(int(d.promises.size()));
     for (const Promise& p : d.promises) v.insert(v.end(), {int(p.kind), p.by, p.target, p.amount, p.rounds, p.agenda});
     return v;
@@ -93,7 +99,7 @@ std::vector<int> encodeDeal(const Deal& d) {
 
 bool decodeDeal(const std::vector<int>& v, Deal& d) {
     d = Deal();
-    if (v.size() < 4 || v[0] < 1 || v[0] > 7) return false;
+    if (v.size() < 4 || v[0] < 1 || v[0] > 8) return false;
     size_t i = 1;
     d.from = v[i++];
     d.to = v[i++];
@@ -135,6 +141,14 @@ bool decodeDeal(const std::vector<int>& v, Deal& d) {
             s->laws.assign(v.begin() + long(i), v.begin() + long(i) + n);
             i += size_t(n);
         }
+    if (v[0] >= 8)
+        for (DealSide* s : {&d.give, &d.get}) {
+            if (i >= v.size()) return false;
+            const int n = v[i++];
+            if (n < 0 || n > 64 || i + size_t(n) > v.size()) return false;
+            s->units.assign(v.begin() + long(i), v.begin() + long(i) + n);
+            i += size_t(n);
+        }
     if (i >= v.size()) return false;
     int n = v[i++];
     if (n < 0 || n > 8 || i + size_t(n) * 6 > v.size()) return false;
@@ -173,6 +187,22 @@ std::string sideText(const Game& g, const DealSide& s) {
     if (s.hire) parts.push_back("up to " + plural(s.hire, "hired ship", "hired ships") + " (Hired Guns)");
     for (int a : s.laws)
         if (a >= 0 && a < kAgendaCount) parts.push_back(std::string("the agenda ") + kAgendas[a].name);
+    {  // (0.82.0) Mowshir Freeport: units ("2 destroyers in Lodor")
+        std::vector<int> u = s.units;
+        std::sort(u.begin(), u.end());
+        for (size_t i = 0; i < u.size();) {
+            size_t j = i;
+            while (j < u.size() && u[j] == u[i]) ++j;
+            const int sys = u[i] / 16, t = u[i] % 16, k = int(j - i);
+            if (sys >= 0 && sys < int(g.systems.size()) && t >= 0 && t < kUnitTypes)
+                {
+                const SystemState& sy = g.systems[size_t(sys)];
+                const std::string where = sy.home >= 0 ? playerName(g, sy.home) + " home" : sy.d().planetCount == 0 ? std::string(sy.d().name) + " (" + sy.d().key + ")" : std::string(sy.d().name);
+                parts.push_back(std::to_string(k) + " " + unitTypeName(UnitType(t), k > 1) + " in " + where);
+            }
+            i = j;
+        }
+    }
     if (parts.empty()) return "nothing";
     std::string out;
     for (size_t i = 0; i < parts.size(); ++i) out += (i ? (i + 1 == parts.size() ? " and " : ", ") : "") + parts[i];
@@ -362,7 +392,8 @@ bool agentLendable(const Game& g, int p) {
     // (only against the other player), the Mentak (only when pillaging them), the Vuil'raith (captures their unit) or the Kjalengard
     static const char* const kLend28[] = {"nekro", "hacan", "xxcha", "arborec", "l1z1x", "muaat", "ralnel",
                                           "deepwrought", "crimson", "kolume", "bentor", "edyn", "axis",
-                                          "kjalengard"};  // (the Kjalengard review: Merkismathr Asvand at any combat)
+                                          "kjalengard",   // (the Kjalengard review: Merkismathr Asvand at any combat)
+                                          "pharadn"};     // (0.85.0, owner 2026-11-24: Nokash "sellable" - it picks a player)
     if (g.fixes >= 28)
         for (const char* k : kLend28)
             if (isFaction(g, p, k)) return agentReady(g, p) || leaderIndex(g, p, kAgent) >= 0;
@@ -463,7 +494,7 @@ std::vector<int> threatSystems(const Game& g, int from, int to) {
 std::vector<std::pair<int, std::string>> voteOutcomes(const Game& g, int a) {
     std::vector<std::pair<int, std::string>> v;
     if (a < 0 || a >= kAgendaCount) return v;
-    if (!std::strcmp(kAgendas[a].key, "covert") && g.covertAgenda >= 0) a = g.covertAgenda;
+    if ((!std::strcmp(kAgendas[a].key, "covert") || !std::strcmp(kAgendas[a].key, "absol_covert")) && g.covertAgenda >= 0) a = g.covertAgenda;
     switch (kAgendas[a].elect) {
         case Elect::ForAgainst:
             v.push_back({0, "For"});
@@ -496,12 +527,61 @@ std::vector<std::pair<int, std::string>> voteOutcomes(const Game& g, int a) {
             for (int c = 0; c < kStrategyCards; ++c) v.push_back({c, std::to_string(c + 1) + " " + strategyName(c)});
             break;
         case Elect::Covert: break;
+        // (0.81.0) Absol's Agendas - as Rules::agendaOutcomes
+        case Elect::NonHome:
+            for (size_t x = 0; x < g.planets.size(); ++x) {
+                const PlanetState& ps = g.planets[x];
+                if (ps.owner < 0 || isHomePlanet(g, int(x)) || isStation(g, int(x))) continue;
+                v.push_back({int(x), kPlanets[ps.def].name});
+            }
+            break;
+        case Elect::UnitUpgrade: {
+            std::vector<int> seen;
+            for (int q = 0; q < g.numPlayers; ++q)
+                for (int16_t t : g.players[size_t(q)].techs)
+                    if (kTechs[t].unitUpgrade && kTechs[t].faction < 0 && std::find(seen.begin(), seen.end(), int(t)) == seen.end()) {
+                        seen.push_back(t);
+                        v.push_back({t, kTechs[t].name});
+                    }
+            break;
+        }
+        case Elect::None: break;
     }
     return v;
 }
 
 // Encrypted Trade Hub (Edyn, 0.44.5 with fixes 9): its owner, a party to the deal, may exhaust it to let 1 relic be
 // exchanged - or (fixes 28, owner 2026-11-15) 1 agenda: a law the giver holds (DealSide::laws)
+// (0.82.0) Quantum Reliquary (Naaz-Rokha monument): "When you are negotiating a transaction with a player who controls units in
+// or adjacent to this system, relics can be exchanged as part of that transaction"
+bool reliquaryPair(const Game& g, int a, int b) {
+    if (!(g.modules & kModMonuments)) return false;
+    for (int n : {a, b}) {
+        const int other = n == a ? b : a;
+        int sys = -1;
+        if (n < 0 || n >= g.numPlayers || other < 0 || other >= g.numPlayers || !monAbilityAt(g, n, "naaz", &sys)) continue;
+        bool near = hasUnits(g, other, sys);
+        for (int16_t x : g.systems[size_t(sys)].adj) near = near || hasUnits(g, other, x);
+        if (near) return true;
+    }
+    return false;
+}
+
+// Mowshir Freeport (Hacan monument): "Outside of combat, players may trade their units in the space area of this and adjacent
+// systems as part of a transaction."
+std::vector<int> freeportSystems(const Game& g) {
+    std::vector<int> v;
+    if (!(g.modules & kModMonuments)) return v;
+    for (int q = 0; q < g.numPlayers; ++q) {
+        int sys = -1;
+        if (g.players[size_t(q)].eliminated || !monAbilityAt(g, q, "hacan", &sys)) continue;
+        if (std::find(v.begin(), v.end(), sys) == v.end()) v.push_back(sys);
+        for (int16_t x : g.systems[size_t(sys)].adj)
+            if (std::find(v.begin(), v.end(), int(x)) == v.end()) v.push_back(x);
+    }
+    return v;
+}
+
 int encryptedHubOf(const Game& g, int a, int b) {
     if (g.fixes < 9 || !(g.modules & kModDiscordant)) return -1;
     const int t = findTech("dsedyny");
@@ -541,6 +621,10 @@ std::string checkDeal(const Game& g, const Deal& d, bool counter) {
             }
             if (noteType(s.note) == kNoteAlliance && isFaction(g, who == a ? b : a, "mahact") && noteOwner(s.note) != (who == a ? b : a))
                 return "The Mahact can't receive an Alliance (Hubris).";
+            // (0.81.0) Absol's Pax Magnifica, Bellum Gloriosum (For): "Players may not receive Ceasefire promissory notes matching their
+            // color as part of transactions."
+            if (noteType(s.note) == kNoteCeasefire && noteOwner(s.note) == (who == a ? b : a) && absolLaw(g, "absol_pax"))
+                return "Pax Magnifica: players may not receive their own Ceasefire in a transaction.";
         }
         for (int f : s.fragments)
             if (std::count(pl.fragments.begin(), pl.fragments.end(), int16_t(f)) <
@@ -548,7 +632,7 @@ std::string checkDeal(const Game& g, const Deal& d, bool counter) {
                 return playerName(g, who) + " doesn't have that relic fragment.";
         for (int r : s.relics) {  // Thunder's Edge: The Silver Flame always; any relic with Black Market Dealings
             if (r < 0 || r >= kRelicCount || !pl.hasRelic(r)) return playerName(g, who) + " doesn't hold that relic.";
-            if (std::strcmp(kRelics[r].key, "thesilverflame") && !blackMarketPair(g, a, b)) {
+            if (std::strcmp(kRelics[r].key, "thesilverflame") && !blackMarketPair(g, a, b) && !reliquaryPair(g, a, b)) {
                 if (encryptedHubOf(g, a, b) < 0) return "Relics can only be traded with Black Market Dealings (or The Silver Flame).";
                 int n = 0;  // Encrypted Trade Hub: one relic (or agenda)
                 for (const DealSide* x : {&d.give, &d.get}) {
@@ -557,6 +641,23 @@ std::string checkDeal(const Game& g, const Deal& d, bool counter) {
                 }
                 if (n > 1) return d.give.laws.empty() && d.get.laws.empty() ? "Encrypted Trade Hub lets only 1 relic change hands."
                                                                             : "Encrypted Trade Hub lets only 1 relic or agenda change hands.";
+            }
+        }
+        if (!s.units.empty()) {  // (0.82.0) Mowshir Freeport: the giver's units in space areas in or next to a Hacan monument
+            // ("Outside of combat": deals are never made during a combat)
+            const std::vector<int> ports = freeportSystems(g);
+            std::vector<int> u = s.units;
+            std::sort(u.begin(), u.end());
+            for (size_t i = 0; i < u.size();) {
+                size_t j = i;
+                while (j < u.size() && u[j] == u[i]) ++j;
+                const int sys = u[i] / 16, t = u[i] % 16;
+                if (sys < 0 || sys >= int(g.systems.size()) || t < 0 || t >= kUnitTypes || isStructure(UnitType(t)) ||
+                    std::find(ports.begin(), ports.end(), sys) == ports.end())
+                    return "Units can only change hands in or next to the Mowshir Freeport (Hacan monument).";
+                if (int(g.systems[size_t(sys)].space[size_t(who)].count(UnitType(t))) < int(j - i))
+                    return playerName(g, who) + " doesn't have those units there.";
+                i = j;
             }
         }
         if (!s.laws.empty()) {  // Encrypted Trade Hub (fixes 28): 1 agenda - a law the giver holds

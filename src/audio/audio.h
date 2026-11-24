@@ -120,9 +120,10 @@ enum class Sfx : uint8_t {
     CodecCounter,     // a counter-offer: one bell rising like a question
     CodecThreat,      // a threat: a slow pulse, a weapons lock beeping faster
     CodecAlert,       // the red alert (a promise broken): a low starship klaxon
-    // ...and a voice for every faction (a made-up tongue over the codec): VoiceFirst + faction
+    // ...and a voice for every faction (a made-up tongue over the codec): VoiceFirst + faction (0.86.0: + the Blue Reverie,
+    // kFactions 65-69 - audio/brvoices.inc; the Uydai and the Qhet silent until their factions come in)
     VoiceFirst,
-    VoiceLast = VoiceFirst + 64,
+    VoiceLast = VoiceFirst + 69,
     // 0.73.0 (owner 2026-11-19): the War Sun scene - "sound effects of the two main spaceships moving, followed by a thundering
     // wardrum-like drone that builds to a crescendo as the warsun pans into scene"
     ShipPassA,    // the first ship: comes from behind the camera with a jet roar and a turbine whine, then falls away into the distance
@@ -144,8 +145,10 @@ constexpr int kMoveSounds = int(Sfx::MoveLast) - int(Sfx::MoveFirst) + 1;  // on
 // The movement sound of faction f (a kFactions index); Count when there is none.
 inline Sfx moveSound(int f) { return f >= 0 && f < kMoveSounds ? Sfx(int(Sfx::MoveFirst) + f) : Sfx::Count; }
 const char* moveSoundKey(int f);  // the faction key its recipe was made for (the tests check it against kFactions)
+constexpr int kVoiceSounds = int(Sfx::VoiceLast) - int(Sfx::VoiceFirst) + 1;  // one per faction (70)
 // (0.70.0) faction f's voice (Count when there is none)
-inline Sfx voiceSound(int f) { return f >= 0 && f < kMoveSounds ? Sfx(int(Sfx::VoiceFirst) + f) : Sfx::Count; }
+inline Sfx voiceSound(int f) { return f >= 0 && f < kVoiceSounds ? Sfx(int(Sfx::VoiceFirst) + f) : Sfx::Count; }
+const char* voiceSoundKey(int f);  // (0.86.0) the faction key its voice was made for (the tests check it against kFactions)
 
 // Opens the platform's sound output (call once, after the screen is up).
 // Reads the volumes from the settings ("music_vol", "sound_vol" 0-10) and

@@ -23,6 +23,9 @@ void Rules::playGame() {
         sunderedCheck();    // (fixes 24: Sundered - other players' units in the Crimson home, however they got there)
         oceanCheck();       // (fixes 27: Oceanbound's limit, any time)
         warSunAgeCheck();   // (0.73.0: display only)
+        if (monumentsOn()) panopticonCheck();  // (0.82.0) a blockaded Panopticon is destroyed, any time
+        if (monumentsOn()) cathedralCheck();   // (0.82.0) Cathedral of Ixth: its points follow the monuments on its planet
+        if (monumentsOn()) monSync();          // (0.82.1) the Seraph Data Center's station card follows it; a Pelagion removed is noted
     };
     try {
         setupGame();
@@ -63,9 +66,11 @@ void Rules::setupGame() {
     G.modules = uint8_t(s.modules & 255);
     G.events = (G.modules & kModThundersEdge) ? uint32_t(s.events) : 0u;  // galactic events (0.36.0)
     G.dsLevel = int8_t((G.modules & kModDiscordant) ? s.dsLevel : 0);    // Discordant Stars batches (0.37.0)
+    G.brLevel = int8_t((G.modules & kModBlueReverie) ? s.brLevel : 0);  // Blue Reverie factions (0.83.0)
+    G.brMask = s.brMask;                                               // ... those unlocked (0.85.3)
     G.fixes = uint8_t(s.fixes & 255);
     G.layout = uint8_t(s.layout == 1 ? 1 : 0);  // (0.58.0)
-    setStrategyTexts((G.modules & kModThundersEdge) != 0);  // 0.43.3: the strategy card wording of the cards in this game
+    setStrategyTexts((G.modules & kModThundersEdge) != 0, (G.modules & kModMonuments) != 0);  // 0.43.3: the strategy card wording of the cards in this game
     G.players.assign(n, Player());
     for (int i = 0; i < kStrategyCards; ++i) G.cardOwner[i] = -1;
 
@@ -89,6 +94,8 @@ void Rules::setupGame() {
             continue;
         // Discordant Stars (0.37.0): with the module, and only the factions that are in
         if (kFactions[f].source == Source::Discordant && (!(s.modules & kModDiscordant) || !factionInPool(f, s.dsLevel))) continue;
+        // Blue Reverie (0.83.0): with the module, the factions that are in
+        if (kFactions[f].source == Source::BlueReverie && (!(s.modules & kModBlueReverie) || !brInPool(f, s.brLevel, s.brMask))) continue;
         if (!used[f] && (f != keleres || (s.extras & 2))) pool.push_back(f);
     }
     E.rng().shuffle(pool);
@@ -176,6 +183,7 @@ void Rules::setupGame() {
     std::vector<int16_t> s1, s2, sec;
     for (int o = 0; o < kObjectiveCount; ++o) {
         if (!objectiveImplemented(o)) continue;
+        if (kObjectives[o].source == Source::Monuments && !(G.modules & kModMonuments)) continue;  // (0.82.0) its 2 secrets
         if (kObjectives[o].kind == 1) s1.push_back(int16_t(o));
         else if (kObjectives[o].kind == 2) s2.push_back(int16_t(o));
         else sec.push_back(int16_t(o));
@@ -195,18 +203,24 @@ void Rules::setupGame() {
     for (int c = 0; c < kActionCardCount; ++c) {
         if (kActionCards[c].source == Source::Uncharted && !(G.modules & kModUncharted)) continue;  // (0.33.0)
         if (kActionCards[c].source == Source::ThundersEdge && !(G.modules & kModThundersEdge)) continue;  // (0.34.0)
+        if (kActionCards[c].source == Source::Monuments && !(G.modules & kModMonuments)) continue;  // (0.82.0)
         if (actionCardImplemented(c))
             for (int k = 0; k < kActionCards[c].count; ++k) G.actionDeck.push_back(int16_t(c));
     }
     E.rng().shuffle(G.actionDeck);
+    // (0.81.0) Absol's Agendas replaces the deck: only its 60 cards with the module, never without it
+    // (0.82.0) Monuments+'s 2 laws go into whichever deck is used
     for (int a = 0; a < kAgendaCount; ++a)
-        if (agendaImplemented(a)) G.agendaDeck.push_back(int16_t(a));
+        if (agendaImplemented(a) && (kAgendas[a].source == Source::Monuments ? (G.modules & kModMonuments) != 0
+                                                                               : (kAgendas[a].source == Source::Absol) == ((G.modules & kModAbsol) != 0)))
+            G.agendaDeck.push_back(int16_t(a));
     E.rng().shuffle(G.agendaDeck);
     for (int p = 0; p < n; ++p)
         for (int t = 0; t < kNoteTypes; ++t) G.players[p].notes.push_back(makeNote(p, t));
     for (int p = 0; p < n; ++p) factionSetup(p);  // leaders, Alliance, faction notes
     for (int p = 0; p < n; ++p) keleresStartingTechs(p);  // after everyone else has theirs (and their leaders, notes)
     setupExploration();
+    if (brOn()) pharSetupTombs();  // (0.85.0) Ancient Empire (Pharad'n): tomb tokens on up to 14 planets
     // (fixes 29, owner 2026-11-17: "the crimson rebellion starts the game with their breakthrough ... they also roll for the fracture
     // before the round starts") the faction sheet's starting breakthrough, gained with the other starting components (LRR setup step 11:
     // after the board and the decks are made, before the objectives) - and gainBreakthrough rolls for the Fracture (TE rulebook: "When a
@@ -291,6 +305,7 @@ void Rules::setupFaction(int p) {
         if (kUnits[u].upgradeOf < 0) pl.unit[int(kUnits[u].type)] = int16_t(u);
     }
     secondFlagship(p);  // (0.52.0: the Ghemina's Lady)
+    giveMonument(p);    // (0.82.0 Monuments+)
     for (size_t i = 0; i < G.systems.size(); ++i)
         if (G.systems[i].home == p) pl.homeSystem = int16_t(i);
     SystemState& home = G.systems[pl.homeSystem];
@@ -338,8 +353,8 @@ void Rules::setupFaction(int p) {
         }
         for (int t : pickMany(p, Tag::SetupTech, "Argent: choose 2 starting technologies", opts, 2, 2))
             researchTech(p, t);
-    } else if (f.source == Source::Discordant) {
-        dsStartingTechs(p);  // Discordant Stars (rules_ds.cpp)
+    } else if (f.source == Source::Discordant || f.source == Source::BlueReverie) {
+        dsStartingTechs(p);  // Discordant Stars (rules_ds.cpp); Blue Reverie's choices (Belkosea, Toldar) the same way
     } else if (f.source == Source::ThundersEdge && G.fixes >= 2) {
         // 0.43.0 (owner: "Last Bastion selection of initial tech didn't trigger" - none of these were offered)
         struct TeStart {
@@ -456,7 +471,7 @@ void Rules::strategyPhase() {
     strategyStart4();  // Scepter of Dominion
     if (G.modules & kModDiscordant) dsStrategyStart();  // Vector Programs (Kyro)
     const int picksEach = G.numPlayers <= 4 ? 2 : 1;
-    const bool checks = lawInPlay(G, "checks");
+    const bool checks = lawInPlay(G, "checks") || absolLaw(G, "absol_checks");  // (0.81.0: Absol's Checks and Balances too)
     for (int round = 0; round < picksEach; ++round) {
         for (int p : fromSpeaker(G)) {
             if (G.players[p].eliminated || G.players[p].keepsCards) continue;
@@ -464,12 +479,16 @@ void Rules::strategyPhase() {
             int c = -1;
             for (int attempt = 0; attempt < 8; ++attempt) {
                 std::vector<Option> opts;
-                for (int k = 0; k < kStrategyCards; ++k) {
-                    if (G.cardOwner[k] >= 0 || std::find(banned.begin(), banned.end(), k) != banned.end()) continue;
-                    std::string label = std::to_string(k + 1) + " " + strategyName(k);
-                    if (G.cardTradeGoods[k]) label += " (+" + std::to_string(G.cardTradeGoods[k]) + " TG)";
-                    opts.push_back({k, label, strategyPrimary(k)});
-                }
+                // (0.81.0, Absol's Agendas) an exhausted strategy card can't be chosen (owner: nobody picks it next round) - unless
+                // nothing else is left
+                for (int pass = 0; pass < 2 && opts.empty(); ++pass)
+                    for (int k = 0; k < kStrategyCards; ++k) {
+                        if (G.cardOwner[k] >= 0 || std::find(banned.begin(), banned.end(), k) != banned.end()) continue;
+                        if (pass == 0 && absolCardLocked(p, k)) continue;
+                        std::string label = std::to_string(k + 1) + " " + strategyName(k);
+                        if (G.cardTradeGoods[k]) label += " (+" + std::to_string(G.cardTradeGoods[k]) + " TG)";
+                        opts.push_back({k, label, strategyPrimary(k)});
+                    }
                 if (opts.empty()) break;
                 c = pick(p, Tag::StrategyPick, "Choose a strategy card", opts,
                          checks ? "Checks and Balances: you will give it to another player." : "");
@@ -487,7 +506,7 @@ void Rules::strategyPhase() {
             }
             if (c < 0) continue;
             int receiver = p;
-            if (checks) {
+            if (checks && !absolChecksKeep(p, c)) {
                 // Checks and Balances: give the card to a player with fewer cards.
                 std::vector<Option> who;
                 for (int q = 0; q < G.numPlayers; ++q)
@@ -523,8 +542,8 @@ void Rules::strategyPhase() {
             E.emit(ev);
         }
     }
-    for (int c = 0; c < kStrategyCards; ++c)
-        if (G.cardOwner[c] < 0) ++G.cardTradeGoods[c];
+    for (int c = 0; c < kStrategyCards; ++c)  // (0.81.0) Absol rulebook 84.2b: no trade good on an exhausted card nobody took
+        if (G.cardOwner[c] < 0 && !(absolOn() && ((G.scLocked >> c) & 1))) ++G.cardTradeGoods[c];
     for (Player& p : G.players) p.keepsCards = false;
 
     // Imperial Arbiter: its owner may swap a strategy card with another player.
@@ -558,8 +577,10 @@ void Rules::strategyPhase() {
             }
         }
     }
+    absolStrategyEnd();    // (0.81.0) Imperial Arbiter, Affirmation of Divine Right (Absol's Agendas); exhausted cards ready
     telepathic();          // Naalu "0" token / Gift of Prescience
     endOfStrategyPhase();  // Quantum Datahub Node
+    if (brOn() && monumentsOn()) brArmageddonStrategyEnd();  // (0.84.0) Armageddon Project (Belkosea monument)
 }
 
 // =================================================================== action phase
@@ -583,9 +604,12 @@ void Rules::actionPhase() {
             lastActiveSystem_ = -1;
             lawsOrder(p);  // Keleres: blank all laws this turn
             startOfTurn(p);
+            absolTurnStart(p);  // (0.81.0) Enforced Travel Ban / Nexus Sovereignty (Absol's Agendas)
             teTurnStart(p);  // Extreme Duress (Thunder's Edge)
             if (G.modules & kModDiscordant) dsTurnStart(p);  // Troubadour, Spoils of War (Discordant Stars)
             for (int q = 0; q < G.numPlayers; ++q) btTurnStart(q);  // Thunder's Paradox (Nomad breakthrough)
+            if (monumentsOn()) monTurnStart(p);  // (0.82.0 Monuments+) L1Z1X, Nomad, Saar; Mentak at anyone's
+            if (brOn()) pharTurnStart(p);        // (0.85.0) Immortal II (Pharad'n): DEPLOY
             turnEnded_ = false;
             bool acted = false;
             if (dsEndTurnNow_) {  // Troubadour (Lanefir mech, 0.43.0): the turn ends at once - no action, not passed
@@ -634,7 +658,9 @@ void Rules::actionPhase() {
                 if (G.fixes >= 11 && (G.modules & kModDiscordant)) pilgrimage(p);
             }
             if (!G.players[p].eliminated) endOfTurn(p);
-            if (G.modules & kModThundersEdge) coexistStructures();  // (fixes 25: LRR 63.4 / 79.4 - whatever the turn did)
+            if (monumentsOn() && !G.players[p].eliminated) monTurnEnd(p);  // (0.82.0) N'orr: another structure instead
+            absolTurnEnd(p);  // (0.81.0)
+            if (coexistOn()) coexistStructures();  // (fixes 25: LRR 63.4 / 79.4 - whatever the turn did)
             G.lawsBlank = false;  // Law's Order lasts until the end of the turn
             if (!G.players[p].eliminated)
                 E.log(p, G.players[p].passed ? pn(p) + " passes" : pn(p) + " ends turn", EventKind::TurnEnd);
@@ -682,6 +708,8 @@ bool Rules::takeTurn(int p, bool second, bool mayPass) {
                 if (planetHasSkip(G, x)) any = true;
             if (any) opts.push_back({600, "Psychoarchaeology", "Exhaust planets with technology specialties for 1 trade good each. Doesn't use your action."});
         }
+        if (brOn()) brFreeOptions(p, opts);  // (0.84.0) the Belkosea: superweapons, Conviction, Synchrony Matrix, Trinity Stockpile
+        if (brOn()) pharFreeOptions(p, opts);  // (0.85.0) the Pharad'n: Nokash, Hidden Vaults
         if (absoluteSynergyReady(p)) {  // (fixes 27, the Naaz-Rokha review) "When you have 4 mechs in the same system"
             const BreakthroughDef* bt = breakthroughFor(G, p);
             opts.push_back({645, "Breakthrough: Absolute Synergy", std::string(bt ? bt->text : "") + " Doesn't use your action."});
@@ -715,6 +743,12 @@ bool Rules::takeTurn(int p, bool second, bool mayPass) {
                 any = any || (!G.planets[size_t(x)].destroyed && kPlanets[G.planets[size_t(x)].def].trait != Trait::None);
             if (any) opts.push_back({643, "Breakthrough: Erasure Corps", "Exhaust it to explore one of your planets. Doesn't use your action."});
         }
+        if (twilightThroneReady(p))  // (0.82.2) Twilight Throne (Edyn monument): "At any time" - free
+            opts.push_back({647, "Monument: " + monName(monumentIndex("edyn")),
+                            "Exhaust it to produce a mech on its planet without spending resources. Doesn't use your action."});
+        if (rhodunCanFlipBack(p))  // (0.82.4) Reliquat Unleashed: "Flip this card at any time" - free
+            opts.push_back({648, "Monument: flip " + monName(monumentIndex("rhodun_back")),
+                            "Back to " + monName(monumentIndex("rhodun_front")) + ". Doesn't use your action."});
         if (ds6FeintAvailable(p))  // (fixes 28, the Li-Zho review) Feint: "you may reveal this card at any time"
             opts.push_back({646, "Reveal Feint", "Your Feint on " + planetName(G.dsTrap[4]) + ": reveal it and it returns to your reinforcements. "
                                                  "Doesn't use your action."});
@@ -771,6 +805,22 @@ bool Rules::takeTurn(int p, bool second, bool mayPass) {
             if (!dsbtLanefirExplore(p) && !pl.human) cancelled.push_back(choice);
             continue;
         }
+        if (choice >= 660 && choice < 670) {  // (0.84.0) the Belkosea's "at any time" cards (they don't use the action)
+            if (!brFreeAction(p, choice) && !pl.human) cancelled.push_back(choice);
+            continue;
+        }
+        if (choice >= 670 && choice < 680) {  // (0.85.0) the Pharad'n: Nokash, Hidden Vaults (they don't use the action)
+            if (!pharFreeAction(p, choice) && !pl.human) cancelled.push_back(choice);
+            continue;
+        }
+        if (choice == 647) {  // (0.82.2) Twilight Throne
+            twilightThrone(p);
+            continue;
+        }
+        if (choice == 648) {  // (0.82.4) Reliquat Unleashed -> Vault of New Phrad
+            rhodunFlip(p);
+            continue;
+        }
         if (choice == 646) {  // Feint (fixes 28)
             if (!ds6RevealFeint(p) && !pl.human) cancelled.push_back(choice);
             continue;
@@ -801,6 +851,9 @@ bool Rules::takeTurn(int p, bool second, bool mayPass) {
             passWindow(p);  // Uncharted Space: AI Augury, Arbitrage (0.33.0)
             if (G.modules & kModDiscordant) dsPassed(p);  // Deliberate Action, Applied Biothermics
             tePass(p);      // Thunder's Edge legendary planets (0.34.0)
+            if (brOn()) pharPassed(p);  // (0.85.0) Death Binding (Pharad'n note)
+            if (monumentsOn()) monPassed(p);  // (0.82.0) Flaah Orbitals (Arborec)
+            if (monumentsOn()) monPassedDS(p);  // (0.82.4) Wonell's Bastion (Kolume)
             skimmerPass(p);  // Data Skimmer (Ral Nel breakthrough)
             bool allPassed = true;
             for (const Player& q : G.players)
@@ -870,6 +923,8 @@ void Rules::statusPhase() {
     G.phase = Phase::Status;
     E.log(-1, "Status phase", EventKind::Phase);
     mitosis();  // Arborec: start of the status phase
+    if (monumentsOn()) monCheckpoint();   // (0.82.1) The Pelagion's space combats (anything left from the action phase)
+    if (monumentsOn()) monStatusStart();  // (0.82.0) Spire of Ixth (Mahact)
     wormholeGeneratorStatus();  // (0.44.9: the original Wormhole Generator, games without the Codex)
     if (G.modules & kModDiscordant) dsStatusStart();  // Blessing of the Queens returns, Brikk Strain (Discordant Stars)
     if (G.modules & kModThundersEdge) statusStart6();  // Hydrothermal Mining, Radical Advancement
@@ -883,7 +938,12 @@ void Rules::statusPhase() {
     bounty_.clear();
     if (!eventOn(G, kEvCivilized)) revealObjective();  // (Civilized Society: they are all face up already)
     // LRR 81.3: draw action cards (Neural Motivator: 2)
-    for (int p : initiativeOrder(G)) drawActionCards(p, owns(p, "nm") ? 2 : 1, "status phase");
+    {
+        std::vector<int> draws(size_t(G.numPlayers), 0);
+        for (int p = 0; p < G.numPlayers; ++p) draws[size_t(p)] = owns(p, "nm") ? 2 : 1;
+        absolStatusDraws(draws);  // (0.81.0) Absol's Minister of Policy deals the first card of each player
+        for (int p : initiativeOrder(G)) drawActionCards(p, draws[size_t(p)], "status phase");
+    }
     if (G.modules & kModThundersEdge) btStatusDraws();  // Slumberstate Computing (Titans breakthrough)
     for (SystemState& s : G.systems) s.tokens = 0;
     for (int p : initiativeOrder(G)) {
@@ -899,6 +959,8 @@ void Rules::statusPhase() {
         p.custodiaExhausted = false;
         p.dsGhotiExhausted = false;  // the Ghoti planet card (Discordant Stars)
         p.btExhausted = false;
+        p.monExhausted = false;  // (0.82.0) the monument card
+        p.swExhausted = 0;       // (0.84.0) the Belkosea's superweapon cards
     }
     readyLeaders();  // agents
     statusRelics();  // relics and legendary planet abilities ready; Crown of Emphidia
@@ -932,6 +994,7 @@ void Rules::statusPhase() {
     // Minister of Policy: its owner draws an action card at the end of the status phase.
     int policy = lawOwner(G, "minister_policy");
     if (policy >= 0 && !G.players[policy].eliminated) drawActionCards(policy, 1, "Minister of Policy");
+    absolStatusEnd();  // (0.81.0) Minister of War (Absol) readies
     statusFactions();  // Genesis
     if (G.modules & kModThundersEdge) statusEnd6();  // Share Knowledge goes back, ocean cards ready
     bioplasmosis();    // Arborec

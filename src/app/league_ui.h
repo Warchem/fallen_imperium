@@ -68,6 +68,7 @@ struct DraftView {
     int sel = 0;                   // the highlighted one in `offer`
     bool done = false;             // everyone has picked
     bool pickOnly = false;         // a league where you keep one faction: only you pick, once
+    std::vector<int> locked;       // (0.85.2) factions you can't take yet (Blue Reverie: finish its league first)
 };
 void drawDraft(Canvas& c, const DraftView& v, uint32_t now);
 
@@ -100,6 +101,7 @@ void drawWon(Canvas& c, const WonView& v, uint32_t now);
 struct RivalCard {
     const RivalDef* def = nullptr;
     int games = 0, youAbove = 0, theyAbove = 0, broken = 0;  // career record with you
+    bool commander = false;  // (0.80.11) beaten: can sit in a Casual Game
 };
 void drawRivals(Canvas& c, const LeagueDef* league, const std::vector<RivalCard>& cards, int sel, uint32_t now);
 // the league's rules: points, bonuses, its table and content, the reward

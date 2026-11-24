@@ -801,6 +801,7 @@ void Rules::dsAfterMovement(int p, int sys, bool destroyerMoved, const Force* mo
                     for (int q = 0; q < kSides; ++q)
                         for (int t = 0; t < kUnitTypes; ++t)
                             if (G.planets[size_t(x)].units[size_t(q)].n[t]) destroyUnits(q, UnitType(t), G.planets[size_t(x)].units[size_t(q)].n[t], sys, x, p, "Cataclysm");
+                    if (G.planets[size_t(x)].superweapon >= 0) brSuperweaponLost(x, "destroyed with its planet");  // (0.84.0) Arrogance
                     G.planets[size_t(x)].destroyed = true;
                     G.planets[size_t(x)].owner = -1;
                 }
@@ -941,6 +942,7 @@ void Rules::dsAgendaPhaseStart() {
                 for (size_t x = 0; x < G.planets.size(); ++x) {
                     const PlanetState& ps = G.planets[x];
                     if (ps.owner < 0 || ps.exhausted || ps.destroyed || !hasTraitOf(G, int(x), kTr[k])) continue;
+                    if (obeliskGuards(G, int(x), p)) continue;  // (0.83.0) Obelisk (Atokera mech)
                     opts.push_back({int(x), planetName(int(x)) + " (" + pn(ps.owner) + ")", std::to_string(planetInfluence(G, int(x))) + " influence"});
                 }
                 if (opts.empty()) continue;

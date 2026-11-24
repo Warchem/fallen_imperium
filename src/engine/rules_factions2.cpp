@@ -119,6 +119,7 @@ void Rules::gainTG(int p, int n) {
     if (n <= 0 || p < 0 || p >= G.numPlayers) return;
     Player& pl = G.players[p];
     pl.tradeGoods = int8_t(std::min(99, pl.tradeGoods + n));
+    tgGained_[p] += n;  // (0.82.3: the Aylor Raider Hoard tells spending from gains)
     // Artuno the Betrayer (Nomad agent): the same number of trade goods go on the card - only for trade goods
     // from the supply (0.43.0, fixes 2: not those another player hands over in a deal or a loan)
     // (fixes 26, the Nomad review - owner 2026-11-13: Ssruu has the text of every other agent - the Yssaril may use it as Artuno)
@@ -502,11 +503,12 @@ void Rules::afterMoveFactions(int p, int sys) {
     // Foresight (Naalu): their ships slip away from the player who moved in
     for (int q : clockwiseFrom(G, (p + 1) % G.numPlayers)) {
         if (q == p || !fac(q, "naalu") || !hasShips(G, q, sys) || G.players[q].strategy <= 0) continue;
+        if (mawBlocks(G, q, sys)) continue;  // (0.82.3) The Maw (Nivyn monument): they can't move out of it
         std::vector<Option> opts;
         for (int16_t a : G.systems[sys].adj) {
             const SystemState& s = G.systems[a];
             if (s.isHyperlane()) continue;
-            uint8_t an = tileAnomalies(G, a);  // (fixes 29: the Zelian home too)
+            uint8_t an = tileAnomaliesMove(G, a);  // (fixes 29: the Zelian home too; 0.82.3: not the Debris Field)
             if (an & kSupernova) continue;
             if ((an & kAsteroid) && !owns(q, "amd")) continue;
             // (fixes 27, the Naalu review - LRR 59.2) ships move into a nebula only when it is the active system
@@ -633,7 +635,8 @@ void Rules::iconoclastTE(int gainer) {
 bool Rules::assimilate(int planet, int p, int old) {
     if (!fac(p, "l1z1x") || old < 0 || old == p) return false;
     PlanetState& pl = G.planets[planet];
-    if (!pl.units[old].structures()) return false;
+    // (0.82.0 Monuments+) Assimilate replaces PDS and space docks; a monument there is lost as usual (setControl)
+    if (!pl.units[old].count(UnitType::PDS) && !pl.units[old].count(UnitType::SpaceDock)) return false;
     removing_ = true;
     for (UnitType t : {UnitType::PDS, UnitType::SpaceDock}) {
         int k = pl.units[old].count(t);
@@ -647,6 +650,7 @@ bool Rules::assimilate(int planet, int p, int old) {
 }
 
 bool Rules::fightersLand(int p, int sys) const {
+    if (wyvernsLand(p, sys)) return true;  // (0.84.0) Wyvern I / II (Belkosea fighters)
     return flagshipAbility(G, p, "naalu") && flagshipIn(G, p, sys) && sys == G.activeSystem && p == G.activePlayer;
 }
 
@@ -663,7 +667,7 @@ void Rules::returnLandedFighters(int p, int sys) {
         sp.dmg[int(UnitType::Fighter)] = uint8_t(sp.dmg[int(UnitType::Fighter)] + dk);
         n += k;
     }
-    if (n) say(p, pn(p) + ": " + std::to_string(n) + " fighter(s) return to space (Matriarch).", sys);
+    if (n) say(p, pn(p) + ": " + std::to_string(n) + " fighter(s) return to space (" + (wyvernsLand(p, sys) ? "Wyvern" : "Matriarch") + ").", sys);
 }
 
 void Rules::dannelInvade(int p, const std::vector<int>& picks) {
@@ -803,10 +807,16 @@ void Rules::devotion(int att, int def, int sys) {
 
 int Rules::restrictedHits(int p, int sys, const RollResult& r) const {
     // [0.0.1] (L1Z1X flagship): hits by it and the dreadnoughts in its system go to non-fighter ships if able
-    if (!flagshipAbility(G, p, "l1z1x") || !flagshipIn(G, p, sys)) return 0;
+    const bool l1 = flagshipAbility(G, p, "l1z1x") && flagshipIn(G, p, sys);
+    // (0.81.0) Absol's Prophecy of Ixth: "Hits produced by their fighters must be applied to non-fighter ships, if able."
+    const Law* ixth = absolLaw(G, "absol_prophecy");
+    const bool fighters = ixth && ixth->owner == p;
+    if (!l1 && !fighters) return 0;
     int n = 0;
     for (size_t i = 0; i < r.dice.size() && i < r.unit.size(); ++i)
-        if (r.dice[i] >= r.need[i] && (r.unit[i] == int(UnitType::Flagship) || r.unit[i] == int(UnitType::Dreadnought))) ++n;
+        if (r.dice[i] >= r.need[i] && ((l1 && (r.unit[i] == int(UnitType::Flagship) || r.unit[i] == int(UnitType::Dreadnought))) ||
+                                       (fighters && r.unit[i] == int(UnitType::Fighter))))
+            ++n;
     return std::min(n, r.hits);
 }
 
@@ -904,7 +914,7 @@ void Rules::harrow(int att, int def, int planet) {
         if (p >= G.numPlayers) continue;  // (Thunder's Edge: neutral units have no abilities)
         const int o = p == att ? def : att;
         if (!fac(p, "l1z1x") || G.planets[planet].units[o].groundForces() == 0) continue;
-        if (lawInPlay(G, "conventions") && hasTraitOf(G, planet, Trait::Cultural)) continue;  // Conventions of War
+        if (conventionsOfWar(G) && hasTraitOf(G, planet, Trait::Cultural)) continue;  // Conventions of War
         Force guns;
         bool ignoreShield = commanderUsable(G, p, "l1z1x");  // 2RAM
         const Force& sp = G.systems[sys].space[p];
@@ -927,6 +937,7 @@ void Rules::harrow(int att, int def, int planet) {
         for (int t = 0; t < kUnitTypes; ++t)
             if (G.planets[planet].units[o].n[t] && unitDef(G, o, UnitType(t)).shield) shield = true;
         if (G.fixes >= 12 && G.fx.dsShieldPlanet == planet) shield = true;  // (0.44.8: Orbital Defense Grid)
+        if (brPlanetShield(G, o, planet)) shield = true;  // (0.83.0) Synthesis / Kohi
         if (shieldsDown(G, o, sys)) shield = false;
         if (shield && !ignoreShield && (G.modules & kModDiscordant) && wraegShield29(o, p, sys, planet)) shield = false;  // (fixes 29: Suldhan Wraeg)
         if (shield && !ignoreShield) continue;
@@ -950,7 +961,7 @@ void Rules::harrow(int att, int def, int planet) {
         assignHits(o, sys, planet, r.hits, kGroundMask, "Harrow", p);
         if (v10) {
             const int infAfter = G.planets[size_t(planet)].units[size_t(o)].count(UnitType::Infantry);
-            if (x89Omega(G, p) && !G.planets[size_t(planet)].exhausted) {
+            if (x89Omega(G, p) && !G.planets[size_t(planet)].exhausted && !obeliskGuards(G, planet, p)) {
                 G.planets[size_t(planet)].exhausted = true;
                 say(p, planetName(planet) + " is exhausted (X-89 Bacterial Weapon).", sys);
             }

@@ -201,6 +201,13 @@ const FQ kFactionQuirks[] = {
      {"Drone Carriers", "Carriers full of fighters that land as infantry."}},
     {"ghoti", {"Wandering Court", "Keeps the All Mother moving and produces wherever she goes."},
      {"Deep Void", "Spreads into empty systems for commodities."}},
+    // Blue Reverie (0.83.0)
+    {"atokera", {"Living Foundries", "Takes planets to build on - every readied world it holds is a forge."},
+     {"Voice of the Council", "Lives for the agenda phase: Politics, votes and predictions."}},
+    {"belkosea", {"Arms Race", "Races for weapon technology - and the superweapons to match."},  // (0.84.0)
+     {"Wyvern Wings", "Fills the sky with fighters - carriers and Wyverns first."}},
+    {"pharadn", {"Tomb Raiders", "Opens the tombs first - every world it takes is 2 more soldiers."},  // (0.85.0)
+     {"Endless Legion", "Throws infantry into every fight - its dead come back."}},
 };
 }  // namespace
 

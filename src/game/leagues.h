@@ -33,6 +33,7 @@ struct LeagueDef {
     const char* emblem;  // emblems:: key ("" none)
     int colour;          // the player colour it unlocks (pcolours index), -1 none
     bool builder;        // the Custom League (the Tournament Builder)
+    const char* unlockFaction;  // (0.85.2) the Blue Reverie faction you may play once it is finished ("" none)
 };
 struct RivalDef {
     const char* id, *name, *league;
@@ -49,6 +50,7 @@ const std::vector<const LeagueDef*>& all();  // in the page's order
 const LeagueDef* find(const std::string& id);
 std::vector<const RivalDef*> rivalsOf(const std::string& league);
 const RivalDef* rival(const std::string& id);
+std::vector<const RivalDef*> allRivals();  // every league's rivals, in the page's order
 int placePoints(int place);  // 0 = first
 const std::vector<BonusDef>& bonuses();
 const char* pitch();

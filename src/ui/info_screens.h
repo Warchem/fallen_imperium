@@ -35,6 +35,7 @@ std::unique_ptr<InfoScreen> makePlanetScreen(const ti::Game& g, int human);
 std::unique_ptr<InfoScreen> makeUnitScreen(const ti::Game& g, int human);
 std::unique_ptr<InfoScreen> makeHandScreen(const ti::Game& g, int human);  // action cards + promissory notes
 std::unique_ptr<InfoScreen> makeLawScreen(const ti::Game& g, int human);   // laws in play, all agendas
+std::unique_ptr<InfoScreen> makeMonumentScreen(const ti::Game& g, int human);  // (0.82.0) every player's monument (Monuments+)
 
 // Colours shared with the game screen.
 uint32_t strategyCardColor(int card);

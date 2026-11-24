@@ -29,7 +29,9 @@ std::string unitList(const Force& f, const Game* g = nullptr, int p = -1) {
 
 bool anyShipCanReach(const Game& g, int p, int sys) {
     for (size_t s = 0; s < g.systems.size(); ++s) {
-        if (int(s) == sys || (g.systems[s].hasToken(p) && !g.fx.dominusOrb && !(heroActive(g, p, "nomad") && flagshipIn(g, p, int(s))))) continue;
+        if (int(s) == sys || (g.systems[s].hasToken(p) && !g.fx.dominusOrb && !(heroActive(g, p, "nomad") && flagshipIn(g, p, int(s))) &&
+                              !freeholdAt(g, p, int(s))))  // (0.82.2 Freehold Starport)
+            continue;
         const Force& f = g.systems[s].space[p];
         for (int t : kShipIdx)
             if (f.n[t] && shipReach(g, p, int(s), sys, UnitType(t), moveBonusMax(g, p)).ok) return true;
@@ -98,7 +100,8 @@ void Rules::tacticalAction(int p) {
     }
 
     if (!artemirisToll(p, sys)) return;  // Keleres flagship: 2 influence
-    if (!zeu && !wtac) pl.tactic = int8_t(pl.tactic - 1);
+    // (0.82.0) the Keleres monument: the token from the card instead of the tactic pool
+    if (!zeu && !wtac && !(monumentsOn() && !G.systems[sys].hasToken(p) && monCommandToken(p, sys, true))) pl.tactic = int8_t(pl.tactic - 1);
     ilNa_ = !wtac && G.systems[sys].hasToken(p);  // Il Na Viroset (Mahact commander): a system with your token
     if (!zeu && !wtac) G.systems[sys].tokens |= uint16_t(1u << p);
     G.activeSystem = int16_t(sys);
@@ -167,7 +170,10 @@ void Rules::tacticalAction(int p) {
         window(w);
     }
     eyeOfVogul(p, sys);      // Uncharted Space relic (0.33.0)
+    if (brOn()) brActivated(p, sys);  // (0.84.0) Razalka Gris (Belkosea agent)
+    if (brOn()) pharActivated(p, sys);  // (0.85.0) Reality-Field Impactor (Pharad'n)
     btActivated(p, sys);     // Imperator (Winnu breakthrough)
+    if (monumentsOn()) monActivated(p, sys);  // (0.82.0) Revenance Circuit (Creuss): "After a player activates this system"
     if (G.modules & kModDiscordant) dsActivated(p, sys);  // Discordant Stars: Brood Pod, Minuteman, Titus Flavius, ...
     if (G.modules & kModThundersEdge) {  // Thunder's Edge factions (0.35.0)
         survivalInstinct(p, sys);  // Ral Nel
@@ -213,6 +219,14 @@ void Rules::tacticalAction(int p) {
             return;
         }
     }
+    // (0.81.0) Absol's Agendas: Articles of War (a token for this tactical action), Minister of Peace (ends the turn)
+    if (absolActivated(p, sys)) {
+        turnEnded_ = true;
+        if (G.modules & kModThundersEdge) malevolency(p);
+        troAgent(p, sys);
+        endTactical();
+        return;
+    }
     if (G.fixes < 12) magenActivation(sys);
     // E-Res Siphons, Nullification Field, Spatial Conduit Cylinder
     if (afterActivation(p, sys)) {
@@ -244,7 +258,17 @@ void Rules::tacticalAction(int p) {
     if (!shval) {
         spaceCannonOffense(p, sys);
         std::vector<int> shipOwners = playersWithShips(G, sys);
-        if (hasShips(G, p, sys)) {
+        // (0.82.1) The Pelagion (Deepwrought, Monuments+): "Other players' ships in this system do not trigger space combat."
+        pelagionNoCombat_ = hasShips(G, p, sys) && pelagionBlocks(p, sys) && (otherShipsIn(G, p, sys) || neutralShipsIn(G, sys));
+        if (pelagionNoCombat_) {
+            const int card = monumentIndex("deepwrought");
+            for (int q = 0; q < G.numPlayers; ++q)
+                if (q != p && monCardHas(G, q, "deepwrought") && monumentSystem(G, q) == sys) {
+                    monEvent(q, card, "No space combat in " + sysName(sys) + ": " + monName(card) + " keeps the peace.", sys);
+                    break;
+                }
+        }
+        if (hasShips(G, p, sys) && !pelagionNoCombat_) {
             for (int q : shipOwners)
                 if (q != p && hasShips(G, p, sys) && hasShips(G, q, sys)) spaceCombat(p, q, sys);
             if (hasShips(G, p, sys) && neutralShipsIn(G, sys)) spaceCombat(p, kNeutral, sys);  // Thunder's Edge
@@ -255,6 +279,8 @@ void Rules::tacticalAction(int p) {
     invasion(p, sys);
     coalescence(p, sys);  // Titans: awakened Hel-Titans fight on their planets
     shval_ = false;
+    pelagionNoCombat_ = false;
+    if (monumentsOn()) monCheckpoint();  // (0.82.1) a Pelagion taken in the invasion: its space combats now
     if (fleetDeferSys_ >= 0) {  // 0.58.5: the combat and the invasion are over - now the fleet pool
         fleetDeferSys_ = -1;
         fleetDirty_ = true;
@@ -266,6 +292,7 @@ void Rules::tacticalAction(int p) {
     stationControl(sys);
     wingTransferEnd(p, sys);  // Wing Transfer (Argent breakthrough)
     miniaturizationEnd(p);    // Ral Nel: structures carried in space go onto planets
+    if (monumentsOn()) monTacticalEnd(p, sys);  // (0.82.1) Sor Tek Linkhub (Ral Nel's monument): move a structure in a space area
     afterTactical(p, sys);
     if (G.modules & kModThundersEdge) malevolency(p);  // the Obsidian's note moves on
     endOfTacticalFactions(p, sys);  // T'ro
@@ -274,12 +301,14 @@ void Rules::tacticalAction(int p) {
 }
 
 void Rules::endTactical() {
+    absolAfterTactical(G.activePlayer, G.activeSystem);  // (0.81.0) Minister of Exploration (Absol); Articles of War's token ends
     if (fleetDeferSys_ >= 0) {  // (0.58.5: a turn that ended early - the check before the next question takes over)
         fleetDeferSys_ = -1;
         fleetDirty_ = true;
     }
     if (G.modules & kModDiscordant) dsEndTactical(G.activePlayer, G.activeSystem);  // Memory of Dusk, George Nobin
-    if (G.modules & kModThundersEdge) coexistCleanup();  // coexisting units left alone take the planet
+    if (brOn()) brEndTactical(G.activePlayer, G.activeSystem);                      // (0.83.0) Kapoko Vui's ships back to space
+    if (coexistOn()) coexistCleanup();  // coexisting units left alone take the planet
     bool adj = G.fx.lostStarChart || G.fx.starA >= 0;
     G.fx = TacticalEffects();
     if (adj) computeAdjacency(G);
@@ -311,6 +340,7 @@ void Rules::movement(int p, int sys) {
     // movement step happens even when nothing moves: "After movement, if the active system contains 1 or more of your non-fighter ships"
     auto nothingMoved = [&] {
         if ((G.modules & kModDiscordant) && G.fixes >= 28) ds4AfterMovement(p, sys);  // Shroud of Lith
+        if (monumentsOn()) monAfterMovement(p, sys);  // (0.82.4) Shades' Den (Kollecc monument)
     };
     if (G.fx.noMoveIn) {
         say(p, pn(p) + " can't move units into " + sysName(sys) + " (Ceasefire).", sys);
@@ -428,6 +458,7 @@ void Rules::movement(int p, int sys) {
                 r = shipReachVia(G, p, from, via, sys, ut, std::max(0, topMove - moveValue(G, p, from, ut)) + moveBonusMax(G, p));
             if (r.ok && r.viaWormhole && unitDef(G, p, ut).capacity > 0) wormholeCarriers += k;
             if (r.ok && r.viaWormhole && eventOn(G, kEvWormholes)) weird.push_back({t, k});  // Weird Wormholes
+            if (r.ok && r.viaWormhole) absolViaWormhole_ = true;  // (0.81.0) Wormhole Reconstruction (Absol)
         }
         Force& src = loc >= 0 ? G.planets[loc].units[p] : G.systems[from].space[p];
         int undamaged = src.n[t] - src.dmg[t];
@@ -564,6 +595,8 @@ void Rules::movement(int p, int sys) {
         w.sys = sys;
         window(w);
     }
+    if (absolViaWormhole_) absolMovedThrough(p);  // (0.81.0) Wormhole Reconstruction (Absol): a commodity for its token holders
+    absolViaWormhole_ = false;
     afterMoveFactions(p, sys);  // Stymie, Foresight
     afterMove3(p, sys, wormholeCarriers, moved.count(UnitType::WarSun) > 0);  // Sai Seravus, Ba'al, Acamar, Xuange, Voidwatch
     if ((G.modules & kModDiscordant) && !moved.empty()) dsAfterMovement(p, sys, moved.count(UnitType::Destroyer) > 0, &moved);  // Cataclysm, Daedalon
@@ -571,6 +604,8 @@ void Rules::movement(int p, int sys) {
     if ((G.modules & kModDiscordant) && !moved.empty()) ds4AfterMovement(p, sys);  // Shroud of Lith (fixes 28: any player's movement)
     if ((G.modules & kModDiscordant) && !moved.empty()) ds5AfterMovement(p, sys);  // the Lady moves, Sal Sparrow
     if ((G.modules & kModDiscordant) && !moved.empty()) ds7AfterMovement(p, sys, moved.count(UnitType::Infantry));  // the Ghoti home moves, Assault Machina
+    if (monumentsOn()) monAfterMovement(p, sys);  // (0.82.4) Shades' Den (Kollecc monument)
+    if (brOn()) brAfterMovement(p, sys);         // (0.83.0) Modular Designs (Atokera)
     capturedBlockade();  // LRR 17.2c
 }
 
@@ -672,6 +707,12 @@ CannonGuns Rules::cannonGuns(int q, int p, int sys) const {
             for (int16_t pl : G.systems[a].planets) collect(G.planets[pl].units[q], true);
         }
         if (machinaType >= 0) guns.add(UnitType(machinaType), 1);  // (fixes 28: Assault Machina's one unit)
+        // (0.83.0) Kohi / Modular Designs (Atokera): Space Cannon their units in this system gained
+        if (brOn() && q < G.numPlayers && !quietusAt(G, q, sys)) {
+            out.br = brExtraDice(q, sys, -1, RollKind::Cannon);
+            for (int16_t pl : s.planets)
+                for (const auto& x : brExtraDice(q, sys, pl, RollKind::Cannon)) out.br.push_back(x);
+        }
         out.ul = ulCannonDice(q, sys);  // Ul the Progenitor on Elysium
         const bool dsOn = (G.modules & kModDiscordant) != 0;
         if (dsOn) dsCannonLimit(q, p, guns);                       // Starfall Gunnery: one unit when it's not their action
@@ -724,6 +765,7 @@ void Rules::spaceCannonOffense(int p, int sys) {
         if (ul) addDice(r, ul, 5 - mod);
         if (starfall) addDice(r, starfall, 8 - mod);
         if (dhonraz) addDice(r, dhonraz, 5 - mod);
+        for (const auto& x : cg.br) addDice(r, x.first, x.second - mod);  // (0.83.0) Kohi, Modular Designs
         reportRoll(q, sys, "Space cannon at " + pn(target), r);
         afterUnitRoll(q, target, sys, r, "space cannon");
         // Halberd (Kolume flagship): their space cannon hits here can't be cancelled; the Rook's hits only on fighters
@@ -748,15 +790,19 @@ void Rules::spaceCannonOffense(int p, int sys) {
             const int ff = std::min(rookHits, G.systems[sys].space[target].count(UnitType::Fighter));
             if (ff > 0) destroyUnits(target, UnitType::Fighter, ff, sys, -1, q, "the Rook's space cannon");
         }
-        if (r.hits > 0 && !classified_ && !halberd) {
+        // (0.82.2) Perdition Array (Veldyr monument): the hits their units in its system rolled can't be canceled
+        const int locked = monumentsOn() ? perditionHits(q, sys, r) : 0;
+        if (locked > 0) monEvent(q, monumentIndex("veldyr"), std::to_string(locked) + (locked == 1 ? " hit" : " hits") + " can't be canceled (" +
+                                                                    monName(monumentIndex("veldyr")) + ").", sys);
+        if (r.hits > locked && !classified_ && !halberd) {
             WinCtx w;
             w.w = Win::BeforeCannonHits;
             w.a = target;
             w.b = q;
             w.sys = sys;
-            w.value = r.hits;
+            w.value = r.hits - locked;
             if (cardHas(window(w), "mjets")) {
-                const int c = eventOn(G, kEvWild) ? r.hits : 1;  // Wild, Wild Galaxy: every hit
+                const int c = std::min(r.hits - locked, eventOn(G, kEvWild) ? r.hits : 1);  // Wild, Wild Galaxy: every hit
                 r.hits -= c;
                 say(target, pn(target) + " cancels " + std::to_string(c) + " hit" + (c > 1 ? "s" : "") + ".", sys);
             }
@@ -840,6 +886,8 @@ void Rules::bombardment(int p, int sys) {
         const UnitDef& u = unitDef(G, p, UnitType(t));
         if (u.bombard > 0 || dsBombardDiceOf(G, p, sys, UnitType(t)) > 0) typeMask |= 1 << t;  // (the Lady, Raid Leaders)
         else if (blitz_ && isShip(UnitType(t)) && UnitType(t) != UnitType::Fighter) typeMask |= 1 << t;  // Blitz
+        else if (brOn() && (kohiDef(G, p, UnitType(t), sys).bombard > 0 || modularAt(G, p, UnitType(t), sys, -1, 3)))
+            typeMask |= 1 << t;  // (0.83.0) Kohi / Modular Designs (Atokera)
         if (u.ignoresShield) warSun = true;
     }
     // Annihilator (L1Z1X mech): mechs on planets here bombard as if they were ships
@@ -853,7 +901,7 @@ void Rules::bombardment(int p, int sys) {
     }
     if (!typeMask) return;
     // Planets with other players' ground forces and no planetary shield (LRR 15.1f, 65.3).
-    const bool conventions = lawInPlay(G, "conventions");
+    const bool conventions = conventionsOfWar(G);
     std::vector<int> targets;
     for (int16_t pl : s.planets) {
         if (conventions && hasTraitOf(G, pl, Trait::Cultural)) continue;  // Conventions of War
@@ -868,6 +916,7 @@ void Rules::bombardment(int p, int sys) {
                     shield = true;
                 }
             if ((G.fx.echoShield >> q) & 1) shield = true;  // Echo Shielding (Uncharted Space)
+            if (brPlanetShield(G, q, pl)) shield = true;    // (0.83.0) Synthesis / Kohi (Atokera, Blue Reverie)
             // Orbital Defense Grid (Discordant Stars): 0.44.8 (fixes 12) - a Planetary Shield like any other, so Arc
             // Secundus, Combinatorial Bypass, scars still take it away
             if (G.fixes >= 12 && G.fx.dsShieldPlanet == pl) shield = true;
@@ -897,6 +946,7 @@ void Rules::bombardment(int p, int sys) {
                 if (G.planets[pl].units[own].n[t] && unitDef(G, own, UnitType(t)).shield && !(UnitType(t) == UnitType::PDS && disabled_)) shield = true;
             if ((G.fx.echoShield >> own) & 1) shield = true;
             if (G.fx.dsShieldPlanet == pl) shield = true;
+            if (brPlanetShield(G, own, pl)) shield = true;  // (0.83.0) Synthesis / Kohi
             if (shieldsDown(G, own, sys) || G.fx.bypass == p) shield = false;
             if (!anyGf && (!shield || warSun)) targets.push_back(pl);
         }
@@ -947,15 +997,30 @@ void Rules::bombardment(int p, int sys) {
             extraPlanet = pick(p, Tag::UseTech, "Your extra bombardment " + std::string(extraOnce > 1 ? "dice" : "die") + " (Plasma Scoring and the like): at which planet?",
                                where, "All of your bombardment is one roll: the extra dice go with one unit, at one planet.");
     }
+    bool modBombard = false;  // (0.83.0) Modular Designs' Bombardment 3: one unit, one die - at the first planet its type fires at
     for (int pl : targets) {
-        Force shooters, blitzers;
+        Force shooters, blitzers, brShooters;
         for (size_t i = 0; i < a.data.size(); i += 3)
             if (a.data[i] == pl) {
                 UnitType t = UnitType(a.data[i + 1]);
                 if (unitDef(G, p, t).bombard > 0 || dsBombardDiceOf(G, p, sys, t) > 0) shooters.add(t, a.data[i + 2]);
+                else if (brOn() && !blitz_ && (kohiDef(G, p, t, sys).bombard > 0 || modularAt(G, p, t, sys, -1, 3))) brShooters.add(t, a.data[i + 2]);
                 else blitzers.add(t, a.data[i + 2]);
             }
-        if (shooters.empty() && blitzers.empty()) continue;
+        std::vector<std::pair<int, int>> brDice;  // (0.83.0) Kohi's copied Bombardment, Modular Designs' Bombardment 3
+        if (brOn()) {
+            for (int t = 0; t < kUnitTypes; ++t) {
+                if (!brShooters.n[t]) continue;
+                const UnitDef k = kohiDef(G, p, UnitType(t), sys);
+                if (k.bombard > 0) brDice.push_back({brShooters.n[t] * std::max(1, int(k.bombardDice)), k.bombard});
+            }
+            const int mt = G.fx.modType;
+            if (!modBombard && mt >= 0 && modularAt(G, p, UnitType(mt), sys, -1, 3) && (shooters.n[mt] || brShooters.n[mt])) {
+                brDice.push_back({1, 3});
+                modBombard = true;
+            }
+        }
+        if (shooters.empty() && blitzers.empty() && brDice.empty()) continue;
         int q = defenderOn(pl);
         if (q < 0 && dsSlingsAt(p) && G.planets[pl].owner >= 0 && G.planets[pl].owner != p) q = G.planets[pl].owner;  // (fixes 28: Meteor Slings)
         if (q < 0) continue;
@@ -974,6 +1039,7 @@ void Rules::bombardment(int p, int sys) {
             impactorCommit_.push_back({pl, shooters.n[int(UnitType::Infantry)]});
         RollResult r = rollUnits(p, shooters, RollKind::Bombard, mod, G.fixes >= 12 ? (pl == extraPlanet ? extraOnce : 0) : abilityDice(p, sys),
                                  0, &galvDice);
+        for (const auto& x : brDice) addDice(r, x.first, x.second - mod);  // (0.83.0) Kohi, Modular Designs
         for (int t = 0; t < kUnitTypes; ++t)  // Blitz: bombardment 6
             for (int i = 0; i < blitzers.n[t]; ++i) {
                 int v = E.rng().d10();
@@ -1018,7 +1084,7 @@ void Rules::bombardment(int p, int sys) {
             window(w);
         }
         int infAfter = G.planets[pl].units[q].count(UnitType::Infantry);
-        if (x89Omega(G, p) && !G.planets[pl].exhausted) {  // ...and the planet it bombarded is exhausted
+        if (x89Omega(G, p) && !G.planets[pl].exhausted && !obeliskGuards(G, pl, p)) {  // ...and the planet it bombarded is exhausted
             G.planets[pl].exhausted = true;
             say(p, planetName(pl) + " is exhausted (X-89 Bacterial Weapon).", sys);
         }
@@ -1050,8 +1116,9 @@ void Rules::invasion(int p, int sys) {
     SystemState& s = G.systems[sys];
     impactorCommit_.clear();  // (fixes 29: filled by this invasion's bombardment)
     if (s.planets.empty()) return;
-    // A player can only invade if they won (or avoided) space combat (Sh'val skips all that).
-    if (otherShipsIn(G, p, sys) && !shval_) return;
+    // A player can only invade if they won (or avoided) space combat (Sh'val skips all that). (0.82.1) The Pelagion: no combat was
+    // triggered - LRR 49.2 needs only ground forces in the space area
+    if (otherShipsIn(G, p, sys) && !shval_ && !pelagionNoCombat_) return;
 
     blitz_ = false;
     disabled_ = false;
@@ -1075,6 +1142,7 @@ void Rules::invasion(int p, int sys) {
             if (!std::strcmp(kActionCards[x.card].key, "bunker")) bunkerOwner_ = x.player;
     }
     if (G.modules & kModDiscordant) dsInvasionStart(p, sys);  // Hkot Tokal, Zelian A, Collider, Davish S'Norri, Combinatorial Bypass
+    if (brOn()) brInvasionStart(p, sys);                      // (0.83.0) Kapoko Vui, Tri-Weave Shielding (Atokera)
 
     if (!shval_) bombardment(p, sys);
 
@@ -1112,12 +1180,15 @@ void Rules::invasion(int p, int sys) {
 
     // --- commit ground forces
     if (!ghomFirst) ghomSekkus(p, sys);  // Sardakk commander: bring ground forces from nearby planets
+    if (monumentsOn()) relayCommit(p, sys);  // (0.82.3) Hyperlane Relay (Celdauri monument): ground forces to the dock planets here
     if (s.space[p].groundForces() == 0 && !dsSlingPlanets_.empty()) {  // (Meteor Slings: those infantry still fight)
         for (int pl : std::vector<int>(dsSlingPlanets_)) dsResolvePlanet(p, pl);
         dsSlingPlanets_.clear();
     }
     // (fixes 27, the Naalu review) the Matriarch's fighters may be committed without ground forces
-    if (s.space[p].groundForces() == 0 && !(G.fixes >= 27 && fightersLand(p, sys) && s.space[p].count(UnitType::Fighter) > 0)) {
+    // ((0.83.0) Kapoko Vui: the Atokera's ships, as if they were ground forces)
+    const bool kapoko = kapokoShips(p, sys) && s.space[p].ships() > 0;
+    if (s.space[p].groundForces() == 0 && !(G.fixes >= 27 && fightersLand(p, sys) && s.space[p].count(UnitType::Fighter) > 0) && !kapoko) {
         engageCoexisting(p, sys, {});  // (0.44.2: the ground forces already on a planet can end a coexistence)
         coexistStructures();           // (fixes 25: LRR 63.4 / 79.4 after those fights)
         blitz_ = disabled_ = false;
@@ -1139,7 +1210,13 @@ void Rules::invasion(int p, int sys) {
     if (matriarch) {  // Matriarch (Naalu flagship): fighters land and fight as ground forces
         spec.typeMask = kGroundMaskT | (1 << int(UnitType::Fighter));
         d.hitMask = spec.typeMask;
-        d.context += " Matriarch: your fighters may land too (they return to space after the combat).";
+        d.context += wyvernsLand(p, sys) ? " Wyverns: your fighters may land too (they return to space after the combat)."
+                                         : " Matriarch: your fighters may land too (they return to space after the combat).";
+    }
+    if (kapoko) {  // (0.83.0) Kapoko Vui (Atokera hero): ships commit as ground forces, back to space at the end of the action
+        spec.typeMask = (spec.typeMask ? spec.typeMask : kGroundMaskT) | kShipMaskAll;
+        d.hitMask = spec.typeMask;
+        d.context += " Kapoko Vui: your ships may commit too (they return to space at the end of this tactical action).";
     }
     for (int16_t x : s.planets)  // Omniopiares (Keleres mech): landing there costs influence
         if (const int toll = omniopiaresToll(p, x))
@@ -1246,6 +1323,7 @@ void Rules::invasion(int p, int sys) {
                 say(p, pn(p) + "'s Auriga adds 1 infantry on " + planetName(pl) + ".", sys);
             }
     if ((G.modules & kModDiscordant) && !landed.empty()) dsLanded(p, sys, landed);  // Jgin Faru (Dih-Mohn agent)
+    if (brOn()) pharLanded(p, sys, landed);  // (0.85.0) Black Pyramid DEPLOY, Pharad'n the Immortal
     if (shval_) {
         // Sh'val, Harbinger: purged, and the ships in the active system go back to reinforcements.
         purgeHero(p);
@@ -1293,7 +1371,10 @@ void Rules::invasion(int p, int sys) {
     // a fresh meeting only (neither side coexisting there yet - those keep their questions at the ground combat). The
     // Viper may coexist with neutral units too (Thunder's Edge: they count as another player's for abilities).
     std::vector<std::pair<int, int>> coexistAsked;  // (planet, other player) decided now
-    if (G.fixes >= 25 && (G.modules & kModThundersEdge))
+    // (0.82.0) The Cenotaph (Sol): infantry committed may be placed on its planet instead ("'place' triggers off ... commit")
+    if (monumentsOn())
+        for (int pl : landed) monSolCommit(p, pl);
+    if (G.fixes >= 25 && coexistOn())
         for (int pl : landed) {
             PlanetState& ps = G.planets[size_t(pl)];
             for (int q = 0; q < G.numPlayers; ++q) {
@@ -1303,7 +1384,7 @@ void Rules::invasion(int p, int sys) {
                 if (q == p || !(ps.units[size_t(p)].groundForces() > 0 && groundForcesOn(G, q, pl) > 0)) continue;
                 if (((ps.coexist >> p) & 1) || ((ps.coexist >> q) & 1)) continue;
                 coexistAsked.push_back({pl, q});
-                coexistInstead(p, q, pl);
+                if (!coexistInstead(p, q, pl) && monumentsOn()) monCoexist(p, q, pl);  // (0.82.0) Nefishh Projector (Naalu)
             }
             if (ps.units[size_t(p)].groundForces() > 0 && neutralGroundOn(G, pl) > 0 && !((ps.coexist >> p) & 1) && fac(p, "firmament") &&
                 mechAbilities(G) && ps.units[size_t(p)].count(UnitType::Mech) > 0) {
@@ -1321,6 +1402,14 @@ void Rules::invasion(int p, int sys) {
                 curFor_ = -1;
                 if (co) startCoexisting(p, pl);
             }
+            // (0.82.0, owner M7) Nefishh Projector (Naalu) with only neutral ground forces there ("if able": neutral units count as
+            // another player's units for abilities - as for the Viper and the Research Team above)
+            if (monumentsOn() && ps.units[size_t(p)].groundForces() > 0 && neutralGroundOn(G, pl) > 0 && !((ps.coexist >> p) & 1)) {
+                bool players = false;
+                for (int q = 0; q < G.numPlayers; ++q)
+                    if (q != p && groundForcesOn(G, q, pl) > 0) players = true;
+                if (!players && monCoexist(p, kNeutral, pl)) coexistAsked.push_back({pl, kNeutral});
+            }
         }
 
     // --- space cannon defense (L4 Disruptors: none against the invader; none inside an entropic scar)
@@ -1330,17 +1419,20 @@ void Rules::invasion(int p, int sys) {
     }
 
     // --- ground combat and control
-    const bool te = (G.modules & kModThundersEdge) != 0;
+    const bool te = coexistOn();  // (the coexistence rules - Thunder's Edge, or Monuments+)
     // (fixes 27, the Naalu review) the Matriarch's fighters committed alone fight too (no control: they return to space)
     auto committed = [&](int pl) {
-        return G.planets[pl].units[p].groundForces() > 0 || (G.fixes >= 27 && matriarch && G.planets[pl].units[p].count(UnitType::Fighter) > 0);
+        return G.planets[pl].units[p].groundForces() > 0 || (G.fixes >= 27 && matriarch && G.planets[pl].units[p].count(UnitType::Fighter) > 0) ||
+               (kapoko && G.planets[pl].units[p].ships() > 0);  // (0.83.0) Kapoko Vui
     };
     for (int pl : landed) {
         // (fixes 27, the Saar review - a game ended with the Saar and Sol sharing Tar'mann: the Saar declined to end their
         // coexistence against Sol, then ended it against the Deepwrought) our coexistence on the planet ends or not as one
         // decision, asked once before the fights - then we fight every player there who doesn't coexist
         bool endedAll = false;
-        if (te && G.fixes >= 27 && ((G.planets[pl].coexist >> p) & 1) && committed(pl) && !groveBlocks(p, pl)) {
+        // (fixes 37, found with Monuments+'s Nefishh Projector) not when the coexistence was chosen just now, at this commit
+        const bool justChosen = G.fixes >= 37 && std::any_of(coexistAsked.begin(), coexistAsked.end(), [pl](const std::pair<int, int>& x) { return x.first == pl; });
+        if (te && G.fixes >= 27 && ((G.planets[pl].coexist >> p) & 1) && committed(pl) && !groveBlocks(p, pl) && !justChosen) {
             int foe = -1, most = 0;
             for (int q = 0; q < G.numPlayers; ++q) {
                 if (q == p) continue;
@@ -1361,7 +1453,7 @@ void Rules::invasion(int p, int sys) {
         }
         for (int q = 0; q < G.numPlayers; ++q) {
             if (q == p) continue;
-            if (!(committed(pl) && groundForcesOn(G, q, pl) > 0)) continue;  // Hel-Titans defend too
+            if (!(committed(pl) && (groundForcesOn(G, q, pl) > 0 || sleepingWorldOn(G, q, pl)))) continue;  // Hel-Titans defend too (and the Sleeping World - 0.82.2)
             // (fixes 25) decided at the commit: coexisting now = no combat, else the fight (no second question)
             if (std::find(coexistAsked.begin(), coexistAsked.end(), std::make_pair(pl, q)) != coexistAsked.end()) {
                 if (((G.planets[pl].coexist >> p) & 1) || ((G.planets[pl].coexist >> q) & 1)) continue;
@@ -1409,10 +1501,10 @@ void Rules::invasion(int p, int sys) {
         }
         if (committed(pl) && neutralGroundOn(G, pl) > 0 && !(G.fixes >= 25 && ((G.planets[pl].coexist >> p) & 1)))
             groundCombat(p, kNeutral, pl);  // Thunder's Edge (fixes 25: not while coexisting with them - Viper EX-23)
-        if (G.planets[pl].units[p].groundForces() > 0 && !((G.planets[pl].coexist >> p) & 1)) {
+        if ((G.planets[pl].units[p].groundForces() > 0 || (kapoko && G.planets[pl].units[p].ships() > 0)) && !((G.planets[pl].coexist >> p) & 1)) {
             bool contested = neutralGroundOn(G, pl) > 0;
             for (int q = 0; q < G.numPlayers; ++q)
-                if (q != p && groundForcesOn(G, q, pl) > 0 && !((G.planets[pl].coexist >> q) & 1)) contested = true;
+                if (q != p && (groundForcesOn(G, q, pl) > 0 || sleepingWorldOn(G, q, pl)) && !((G.planets[pl].coexist >> q) & 1)) contested = true;
             if (!contested && G.planets[pl].owner != p) setControl(pl, p);
         }
     }
@@ -1563,6 +1655,8 @@ void Rules::productionCore(int p, int sys, int capacityLimit, bool viaWarfare, b
         discount += wormholeCount(G, sys);  // (fixes 24: each wormhole, not each kind)
     else if (G.fixes >= 8 && breakthroughIs(G, p, "ghost"))
         for (uint8_t w = wormholesOf(G, sys); w; w &= uint8_t(w - 1)) ++discount;
+    const int zhaRen = monProductionDiscount(p, sys);  // (0.82.2) Zha'Ren Foundry (Roh'Dhna monument): 2 cheaper in its system
+    discount += zhaRen;
     const int costCap = dsCostCap_;  // Maximus (Dih-Mohn flagship): a combined cost limit
     discount += dsDiscount_;  // Moult, Brood Pod, Obsessive Designs (Discordant Stars)
     discount += dsDiscount2_;  // Industry Secrets (Discordant Stars)
@@ -1596,6 +1690,7 @@ void Rules::productionCore(int p, int sys, int capacityLimit, bool viaWarfare, b
     d.value = discount;
     d.hitMask = typeMask;
     if (maxUnitCost_ > 0) d.context += " Only units that cost 4 or less.";
+    if (zhaRen > 0 && discount < 1000) d.context += " (" + monName(monumentIndex("rohdhna")) + ": 2 of that.)";
     if (costCap > 0) d.context += " Their combined cost is " + std::to_string(costCap) + " or less.";
     d.costCap = costCap;
     if (molds) d.context += " That Which Molds Flesh: 2 fighters / infantry don't count against the limit.";
@@ -1668,6 +1763,7 @@ void Rules::productionCore(int p, int sys, int capacityLimit, bool viaWarfare, b
     int gfPlanet = a.data[kUnitTypes];
     if (counts[int(UnitType::Flagship)] && commanderUsable(G, p, "nomad")) say(p, pn(p) + "'s flagship costs nothing (Navarch Feng).", sys);
     reclaimForPlacement(p, counts, sys);  // (fixes 32, LRR 23.4a: the player picks the units that come back off the board)
+    const int overBefore = capacityOverflow(G, p, sys);  // (0.82.3 Corsairs' Cove: what may stay over the capacity)
     Force made;
     for (int t = 0; t < kUnitTypes; ++t) {
         if (!counts[t]) continue;
@@ -1677,11 +1773,13 @@ void Rules::productionCore(int p, int sys, int capacityLimit, bool viaWarfare, b
     }
     event(EventKind::Produce, p,
           pn(p) + " produces " + unitList(made, &G, p) + " in " + sysName(sys) + (viaWarfare ? " (Warfare)" : "") + ".", sys);
+    if (monumentsOn()) coveTake(p, sys, counts[int(UnitType::Fighter)], overBefore);  // (0.82.3) Corsairs' Cove (Florzen monument)
     removeExcessCapacity(p, sys);
     if (G.fixes >= 27) checkFloatingFactories(sys);  // (fixes 27, the Saar review: ships produced beside a lone floating factory)
     afterProduction3(p, sys, made);  // Rowl Sarrig; Hegemonic Trade Policy ends
     afterProduction4(p, sys, made, gfPlanet);  // Tungstantus, Trilossa Aun Mirik
     btProduced(p, sys, counts);                 // Auto-Factories (Thunder's Edge)
+    if (monumentsOn()) monProduced(p, sys, made);  // (0.82.2) Anvil of Atlas (Axis monument)
     if (G.modules & kModDiscordant) dsAfterProduction(p, sys);  // Rond Bri'ay
     if (G.modules & kModDiscordant) ds4Produced(p, sys, made);  // Cloaked Fleets, Walik
     if (G.modules & kModDiscordant) ds5Produced(p, sys, made);  // Rally to the Cause, the Lady or the Lord
@@ -1703,6 +1801,7 @@ void Rules::productionCore(int p, int sys, int capacityLimit, bool viaWarfare, b
         }
     }
     if (shipsOnly) return;
+    absolProduced(p, sys, counts);  // (0.81.0) Absol's Prophecy of Ixth: returned / taken
     // Prophecy of Ixth: lost unless 2 or more fighters were produced.
     if (lawOwner(G, "prophecy") == p && counts[int(UnitType::Fighter)] < 2)
         for (size_t i = 0; i < G.laws.size(); ++i)

@@ -23,7 +23,11 @@ Rules::RollResult Rules::rollUnits(int p, const Force& f, RollKind kind, int mod
         const UnitDef& u = unitDef(G, p, UnitType(t));
         int value = 0, dice = 0;
         switch (kind) {
-            case RollKind::Combat: value = u.combat; dice = u.combatDice; break;
+            case RollKind::Combat:
+                value = u.combat;
+                dice = u.combatDice;
+                if (mods && ((mods->useAfb >> t) & 1) && u.afb > 0) value = u.afb, dice = u.afbDice;  // (0.84.0) Ciphus Gault
+                break;
             case RollKind::AFB: value = u.afb; dice = u.afbDice; break;
             case RollKind::Bombard: value = u.bombard; dice = u.bombardDice; break;
             case RollKind::Cannon: value = u.cannon; dice = u.cannonDice; break;
@@ -153,7 +157,13 @@ void Rules::neutralHits(int sys, int planet, int hits, int mask, const std::stri
         if (destroy[t]) destroyUnits(kNeutral, UnitType(t), destroy[t], sys, planet, attacker, why.c_str());
 }
 
+// (0.82.2) Queen's Rest (Kortali monument): the units these hits destroyed roll once the hits are assigned
 void Rules::assignHits(int victim, int sys, int planet, int hits, int mask, const std::string& why, int attacker) {
+    assignHitsCore(victim, sys, planet, hits, mask, why, attacker);
+    monPendingResolve();  // (0.82.3: and the Gravelord's Keep's fighters)
+}
+
+void Rules::assignHitsCore(int victim, int sys, int planet, int hits, int mask, const std::string& why, int attacker) {
     if (victim == kNeutral) {
         if (hits > 0) neutralHits(sys, planet, hits, mask, why, attacker);
         return;
@@ -289,12 +299,13 @@ void Rules::assignHits(int victim, int sys, int planet, int hits, int mask, cons
 std::vector<int> Rules::retreatOptions(int p, int sys) const {
     std::vector<int> out;
     if (noRetreat_ || p == kNeutral) return out;  // Airo Shir Aur; neutral units never retreat
+    if (mawBlocks(G, p, sys)) return out;  // (0.82.3) The Maw (Nivyn monument): other players' ships can't move out of it
     bool det = owns(p, "det");
     for (int a : routeNeighbors(G, p, sys)) {  // incl. Quantum Entanglement (Creuss)
         if (a == dsBlockRetreat_[p]) continue;  // Lost Cause (Vaylerian flagship, Discordant Stars)
         const SystemState& s = G.systems[a];
         if (s.isHyperlane()) continue;
-        uint8_t an = tileAnomalies(G, a);  // (fixes 29: the Zelian home too)
+        uint8_t an = tileAnomaliesMove(G, a);  // (fixes 29: the Zelian home too; 0.82.3: not the Debris Field)
         if ((an & kSupernova) && !owns(p, "mr")) continue;  // Magmus Reactor
         if ((an & kAsteroid) && !owns(p, "amd")) continue;
         if (otherShipsIn(G, p, a)) continue;
@@ -315,7 +326,7 @@ std::vector<int> Rules::retreatOptions(int p, int sys) const {
             bool mech = G.systems[a].space[p].count(UnitType::Mech) > 0;
             for (int16_t x : G.systems[a].planets) mech = mech || G.planets[size_t(x)].units[p].count(UnitType::Mech) > 0;
             if (!mech || int(a) == dsBlockRetreat_[p] || otherShipsIn(G, p, int(a))) continue;
-            const uint8_t an = tileAnomalies(G, int(a));  // (fixes 29: the Zelian home too)
+            const uint8_t an = tileAnomaliesMove(G, int(a));  // (fixes 29: the Zelian home too; 0.82.3: not the Debris Field)
             if ((an & kSupernova) && !owns(p, "mr")) continue;
             if ((an & kAsteroid) && !owns(p, "amd")) continue;
             out.push_back(int(a));
@@ -451,6 +462,7 @@ void Rules::combatWon(int winner, int loser, int sys, bool space) {
     if (G.modules & kModThundersEdge) reapingWin(winner, loser, sys);  // The Reaping (Obsidian breakthrough; fixes 25)
     if ((G.modules & kModDiscordant) && breakthroughsOn(G)) dsbtWonCombat(winner, loser, sys, space);  // (0.43.0)
     if (G.modules & kModDiscordant) dsWonCombat(winner, loser, sys, space);  // Discordant Stars
+    if (monumentsOn()) monCombatWon(winner, loser, sys);  // (0.82.4) Krotas Bannerhall (Kjalengard monument)
     int maxVp = 0;
     for (const Player& pl : G.players) maxVp = std::max<int>(maxVp, pl.vp);
     if (loser < G.numPlayers && G.players[loser].vp == maxVp) actionSecret(winner, "sar");
@@ -572,6 +584,8 @@ void Rules::spaceCombatRun(int att, int def, int sys) {
     SystemState& s = G.systems[sys];
     inSpaceCombat_ = true;
     combatDraw_ = false;
+    if (monumentsOn()) rhodunCombatStart(att, def, sys);  // (0.82.4) Reliquat Unleashed: back to the Vault ("at any time")
+    if (monumentsOn()) hoardMark();  // (0.82.3) Aylor Raider Hoard (Vaylerian monument): trade goods spent from now on
     {
         WinCtx w;
         w.w = Win::CombatStart;
@@ -674,6 +688,7 @@ void Rules::spaceCombatRun(int att, int def, int sys) {
     spaceCombatStart3(att, def, sys);  // The Alastor, Dimensional Splicer, Antivirus
     spaceCombatStart4(att, def, sys);  // Z-Grav Eidolon, The Cavalry
     if (G.modules & kModDiscordant) dsSpaceCombatStart(att, def, sys);  // Lost Cause, Projection of Power
+    if (brOn()) brCombatStart(att, def, sys, -1);  // (0.84.0) Spike, Mercenary Sortie (Belkosea)
     if (vosEarly) vosHollow(att, def, sys, startA, startD);  // (Assault Cannon, Dimensional Splicer)
     // Units that fight: ships - and, with The Alastor, the Nekro player's ground forces in space;
     // Z-Grav Eidolons (Naaz-Rokha mechs) in the active system.
@@ -693,11 +708,13 @@ void Rules::spaceCombatRun(int att, int def, int sys) {
         return f;
     };
 
-    const bool nebula = (s.d().anomalies & kNebula) != 0 || ((G.modules & kModDiscordant) && sys == G.dsWound) ||  // (the Wound, Nivyn)
+    const bool nebula = sys != G.fx.rfiSys &&  // (0.85.0) Reality-Field Impactor: the anomaly has no effect this tactical action
+                        ((s.d().anomalies & kNebula) != 0 || ((G.modules & kModDiscordant) && sys == G.dsWound) ||  // (the Wound, Nivyn)
                         mortheusNebula(G, sys) ||  // (fixes 28: the Mortheus home)
+                        availynNebula(G, sys) ||   // (0.84.0) Availyn (Belkosea superweapon)
                         // Aurora Research Base (Veldyr breakthrough, 0.44.4 fixes 8): their home system is a nebula
                         (G.fixes >= 8 && (G.modules & kModDiscordant) && s.home >= 0 && s.home < G.numPlayers && breakthroughsOn(G) &&
-                         breakthroughIs(G, s.home, "veldyr"));
+                         breakthroughIs(G, s.home, "veldyr")));
     const int nebulaBonus = eventOn(G, kEvCosmic) ? 3 : 1;  // Cosmic Phenomenae: +3 for the defender
     int retreater = -1;
     int quietRounds = 0, lastTotal = -1;  // (the stalemate rule below)
@@ -726,8 +743,13 @@ void Rules::spaceCombatRun(int att, int def, int sys) {
         RollMods mods[2] = {combatMods(att, def, sys, -1, true), combatMods(def, att, sys, -1, true)};
         bool munitions[2] = {false, false};
         combatRoundStartFactions(att, def, sys, -1, true, mods, munitions);
+        if (brOn()) {  // (0.84.0) the Belkosea: "at any time" cards, Ascendancy, Ciphus Gault (Mercenary Sortie back after round 1)
+            brCombatRoundStart(att, def, sys, -1, round, mods);
+            if (!fighting(att) || !fighting(def)) break;
+        }
         // Prophecy of Ixth: +1 to its owner's fighters.
         int ixth = lawOwner(G, "prophecy");
+        if (ixth < 0 && absolLaw(G, "absol_prophecy")) ixth = absolLaw(G, "absol_prophecy")->owner;  // (0.81.0: Absol's - the same +1)
         if (ixth == att) fighterBonus[0] += 1;
         if (ixth == def) fighterBonus[1] += 1;
 
@@ -741,12 +763,17 @@ void Rules::spaceCombatRun(int att, int def, int sys) {
                 Force afb;
                 for (int t = 0; t < kUnitTypes; ++t)
                     if (s.space[side].n[t] && unitDef(G, side, UnitType(t)).afb > 0) afb.add(UnitType(t), s.space[side].n[t]);
+                // (0.84.0) the Uzean Wardog (Belkosea mech) carried in space takes no part in the space combat
+                if (brOn() && afb.count(UnitType::Mech) && !std::strcmp(unitDef(G, side, UnitType::Mech).key, "belkosea_mech"))
+                    afb.n[int(UnitType::Mech)] = afb.dmg[int(UnitType::Mech)] = 0;
+                const bool spike = brOn() && brSpikeOn(side) && afb.count(UnitType::Fighter) > 0;  // (0.84.0) Spike (Belkosea hero)
                 const bool cavalry = cavalry_[si] >= 0 && s.space[side].count(UnitType(cavalry_[si])) > 0;  // The Cavalry
                 // Metali Void Armaments (Thunder's Edge relic): Anti-Fighter Barrage 6 (x3) of its own
                 const bool metaliArm = side < G.numPlayers && (G.modules & kModThundersEdge) && holdsRelic(side, "metalivoidarmaments");
                 const int dsAfb = (G.modules & kModDiscordant) ? dsAfbDice(side, sys) : 0;  // Projection of Power, Trade Port
                 const int dsAfb5 = (G.modules & kModDiscordant) ? dsAfbDice5(side, sys) : 0;  // Zelian B
-                if (afb.empty() && !cavalry && !metaliArm && !dsAfb && !dsAfb5) continue;
+                const std::vector<std::pair<int, int>> brAfb = brExtraDice(side, sys, -1, RollKind::AFB);  // (0.83.0) Kohi, Modular Designs
+                if (afb.empty() && !cavalry && !metaliArm && !dsAfb && !dsAfb5 && brAfb.empty()) continue;
                 if ((scarAt(G, sys) && !ignoresScars(G, side)) || quietusAt(G, side, sys)) continue;  // Thunder's Edge: no anti-fighter barrage inside an entropic scar (the Quietus; 0.44.4: the Nivyn ignore it)
                 // Iconoclast Omega (Naalu mech, Codex 0.31.0): no anti-fighter barrage against the Naalu's units in its system
                 if (codexOn(G) && !teNaalu(G) && fac(other, "naalu") && mechAbilities(G) &&
@@ -775,7 +802,7 @@ void Rules::spaceCombatRun(int att, int def, int sys) {
                     w.sys = sys;
                     waylay = cardHas(window(w), "waylay");
                 }
-                if (fightersBefore == 0 && !waylay && !argentUse) continue;
+                if (fightersBefore == 0 && !waylay && !argentUse && !spike) continue;
                 const int afbMod = classifiedWeapons(side, sys, afb.total()) + (other < G.numPlayers ? assail(side, other) : 0) +  // (one question after the other)
                                    ((G.modules & kModDiscordant) && side < G.numPlayers ? dsAbilityMod(side) : 0);       // (Issac of Sinci, Omniscience Field)
                 const int afbDice = abilityDice(side, sys, false);
@@ -787,6 +814,7 @@ void Rules::spaceCombatRun(int att, int def, int sys) {
                 RollResult r = rollUnits(side, afb, RollKind::AFB, afbMod, afb.empty() ? 0 : afbDice, 0, &galvDice);
                 if (metaliArm) addDice(r, 3, 6 - afbMod);
                 if (dsAfb) addDice(r, dsAfb, 6 - afbMod);
+                for (const auto& x : brAfb) addDice(r, x.first, x.second - afbMod);
                 if (dsAfb5) addDice(r, dsAfb5, 5 - afbMod);
                 cavalryDice(si, side, r, RollKind::AFB);
                 reportRoll(side, sys, "Anti-fighter barrage", r);
@@ -797,7 +825,12 @@ void Rules::spaceCombatRun(int att, int def, int sys) {
                 if (G.fixes >= 28 && (G.modules & kModDiscordant) && r.hits > 0 && other < G.numPlayers) r.hits = dsLorena(other, sys, r.hits, true);
                 // (fixes 28, the Myko-Mentori review) Amanita Muscaria: "during space combat" - the barrage is part of it (LRR 10)
                 if (G.fixes >= 28 && (G.modules & kModDiscordant) && r.hits > 0 && other < G.numPlayers) r.hits = amanita(other, sys, r.hits, true);
-                if (waylay) {
+                if (spike && r.hits) {  // Spike: the fighters' barrage hits go to any ship; the rest to fighters as usual
+                    const int sh = std::min(r.hits, brSpikeHits(side, r));
+                    if (sh) assignHits(other, sys, -1, sh, kShipMask | alastorMask(other), "anti-fighter barrage (Spike)", side);
+                    const int rest = r.hits - sh, now = s.space[other].count(UnitType::Fighter);
+                    if (rest && now) destroyUnits(other, UnitType::Fighter, std::min(rest, now), sys, -1, side, "anti-fighter barrage");
+                } else if (waylay) {
                     if (r.hits) assignHits(other, sys, -1, r.hits, kShipMask | alastorMask(other), "anti-fighter barrage (Waylay)", side);
                 } else if (r.hits) {
                     destroyUnits(other, UnitType::Fighter, std::min(r.hits, fightersBefore), sys, -1, side, "anti-fighter barrage");
@@ -907,15 +940,24 @@ void Rules::spaceCombatRun(int att, int def, int sys) {
         for (int side = 0; side < 2; ++side) {
             const int victim = side == 0 ? def : att, shooter = side == 0 ? att : def;
             const RollResult& r = side == 0 ? rA : rD;
+            int total = r.hits;
+            // (0.84.0) Ciphus Gault (Belkosea commander): the dice that rolled ANTI-FIGHTER BARRAGE make barrage hits - fighters only
+            // (Spike: a fighter's hit any ship)
+            const int fOnly = brOn() ? std::min(total, brAfbOnlyHits(shooter, r, mods[side])) : 0;
+            if (fOnly > 0) {
+                const int ftr = s.space[victim].count(UnitType::Fighter);
+                if (ftr) destroyUnits(victim, UnitType::Fighter, std::min(fOnly, ftr), sys, -1, shooter, "anti-fighter barrage (Ciphus Gault)");
+                total -= fOnly;
+            }
             // [0.0.1] (L1Z1X flagship): hits by it and its dreadnoughts go to non-fighter ships if able
             int restricted = std::min(restrictedHits(shooter, sys, r) + ((G.modules & kModDiscordant) ? dsRestrictedHits(shooter, victim, sys, r) : 0),
                                       maxAbsorbableHits(G, victim, sys, -1, kNonFighter));  // (+ Raider cruisers, Discordant Stars)
-            restricted = std::min(restricted, r.hits);
+            restricted = std::min(restricted, total);
             if (restricted > 0) {
                 assignHits(victim, sys, -1, restricted, kNonFighter, "space combat ([0.0.1])", shooter);
-                assignHits(victim, sys, -1, r.hits - restricted, fmask(victim), "space combat", shooter);
+                assignHits(victim, sys, -1, total - restricted, fmask(victim), "space combat", shooter);
             } else {
-                assignHits(victim, sys, -1, r.hits, fmask(victim), "space combat", shooter);
+                assignHits(victim, sys, -1, total, fmask(victim), "space combat", shooter);
             }
         }
         // Courageous to the End: after one of your ships is destroyed.
@@ -961,6 +1003,7 @@ void Rules::spaceCombatRun(int att, int def, int sys) {
             w.sys = sys;
             window(w);
         }
+        if (monumentsOn()) hoardCheck(sys);  // (0.82.3) Aylor Raider Hoard: trade goods spent this round
         // Exotrireme II ("after a round of space combat"; fixes 25, owner 2026-11-11: after the Retreat step - LRR 78.7 /
         // 78.8 make it step 5 of the round, so ships that retreat get away; below)
         if (G.fixes < 25) afterSpaceRound(att, def, sys);
@@ -1013,6 +1056,7 @@ void Rules::spaceCombatRun(int att, int def, int sys) {
             }
         }
     }
+    if (monumentsOn()) hoardCheck(sys);  // (0.82.3) Aylor Raider Hoard: spent in the round that ended it
     inSpaceCombat_ = false;
     G.dsGale = -1;  // (Splintering Gale: only during the combat)
     G.dsGaleOwner = -1;
@@ -1074,8 +1118,17 @@ void Rules::groundCombatRun(int att, int def, int planet) {
         if (G.systems[sys].space[att].n[t] && unitDef(G, att, UnitType(t)).ignoresShield) warSun = true;
     // Matriarch (Naalu flagship): fighters that landed fight as ground forces
     // Hel-Titans (Titans PDS) are ground forces too
+    // (0.82.2) Sleeping World (Khrask monument): "During ground combat in this system, this unit is treated as a structure and a ground
+    // force." - it fights on its planet
+    const bool sleepA = sleepingWorldOn(G, att, planet), sleepD = sleepingWorldOn(G, def, planet);
+    // (0.83.0) Kapoko Vui (Atokera hero): their committed ships fight as ground forces; Panoply Animus (Atokera breakthrough): their
+    // structures do too (combat value 7)
+    const bool kapokoA = kapokoShips(att, sys), panoA = panoplyOn(att), panoD = panoplyOn(def);
     auto mask = [&](int p) {
-        return kGroundMask | (fightersLand(p, sys) ? (1 << int(UnitType::Fighter)) : 0) | (fac(p, "titans") ? (1 << int(UnitType::PDS)) : 0);
+        return kGroundMask | (fightersLand(p, sys) ? (1 << int(UnitType::Fighter)) : 0) | (fac(p, "titans") ? (1 << int(UnitType::PDS)) : 0) |
+               ((p == att ? sleepA : p == def ? sleepD : false) ? (1 << int(UnitType::Monument)) : 0) |
+               (p == att && kapokoA ? kShipMaskAll : 0) |
+               ((p == att ? panoA : p == def ? panoD : false) ? ((1 << int(UnitType::PDS)) | (1 << int(UnitType::SpaceDock)) | (1 << int(UnitType::Monument))) : 0);
     };
     auto ground = [&](int p) {
         Force f;
@@ -1086,12 +1139,17 @@ void Rules::groundCombatRun(int att, int def, int planet) {
             }
         return f;
     };
-    auto fighting = [&](int p) { return ground(p).groundForces() + ground(p).count(UnitType::Fighter) + ground(p).count(UnitType::PDS); };
+    auto fighting = [&](int p) {  // (0.83.0: every unit of the mask - the same count as before for the others)
+        return ground(p).groundForces() + ground(p).count(UnitType::Fighter) + ground(p).count(UnitType::PDS) + ground(p).count(UnitType::Monument) +
+               (p == att && kapokoA ? ground(p).ships() - ground(p).count(UnitType::Fighter) : 0) +
+               ((p == att ? panoA : p == def ? panoD : false) ? ground(p).count(UnitType::SpaceDock) : 0);
+    };
     struct PlanetFlag {
         int16_t& v;
         ~PlanetFlag() { v = -1; }
     } planetFlag{G.groundCombatPlanet};
     G.groundCombatPlanet = int16_t(planet);
+    if (monumentsOn()) monGroundCombatStart(att, def, planet);  // (0.82.2) Twilight Throne (Edyn): "At any time" - a mech here first
     {
         WinCtx w;
         w.w = Win::CombatStart;
@@ -1104,6 +1162,7 @@ void Rules::groundCombatRun(int att, int def, int planet) {
     }
     groundCombatStartFactions(att, def, planet);  // Claire Gibson, Tekklar Legion
     if (G.modules & kModDiscordant) dsGroundCombatStart(att, def, planet);  // Ruthless (Kortali)
+    if (brOn()) brCombatStart(att, def, sys, planet);  // (0.84.0) Mercenary Sortie (Belkosea note)
     // Magen Defense Grid Omega (Codex, 0.31.0): at the start of ground combat on a planet with your structures,
     // 1 hit on one of your opponent's ground forces
     // (0.44.8, fixes 12: the Cheiran's Byssus mechs count as structures; the hit can go to any unit fighting there -
@@ -1144,6 +1203,7 @@ void Rules::groundCombatRun(int att, int def, int planet) {
         RollMods mods[2] = {combatMods(att, def, sys, planet, false), combatMods(def, att, sys, planet, false)};
         bool munitions[2] = {false, false};
         combatRoundStartFactions(att, def, sys, planet, false, mods, munitions);  // Evelyn DeLouis, Dunlain Reaper
+        if (brOn()) brCombatRoundStart(att, def, sys, planet, round, mods);  // (0.84.0) the Belkosea: "at any time" cards
         if (fighting(att) == 0 || fighting(def) == 0) break;
         bool magen = false;
         if (techReady(def, "md_base") && !warSun && !shieldsDown(G, def, sys) && !codexOn(G)) {
@@ -1152,6 +1212,7 @@ void Rules::groundCombatRun(int att, int def, int planet) {
                 if (pl.units[def].n[t] && unitDef(G, def, UnitType(t)).shield &&
                     !(G.fixes >= 12 && disabled_ && UnitType(t) == UnitType::PDS))  // (0.44.8: Disable takes the PDS's shield)
                     shield = true;
+            if (brPlanetShield(G, def, planet)) shield = true;  // (0.83.0) Synthesis / Kohi
             if (shield && yesNo(def, Tag::UseTech, "Exhaust Magen Defense Grid?",
                                 "Your opponent rolls no dice in this round of ground combat.")) {
                 exhaustTech(def, "md_base");
@@ -1163,8 +1224,18 @@ void Rules::groundCombatRun(int att, int def, int planet) {
             rA = RollResult();
             Force fa = ground(att), fd = ground(def);
             if (G.modules & kModDiscordant) dsGroundRollers(att, def, planet, fa, fd);  // Megalith (Khrask mech)
-            if (!magen) rA = rollUnits(att, fa, RollKind::Combat, bonus[0], 0, 0, &mods[0]);
-            rD = rollUnits(def, fd, RollKind::Combat, bonus[1], 0, 0, &mods[1]);
+            // (0.82.2) Ado Citadel (Mirveda monument): in the first round in its system, their opponent's units don't roll
+            const bool citadelA = adoCitadel(att, def, sys, round), citadelD = adoCitadel(def, att, sys, round);
+            if (!magen && !citadelA) rA = rollUnits(att, fa, RollKind::Combat, bonus[0], 0, 0, &mods[0]);
+            if (!citadelD) rD = rollUnits(def, fd, RollKind::Combat, bonus[1], 0, 0, &mods[1]);
+            // (0.83.0) Panoply Animus: their structures roll as ground forces with a combat value of 7 (1 die each)
+            if (panoA && !magen && !citadelA && fa.structures() > 0) addDice(rA, fa.structures(), 7 - bonus[0]);
+            if (panoD && !citadelD && fd.structures() > 0) addDice(rD, fd.structures(), 7 - bonus[1]);
+            if (citadelA || citadelD) {
+                const int m = citadelA ? def : att;
+                if (again == 0) monEvent(m, monumentIndex("mirveda"), pn(citadelA ? att : def) + "'s units make no combat rolls this round (" +
+                                                                          monName(monumentIndex("mirveda")) + ").", sys);
+            }
             // Fire Team: reroll the misses.
             for (int side : {att, def}) {
                 RollResult& r = side == att ? rA : rD;
@@ -1195,15 +1266,19 @@ void Rules::groundCombatRun(int att, int def, int planet) {
                     dsRerolls_[i] = 0;
                     reportRoll(i == 0 ? att : def, sys, "ATS Armaments reroll", r);
                 }
-            if (!magen) crownOfThalnos(att, sys, planet, rA);
-            crownOfThalnos(def, sys, planet, rD);
-            if (!magen) reportRoll(att, sys, "Ground combat round " + std::to_string(round), rA);
-            reportRoll(def, sys, "Ground combat round " + std::to_string(round), rD);
+            if (!magen && !citadelA) crownOfThalnos(att, sys, planet, rA);
+            if (!citadelD) crownOfThalnos(def, sys, planet, rD);
+            if (!magen && !citadelA) reportRoll(att, sys, "Ground combat round " + std::to_string(round), rA);
+            if (!citadelD) reportRoll(def, sys, "Ground combat round " + std::to_string(round), rD);
             if (!thundarian(att, def, sys, rA.hits, rD.hits)) break;  // The Thundarian: roll again
         }
         if (G.modules & kModDiscordant) dsAfterCombatRolls(att, def, sys, planet, rA, rD);  // Zhrgar Stimulants
         if (!magen) confusedSage(att, def, sys, rA);  // Uncharted Space (0.33.0)
         confusedSage(def, att, sys, rD);
+        if (brOn()) {  // (0.84.0) Uzean Wardog (Belkosea mech): a commodity per hit
+            brWardog(att, rA, sys);
+            brWardog(def, rD, sys);
+        }
         for (int side : {att, def}) {  // X-89 Bacterial Weapon (Codex, Thunder's Edge's version - 0.43.3): twice the hits
             RollResult& r = side == att ? rA : rD;
             if (side >= G.numPlayers || r.hits <= 0 || (side == att && magen) || !x89Omega(G, side)) continue;
@@ -1260,6 +1335,7 @@ void Rules::groundCombatRun(int att, int def, int planet) {
                 if (t >= 0 && G.fixes >= 12) say(q, pn(q) + " repairs 1 " + unitTypeName(UnitType(t)) + " (Duranium Armor).", sys);
             }
         if (G.modules & kModDiscordant) dsGroundRoundEnd(att, def, planet);  // Hulgade's Hammer (round 1), Collector
+        if (brOn() && fighting(att) > 0 && fighting(def) > 0) brGroundRoundEnd(att, def, planet);  // (0.83.0) Obelisk's repair
         // Contagion / Safety Overrides (Uncharted Space)
         if (G.modules & kModUncharted)
             for (int side : {att, def}) {
@@ -1323,7 +1399,7 @@ void Rules::groundCombatRun(int att, int def, int planet) {
     if (G.fixes >= 27)
         for (int side : {att, def}) {
             const Force fo = ground(side);
-            if (fighting(side) > 0 && fo.groundForces() + fo.count(UnitType::PDS) == 0) {
+            if (fighting(side) > 0 && fo.groundForces() + fo.count(UnitType::PDS) + fo.count(UnitType::Monument) == 0) {  // (0.82.2 Sleeping World)
                 (side == att ? a : d) = false;
                 onlyFighters = true;
             }
@@ -1332,6 +1408,7 @@ void Rules::groundCombatRun(int att, int def, int planet) {
     if (winner < 0 && (G.modules & kModDiscordant) && dsDrawWinner(att, def) >= 0) {  // Subversive (Kyro): the draw is theirs
         winner = dsDrawWinner(att, def);
         say(winner, pn(winner) + " turns the draw into a win (Subversive).", sys);
+        if (monumentsOn()) dawnstar(winner == att ? def : att, winner, planet);  // (0.82.3) Dawnstar HQ (Tnelis monument)
         combatWon(winner, winner == att ? def : att, sys, false);
         combatEnded6(att, def, sys, planet);
         dsGroundCombatOver(att, def, planet, winner);
@@ -1354,6 +1431,7 @@ void Rules::groundCombatRun(int att, int def, int planet) {
         combatEnded6(att, def, sys, planet);
         return;
     }
+    if (monumentsOn()) dawnstar(winner == att ? def : att, winner, planet);  // (0.82.3) Dawnstar HQ (Tnelis monument): "When you lose"
     combatWon(winner, winner == att ? def : att, sys, false);
     combatEnded6(att, def, sys, planet);  // Thunder's Edge factions
     if (G.modules & kModDiscordant) dsGroundCombatOver(att, def, planet, winner);  // Tox (Kyro agent)

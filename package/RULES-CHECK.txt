@@ -1,5 +1,713 @@
-RULES-CHECK - version 0.80.0
-=============================
+RULES-CHECK - version 0.86.0 (bots that defend; Blue Reverie voices)
+====================================================================
+
+0.86.0 - no new rules questions: Competitive bots guard their systems
+against attacks a rival would really make, and the three Blue Reverie
+factions have their voices. The 0.85.3 reading below still waits for you.
+
+0.85.3 - your answers of 2026-11-24 13:08: P1 back to the card (only the
+Pharad'n purge a tomb, when they take its planet - games started in 0.85.0
+to 0.85.2 keep the old way); the Blue Reverie factions are secret
+unlockables (nobody plays one until you finish its league; no Modules box).
+One reading to check: once unlocked, a faction is in every game you set up
+for everyone - you and the bots. Say if bots should never play them.
+
+0.85.2 - the three Blue Reverie leagues and the new league descriptions.
+
+0.85.1 - the profile folder (progress kept between versions): no new rules
+questions. P1-P13 below stay as the record of the Pharad'n readings.
+
+0.85.0 - Blue Reverie's third faction: the Pharad'n Order. Tick "Blue
+Reverie" on the Modules screen; they join the faction list beside the
+Atokera and the Belkosea. The cards' exact wording. These are the readings
+I sent you on 2026-11-24 (09:41); you answered at 11:14 - all OK, with
+changes to P1, P5, P6 and P10 (marked YOUR ANSWER), all in this build:
+P1 Ancient Empire: during setup they put tomb tokens on up to 14 planets -
+   any planet on the board, Mecatol Rex and other players' home planets
+   included (not their own planets, space stations or off-board planets).
+   When the Pharad'n gain control of a planet with a tomb, they purge it and
+   capture 2 infantry; when another player takes it, the tomb stays (your
+   answer 13:08 - 0.85.0 / 0.85.2 had any player purging it; fixed in
+   0.85.3).
+P2 Mark of Pharad'n: captured infantry are tokens on their faction sheet
+   (they start with none). Each infantry they produce or place takes one
+   captured infantry back instead of costing resources; with none captured,
+   no infantry is placed. Abilities that place infantry (Immortal II,
+   Hidden Vaults, cards) take one captured infantry each the same way.
+P3 Immortal I / II: their infantry are captured again when they are
+   destroyed OR removed (combat, abilities, Nokash, Hidden Vaults, Death
+   Binding) - not when they are moved or returned. It works against the
+   Vuil'raith too ("cannot be prevented").
+P4 Dark Purpose: each objective they score gives 1 command token, put in the
+   pool they choose.
+P5 Nokash (agent): on their own turn (it doesn't use the action). They pick
+   a player; that player picks 1 planet they control and destroys all their
+   infantry there, gains 1 commodity per infantry (up to their commodity
+   value) and converts all their commodities to trade goods. YOUR ANSWER:
+   sellable - in Negotiations "use your agent for me" works with Nokash;
+   using it on the buyer keeps the promise (the bots do too).
+P6 Avhkan (commander): at the start of a ground combat on a planet they
+   control, they may destroy 1 infantry there. YOUR ANSWER: any infantry -
+   the invader's or their own (Immortal captures it back), the Pharad'n
+   player chooses. Unlocked by an ACTION: destroy 2 of their own infantry
+   on each of 5 planets.
+P7 Pharad'n the Immortal (hero): after a player commits ground forces to a
+   planet with one of their structures, purge it to destroy all infantry on
+   that planet (everyone's), or commit any number of their captured infantry
+   there as their own defenders.
+P8 Sacrotitan (mech): once per action, when 2 or more of their infantry are
+   destroyed on a planet at once (one combat round, one effect), they may
+   place 1 mech there.
+P9 Sedtra (flagship): its move is its printed value +1 for each ground force
+   it carries in that movement.
+P10 Reality-Field Impactor: after they activate a system, they pick 1
+   anomaly on the board; it has no effect for anyone until the end of that
+   tactical action (movement, combat bonuses, objectives that count it).
+   YOUR ANSWER: the player picks the anomaly's tile on the map (every
+   anomaly tile is lit; a list is there too).
+P11 Death Binding (note): when the Pharad'n pass, its holder may remove 4 of
+   their infantry from the board to gain 1 technology with no
+   prerequisites; then the note goes back and the Pharad'n capture 1
+   infantry.
+P12 Black Pyramid (Monuments+): a structure and a ground force (combat 8 x2,
+   SUSTAIN DAMAGE). DEPLOY at their "Commit Ground Forces" step when they
+   control a planet in the active system: put it on a planet there that
+   they control or are landing on.
+P13 Phar (1/0) is their home; they start with Integrated Economy (from the
+   Blue Reverie data).
+
+0.84.1 - screen changes only (Send button, megastructure, token places): no
+new questions. S1-S18 below stay as the record of the Belkosea readings.
+
+0.84.0 - Blue Reverie's second faction: the Belkosea Allied States. Tick "Blue
+Reverie" on the Modules screen; they join the faction list beside the
+Atokera. The cards' exact wording. You OK'd my readings on 2026-11-24 (one
+answer changed the screen: Caled's line, S5) - written down here so they stay
+on record. Tell me if anything reads wrong:
+S1 Classified Developments: a component action - spend 5 resources and / or
+   influence in any mix (each planet gives one or the other; trade goods
+   count) to put a superweapon that isn't built yet on a planet they control
+   that has none (not a space station). One of each; a purged one never comes
+   back. The card goes into their play area.
+S2 Arrogance: superweapons are structures (they count for objectives and
+   Arrogance) but not units - no ability destroys them. A superweapon is lost
+   only when its planet changes hands or is destroyed; then it is purged
+   together with its card.
+S3 "At any time": on their own turn (extra entries in the action list - they
+   don't use the action) and at the start of every round of a combat they
+   fight. "Not during this combat" stops the questions until it ends.
+S4 Availyn: its system is a nebula (for movement, the combat +1 and
+   anomaly objectives; the map shows a violet haze). PRODUCTION 3 on its
+   planet. The card: up to 3 fighters, paid as usual, in a system that holds
+   their ships.
+S5 Caled: in a combat in the active system - 1 of the opponent's ships there
+   is destroyed (not a hit; the opponent chooses which), when the active
+   system lies on one of the six straight hex lines from Caled's system and
+   no system on the way (both ends too) is an anomaly or off the board;
+   hyperlanes count as empty systems. YOUR ANSWER: while you pick a system to
+   activate (and when the game asks whether to use a superweapon in a
+   combat), the map draws Caled's six lines as far as they reach (a red bar
+   where an anomaly stops one) and a line from Caled to the system under the
+   cursor - green when Caled can fire there, red from where it is blocked,
+   with a tag saying why ("blocked by a nebula (Mecatol Rex)", "not in a
+   straight line").
+S6 Glatison: the card repairs all their damaged units everywhere. Other
+   players' units in its system have no SUSTAIN DAMAGE; ANTI-FIGHTER BARRAGE
+   4 (x2) in the space combats they fight in its system.
+S7 Grom: a die at 4 for each other player's fighter in 1 system - its own or
+   an adjacent one.
+S8 Mors: every unit with SUSTAIN DAMAGE in 1 system that is neither its own
+   nor adjacent becomes damaged (theirs too). PLANETARY SHIELD on its planet.
+S9 Conviction (S.O.L.G. Industries Group, legendary): readied whenever they
+   exhaust a superweapon card.
+S10 Synchrony Matrix: readies a superweapon card, a planet, a legendary
+   planet card, a relic, an agent (or Spike), the breakthrough or the
+   monument card - not technologies, not strategy cards.
+S11 Trinity Stockpile (breakthrough, Thunder's Edge games): the purged
+   strategy token leaves the game (their reinforcements shrink by 1); every
+   unit on a planet with a superweapon, or in or next to their home system,
+   is destroyed, as the card says; then that planet is exhausted. The bots
+   almost never use it.
+S12 Wyvern I / II (fighters): commit to a planet in their invasions as ground
+   forces (also alone), back to the space area when the combat ends.
+S13 Uzean Wardog (mech): per hit it produces - 1 commodity, or 1 commodity
+   turned into a trade good. Ascendancy (flagship): at the start of a space
+   combat round they may damage it for 1 hit on the opponent's non-fighter
+   ships.
+S14 Razalka Gris (agent): after any player activates a system, the Belkosea
+   may pick 1 system within 3 of it - until the end of movement, other
+   players' ships there don't block the active player's ships.
+S15 Ciphus Gault (commander; unlock: 1 superweapon in their play area): from
+   the second round of a space combat, their units with ANTI-FIGHTER BARRAGE
+   roll it instead of their combat rolls; those hits are barrage hits
+   (fighters only - unless Spike is on).
+S16 Spike (hero): at the start of a combat - this combat their fighters'
+   barrage hits may go to any ship. Readied when they lose a combat (no units
+   left there, or they retreated); never purged.
+S17 Mercenary Sortie (note): its holder rolls 3 dice at the start of a combat
+   they fight; each 8+ destroys 1 of the opponent's fighters or infantry in
+   that combat. The card goes back to the Belkosea after the first round.
+S18 Armageddon Project (Monuments+): at the end of the strategy phase they
+   put a control token on a superweapon card in any play area; the monument
+   card then has that card's text abilities, used from the monument's system
+   (it is exhausted instead of the card).
+
+0.83.0 - Blue Reverie (TacticBlue's homebrew), the first faction: the Atokera
+Legacy. Tick "Blue Reverie" on the Modules screen; the Atokera then join the
+New Game faction list (Blue Reverie group) and the random pool. Belkosea,
+Pharad'n, Qhet and Uydai come one by one (your list of five - Kaltrim, Xin,
+Sarcosa and Toldar aren't in the game); they stay out of the leagues until
+their unlocks are built (your end goal: each one unlocked by a League or
+Campaign). The cards' exact
+wording. Your answers from 2026-11-23 are built in (B1, B2, B4, B5, B6).
+Please check the rest:
+B1 Synthesis (your yes): each readied planet the Atokera control has
+   PRODUCTION 1 (0 + 1) and PLANETARY SHIELD, so they can produce in any system
+   where they hold a readied planet, no space dock needed; ground forces made
+   there may go on that planet. Every unit with PRODUCTION gets +1: a space
+   dock is the planet's resources + 3, Mirrorshard I has 1, Mirrorshard II 2.
+   An exhausted planet has neither. Space stations don't count (not planets).
+B2 Living Metals (your answer): no agenda outcome and no action card with
+   "ACTION:" can destroy or remove their units, or put another player's units
+   on their planets. Cards played at other timings (Direct Hit, ...) are not
+   covered.
+B3 Kohi (you asked for a practical version): the Atokera's other units in its
+   system copy the UNIT abilities their type lacks from other players' units
+   of the same type there - SUSTAIN DAMAGE, ANTI-FIGHTER BARRAGE,
+   BOMBARDMENT, SPACE CANNON (fired from that system), PLANETARY SHIELD,
+   PRODUCTION - at the best value on offer; what the type already has stays
+   its own. I said I'd add a short list of always-on TEXT abilities too; in the
+   end I left them all out, because nearly every one needs its own timing
+   (deploy, after a combat, ...). Tell me if you want particular ones.
+B4 Obelisk: "other players cannot exhaust this planet" stops Uprising,
+   Reparations, Ancient Burial Sites, Tactical Bombardment, Unstable Planet
+   (its infantry are still destroyed), Envoy Network and X-89 Bacterial Weapon
+   ΩΩ. An agenda outcome isn't a player, so it still can. The repair: when
+   they defend a ground combat on that planet, after each round's hits, if
+   something of theirs there is damaged and the fight goes on - they may
+   exhaust the planet to repair every unit there.
+B5 Modular Designs (your OK): chosen after movement in a tactical action, for
+   1 of their units in the active system: SUSTAIN DAMAGE, ANTI-FIGHTER
+   BARRAGE 3, BOMBARDMENT 3, SPACE CANNON 3 or PRODUCTION 3 (x1 each). A unit
+   that has the ability already rolls 1 more die at 3; PRODUCTION 3 replaces a
+   lower value (+1 from Synthesis). PLANETARY SHIELD isn't offered - nothing
+   bombards you during your own action.
+B6 Ordagka (your OK - the prediction counts as "predicted" for Mirrorshard II
+   and the Deepmantle Interface): once per agenda phase, right after an agenda
+   is revealed (an Alliance holder may too). "Do not vote" = cast no votes on
+   it. Unlock: on one agenda, more votes than every other player.
+B7 Mirrorshard II's DEPLOY: 1 cruiser from the reinforcements, into a system
+   with their ships, after each outcome they voted for or predicted (agenda
+   phase only - not an Executive Order vote in the action phase).
+B8 Magruda: used when the Atokera exhaust planets to vote (or for a player
+   Magruda was promised to in a deal): one of those planets also counts its
+   resources as votes, then it is readied (it can vote on the next agenda).
+B9 Kapoko Vui: the ships commit like ground forces (alone too) and fight with
+   their combat values; space cannon defense doesn't shoot at them; ships that
+   win a planet take control of it; at the end of the tactical action every
+   one of them returns to the active system's space area.
+B10 Tri-Weave Shielding: its holder plays it when another player invades a
+   system where the holder has ground forces on a planet without a shield, and
+   the invader has bombardment there - those ground forces' planet can't be
+   bombarded. Then the note goes back to the Atokera.
+B11 Panoply Animus (breakthrough, Thunder's Edge games): their structures have
+   SUSTAIN DAMAGE and roll 1 die at 7 each in ground combat on their planet.
+B12 Deepmantle Interface (Monuments+): after an outcome they voted for or
+   predicted, they may produce up to 1 unit in its system, paid as usual; it
+   needs no unit with PRODUCTION there.
+
+0.82.5 - your two reports (2026-11-23), checked:
+R1 Collateralized Loans (Vaden Banking Clans): only in the Vaden's own space
+   combats - "After 1 of your opponent's ships is destroyed" means the player
+   the Vaden are fighting; a fight between two other players never asks. The
+   game already worked that way (AsyncTI4 too). If you saw it come up in a
+   combat without the Vaden, please send that save.
+R2 Elder Qanoj (Xxcha commander) - the tester was right that the screen was
+   wrong: the vote screen's "Votes:" total added up influence only, so a 2/0
+   planet showed 0. The game itself always counted its 1 vote (a new test
+   votes with only a 0-influence planet: "casts 1 vote"). Fixed: the total
+   counts the planet's real votes, and the screen says "Elder Qanoj: each
+   planet gives 1 more vote."
+
+0.82.4 - Monuments+: Discordant Stars' monuments, batch 3 (the last 11 cards -
+all 35 DS monuments are in; new games only). The cards' own wording (your v3.1
+files - the Kyro Reliquary says "speciality", the Vault "unit upgrade
+technologies"; the online data "unit technology upgrades"). The Rhodun's
+monument is one card with two sides: the Vault of New Phrad and Reliquat
+Unleashed. My readings - please check:
+M63 Shades' Den (Kollecc): "your captured units from your faction sheet" = the
+    Kollecc's own units they captured (Cloaked Fleets, the Nightingale V) - all
+    of them or any of them, into the space area. After any player's movement
+    into its system (also when nothing moved), with at most 1 other player's
+    ships there (neutral ships count as a player's).
+M64 Tucc Academy (Bentor): DEPLOY only from the reinforcements (the FAQ), on a
+    planet whose traits the card allows (industrial / cultural). "Not adjacent
+    to a home system": the planet's system isn't a home system and isn't next
+    to one (Living Rules 6: a planet is adjacent to the system it is in). It
+    stays in coexistence without ground forces (the card puts it there) - the
+    rule that removes lone coexisting structures leaves it alone.
+M65 Krotas Bannerhall (Kjalengard): the Kjalengard decide whether to use it;
+    then they gain 1 command token and the victor may gain 1 too. When the
+    Kjalengard win, just their 1 token. Once per action = once per turn taken
+    (any player's).
+M66 Forbidden Library (Lanefir): any planet's printed specialty in or next to
+    its system (anyone's planet, exhausted or not - it isn't exhausted by
+    this), once per action: 1 prerequisite of that colour. It works for the
+    Lanefir although A New Edifice gives them no specialties of their own.
+M67 Polemarch's Hive (Cheiran): PRODUCTION = their PDS, space docks and
+    monuments in its system and the systems next to it (the Hive itself
+    counts); infantry may be produced on its planet.
+M68 Kyro Reliquary (Kyro): its planet is legendary (for objectives and
+    effects), counts as a planet with an attachment and with a technology
+    specialty (it skips no prerequisite - "of no type"). Destroyed (also when
+    the planet is taken): it must go onto a planet they control in that system
+    or next to it that the card allows (hazardous), then they draw a relic;
+    resolved once the hits / the invasion are done.
+M69 Ghoti Anchorpoint (Ghoti): for the Ghoti only, while they move, its
+    system counts as having no planets (Spawning Grounds' commodity, Ceie
+    Doleegueaunm's adjacency); and it always has a frontier token for them -
+    exploring it (Dark Energy Tap, ...) doesn't remove it (it is the card's).
+M70 Wonell's Bastion (Kolume): mandatory - see M77; the chain hops only
+    through systems with a SPACE CANNON unit (anyone's) and never back to a
+    system it started from; the shot is its SPACE CANNON 6 (x2), Antimass
+    Deflectors and Maneuvering Jets apply as for any space cannon.
+M71 Verdant Halo (Gledge): the chosen player treats all laws as blank while it
+    is the active player this turn, and loses the owner's benefits of laws
+    they own (ministers) for the turn. Choosing another player blanks their
+    owned laws only.
+M72 Vault of New Phrad / Reliquat Unleashed (Rhodun): any player activating its
+    system (the Rhodun too) lets the Rhodun flip it; flipping back "at any
+    time" is a free choice on their turn and is also offered at the start of a
+    combat where the Vault would help and Reliquat doesn't. The bonus applies
+    to their combat rolls (space and ground) in and next to its system;
+    neutral units in the Fracture count as "units in The Fracture".
+M73 Reliquat Unleashed: "Other players with units in The Fracture cannot
+    activate this system" - any unit of theirs anywhere in the Fracture.
+
+The rules pass (your 2026-11-22 request): every monument card again - text,
+ruling, timing - the Living Rules first, then the Monuments+ rulebook (3.1),
+then AsyncTI4. Changes are for new games only (older saves replay as before):
+M74 Flaah Orbitals (Arborec): "When you pass, place 1 infantry ..." has no
+    "may". Living Rules 1.8: "Abilities on components that remain in play are
+    mandatory unless those abilities use the word 'may'." So the "No infantry"
+    choice is gone; with only one planet to choose it is placed at once.
+M75 Pharus Iustitiae (Keleres) - a bug: the command tokens on the card were
+    still counted as in the reinforcements too, so the Keleres could add or
+    gain tokens that weren't there (more than 16). Fixed. (With Monuments+ the
+    Construction secondary places no token, so activations and the "place a
+    command token from your reinforcements" effects are the only uses.)
+M76 Valefar Assimilator "M" (Nekro): the rulebook's notes say the card "stacks
+    like the Breakthrough (reusing that token in case you didn't want a
+    flagship)" - the "Z" token is the Valefar Assimilator Z breakthrough's. Now:
+    "Z" only with that breakthrough (Thunder's Edge), as one of its 3 Z tokens
+    (those on flagships count); without it, "M" only. AsyncTI4 always offers a
+    "Z" (up to 7 tokens). OK? (The game holds one "Z" on a monument card.)
+M77 Wonell's Bastion (Kolume) - M70 changed: no "may" on the card, so it is
+    mandatory "if able" (Living Rules 1.8): when another player passes, the
+    Kolume must shoot or hop on - no "Don't" (AsyncTI4 lets it be skipped).
+    A lone choice is taken without a question.
+M78 Erwan's Fist (Mentak), The Cenotaph (Sol): "exhaust this card to ..." has
+    no "may" either, but exhausting is the ability's COST (Living Rules 1.11),
+    so they stay optional - otherwise Erwan's Fist would fire at the first turn
+    of every round. OK?
+M79 The Panopticon (Empyrean): the rulebook FAQ - "Does The Panopticon just go
+    anywhere on the map (excluding the Fracture), as long as there is no planet
+    or anomaly there? Yep." Your M1 answer follows the card ("non-Fracture,
+    non-supernova system that does not contain planets": other anomalies are
+    fine). Keep M1, or no anomalies at all as the FAQ says?
+M80 Checked, unchanged: the other 25 cards' wording against your v3.1 files, and
+    each "when" / "after" / "at the start of" against where the game asks -
+    e.g. Qanoj Shield Array ("when") before Calm Seas Sanatorium ("after") for
+    the same outcome (Living Rules 1.16), Sector KVD-14 as the card is played,
+    Spire of Ixth before the objectives are scored, Imperial Vault before the
+    first agenda. The Discordant Stars batches had this pass as they were made
+    (Lizho, Kortali, Kyro already mandatory).
+
+0.82.3 - Monuments+: Discordant Stars' monuments, batch 2 (12 more - 24 of the
+35; new games only). The cards' own wording (your v3.1 files - the Hyperlane
+Relay says "You can commit", the online data "you may commit"). Rulings: the
+Living Rules first, then the Monuments+ rulebook / Discordant Stars, then
+AsyncTI4. My readings - please check:
+M51 Gravelord's Keep (Myko-Mentori): up to 3 of their fighters need no
+    capacity in its system, and another 3 in EACH adjacent system (counted per
+    system, as AsyncTI4 does). With Fighter II the 3 also don't count against
+    the fleet pool. "After a player uses an omen die" = each Omen die used by
+    anyone (Divination, Lactarius Indigo): 1 free fighter in its system, if it
+    fits; it comes when the dice being rolled are done with (in a combat: once
+    the hits are assigned).
+M52 Flotilla Cyclotron (Dih-Mohn): "ships in this system" = the Cyclotron's
+    system, not the activated one - after they activate another system, their
+    ships starting in the Cyclotron's system move 1 further this tactical
+    action (the card exhausts).
+M53 Bounty Brokerage (Vaden): the player who replenished must have ships (not
+    only ground forces) in or next to its system and 1+ control tokens on the
+    Vaden sheet; the commodity taken becomes a trade good for the Vaden
+    (Living Rules 21.5). Any replenish counts (Trade primary / secondary, Trade
+    Agreement is resolved first, abilities that replenish).
+M54 Corsairs' Cove (Florzen): the first ability works even while the
+    monument isn't on the board (the Monuments+ rulebook: "DS Florzen's 'build
+    off the map' fighter ability"). Fighters produced beyond the capacity may be
+    produced when they go onto the card. The second ability needs the monument
+    on the board; the fighters come off the card into its system only as far as
+    capacity (and with Fighter II the fleet pool) allows. Both: only fighters
+    produced with PRODUCTION (production steps) go onto the card.
+M55 Mirrorforge (Mortheus): the ships' OWNER picks which ships move, one by one,
+    until at least 4 resources' worth (or all) have moved; "if able" = not out of
+    another player's Maw, not into a system they can't enter (an asteroid
+    field, a supernova, a nebula that isn't the active system). Fighters and
+    ground forces that no longer fit where they were go along with the ships
+    (Living Rules 95: moving ships transport). The space combat that follows
+    has the Mortheus as the attacker (as AsyncTI4) - only if both have ships
+    there (no space cannon, it isn't a tactical action). Neutral ships can be
+    pulled too (the cheapest first).
+M56 The Maw (Nivyn): other players' ships can't move out of its system in any
+    way - movement, retreats, Foresight, Mirrorforge - nor through it; they may
+    move in (a trap). The Nivyn's ships treat it as adjacent to the Wound
+    (movement and retreats).
+M57 AI Conclave (Augurs): only when another planet would really be explored (a
+    planet with a trait); the Conclave's planet is explored instead, with its
+    own trait deck (as usual for that planet - Terraform / two traits: their
+    choice), then the trade goods (1 per scored secret objective).
+M58 Dawnstar HQ (Tnelis): "each unit on this planet" = every player's units
+    there - the winner's ground forces, the Tnelis' own structures and the
+    monument itself. It happens before the winner's "after you win" effects;
+    with no ground forces left, the invader doesn't take the planet - it stays
+    the Tnelis' (Living Rules 30 / 49.5). The start-of-turn ability: another
+    player's (or neutral) unit on a planet in that system where the Tnelis also
+    have units (any unit - structures too).
+M59 Aylor Raider Hoard (Vaylerian): a player "spends" trade goods = their trade
+    goods go down during a space combat in or next to its system (Munitions
+    Reserves, Amanita Muscaria, cards paid with trade goods, ...); checked after
+    each combat round. +1 commodity value while another player has ships in or
+    next to its system (this changes the value at any time - e.g. when they
+    replenish).
+M60 Independence Tower (Free Systems): after every Leadership they resolve
+    (primary, secondary, Enervate, Galactic Crisis Pact), clockwise from
+    them, each other player with any units in or next to its system may reveal
+    1 of the Free Systems' promissory notes from their hand (not one face up in
+    their play area) - the note stays in their hand - and gains 1 command token.
+M61 Hyperlane Relay (Celdauri): in their invasion's Commit Ground Forces step
+    (any of their tactical actions in a system with planets), ground forces
+    from the Relay's planet may go to the planets IN THE ACTIVE SYSTEM that
+    contain their space docks (as AsyncTI4) - never when the Relay's system has
+    their command token. No ground combat starts there (they are their own
+    planets).
+M62 Debris Field (Zelian): its system counts as an asteroid field for every
+    effect (objectives, Chaos Mapping, Zelian abilities...), but anyone's ships
+    move into and through it as if it had no anomaly. The map shows the
+    reminder token (three rocks in a red ring at the lower right of the tile).
+
+0.82.2 - Monuments+: Discordant Stars' monuments, batch 1 (12 of the 35 cards;
+new games only). The cards' own wording (your v3.1 files - Nightfall
+Fortress says "a different player's", the online data "another player's").
+Rulings: the Living Rules first, then the Monuments+ rulebook / Discordant
+Stars, then AsyncTI4. My readings - please check:
+M39 Anvil of Atlas (Axis): 1 trade good per production in its system (not per
+    ship), whenever at least 1 non-fighter ship is produced there - by the
+    PRODUCTION ability or any other ability.
+M40 Sleeping World (Khrask): in a ground combat on its planet it fights as a
+    ground force (2 dice at 3, Sustain Damage, it can be destroyed by hits) -
+    and an invader landing there must fight it even when it is the Khrask's
+    only unit on the planet. Outside ground combat it is only a structure (no
+    bombardment against it). It can't fight on the system's other planets.
+M41 Jatta's Palace (Cymiae): the player who activated picks which action card
+    to discard (Living Rules: you discard from your own hand unless a card says
+    "random"); not when the Cymiae activate it.
+M42 Nightfall Fortress (Li-Zho): the Li-Zho choose - remove from that system a
+    command token of any player other than the one who activated it (their own
+    token too: it goes back to their reinforcements), or gain 1 command token
+    (into a pool of their choice). Also when the Li-Zho activate it.
+M43 Diplomatic Enclave (Olradin): after the Diplomacy primary or secondary is
+    resolved (after its "ready 2 planets"), its planet is readied if exhausted.
+M44 Ado Citadel (Mirveda): every ground combat in that system the Mirveda
+    fight (attacking or defending, on any planet there): in round 1 their
+    opponent makes no combat rolls. Effects that aren't combat rolls still
+    happen (Magen Defense Grid's hit, Valkyrie Particle Weave, ...).
+M45 Perdition Array (Veldyr): "during movement" = the space cannon offense step
+    (it is part of the movement step, Living Rules 58). Only the hits rolled by
+    their units IN the monument's system can't be canceled - Maneuvering Jets
+    may still cancel a hit from their guns elsewhere (PDS II next door).
+M46 Freehold Starport (Nokar): their ships may leave its system - carrying
+    units - although their command token is there; they still can't activate
+    it again.
+M47 Twilight Throne (Edyn) "at any time": a free choice on their turn (it
+    doesn't use the action) and at the start of every ground combat on that
+    planet; the card exhausts and is readied in the status phase. It isn't the
+    PRODUCTION ability (no blockade, Sarween Tools or AI Development).
+M48 Zha'Ren Foundry (Roh'Dhna): 2 off the combined cost of every production in
+    its system (the PRODUCTION ability or another ability), added to the other
+    discounts.
+M49 Queen's Rest (Kortali): each non-fighter, non-infantry unit of theirs
+    destroyed in that system (ships, mechs, PDS, docks - not the monument
+    itself) rolls 1 die: their combat value or better (a mech's ground combat
+    value; 8 for PDS / docks) = 1 hit against another player's ships there
+    (they pick whose if several; neutral ships too). No roll when there are no
+    such ships. The roll comes as soon as the hits being assigned are done (in a
+    combat round: before the next round).
+M50 Halls of Valor (Ghemina): for their movement (and retreats) its system and
+    every system holding 2 of their structures of one type (2 PDS or 2 space
+    docks) count as adjacent, both ways. Other uses of adjacency (space cannon
+    range, abilities) are unchanged.
+
+0.82.1 - Monuments+: Thunder's Edge's 6 monuments (new games only - a game
+started before this build keeps the Thunder's Edge factions without one).
+The cards' own wording (your v3.1 files; two small differences from the
+online data: "Rebellion Monument" under Veils of Lost Creuss, "this station"
+on the Seraph Data Center). OWNER 2026-11-22 21:59: M32 correct, M35 correct, M36
+correct (and yes - when the Firmament becomes the Obsidian, its Epiphany card
+is replaced by the Epiphany Hollow card, on the board where it stood; test
+"Epiphany: Puppets of the Blade -> Epiphany Hollow"), M37 correct, M38 ok.
+My readings:
+M32 Seraph Data Center (Last Bastion) "a system that contains your ships and
+    exactly 1 non-legendary planet": the system has exactly 1 planet (space
+    stations don't count - they aren't planets) and that planet isn't
+    legendary. (The other reading - one non-legendary planet among others that
+    are legendary - would add only a couple of systems.) Mecatol Rex's system
+    and home systems with 1 planet are allowed - the card doesn't exclude them.
+M33 Its "matching space station card" (Monuments+'s "Data Center" reminder card,
+    1 resource / 1 influence) is a real space station in that system: +1 to
+    your commodity value, exhaust it to turn your commodities into trade goods,
+    spend it like a planet card, no votes - Thunder's Edge's station rules. You
+    keep it when your ships leave; when another player is the only one with
+    ships there (after a space combat or production there, as for any
+    station), you lose it: the monument is destroyed and 2 hits go against
+    THEIR ships (theirs are the only ships there). Destroyed this way it gives
+    nobody a Topple a Monument / Nekro token (the card destroys itself).
+M34 Veils of Lost Creuss (Crimson): "adjacent to this planet" includes the
+    planet's own system (as Revenance Circuit, M19); you choose whose ships take
+    the hit - neutral ships too (as M20). It comes right after the breach turns
+    active (Incursion on activation, or a breach placed active), before any
+    movement.
+M35 The Pelagion (Deepwrought) "Other players' ships ... do not trigger space
+    combat": only the Deepwrought's own tactical action starts a space combat
+    there. When anyone else activates it, there is no space combat at all (not
+    against the Deepwrought, not between two others, not against neutral
+    ships) - but they may still invade its planets (LRR 49.2 only needs ground
+    forces in the space area; the game otherwise doesn't let you invade past
+    enemy ships). "Removed from a planet" = destroyed, captured, taken back for
+    Construction (LRR 23.4a) or renovated away. The combats come at the end of
+    that step (right after the invasion that took it, or at the end of the
+    action): the Deepwrought pick a player, that player picks whom they fight
+    (the Monuments+ FAQ), repeated until 1 player's ships are left; retreats
+    as usual.
+M36 Epiphany (Firmament): every activation of its system puts that player's
+    control token on the card (the Firmament's own too). "Skip 1 prerequisite":
+    1 token per research, only when the technology is exactly 1 prerequisite
+    short (like the Prophet's Tears; it goes before one-shot waivers such as
+    Forbidden Knowledge); any player's token, your choice. "Move a
+    non-Firmament player's control token to a plot card" = onto one of the
+    plot cards already in your play area (that player becomes a puppet of that
+    plot) - NOT a new facedown plot card. Asked when you research and didn't
+    skip. The research part works while the monument is off the board (it's
+    the card); tokens only come while it stands.
+M37 Epiphany Hollow (Obsidian): "a planet they control" = any planet that player
+    controls, not only in this system; their infantry go back to their
+    reinforcements, yours coexist there (and take the planet if their units
+    leave - Thunder's Edge's coexistence). Puppets of the Blade turns the
+    Epiphany on the board into it; it can never be placed again (FAQ); the
+    Epiphany's tokens are gone.
+M38 Sor Tek Linkhub (Ral Nel) "move 1 structure": anyone's structure in a space
+    area (a Saar floating factory, a Mirveda Gauss Cannon, The Panopticon, the
+    Seraph Data Center - its station goes along, and if another player alone
+    has ships where it lands, M33 happens). Not into a supernova, a hyperlane
+    or off the board. Bots use it only to drop another player's structure into
+    a system where they have ships and the owner has none.
+
+0.82.0 - Monuments+ (work in progress). M1-M4 answered 2026-11-22 (all as
+built: The Panopticon may go into anomalies other than supernovas; the card
+replaces Construction in every game; a monument counts as a structure in the
+first two lines; where they may stand). M5-M18 answered 2026-11-22 - now built
+that way:
+M5  Revenance Circuit: every player's ships in each wormhole system the Creuss
+    chooses take 1 hit - the Creuss' own too (the question marks "YOUR OWN
+    ships"; bots avoid it unless worth it).
+M6  Erwan's Fist: one system ("this OR an adjacent system").
+M7  Nefishh Projector: only infantry committed on their own may coexist. The
+    landing screen now says so under the plan, and sending a mech there asks
+    "A: Go ahead / B: Back" first.
+M8  Lodestar: the flagship is produced at its normal cost.
+M9, M10, M11, M12, M16: as built.
+M13 Glory Furnace: the Muaat's own supernova (Nova Seed, from Adjudicator
+    Ba'al) next to it counts like any supernova - tested.
+M14 Calm Seas / Qanoj: "predicted" = any prediction: the 9 riders, the Keleres
+    Rider, Council Black Site (Tarrock), Galactic Threat, Odlynn Myrr, and the
+    Discordant Stars' Kyro Rider, Edyn Rider, Radiance and Unity Algorithm.
+M15 She Consumes Worlds: neutral structures are captured too. When it's
+    offered: the moment the Vuil'raith gains control of a planet with
+    structures on it - right after winning that planet's ground combat (or
+    landing where there are only structures), or when a card / agenda gives
+    them the planet - BEFORE the old owner's structures would be destroyed
+    (LRR 49.5a), so it captures them instead.
+M17 Mowshir Freeport, in Negotiations: while a Hacan monument stands, the deal
+    screen of ANY two players gets extra rows for each side - "Destroyers in
+    <system>" etc. - for their ships (and the fighters / ground forces in the
+    space areas) in its system and the systems next to it. They go as part of
+    the transaction (the usual neighbour rules). When the deal is done, the
+    receiver's own units replace them in a system with the receiver's ships
+    and command token (they pick if there are several); with no such system,
+    or what doesn't fit their capacity, they are removed. Bots accept units at
+    a fair value but don't offer their own.
+M18 Sector KVD-14 / Palatine Obelisk: taken automatically; you now see the
+    monument card large ("you gain 2 trade goods", "you cast 2 more votes" -
+    A: Continue), and the vote question says beforehand what exhausting the
+    planet adds (Glory Furnace too).
+
+New readings found while making these changes - answered 2026-11-22 16:39 (all yes):
+M19 Revenance Circuit "each system adjacent to THIS PLANET": a planet is
+    adjacent to its own system (LRR 6.3), so the monument's own system is a
+    target too when it has a wormhole (e.g. on Lodor or Quann). Right?
+M20 Nefishh Projector with only NEUTRAL ground forces on the planet (Thunder's
+    Edge): infantry may coexist with them too ("if able" - neutral units count
+    as another player's, as for the Viper EX-23 and the Research Team). Right?
+M21 (a fix, not Monuments+) Future Sight (Nomad, "an outcome you voted for or
+    predicted") counted only action card riders - it now counts every
+    prediction in M14 (new games only; older saves keep the old reading).
+M22 No game piece puts neutral STRUCTURES on planets yet (Thunder's Edge's
+    neutral units are ships, fighters and infantry), so M15's neutral capture
+    is ready for when one does.
+
+Monuments+'s other cards (2026-11-22), the cards' own wording - all confirmed 2026-11-22 18:43:
+M23 The 3 action cards are 1 copy each in the action card deck (the set has one
+    of each). The 2 Twilight's Fall action cards (Dematerialize, Materialize)
+    wait for Twilight's Fall.
+M24 Festival: any non-home planet with one of your structures on it; readying a
+    planet that is already ready is allowed (worth it only with your monument
+    there); "4 infantry or 1 mech": as many infantry as your reinforcements
+    have, up to 4.
+M25 Rebel Bombing: "a non-home system" = not anyone's home system; structures in
+    space count too (Saar floating factories, The Panopticon); trade goods only
+    (not commodities).
+M26 Renovation: the new structure is a different one (a PDS for a PDS does
+    nothing), only from your reinforcements (none taken off the board), and
+    only where it may stand (2 PDS a planet, 1 space dock, your monument where
+    its card allows). The old one goes back to your reinforcements - replaced,
+    not destroyed (no Nekro token, no Topple a Monument). Placing your monument
+    this way counts as placing it (Cathedral of Ixth, G'hom Firefly Beacon).
+M27 Cathedral of Ixth: "Elect Non-Home Planet" includes Mecatol Rex (only planets
+    someone controls, as for every planet election). If the card leaves play
+    (repealed), the points already gained stay. Another player's monument on it
+    when it is elected (coexisting): no point then, none lost when it goes.
+M28 Minister of Culture: "controls their monument" = their monument is on the
+    board (anywhere - The Panopticon in space too).
+M29 Defend a Great Work: ground forces on the monument's planet and in that
+    system's space area count together (2 on the planet + 1 in space = 3).
+M30 Topple a Monument: any destruction by you during a tactical action - taking
+    its planet in an invasion (its structures are destroyed, LRR 49.5a),
+    blockading The Panopticon. Not Rebel Bombing (an action card, not a
+    tactical action) and not She Consumes Worlds (captured, not destroyed).
+M31 Monuments to the Ages: with Monuments+ on, the Thunder's Edge event is the
+    Omega card (its monuments are "monoliths"); its rules were already the
+    Omega card's (the points go to whoever controls the planet).
+
+0.81.1 - your answers to 0.81.0 X1 / X2, as built:
+X1  Exhausted strategy cards: your rule stays (nobody can pick one in the next
+    strategy phase). Absol's own ruling is written down in the code, ready if
+    we revisit it.
+X2  Political Secret: with Absol's Agendas it is Absol's card. Played while you
+    cast votes: pick up to 3 of its owner's ready planets; you cast their votes
+    as if you controlled them (their influence; 1 each under Representative
+    Government, Mecatol Rex 2), they're exhausted, the card goes back. Bots play
+    it whenever they vote, with the 3 planets worth the most votes (the original
+    card was always played too) and value holding it as before. My choices:
+    asked after your own planets, so you see your own votes first; a player
+    with no ready planets of their own may still vote with it; several
+    Political Secrets (from different players) can all be used on one vote.
+    Right?
+
+0.81.0 - Absol's Agendas (title screen > Modules > "Absol's Agendas").
+Your decisions, as built: the 60 cards REPLACE the normal agenda deck; a tie
+for "the player who cast the most votes" is decided by the speaker; "exhaust
+the X strategy card" = nobody can pick that card in the next strategy phase
+(if every card left is exhausted, an exhausted one may still be picked);
+agendas only (no Absol relics or technologies); the cards' exact wording.
+
+Checked against Absol's own package (his Version 4 cards and his rulebook /
+FAQ). Every card's text now matches the printed Version 4 card - the online
+copy I built from was an older wording (23 cards changed, mostly small words:
+"cannot" for "may not", "Each" for "Every", "1" for "one", capitals; one name:
+Research Grant REallocation). From his rulebook and FAQ, now in the game:
+ - A player who can't vote or has no votes to cast did NOT abstain, and isn't
+   counted in "if all players voted ..." (8.14b, 8.16a, Mutiny FAQ).
+ - Nobody voted for the winning outcome: the speaker counts as the player who
+   cast the most votes for it; an action asked of the top voter of an outcome
+   nobody voted for is done by the speaker (8.14c, 8.18b).
+ - Emergency Session: each copy one at a time after the second agenda, then
+   discarded (8.3a). Pax Magnifica's Against: they stay in the common play
+   area for the next agenda phase (FAQ).
+ - Exhausting a strategy card returns its trade goods to the supply, and an
+   exhausted card nobody picks gets no trade good (8.23, 84.2b).
+ - Affirmation of Divine Right (Against): the Imperial player on Mecatol Rex
+   draws a secret objective instead of the point (FAQ).
+ - Minister of Antiquities: a relic whenever its owner MAY score a public
+   objective - even with nothing to score, with the Imperial card too, and on
+   Incentive Program (where they still draw the action cards if they don't
+   meet the objective) (FAQ).
+ - Publicize Weapon Schematics: that unit type loses SUSTAIN DAMAGE for every
+   player (Version 4 card: "That unit type loses ...").
+ - Colonial Redistribution: the chosen player places the 3 infantry - not
+   optional (Version 4 card).
+
+Two questions for you:
+X1  Exhausted strategy cards: you chose "nobody can pick it next round".
+    Absol's own rule (84.1d) lets a player pick an exhausted card: they get its
+    initiative number but can't use its strategic action that round. Keep
+    yours, or switch to his? (His needs some bot work: valuing a card for its
+    number only.)
+X2  Political Secret: his package also replaces the Political Secret
+    promissory note (one per colour - it lets you use some of another player's
+    planets to cast votes). You said agendas only - add his Political Secret
+    with the deck, or keep the normal one?
+
+My choices where the cards still leave room - please check:
+AB2  Ixthian Artifact (Against): the point goes with Mecatol Rex. When its
+     controller loses control they lose the point, and whoever takes Mecatol
+     Rex next gains it (and loses it the same way).
+AB3  Imperial Arbiter: the swap is with ANOTHER player's strategy card (one
+     whose initiative number is no higher than the influence spent - up to
+     8); that player gets yours. Paid: the influence + 1 strategy-pool token.
+     Asked once, at the end of each strategy phase.
+AB4  "At any time ... allow the current active player to ignore the effects of
+     this law for the duration of their turn" (Enforced Travel Ban: discard 1
+     control token; Nexus Sovereignty: the Mallice holder spends 1 influence):
+     offered at the start of each player's turn, not in the middle of a move.
+     (Articles of War is asked when a system is activated, as printed.)
+AB5  Homeland Defense Act (For): the extra PDS still counts toward the normal
+     limit of 2 PDS per planet. (The top "For" voter's own PDS can come with
+     the extra one, as Absol's FAQ says.)
+AB6  Preservation of Historical Sites (For): exploring a hazardous planet is
+     free; a planet with two traits (Thunder's Edge) costs the higher (2 if
+     one trait is cultural).
+AB7  Shared Research (For): "any anomaly ... does not affect movement" -
+     asteroid fields, nebulae and supernovas stop nothing for the active
+     player; a gravity rift still gives its +1 and still makes its roll.
+AB8  Hyperlane Development Program (For): "Players may allow other players'
+     ships to move through their ships in those systems" - the game never asks,
+     so ships there still block (as if nobody allows it). Fine, or should the
+     game ask the player whose ships are in the way?
+AB10 Wormhole Reconstruction (For): the token holder gains 1 commodity once
+     per movement in which another player's ships came through an alpha or
+     beta wormhole (not once per ship).
+AB12 Emergency Session revealed outside the agenda phase (Keleres Executive
+     Order, for example): it waits in the common play area and adds its extra
+     agenda at the end of the NEXT agenda phase.
+(AB1, AB9 and AB11 were answered by Absol's rulebook / cards - see above.)
+
+The game now also says it is not affiliated with Asmodee or Fantasy Flight
+Games (title screen, Credits, READMEs) - from your call with Asmodee.
+
+0.80.11 changes no rules (the Career and rival commanders in Casual Game).
+
+0.80.1 - one rule to check (a player's report on GitHub):
+
+V1  The Vuil'raith's own units captured by The Terror Between ("including your
+    own") sit on their faction sheet, and LRR 17.5 keeps captured units from
+    being produced by their owner until they are returned. Amalgamation returns
+    one captured unit of a type for each unit of that type produced. So I let
+    the Vuil'raith produce a unit whose reinforcements are empty when one of
+    their own of that type is on their sheet: Amalgamation gives it back first
+    (as many as the production needs past the reinforcements), and they produce
+    it without paying for it. Before, the game said "none left" and refused.
+    Right?
 
 0.80.0 changes no rules of the game: the Tournament (league mode, see the
 README). These are my choices for the league's own rules - please check them:

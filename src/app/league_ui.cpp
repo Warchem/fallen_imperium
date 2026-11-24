@@ -8,6 +8,7 @@
 
 #include "engine/data.h"
 #include "engine/personality.h"
+#include "game/profile.h"
 #include "gfx/font.h"
 #include "ui/backdrops.h"
 #include "ui/emblems.h"
@@ -100,12 +101,22 @@ std::string rulesLine(const LeagueDef* d) {
     add(d->x1 ? "X-1 trades" : "No X-1");
     return s;
 }
-std::string modulesLine(const LeagueDef* d) {
+std::string modulesLine(const LeagueDef* d, bool compact = false) {
+    if (compact) {  // (0.85.2: the Blue Reverie leagues - the long line didn't fit)
+        std::string s = "Base + PoK";
+        const char* nm[] = {"Codex", "Uncharted", "Thunder's Edge", "Discordant", "Absol", "Monuments+", "Blue Reverie"};
+        for (int b = 0; b < 7; ++b)
+            if (d->modules & (1 << b)) s += std::string(", ") + nm[b];
+        return s;
+    }
     std::string s = "Base + Prophecy of Kings";
     if (d->modules & 1) s += ", Codex";
     if (d->modules & 2) s += ", Uncharted Space";
     if (d->modules & 4) s += ", Thunder's Edge";
     if (d->modules & 8) s += ", Discordant Stars";
+    if (d->modules & 16) s += ", Absol's Agendas";  // (0.85.2: the Blue Reverie leagues)
+    if (d->modules & 32) s += ", Monuments+";
+    if (d->modules & 64) s += ", Blue Reverie";
     return s;
 }
 void factionChip(Canvas& c, int faction, int x, int y, int size) {
@@ -162,19 +173,20 @@ void drawBackdrop(Canvas& c, uint32_t now) {
 void drawLadder(Canvas& c, const std::vector<LadderEntry>& rows, int sel, uint32_t now) {
     int done = 0;
     for (const LadderEntry& e : rows) done += e.state == kFinished;
-    heading(c, "Tournament", std::to_string(done) + " of " + std::to_string(rows.size()) +
+    heading(c, "Career", std::to_string(done) + " of " + std::to_string(rows.size()) +
                                  " leagues finished \xC2\xB7 finish a league to earn its emblem and its reward");
     // the list, grouped
     const Rect L{10, 50, 244, 392};
     drawPanel(c, L, theme::panel, theme::border, 10, 230);
     int y = L.y + 6;
+    const int step = rows.size() > 16 ? 17 : 19;  // (0.85.2: the three Blue Reverie leagues - 19 rows)
     for (int g = 0; g < 4; ++g) {
         drawText(c, FONT_XS, L.x + 10, y, kGroupName[g], theme::faint);
         y += 12;
         for (size_t i = 0; i < rows.size(); ++i) {
             const LadderEntry& e = rows[i];
             if (groupOf(e.def) != g) continue;
-            const Rect rr{L.x + 4, y, L.w - 8, 18};
+            const Rect rr{L.x + 4, y, L.w - 8, step - 1};
             pickHit(rr, int(i));
             if (int(i) == sel) {
                 c.fillRoundRect(rr.x, rr.y, rr.w, rr.h, 5, theme::panelHi, 240);
@@ -190,7 +202,7 @@ void drawLadder(Canvas& c, const std::vector<LadderEntry>& rows, int sel, uint32
             else if (e.state == kOpen) st = "Open", sc = kOpenC;
             else st = "Locked";
             drawTextAligned(c, FONT_XS, rr.x, rr.y + 4, rr.w - 6, Align::Right, st, sc);
-            y += 19;
+            y += step;
         }
         y += 2;
     }
@@ -231,7 +243,10 @@ void drawLadder(Canvas& c, const std::vector<LadderEntry>& rows, int sel, uint32
     }
     ty += 54;
     drawText(c, FONT_XS, R.x + 12, ty, fitText(FONT_XS, rulesLine(d), R.w - 24), theme::dim);
-    drawText(c, FONT_XS, R.x + 12, ty + 13, fitText(FONT_XS, modulesLine(d), R.w - 24), theme::dim);
+    {
+        const std::string ml = textWidth(FONT_XS, modulesLine(d)) <= R.w - 24 ? modulesLine(d) : modulesLine(d, true);
+        drawText(c, FONT_XS, R.x + 12, ty + 13, fitText(FONT_XS, ml, R.w - 24), theme::dim);
+    }
     ty += 32;
     // rivals
     const std::vector<const RivalDef*> rv = league::rivalsOf(d->id);
@@ -254,9 +269,23 @@ void drawLadder(Canvas& c, const std::vector<LadderEntry>& rows, int sel, uint32
         emblems::draw(c, d->emblem, float(rx + 15), float(W.y + 34), 14.f, d->color, emblems::kEarned, now);
         drawText(c, FONT_SMB, rx + 34, W.y + 22, emblems::name(d->emblem), theme::text);
         drawText(c, FONT_XS, rx + 34, W.y + 37, "on the title screen", theme::faint);
-        rx += 182;
+        rx += std::max(182, 34 + textWidth(FONT_SMB, emblems::name(d->emblem)) + 14);  // (0.85.2: a long emblem name)
     }
-    if (d->colour >= 0) {
+    if (d->unlockFaction && *d->unlockFaction) {  // (0.85.2) a Blue Reverie faction to play - (0.85.3) a secret until it is won
+        const int f = ti::findFaction(d->unlockFaction);
+        if (e.state == kFinished) {
+            factionChip(c, f, rx + 2, W.y + 23, 22);
+            drawText(c, FONT_SMB, rx + 30, W.y + 22, fitText(FONT_SMB, f >= 0 ? ti::factionShortName(f) : d->unlockFaction, W.x + W.w - rx - 36),
+                     theme::text);
+            drawText(c, FONT_XS, rx + 30, W.y + 37, "unlocked - yours to play", theme::faint);
+        } else {
+            c.fillCircle(float(rx + 13), float(W.y + 34), 11.f, rgb(30, 24, 52));
+            c.ring(float(rx + 13), float(W.y + 34), 11.f, 1.5f, rgb(150, 120, 220));
+            drawTextAligned(c, FONT_SMB, rx + 2, W.y + 27, 22, Align::Center, "?", rgb(190, 170, 240));
+            drawText(c, FONT_SMB, rx + 30, W.y + 22, "A secret faction", theme::text);
+            drawText(c, FONT_XS, rx + 30, W.y + 37, "revealed when you win", theme::faint);
+        }
+    } else if (d->colour >= 0) {
         swatch(c, d->colour, float(rx + 13), float(W.y + 34), 11.f, 7);
         drawText(c, FONT_SMB, rx + 30, W.y + 22, std::string(pcolours::info(d->colour).name), theme::text);
         drawText(c, FONT_XS, rx + 30, W.y + 37, "faction colour", theme::faint);
@@ -274,7 +303,7 @@ void drawLadder(Canvas& c, const std::vector<LadderEntry>& rows, int sel, uint32
 void drawLadderMap(Canvas& c, const std::vector<LadderEntry>& rows, int sel, uint32_t now) {
     int done = 0;
     for (const LadderEntry& e : rows) done += e.state == kFinished;
-    heading(c, "Tournament", std::to_string(done) + " of " + std::to_string(rows.size()) + " leagues finished");
+    heading(c, "Career", std::to_string(done) + " of " + std::to_string(rows.size()) + " leagues finished");
     // the main ladder across the top, each with the leagues it opens hanging below it
     const char* main[4] = {"bronze", "silver", "gold", "ultimate"};
     const int colX[4] = {86, 250, 430, 572};
@@ -484,8 +513,8 @@ void drawHub(Canvas& c, const HubView& v, uint32_t now) {
                     "Points: 1st " + std::to_string(league::placePoints(0)) + ", 2nd " + std::to_string(league::placePoints(1)) + ", 3rd " +
                         std::to_string(league::placePoints(2)) + ", 4th " + std::to_string(league::placePoints(3)) + " \xC2\xB7 +1 for each bonus",
                     theme::faint);
-    if (v.galaxy >= 0) drawHintBar(c, {{"\xE2\x97\x80\xE2\x96\xB6", "Choose"}, {"A", "Open"}, {"X", "Galaxy"}, {"B", "Tournament"}});
-    else drawHintBar(c, {{"\xE2\x97\x80\xE2\x96\xB6", "Choose"}, {"A", "Open"}, {"B", "Tournament"}});
+    if (v.galaxy >= 0) drawHintBar(c, {{"\xE2\x97\x80\xE2\x96\xB6", "Choose"}, {"A", "Open"}, {"X", "Galaxy"}, {"B", "Career"}});
+    else drawHintBar(c, {{"\xE2\x97\x80\xE2\x96\xB6", "Choose"}, {"A", "Open"}, {"B", "Career"}});
 }
 
 // ---------------------------------------------------------------- the faction draft
@@ -533,6 +562,7 @@ void drawDraft(Canvas& c, const DraftView& v, uint32_t now) {
         firstRow = std::max(0, std::min(rowsN - vis, std::max(0, v.sel) / cols - vis / 2));
         if (firstRow > 0) drawTextAligned(c, FONT_XS, G.x, G.y + 20, G.w, Align::Center, "\xE2\x96\xB2", theme::faint);
         if (firstRow + vis < rowsN) drawTextAligned(c, FONT_XS, G.x, G.y + G.h - 12, G.w, Align::Center, "\xE2\x96\xBC", theme::faint);
+        drawScrollBar(c, Rect{G.x + G.w - 7, G.y + 30, 4, availH - 8}, firstRow, vis, rowsN);  // (0.81.1, owner: a slim scroll bar)
     }
     const int icon = std::min(44, cardH - 46);
     for (size_t k = 0; k < v.offer.size(); ++k) {
@@ -547,11 +577,14 @@ void drawDraft(Canvas& c, const DraftView& v, uint32_t now) {
         c.fillRoundRect(r.x, r.y, r.w, r.h, 8, sel ? theme::panelHi : rgb(14, 19, 34), 240);
         c.frameRoundRect(r.x, r.y, r.w, r.h, 8, sel ? theme::gold : theme::border, sel ? 2 : 1);
         pickHit(r, int(k));
-        drawFactionIcon(c, f, r.x + (r.w - icon) / 2, r.y + 6, icon, taker >= 0 ? 60 : 255);
+        const bool lockedF = std::find(v.locked.begin(), v.locked.end(), f) != v.locked.end();
+        drawFactionIcon(c, f, r.x + (r.w - icon) / 2, r.y + 6, icon, taker >= 0 ? 60 : lockedF ? 120 : 255);
         drawTextAligned(c, FONT_SMB, r.x, r.y + icon + 10, r.w, Align::Center, fitText(FONT_SMB, ti::factionShortName(f), r.w - 6),
-                        taker >= 0 ? theme::faint : theme::text);
+                        taker >= 0 || lockedF ? theme::faint : theme::text);
         const GuideBlurb* b = blurbOf(f);
-        if (taker >= 0)
+        if (taker < 0 && lockedF)  // (0.85.2) a Blue Reverie faction not earned yet: the bots may take it, you may not
+            drawTextAligned(c, FONT_XS, r.x, r.y + icon + 27, r.w, Align::Center, "locked for you", theme::red);
+        else if (taker >= 0)
             drawTextAligned(c, FONT_XS, r.x, r.y + icon + 27, r.w, Align::Center,
                             fitText(FONT_XS, "taken by " + (v.order[size_t(taker)].you ? std::string("you") : v.order[size_t(taker)].name), r.w - 6),
                             theme::faint);
@@ -568,6 +601,16 @@ void drawDraft(Canvas& c, const DraftView& v, uint32_t now) {
         const int f = v.offer[size_t(v.sel)];
         drawFactionIcon(c, f, I.x + 10, I.y + 10, 40);
         drawText(c, FONT_MDB, I.x + 56, I.y + 10, fitText(FONT_MDB, ti::kFactions[f].name, I.w - 62), theme::text);
+        if (std::find(v.locked.begin(), v.locked.end(), f) != v.locked.end()) {  // (0.85.2) how to earn it
+            const league::LeagueDef* by = league::find(profile::factionLeague(ti::kFactions[f].key));
+            const std::string how = "Locked for you: finish the " + std::string(by ? by->name : "its league") +
+                                    " in the Career to play as them. The bots may draft them.";
+            int yy = I.y + I.h - 16 - 13 * int(wrapText(FONT_XS, how, I.w - 20).size());
+            for (const std::string& l : wrapText(FONT_XS, how, I.w - 20)) {
+                drawText(c, FONT_XS, I.x + 10, yy, l, theme::red);
+                yy += 13;
+            }
+        }
         if (const GuideBlurb* b = blurbOf(f)) {
             drawText(c, FONT_XS, I.x + 56, I.y + 30, b->difficulty, theme::gold);
             int yy = I.y + 58;
@@ -692,7 +735,7 @@ void drawWon(Canvas& c, const WonView& v, uint32_t now) {
                 y += 22;
             }
         }
-        drawHintBar(c, {{"A", "Back to the Tournament"}});
+        drawHintBar(c, {{"A", "Back to the Career"}});
         return;
     }
     const Rect R{60, 280, 520, 158};
@@ -709,6 +752,11 @@ void drawWon(Canvas& c, const WonView& v, uint32_t now) {
         swatch(c, d->colour, float(x + 18), float(R.y + 50), 16.f, 11);
         drawText(c, FONT_SMB, x + 42, R.y + 36, std::string(pcolours::info(d->colour).name) + " colour", theme::text);
         drawText(c, FONT_XS, x + 42, R.y + 52, "in New Game > Colour", theme::faint);
+    } else if (d->unlockFaction && *d->unlockFaction) {  // (0.85.2) a Blue Reverie faction to play
+        const int f = ti::findFaction(d->unlockFaction);
+        factionChip(c, f, x + 4, R.y + 34, 30);
+        drawText(c, FONT_SMB, x + 42, R.y + 36, f >= 0 ? std::string(ti::kFactions[f].name) : std::string(d->unlockFaction), theme::text);
+        drawText(c, FONT_XS, x + 42, R.y + 52, "a secret faction, now yours to play", theme::faint);
     }
     if (!v.opens.empty()) {
         drawText(c, FONT_XS, R.x + 12, R.y + 80, "New leagues open", theme::faint);
@@ -722,7 +770,7 @@ void drawWon(Canvas& c, const WonView& v, uint32_t now) {
             lx += w + 5;
         }
     }
-    drawHintBar(c, {{"A", "Back to the Tournament"}});
+    drawHintBar(c, {{"A", "Back to the Career"}});
 }
 
 // ---------------------------------------------------------------- the rivals
@@ -763,8 +811,10 @@ void drawRivals(Canvas& c, const LeagueDef* lg, const std::vector<RivalCard>& ca
                  fitText(FONT_XS, k.games ? std::to_string(k.games) + " games together: you ahead " + std::to_string(k.youAbove) + ", them ahead " +
                                                 std::to_string(k.theyAbove) + ", promises broken " + std::to_string(k.broken)
                                           : "Never met",
-                         R.w - 20),
+                         R.w - 20 - (k.commander ? 96 : 0)),
                  theme::dim);
+        if (k.commander)  // (0.80.11) beaten: now one of your commanders for Casual Game
+            drawTextAligned(c, FONT_XS, R.x, R.y + ch - 17, R.w - 10, Align::Right, "\xE2\x98\x85 In Casual Game", theme::gold);
     }
     drawHintBar(c, {{"D-PAD", "Choose"}, {"B", "Back"}});
 }
@@ -784,11 +834,13 @@ void drawEmblemRow(Canvas& c, int cy, const std::vector<std::pair<std::string, u
 void drawEmblemSheet(Canvas& c, uint32_t now) {
     heading(c, "League emblems", "earned (top), not yet earned and locked (bottom); drawn by the game at any size");
     const std::vector<const LeagueDef*>& all = league::all();
-    int i = 0;
+    int i = 0, withEmblem = 0;
+    for (const LeagueDef* d : all) withEmblem += d->emblem && *d->emblem ? 1 : 0;
+    const int cols = withEmblem > 16 ? 5 : 4;  // (0.85.2: 19 emblems)
     for (const LeagueDef* d : all) {
         if (!d->emblem || !*d->emblem) continue;
-        const int col = i % 4, row = i / 4;
-        const float cx = 80.f + float(col) * 160.f, cy = 92.f + float(row) * 82.f;
+        const int col = i % cols, row = i / cols;
+        const float cx = (cols == 5 ? 64.f : 80.f) + float(col) * (cols == 5 ? 128.f : 160.f), cy = 92.f + float(row) * 82.f;
         emblems::draw(c, d->emblem, cx, cy, 28.f, d->color, emblems::kEarned, now);
         drawTextAligned(c, FONT_XS, int(cx) - 78, int(cy) + 30, 156, Align::Center, emblems::name(d->emblem), theme::text);
         ++i;
@@ -839,7 +891,8 @@ void drawRules(Canvas& c, const LeagueDef* d, uint32_t now) {
     drawPanel(c, Rr, theme::panel, mix(theme::border, d->color, 90), 10, 235);
     medal(c, d, float(Rr.x + 24), float(Rr.y + 24), 14.f, kOpen, now);
     drawText(c, FONT_SMB, Rr.x + 46, Rr.y + 8, "This league", theme::gold);
-    drawText(c, FONT_XS, Rr.x + 46, Rr.y + 24, fitText(FONT_XS, modulesLine(d), Rr.w - 56), theme::faint);
+    drawText(c, FONT_XS, Rr.x + 46, Rr.y + 24,
+             fitText(FONT_XS, textWidth(FONT_XS, modulesLine(d)) <= Rr.w - 56 ? modulesLine(d) : modulesLine(d, true), Rr.w - 56), theme::faint);
     y = Rr.y + 46;
     const std::string lines[] = {
         std::to_string(d->players) + " players \xC2\xB7 " + std::to_string(d->vp) + " VP \xC2\xB7 " + league::difficultyName(d->difficulty) + " bots",

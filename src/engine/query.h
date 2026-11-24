@@ -84,6 +84,50 @@ int fragmentCount(const Game& g, int p);   // relic fragments only
 int starChartCount(const Game& g, int p);
 bool relicHeld(const Game& g, int p, const char* key);
 bool isHomePlanet(const Game& g, int planet);   // in any home system
+// 0.82.0 Monuments+: the player's monument (kMonuments index, -1 none - the module is off or their faction has none),
+// whether its card lets it stand on a planet / in a system's space area (placement only - control is the caller's), where it is
+int playerMonument(const Game& g, int p);
+bool isMonumentOption(int id);  // a monument placement option id (rules_monuments.cpp)
+int monumentOptionId(int planet, int sys);  // ... for that planet (or, planet < 0, that system's space area)
+bool monumentFitsPlanet(const Game& g, int p, int planet);
+bool monumentFitsSpace(const Game& g, int p, int sys);
+bool monumentInSpace(const Game& g, int p);                  // The Panopticon: placed in a space area instead of on a planet
+int monumentSystem(const Game& g, int p, int* planet = nullptr);
+int epiphanyTokens(const Game& g, int p);
+// (0.82.2) Discordant Stars' monuments
+bool sleepingWorldOn(const Game& g, int p, int planet);  // Sleeping World (Khrask): their monument on this planet fights as a ground force
+bool freeholdAt(const Game& g, int p, int sys);          // Freehold Starport (Nokar): their units may leave sys despite their token
+// (0.82.3) Discordant Stars' monuments, batch 2 (rules_monuments6.cpp)
+int keepFighterSlots(const Game& g, int p, int sys);   // Gravelord's Keep (Myko-Mentori): 3 fighters there / next door need no capacity
+bool mawBlocks(const Game& g, int p, int sys);         // The Maw (Nivyn): another player's Maw there - p's ships can't leave / pass
+void mawLinks(const Game& g, int p, int u, std::vector<int>& out);  // ... the Nivyn's ships: the Maw next to the Wound
+bool debrisField(const Game& g, int s);                // Debris Field (Zelian): an asteroid field ships move into freely
+uint8_t tileAnomaliesMove(const Game& g, int s);       // tileAnomalies without the Debris Field's asteroid field (movement)
+int hoardCommodity(const Game& g, int p);              // Aylor Raider Hoard (Vaylerian): +1 commodity value
+bool coveHolder(const Game& g, int p);                 // Corsairs' Cove (Florzen): produced fighters may go onto the card
+// (0.82.4) Discordant Stars' monuments, batch 3 (rules_monuments7.cpp)
+int libraryColours(const Game& g, int p);              // Forbidden Library (Lanefir): specialty colours near it, unused this action
+int hiveProduction(const Game& g, int p, int sys);     // Polemarch's Hive (Cheiran): PRODUCTION X in its system
+bool reliquaryOn(const Game& g, int planet);           // Kyro Reliquary: legendary, an attachment, a specialty of no type
+bool anchorpointBare(const Game& g, int p, int sys);   // Ghoti Anchorpoint: no planets during their movement
+bool anchorpointFrontier(const Game& g, int p, int sys);  // ... a frontier token there for them
+bool reliquatBlocks(const Game& g, int p, int sys);    // Reliquat Unleashed: p (units in the Fracture) can't activate it
+int rhodunBonus(const Game& g, int p, int opp, int sys);  // Vault of New Phrad +1 / Reliquat Unleashed +2 to p's combat rolls
+void hallsOfValorLinks(const Game& g, int p, int u, std::vector<int>& out);  // Halls of Valor (Ghemina): movement links  // (0.82.1) control tokens on p's Epiphany card (0: none, or not the Firmament's card)
+bool isMonumentStation(const Game& g, int planet, int* owner = nullptr);  // (0.82.1) the Seraph Data Center's station card  // where it stands (-1 = not on the board; *planet -1 = space)
+int monumentGuards(const Game& g, int p);  // (0.82.0) p's ground forces on its planet + in its space area (Defend a Great Work)
+int monumentIndex(const char* key);                          // kMonuments index of a card by its key, -1 none
+// The monument cards whose text p's monument card has: its own and (the Nekro's Valefar Assimilator "M") the cards with their
+// "M" / "Z" assimilator tokens. Returns how many (out[0] = their own).
+int monumentCards(const Game& g, int p, int out[3]);
+bool monCardHas(const Game& g, int p, const char* key);     // p's monument card has that card's ability (on the board or not)
+// ... and p's monument is on the board: where (planet -1 = in a space area)
+bool monAbilityAt(const Game& g, int p, const char* key, int* sys, int* planet = nullptr);
+// (0.82.0, owner M7) Nefishh Projector (Naalu): p's infantry committed to this planet ALONE (no mech) may coexist with the other
+// ground forces there (another player's or neutral) instead of fighting - for the landing screen's warning
+bool nefishhCovers(const Game& g, int p, int planet);
+bool monCardReady(const Game& g, int p);                     // the monument card isn't exhausted
+bool monumentFitsPlanetCard(const Game& g, int card, int planet);  // that card's placement icons allow the planet
 int homeOwner(const Game& g, int sys);           // -1 if not a home system
 std::vector<int> controlledPlanets(const Game& g, int p);
 std::vector<int> readyPlanets(const Game& g, int p);
@@ -118,6 +162,9 @@ int unitsPlaceable(const Game& g, int p, UnitType t);  // unitsAvailable + recla
 int unitsForPlacement(const Game& g, int p, UnitType t);
 int capturedCount(const Game& g, int p, UnitType t);  // units of this type the Vuil'raith player p holds captured
 int capturedFrom(const Game& g, int owner, UnitType t);  // owner's non-fighter ships / mechs held captured by anyone
+// (fixes 35) the Vuil'raith's own units of that type on their own faction sheet: Amalgamation gives one back for each unit of the type
+// they produce, so these count for their production (0 for everyone else, and in older games)
+int amalgamationOwn(const Game& g, int p, UnitType t);
 bool dimensionalTear(const Game& g, int sys);         // a Vuil'raith space dock makes the system a gravity rift
 bool mortheusNebula(const Game& g, int s);  // (fixes 28) the Mortheus home system is a nebula
 bool nivynRift(const Game& g, int s);       // (fixes 29) the Nivyn home system is a gravity rift
@@ -167,6 +214,7 @@ bool breakthroughIs(const Game& g, int p, const char* factionKey);  // p has the
 // Gravleash Maneuvers (0.44.4, fixes 8): while a move plan is checked, the units moving out of each system (nullptr:
 // every ship there counts, as before)
 extern const std::map<int, struct Force>* g_movingShips;
+extern const std::map<int, int>* g_movingFromPlanets;  // (0.85.0 Sedtra) ... and the ground forces picked up from planets in each
 
 // p's breakthrough card as the rules see it (0.44.4: the Creuss's only from fixes 8 - its key didn't match before)
 const struct BreakthroughDef* breakthroughFor(const Game& g, int p);
@@ -276,6 +324,10 @@ bool adjacentSystems(const Game& g, int a, int b);
 
 // ---- laws and cards -------------------------------------------------------------
 bool lawInPlay(const Game& g, const char* key);
+// (0.81.0) Absol's Agendas: one of the module's laws in play (nullptr in other games / when the laws are blank)
+const Law* absolLaw(const Game& g, const char* key);
+int fleetPoolCap(const Game& g, int p);     // most command tokens p's fleet pool may hold (Fleet Regulations: 4; Absol's: its token 5)
+bool conventionsOfWar(const Game& g);       // no bombardment of cultural planets (Conventions of War, For - PoK or Absol)
 int lawOwner(const Game& g, const char* key);       // -1 if not in play or in the common area
 int actionCardLimit(const Game& g, int p);           // 7, or 3 with Executive Sanctions
 bool holdsActionCard(const Game& g, int p, const char* key);
@@ -345,5 +397,43 @@ struct ObjProgress {
 };
 ObjProgress objectiveProgress(const Game& g, int p, int obj);
 void setProgressAroz(bool on);  // objectiveProgress sees Captain Aroz for secrets (the bots' planning only)
+
+// ---- Blue Reverie (0.83.0, query_br.cpp) -----------------------------------------------
+bool brAtokera(const Game& g, int p);                       // p plays the Atokera Legacy (with the module)
+bool synthesisPlanet(const Game& g, int p, int planet);     // Synthesis: p's readied planet (Planetary Shield, Production 0)
+bool kohiIn(const Game& g, int p, int sys);                 // Kohi (Atokera flagship, or a Valefar Z copy) is in sys
+UnitDef kohiDef(const Game& g, int p, UnitType t, int sys); // p's unit of type t in sys with the abilities Kohi copies
+bool modularAt(const Game& g, int p, UnitType t, int sys, int planet, int ability);  // Modular Designs' chosen unit has it
+bool brSustains(const Game& g, int p, UnitType t, int sys); // Sustain Damage copied by Kohi
+int modularSustainLeft(const Game& g, int p, UnitType t, int sys, int planet);  // Modular Designs' Sustain Damage (0/1)
+bool brPlanetShield(const Game& g, int q, int planet);      // Synthesis / Kohi Planetary Shield for q's units on the planet
+bool obeliskGuards(const Game& g, int planet, int by);      // Obelisk: `by` can't exhaust this planet
+int brUnitProduction(const Game& g, int p, UnitType t, int sys, const UnitDef& d);  // Synthesis +1, Mirrorshard I, Kohi
+// ---- the Belkosea Allied States (0.84.0, query_br.cpp): superweapons (PlanetState::superweapon, Player::swCards)
+constexpr int kSuperweaponCount = 5;
+enum : int { kSwAvailyn = 0, kSwCaled = 1, kSwGlatison = 2, kSwGrom = 3, kSwMors = 4 };
+struct SuperweaponDef {
+    const char* key;
+    const char* name;
+    const char* text;  // the card's wording
+};
+extern const SuperweaponDef kSuperweapons[kSuperweaponCount];
+bool brBelkosea(const Game& g, int p);                      // p plays the Belkosea Allied States (with the module)
+int superweaponPlanet(const Game& g, int k);                // the planet with superweapon k (-1: not on the board)
+int superweaponSystem(const Game& g, int k);                // ... its system
+int superweaponOwner(const Game& g, int k);                 // ... its controller (-1)
+int superweaponsOf(const Game& g, int p);                   // Arrogance: superweapons p controls (structures)
+bool availynNebula(const Game& g, int sys);                 // Availyn: "This system is a nebula."
+int availynProduction(const Game& g, int p, int planet);    // Availyn: PRODUCTION 3 on its planet for its controller (0 none)
+bool glatisonDenies(const Game& g, int p, int sys);         // Glatison: "Other players' units in this system lose SUSTAIN DAMAGE"
+bool morsShield(const Game& g, int q, int planet);          // Mors: PLANETARY SHIELD on its planet for its controller
+bool caledLine(const Game& g, int from, int to);            // Caled: a straight line crossing only parallel non-anomaly borders
+bool swCardReady(const Game& g, int p, int k);              // p's superweapon card k is in their play area, readied
+bool armageddonAt(const Game& g, int k, int sys, int* holder, int* planet);  // Armageddon Project: card k's abilities at its monument in sys
+// ---- the Pharad'n Order (0.85.0, query_br.cpp): captured infantry pay for infantry (Mark of Pharad'n)
+bool brPharadn(const Game& g, int p);                       // p plays the Pharad'n Order (with the module)
+bool markOfPharadn(const Game& g, int p);                   // ... and the game has begun (setup places their starting infantry as usual)
+int pharCaptured(const Game& g, int p);                     // their captured infantry (tokens on their faction sheet)
+bool pyramidOn(const Game& g, int p, int planet);           // Black Pyramid (their monument): on this planet, a structure and a ground force
 
 }  // namespace ti

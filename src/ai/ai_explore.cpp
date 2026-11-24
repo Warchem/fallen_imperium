@@ -251,7 +251,9 @@ float aiExploreComponentValue(const Game& g, int p, int option) {
         }
         return 0.5f;
     }
+    if (option >= 3100 && option < 3100 + kMonumentCount) return aiMonumentActionValue(g, p, option - 3100);  // (0.82.0) Monuments+
     if (option == 3010) return 1.1f;  // Star Charts: a new system next to us
+    if (option == 3020) return aiAbsolComponentValue(g, p);  // (0.81.0) Absol's Minister of War
     if (option >= 3000) return 2.5f;  // relic fragments -> relic
     return 0.f;
 }

@@ -40,7 +40,7 @@ namespace {
 constexpr int kAbstainId = -100;  // the rules' Abstain option (rules_agenda.cpp kAbstain)
 
 bool agIs(int a, const char* k) { return a >= 0 && a < kAgendaCount && !std::strcmp(kAgendas[a].key, k); }
-int realAgenda(const Game& g, int a) { return agIs(a, "covert") && g.covertAgenda >= 0 ? g.covertAgenda : a; }
+int realAgenda(const Game& g, int a) { return (agIs(a, "covert") || agIs(a, "absol_covert")) && g.covertAgenda >= 0 ? g.covertAgenda : a; }
 
 bool debugOn() {
     static const int on = std::getenv("TI4_VOTEDEBUG") ? 1 : 0;
@@ -231,6 +231,8 @@ float worth(const Game& g, const Who& w, int a, int winner, int myVote) {
         if (agIs(ea, "wormhole_research") && winner == 1 && myVote == 1) reward -= 0.35f;  // Against: a command token
         if (agIs(ea, "rep_govt") && winner == 1 && myVote == 1)  // Against: who voted Against exhausts its cultural planets
             reward -= 0.15f * float(controlledCountTrait(g, p, Trait::Cultural));
+        // (0.81.0) Absol's Agendas: what voting a certain way - or abstaining - brings by itself
+        if (kAgendas[ea].source == Source::Absol) reward += absolVoterReward(g, p, ea, winner, myVote);
     }
     base += interestOf(g, p, ea, winner);
     if (w.self) {
@@ -751,6 +753,37 @@ VotePlan aiVotePlan(const Game& g, int p, int agenda, const std::vector<int>& ou
         if (fav == c.ifAbstain && fv - second >= 0.3f) {
             plan.outcome = fav;
             plan.votes = std::max(plan.votes, int(std::lround(k.pileOn * float(avail))));
+        }
+    }
+    // (0.81.0) Absol's Agendas: "the player who cast the most votes" for the winning outcome is rewarded on most cards - enough votes to
+    // be on top of that outcome's voters, when the reward is worth them
+    {
+        const int ea = realAgenda(g, agenda);
+        if (forceOutcome == kAbstainId && ea >= 0 && kAgendas[ea].source == Source::Absol) {
+            const int target = plan.outcome != kAbstainId ? plan.outcome : c.ifAbstain;
+            const float R = target != kAbstainId ? absolTopReward(g, p, ea, target) * w.care + 0.f : 0.f;
+            if (R > 0.05f && worth(g, w, agenda, target, target) >= worth(g, w, agenda, target, kAbstainId) - 0.05f) {
+                float top = 0.f;  // the most any other voter has cast (or is likely to cast) for it
+                bool after = false;
+                for (int q : voteOrder(g)) {
+                    if (q == p) {
+                        after = true;
+                        continue;
+                    }
+                    if (!after) {
+                        if (q < int(g.votedFor.size()) && g.votedFor[size_t(q)] == target) top = std::max(top, float(g.voteCount[size_t(q)]));
+                    } else {
+                        const auto gv = guessVote(g, q, agenda, outs, g.agendaNumber >= 1);
+                        if (gv.first == target) top = std::max(top, gv.second + 1.f);  // (they may cast a little more)
+                    }
+                }
+                const int needTop = int(std::floor(top)) + (g.speaker == p ? 0 : 1);
+                const int cur = plan.outcome == target ? plan.votes : 0;
+                if (needTop > cur && needTop <= most && R - lambda * float(needTop - cur) > 0.f) {
+                    plan.outcome = target;
+                    plan.votes = needTop;
+                }
+            }
         }
     }
     // the phase's last agenda: nothing to save the votes for - all of them (they are ready again afterwards)

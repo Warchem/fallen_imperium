@@ -331,6 +331,8 @@ float aiFactionComponentValue(const Game& g, int p, int option) {
     const Player& me = g.players[p];
     const Ab ab = Ab(option >= 6000 ? option - 6000 : option - 700);
     if (float tv = 0.f; option >= 6000 && aiTeComponentValue(g, p, int(ab), tv)) return tv;  // breakthroughs (ai_te.cpp)
+    if (float bv = 0.f; option >= 6000 && aiPharComponentValue(g, p, int(ab), bv)) return bv;  // (0.85.0) the Pharad'n (ai_br3.cpp)
+    if (float bv = 0.f; option >= 6000 && aiBrComponentValue(g, p, int(ab), bv)) return bv;  // (0.84.0) Blue Reverie (ai_br.cpp)
     if (float dv = 0.f; option >= 6000 && aiDsComponentValue(g, p, int(ab), dv)) return dv;  // Discordant Stars (ai_ds.cpp)
     switch (ab) {
         case Ab::HacanAgent: {
@@ -625,6 +627,8 @@ bool aiFactionAnswer(const Game& g, const Decision& d, Rng& rng, Answer& out) {
     const Ab ab = Ab(d.ability);
     const bool yn = yesNo(d);
     if (aiTeAnswer(g, d, out)) return true;  // Thunder's Edge (ai_te.cpp)
+    if (aiPharAnswer(g, d, out)) return true;  // (0.85.0) the Pharad'n (ai_br3.cpp)
+    if (aiBrAnswer(g, d, out)) return true;  // (0.83.0) Blue Reverie (ai_br.cpp)
     if (aiDsAnswer(g, d, rng, out)) return true;  // Discordant Stars (ai_ds.cpp)
     switch (ab) {
         case Ab::OrbitalDrop:

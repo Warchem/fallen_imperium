@@ -64,6 +64,11 @@ int Rules::dealFlagsFor(int p, int q) const {
     if (actionCardsTradeable(G, p, q)) f |= kDealActionCards;
     if (blackMarketPair(G, p, q)) f |= kDealBlackMarket | kDealActionCards;  // Black Market Dealings
     if (encryptedHubOf(G, p, q) >= 0 && (f & kDealComponents)) f |= kDealHub;  // Encrypted Trade Hub (0.44.5): 1 relic
+    if (monumentsOn() && (f & kDealComponents)) {  // (0.82.0) Monuments+
+        if (reliquaryPair(G, p, q)) f |= kDealRelics;  // Quantum Reliquary (Naaz-Rokha): relics
+        for (int s : freeportSystems(G))               // Mowshir Freeport (Hacan): units in space areas near it
+            if (G.systems[size_t(s)].space[size_t(p)].total() || G.systems[size_t(s)].space[size_t(q)].total()) f |= kDealUnits;
+    }
     if (G.currentAgenda >= 0) f |= kDealVote;  // (also an Executive Order vote)
     if (hireCtx_.nokar >= 0 && ((p == hireCtx_.nokar && q == hireCtx_.buyer) || (q == hireCtx_.nokar && p == hireCtx_.buyer)))
         f |= kDealHire;  // Hired Guns (0.43.0): right after the buyer activated a system
@@ -361,6 +366,7 @@ bool Rules::executeDeal(const Deal& d) {
             auto it = std::find(f.captured.begin(), f.captured.end(), int16_t(c));
             if (it != f.captured.end()) f.captured.erase(it);
         }
+        if (!s.units.empty()) freeportTrade(from, to, s.units);  // (0.82.0) Mowshir Freeport (Hacan monument)
     };
     transfer(d.give, a, b);
     transfer(d.get, b, a);

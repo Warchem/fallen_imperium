@@ -107,7 +107,7 @@ bool Rules::cannotCaptureFrom(int by, int owner) const {
 }
 
 void Rules::capture(int by, int owner, UnitType t, int k, const char* why) {
-    if (k <= 0 || by < 0 || isStructure(t) || G.players[by].eliminated || (!captureAnyway_ && cannotCaptureFrom(by, owner))) return;
+    if (k <= 0 || by < 0 || (isStructure(t) && !monCaptureStructures_) || G.players[by].eliminated || (!captureAnyway_ && cannotCaptureFrom(by, owner))) return;
     // Mobile Command (Ghoti, owner D132, fixes >= 2): their flagship - their home - can't be captured
     if (t == UnitType::Flagship && G.fixes >= 2 && (G.modules & kModDiscordant) && owner >= 0 && owner < G.numPlayers && fac(owner, "ghoti")) return;
     const bool token = t == UnitType::Fighter || t == UnitType::Infantry;  // LRR 17.3: a token instead
@@ -119,8 +119,14 @@ void Rules::capture(int by, int owner, UnitType t, int k, const char* why) {
     say(by, pn(by) + " captures " + (owner == by ? std::string("their own ") : pn(owner) + "'s ") + count(k, t) + " (" + why + ").");
 }
 
-bool Rules::returnCaptured(int p, UnitType t) {
+bool Rules::returnCaptured(int p, UnitType t, bool preferOwn) {
     auto& c = G.players[p].captured;
+    if (preferOwn)  // (fixes 35, Amalgamation: their own units first - back into their own reinforcements)
+        for (size_t i = 0; i < c.size(); ++i)
+            if (c[i] % 16 == int(t) && c[i] / 16 == p) {
+                c.erase(c.begin() + long(i));
+                return true;
+            }
     for (size_t i = 0; i < c.size(); ++i)
         if (c[i] % 16 == int(t)) {
             c.erase(c.begin() + long(i));
@@ -281,8 +287,12 @@ void Rules::futureSight(int outcome, const std::vector<int>& votedFor, const std
     // (Executive Order)
     if (G.fixes >= 26 && G.phase != Phase::Agenda) return;
     bool ok = n < int(votedFor.size()) && votedFor[n] == outcome;
-    for (size_t i = 0; i + 1 < preds[n].size(); i += 2)
-        if (preds[n][i + 1] == outcome) ok = true;
+    if (G.fixes >= 38) {  // (fixes 38, found with Monuments+'s Calm Seas) every kind of prediction (allPredictions: a plain list)
+        for (int o : preds[n])
+            if (o == outcome) ok = true;
+    } else
+        for (size_t i = 0; i + 1 < preds[n].size(); i += 2)
+            if (preds[n][i + 1] == outcome) ok = true;
     if (!ok) return;
     G.players[n].usedFactionAbility = true;
     say(n, pn(n) + " gains 1 trade good (Future Sight).");
@@ -1147,13 +1157,20 @@ void Rules::afterProduction4(int p, int sys, const Force& made, int gfPlanet) {
 int Rules::amalgamation(int p, int sys, const int counts[kUnitTypes]) {
     // Amalgamation (Vuil'raith): give back captured units to produce units of that type for free
     if (!fac(p, "cabal") || G.players[p].captured.empty()) return 0;
-    int freeK[kUnitTypes] = {}, best[kUnitTypes] = {};
+    int freeK[kUnitTypes] = {}, best[kUnitTypes] = {}, must[kUnitTypes] = {};
     bool any = false;
     for (int t = 0; t < kUnitTypes; ++t) {
         best[t] = std::min(counts[t], capturedCount(G, p, UnitType(t)));
         if (best[t] <= 0) continue;
+        // (fixes 35, GitHub issue #3) units past the reinforcements come from their own captured units: those must be given back
+        must[t] = std::min(amalgamationOwn(G, p, UnitType(t)), std::max(0, counts[t] - unitsAvailable(G, p, UnitType(t))));
+        if (must[t] >= best[t]) {
+            freeK[t] = best[t];
+            any = true;
+            continue;
+        }
         std::vector<Option> opts;
-        for (int k = best[t]; k >= 0; --k)
+        for (int k = best[t]; k >= must[t]; --k)
             opts.push_back({k, k ? "Give back " + std::to_string(k) + " captured " + unitTypeName(UnitType(t), k > 1) : std::string("None"), ""});
         freeK[t] = fpick(p, Ab::Amalgamation, std::string("Amalgamation: produce ") + unitTypeName(UnitType(t), true) + " with captured units?", opts,
                          abilityText(G.players[p].faction, 1));
@@ -1170,7 +1187,7 @@ int Rules::amalgamation(int p, int sys, const int counts[kUnitTypes]) {
         }
     if (!any) return 0;
     for (int t = 0; t < kUnitTypes; ++t)
-        for (int i = 0; i < freeK[t]; ++i) returnCaptured(p, UnitType(t));
+        for (int i = 0; i < freeK[t]; ++i) returnCaptured(p, UnitType(t), G.fixes >= 35);
     G.players[p].usedFactionAbility = true;
     say(p, pn(p) + " gives back captured units to produce for free (Amalgamation).", sys);
     return productionCost(G, p, counts) - productionCost(G, p, rest);

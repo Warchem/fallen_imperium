@@ -36,7 +36,10 @@ const char* kDone[] = {"sol", "letnev", "hacan", "jolnar", "sardakk", "xxcha",  
                        "bentor", "dihmohn", "florzen", "gledge", "augers", "kjalengard",       // Discordant Stars batch 3 (0.39.0)
                        "kollecc", "mortheus", "vaden", "cymiae", "nivyn", "olradin",           // Discordant Stars batch 4 (0.40.0)
                        "freesystems", "edyn", "nokar", "axis", "mykomentori", "ghemina",      // Discordant Stars batch 5 (0.41.0)
-                       "veldyr", "lizho", "mirveda", "ghoti"};                                // Discordant Stars batch 6 (0.42.0)
+                       "veldyr", "lizho", "mirveda", "ghoti",                                 // Discordant Stars batch 6 (0.42.0)
+                       "atokera",                                                             // Blue Reverie 1 (0.83.0)
+                       "belkosea",                                                            // Blue Reverie 2 (0.84.0)
+                       "pharadn"};                                                            // Blue Reverie 3 (0.85.0)
 
 // Faction abilities, keyed by their name.
 const KT kAbility[] = {
@@ -339,6 +342,16 @@ const KT kAbility[] = {
     // Ghoti Wayfarers
     {"Abyssal Embrace", "When you create the game board, place the Ghoti Space tile where your home system would normally be placed. The Ghoti Space system is not a home system."},
     {"Mobile Command", "The system that contains your flagship is your home system. Your flagship cannot be captured and you cannot score public objectives if your flagship is not on the game board."},
+    // Blue Reverie (0.83.0, the cards' wording): the Atokera Legacy
+    {"Synthesis", "Readied planets you control have PLANETARY SHIELD and PRODUCTION 0 as if they were units. Apply +1 to the PRODUCTION value of each of your units with PRODUCTION."},
+    {"Living Metals", "Agenda outcomes and action cards that have component actions cannot remove or destroy your units, or place other player's units on planets you control."},
+    // the Belkosea Allied States (Blue Reverie, 0.84.0)
+    {"Classified Developments", "ACTION: Spend a combined total of 5 resources or influence to place 1 superweapon on a planet you control, and gain its superweapon card."},
+    {"Arrogance", "Superweapons you control are structures and cannot be destroyed by abilities. Each planet can contain a maximum of 1 superweapon. When a superweapon is destroyed, instead purge it and its superweapon card."},
+    // the Pharad'n Order (Blue Reverie, 0.85.0)
+    {"Ancient Empire", "During setup, place 1 tomb token on each of up to 14 planets. When you gain control of a planet that contains a tomb token, purge that token to capture 2 infantry from the supply."},
+    {"Dark Purpose", "When you score an objective: Gain 1 command token."},
+    {"Mark of Pharad'n", "Abilities that would allow you to place infantry on the game board instead allow you to produce those units. When you produce infantry, you must return 1 of your captured infantry to produce each of those units, instead of spending resources."},
     {"Spawning Grounds", "During setup, gain and ready the Ghoti planet card (3/3) and its planet ability card; you cannot lose those cards. The ability: When you move 1 or more ships into a system that contains no planets, gain 1 commodity. You may score objectives if your home system contains no planets."},
 };
 
@@ -619,6 +632,16 @@ const KT kLeaderText[] = {
     {"ghotiagent", "When a player produces 1 or more units: You may exhaust this card to allow that player to either produce 2 additional units or gain 1 trade good."},
     {"ghoticommander", "After you activate a system: You may treat systems that contain no planets as adjacent to each other during this tactical action."},
     {"ghotihero", "ACTION: For each system that contains 1 or more of your ships, you may replace 1 of your non-fighter ships in that system with a ship from your reinforcements that has a cost value of up to 2 greater than the cost value of that ship. Then, purge this card."},
+    // Blue Reverie (0.83.0, the cards' wording): the Atokera Legacy
+    {"atokeraagent", "When a player exhausts a planet during the agenda phase: Exhaust this card to allow that player to treat the combined value of that planet's resources and influence as if it were resources or influence. Then, ready that planet."},
+    {"atokeracommander", "Once per agenda phase, after an agenda is revealed: You may predict aloud an outcome of that agenda. If you do not vote on that agenda, and your prediction is correct, gain 1 command token."},
+    {"belkoseaagent", "After a system is activated: You may exhaust this card to choose 1 system; until the end of movement, other players' ships in that system do not affect ships' movement."},
+    {"belkoseacommander", "When one of your units would make a combat roll: You may use that unit's ANTI-FIGHTER BARRAGE instead. You cannot use this ability during the first round of space combat."},
+    {"belkoseahero", "Ace of Aces - Inspirational Pilot. At the start of combat: You may exhaust this card; if you do, during this combat, hits produced by your fighters' ANTI-FIGHTER BARRAGE are instead produced against all ships (not just fighters). After you lose a combat, ready this card."},
+    {"pharadnagent", "At any time: Exhaust this card to allow a player to destroy all their infantry on 1 planet they control. For each infantry destroyed, that player gains 1 commodity. Then, that player converts all of their commodities to trade goods."},
+    {"pharadncommander", "At the start of ground combat on a planet you control: You may destroy 1 infantry on that planet."},
+    {"pharadnhero", "Black Star - Apocalypse. After a player commits ground forces to a planet that contains 1 of your structures: You may purge this card to destroy all infantry on that planet, or commit any number of your captured infantry to that planet as if they were your own."},
+    {"atokerahero", "Fallen Sky - Judgment. At the start of invasion: You may purge this card to commit any of your ships in the active system to planets as if they were ground forces; those units participate in combat. At the end of this tactical action, return those ships to the space area of the active system."},
     {"nivyncommander", "When 1 or more of your damaged units make a combat roll, up to 2 of those units may roll an additional combat die."},
     {"nivynhero", "ACTION: Each unit on the game board with SUSTAIN DAMAGE, other than your mechs, becomes damaged, if able. Place this card near the "
                   "game board; you may treat each unit you control as adjacent to the system that contains the Wound token until the end of this "
@@ -698,6 +721,9 @@ const KT kUnlock[] = {
     {"lizhocommander", "Have 4 Trap attachments on the game board."},
     {"mirvedacommander", "Own 2 unit upgrade technologies."},
     {"ghoticommander", "Have units in 3 systems that do not contain planets."},
+    {"atokeracommander", "Cast more votes for an outcome than any other player."},  // (Blue Reverie, 0.83.0)
+    {"belkoseacommander", "Have 1 superweapon in your play area."},              // (Blue Reverie, 0.84.0)
+    {"pharadncommander", "ACTION: Destroy 2 of your infantry on each of 5 planets."},  // (Blue Reverie, 0.85.0: rules_br3.cpp pharAction)
 };
 
 // Flagships, mechs and other special units.
@@ -956,6 +982,19 @@ const KT kUnitText[] = {
                          "capacity count against your fleet pool. Your fighters count as 1/2 a ship for the purposes of capacity and transportation."},
     {"ghoti_flagship", "While in play, this unit is also treated as a space dock with a PRODUCTION value equal to the number of tokens in your fleet pool."},
     {"ghoti_mech", "This unit can be blockaded. When producing ships in your home system, place up to 1 of those units in this system's space area if it is not blockaded."},
+    // Blue Reverie (0.83.0, the cards' wording): the Atokera Legacy
+    {"atokera_cruiser", "This unit has PRODUCTION 0."},
+    {"atokera_cruiser2", "DEPLOY: During the agenda phase, after an outcome you voted for or predicted is resolved, place up to 1 cruiser in a system that contains your ships."},
+    {"atokera_mech", "Other players cannot exhaust this planet. During combat as the defender, you may exhaust this planet to repair each of your units on this planet."},
+    {"atokera_flagship", "Your other units in this system also have the unit and text abilities of other players' units of the same type in this system."},
+    {"belkosea_fighter", "You may commit this unit to a planet as if it were a ground force. When combat ends, return it to the space area."},
+    {"belkosea_fighter2", "You may commit this unit to a planet as if it were a ground force. When combat ends, return it to the space area. Fighters in excess of your ships' capacity count against your fleet pool."},
+    {"belkosea_mech", "When this unit produces a hit, gain 1 commodity or convert 1 of your commodities to a trade good."},
+    {"belkosea_flagship", "During combat, you may have this ship become damaged to produce 1 hit against another player's non-fighter ships in this system."},
+    {"pharadn_infantry", "After this unit is destroyed or removed, capture this unit. Game effects cannot prevent you from using this ability."},
+    {"pharadn_infantry2", "After this unit is destroyed or removed, capture this unit. Game effects cannot prevent you from using this ability. DEPLOY: At the start of your turn, you may place 1 infantry on a planet you control."},
+    {"pharadn_mech", "DEPLOY: Once per action, after 2 or more of your infantry are destroyed on a planet, you may place 1 mech from your reinforcements on that planet."},
+    {"pharadn_flagship", "During movement, apply +1 to this unit's move value for each ground force it transports."},
 };
 
 // Faction promissory notes, keyed by faction key.
@@ -980,6 +1019,9 @@ const KT kNoteName[] = {
     {"freesystems", "Broadcast Teams"}, {"edyn", "Edyn Rider"}, {"nokar", "Nokar Navigator"}, {"axis", "Industry Secrets"},
     {"mykomentori", "Gift of Insight"}, {"ghemina", "Raid Leaders"},
     {"lizho", "Trusted Counselor"}, {"mirveda", "Rapid Excavation"}, {"ghoti", "Ghoti Relay"},
+    {"atokera", "Tri-Weave Shielding"},  // (Blue Reverie, 0.83.0)
+    {"belkosea", "Mercenary Sortie"},     // (Blue Reverie, 0.84.0)
+    {"pharadn", "Death Binding"},         // (Blue Reverie, 0.85.0)
 };
 const KT kNoteText[] = {
     {"sol", "At the start of the Sol player's turn: Remove 1 token from the Sol player's strategy pool, if able, and return it to their reinforcements. Then, you may place 2 infantry from your reinforcements on any planet you control. Then, return this card to the Sol player."},
@@ -1079,6 +1121,9 @@ const KT kNoteText[] = {
     {"mirveda", "At the start of your turn: you may move up to 2 PDS units you control to a planet you control. Then return this card to the "
                 "Mirveda player."},
     {"ghoti", "At the start of your turn: Place this card in your play area to produce up to 2 ships in a system that contains 1 or more of your ships. At the start of the status phase, return this card to the Ghoti player."},
+    {"atokera", "At the start of invasion: Choose 1 unit you control in the active system; that unit gains PLANETARY SHIELD until the end of this action. Then, return this card to the Atokera player."},
+    {"belkosea", "At the start of combat: Roll 3 dice, for each result of 8 or greater, destroy up to 1 of your opponent's fighters or infantry participating in that combat. After the first round of this combat, return this card to the Belkosea player."},
+    {"pharadn", "When the Pharad'n player passes, remove 4 of your infantry from the game board to gain 1 technology with no prerequisites. Then, return this card to the Pharad'n player; that player captures 1 infantry from the supply."},
 };
 
 }  // namespace
@@ -1113,6 +1158,19 @@ bool factionInPool(int faction, int dsLevel) {
         return b > 0 && b <= dsLevel;
     }
     return true;
+}
+
+// Blue Reverie (0.83.0): the version step each faction came in - a game's random pools only use those of its level
+int brBatch(int faction) {
+    if (faction < 0 || faction >= kFactionCount || kFactions[faction].source != Source::BlueReverie || !factionImplemented(faction)) return 0;
+    static const char* kBatch[] = {"atokera", "belkosea", "pharadn"};  // level 1 (0.83.0), 2 (0.84.0), 3 (0.85.0)
+    for (size_t i = 0; i < sizeof(kBatch) / sizeof(kBatch[0]); ++i)
+        if (!std::strcmp(kBatch[i], kFactions[faction].key)) return int(i) + 1;
+    return 99;
+}
+bool brInPool(int faction, int brLevel, uint32_t brMask) {
+    const int b = brBatch(faction);
+    return b > 0 && b <= brLevel && b <= 32 && ((brMask >> (b - 1)) & 1u);  // (0.85.3: the ones unlocked - Setup::brMask)
 }
 
 bool factionImplemented(int faction) {

@@ -26,6 +26,14 @@ std::vector<std::pair<std::string, uint32_t>> earnedEmblems();
 bool colourUnlocked(int c);
 std::string colourSource(int c);  // "Finish the Ion Storm Circuit", or "" when no league gives it
 
+// (0.85.2) Blue Reverie factions are earned in the Career: the league whose finish lets you play faction key ("" = none - open),
+// and whether you may play it now (finished, or the testing switch). Bots may always play them.
+std::string factionLeague(const std::string& factionKey);
+bool factionUnlocked(const std::string& factionKey);
+// (0.85.3, owner: "secret unlockables ... unavailable to the bots but available when unlocked") the Blue Reverie factions earned so
+// far, as ti::Setup::brMask bits (ti::brBatch places); 0 = none - then games leave the module out
+uint32_t brUnlockedMask();
+
 // a raw value of the profile (league runs and rival memory keep their numbers here; see scene_league.cpp)
 std::string get(const std::string& key, const std::string& def = "");
 int getInt(const std::string& key, int def = 0);

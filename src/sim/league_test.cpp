@@ -104,6 +104,7 @@ int leagueRunTest(const std::string& outDir) {
             if (b.second) std::printf(" [%s]", b.first.c_str());
         std::printf("\n");
         if (!o.memory.empty()) std::printf("  %s\n", o.memory.c_str());
+        for (const std::string& c : o.newCommanders) std::printf("  commander unlocked: %s\n", c.c_str());
         if (GameSession::fileExists(leaguerun::savePath(d->id))) {
             std::printf("  the save is still there!\n");
             ++problems;
@@ -112,14 +113,16 @@ int leagueRunTest(const std::string& outDir) {
             std::printf("league %s after %d games: %s (winner %s, your points %d)\n", o.ended == 1 ? "WON" : "LOST", o.games,
                         o.ended == 1 ? "finished" : "back to game 1", o.winner.c_str(), o.points);
             for (const auto& w : o.finalTable) std::printf("  %s %d\n", w.first.c_str(), w.second);
-            std::printf("  finished: %d, active again: %d\n", profile::finished(d->id) ? 1 : 0, leaguerun::active(d->id) ? 1 : 0);
+            std::printf("  finished: %d, active again: %d, first win: %d\n", profile::finished(d->id) ? 1 : 0, leaguerun::active(d->id) ? 1 : 0,
+                        o.firstWin ? 1 : 0);
             ++games;
             break;
         }
     }
     std::printf("standings:");
     for (const std::string& w : leaguerun::ranking(d)) std::printf(" %s=%d", w.c_str(), leaguerun::points(d->id, w));
-    std::printf("\nleaguerun: %d games, %d problems\n", games, problems);
+    std::printf("\ncommanders for Casual Game: %zu\n", leaguerun::commanders().size());
+    std::printf("leaguerun: %d games, %d problems\n", games, problems);
     profile::save();
     return games;
 }

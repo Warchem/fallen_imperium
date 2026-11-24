@@ -78,10 +78,17 @@ struct Setup {
     // Discordant Stars (0.37.0): how many of its faction batches the random pools may draw from (saved as "dslevel"
     // with the module, so a game keeps dealing the same factions when later batches arrive)
     int dsLevel = kDsLevel;
+    // Blue Reverie (0.83.0): its factions in the random pools - those of this level and below (saved as "brlevel" with
+    // the module, like dslevel)
+    int brLevel = kBrLevel;
+    // (0.85.3, owner 2026-11-24 13:08: the Blue Reverie factions are secret unlockables - "unavailable to the bots but available
+    // when unlocked") the ones earned in the Career, a bit per brBatch() place; only those are in the game's pools. Saved as
+    // "brmask" with the module when not all; older saves: all.
+    uint32_t brMask = 0xFFFFFFFFu;
     // Rule fixes (0.33.0) that change what happened in older games, so they only apply to games started
     // with them: 1 = Lucky Shot destroys the ship that was picked (it misread odd-numbered systems).
     // Saves without the line load as 0.
-    int fixes = 34;  // 1 Lucky Shot target (0.33.0), 2 the 0.43.0 fixes, 3 the Fracture's planets at its ends (0.43.2),
+    int fixes = 44;  // 1 Lucky Shot target (0.33.0), 2 the 0.43.0 fixes, 3 the Fracture's planets at its ends (0.43.2),
                     // 4 a token gained in a tactical action no longer gives another action (0.43.3),
                     // 5 the 0.43.4 fixes (entropic scars at the start of the status phase, ...),
                     // 6 the Veldyr start with all 4 Branch Offices (0.44.1: Tax Haven was missing),
@@ -341,6 +348,27 @@ struct Setup {
                     // 34 (0.68.1, owner 2026-11-19 11:41: "after placing a pds, I am prompted with the choice of placing my flagship.
                     //    The flagship can't be placed right after I placed my pds"): Ouranos (Titans flagship DEPLOY) only replaces
                     //    a PDS that was in the system when it was activated (Rules::activationPDS_) - not one Awaken placed
+                    // 35 (0.80.1, GitHub issue #3 "Vuil'raith cannot build with their own captured units"): the Vuil'raith's own units on
+                    //    their faction sheet (The Terror Between captures them too) count for their production - Amalgamation gives
+                    //    one back for each unit of that type produced past the reinforcements (asked from that number up; their own
+                    //    captured units are given back first)
+                    // 36 (0.81.1, owner 2026-11-21): with Absol's Agendas, Political Secret is Absol's card - played while casting
+                    //    votes (up to 3 of its owner's planets' votes), not the original "the owner cannot vote" (0.81.0 games keep it)
+                    // 37 (0.82.0, found by the Monuments+ sims): an Executive Order (Keleres) that draws Absol's Emergency Session
+                    //    sets it aside for the agenda phase and draws again (it isn't an agenda: the vote had no outcomes - stuck);
+                    //    units that chose to coexist when committed (Research Team, Viper EX-23, Nefishh Projector) aren't asked
+                    //    again right away whether to end that coexistence
+                    // 38 (0.82.0, found checking Monuments+'s Calm Seas / Qanoj): Future Sight (Nomad) counts every kind of
+                    //    prediction (Keleres / Kyro / Edyn Riders, Council Black Site, ...), not only action card riders
+                    // 39 (0.82.1): the Thunder's Edge factions get their Monuments+ monuments (Rules::giveMonument)
+                    // 40 (0.82.2): ... and the first 12 Discordant Stars factions (set "DS1")
+                    // 41 (0.82.3): ... and the next 12 (set "DS2")
+                    // 42 (0.82.4): ... and the last 10 (set "DS3" - the Rhodun's card has two sides)
+                    // 43 (0.82.4, the Monuments+ rules pass): Flaah Orbitals' infantry is mandatory (LRR 1.8), the Keleres
+                    // card's tokens are not in the reinforcements, the Nekro's "Z" token is the Valefar Assimilator Z
+                    // breakthrough's
+                    // 44 (0.85.3, owner 2026-11-24 13:08): a Pharad'n tomb stays when another player takes its planet (0.85.0 -
+                    // 0.85.2 games, 43, purged it)
     // 0.54.0: the human players' habits from their earlier games (the bots adapt to them); saved as "habits" when known
     HabitProfile habits;
     // The Council Keleres (0.21.0): per seat, the faction whose home system a
@@ -352,6 +380,9 @@ struct Setup {
     // "grudges" only when set, so other games save and replay exactly as before.
     int speaker = -1;
     std::vector<int> grudges;
+    // (0.80.11) per seat the rival commander sitting there (a league rival's id; "" none): league games, and Casual games with
+    // the commanders you have beaten. The engine doesn't use it (the screens show the names); saved as "commanders" only when set.
+    std::vector<std::string> commanders;
 };
 
 enum class EventKind : uint8_t {
@@ -402,6 +433,8 @@ enum class EventKind : uint8_t {
     ObjectiveRevealed,// 0.29.0: public objective 'count' revealed (display only; the Phase log line stays)
     Note,             // 0.29.0: a feed line that stays out of the game log (old saves replay unchanged)
     WarSunAge,        // 0.73.0: the first war sun technology of the game (player = who) - the War Sun scene (display only)
+    MonumentPlaced,   // 0.82.0 Monuments+: player placed their monument (count = kMonuments index, system, planet -1 = space) -
+                      // its card shown large (display only)
 };
 
 constexpr int8_t kActionTactical = 20;

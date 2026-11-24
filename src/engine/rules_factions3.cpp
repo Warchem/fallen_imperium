@@ -97,6 +97,7 @@ void Rules::refreshUnits(int p) {
     for (int u : f.units)
         if (u >= 0 && kUnits[u].upgradeOf < 0) pl.unit[int(kUnits[u].type)] = int16_t(u);
     secondFlagship(p);  // (0.52.0: the Ghemina's Lady)
+    giveMonument(p);    // (0.82.0 Monuments+)
     auto apply = [&](int tech, int faction) {
         for (int u = 0; u < kUnitCount; ++u) {
             if (kUnits[u].tech != tech) continue;
@@ -1196,7 +1197,8 @@ bool Rules::gainTechFrom(int p, const std::vector<int>& from, const std::string&
     }
     // Valefar Assimilator Z (Nekro breakthrough, Thunder's Edge): a Z token on the faction instead - the Nekro
     // flagship gains that faction's flagship abilities (3 tokens)
-    if (breakthroughIs(G, p, "nekro") && pl.nekroZ.size() < 3)
+    // ((fixes 43) a Z token on a monument card - the Valefar Assimilator "M" monument - is one of the 3)
+    if (breakthroughIs(G, p, "nekro") && pl.nekroZ.size() + (G.fixes >= 43 && pl.nekroMon[1] >= 0 ? 1u : 0u) < 3)
         for (int q : from) {
             if (q < 0 || q == p || q >= G.numPlayers) continue;
             const int f = G.players[size_t(q)].faction;

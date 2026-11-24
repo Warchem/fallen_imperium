@@ -202,7 +202,7 @@ void Rules::ds7AfterMovement(int p, int sys, int movedInfantry) {
         }
     }
     // the Ghoti planet card: ships into a system without planets - 1 commodity
-    if (fac(p, "ghoti") && G.systems[size_t(sys)].planets.empty()) {
+    if (fac(p, "ghoti") && (G.systems[size_t(sys)].planets.empty() || anchorpointBare(G, p, sys))) {  // (0.82.4: the Anchorpoint)
         Player& pl = G.players[size_t(p)];
         if (pl.commodities < commodityCap(G, pl)) {
             { const int cb_ = pl.commodities; pl.commodities = int8_t(pl.commodities + 1); commodityGained(p, cb_); }
@@ -554,12 +554,13 @@ int Rules::dsGhotiPlanet(int p, int amount, bool influence, const std::string& w
 // bombarded (LRR 15.1f / 64), Conventions of War's cultural planets and Arcane Shield Emitter's neither
 bool Rules::wrathShielded(int q, int sys, int x) const {
     if (arcaneShield(G, x)) return true;
-    if (lawInPlay(G, "conventions") && hasTraitOf(G, x, Trait::Cultural)) return true;
+    if (conventionsOfWar(G) && hasTraitOf(G, x, Trait::Cultural)) return true;
     bool shield = false;
     for (int t = 0; t < kUnitTypes; ++t)
         if (G.planets[size_t(x)].units[size_t(q)].n[t] && unitDef(G, q, UnitType(t)).shield) shield = true;
     if (q < G.numPlayers && ((G.fx.echoShield >> q) & 1)) shield = true;
     if (G.fx.dsShieldPlanet == x) shield = true;
+    if (brPlanetShield(G, q, x)) shield = true;  // (0.83.0) Synthesis / Kohi
     if (shield && shieldsDown(G, q, sys)) shield = false;
     return shield;
 }
